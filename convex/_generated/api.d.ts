@@ -11,10 +11,12 @@
 import type * as attributes from "../attributes.js";
 import type * as datalog from "../datalog.js";
 import type * as facts from "../facts.js";
+import type * as http from "../http.js";
 import type * as lib_engine from "../lib/engine.js";
 import type * as lib_visibility from "../lib/visibility.js";
 import type * as materialize from "../materialize.js";
 import type * as rules from "../rules.js";
+import type * as staticHosting from "../staticHosting.js";
 
 import type {
   ApiFromModules,
@@ -26,10 +28,12 @@ declare const fullApi: ApiFromModules<{
   attributes: typeof attributes;
   datalog: typeof datalog;
   facts: typeof facts;
+  http: typeof http;
   "lib/engine": typeof lib_engine;
   "lib/visibility": typeof lib_visibility;
   materialize: typeof materialize;
   rules: typeof rules;
+  staticHosting: typeof staticHosting;
 }>;
 
 /**
@@ -58,4 +62,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  selfHosting: import("@convex-dev/static-hosting/_generated/component.js").ComponentApi<"selfHosting">;
+};

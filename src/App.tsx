@@ -1,0 +1,146 @@
+import { FormEvent, useState } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { useDeploymentUpdates } from "@convex-dev/static-hosting/react";
+import { api } from "../convex/_generated/api";
+
+// Coerce a string from the value input into a Convex value: JSON if it parses
+// (numbers, booleans, null, objects), otherwise the raw string.
+function coerce(raw: string): unknown {
+  const t = raw.trim();
+  if (t === "") return "";
+  try {
+    return JSON.parse(t);
+  } catch {
+    return raw;
+  }
+}
+
+function AssertPanel() {
+  const assertFact = useMutation(api.facts.assertFact);
+  const [e, setE] = useState("employee:123");
+  const [a, setA] = useState("employee.status");
+  const [value, setValue] = useState("active");
+  const [busy, setBusy] = useState(false);
+
+  async function onSubmit(ev: FormEvent) {
+    ev.preventDefault();
+    setBusy(true);
+    try {
+      await assertFact({ e, a, value: coerce(value) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="panel">
+      <h2>Assert a fact</h2>
+      <form onSubmit={onSubmit} className="row">
+        <input value={e} onChange={(x) => setE(x.target.value)} placeholder="entity" />
+        <input value={a} onChange={(x) => setA(x.target.value)} placeholder="attribute" />
+        <input value={value} onChange={(x) => setValue(x.target.value)} placeholder="value (JSON or text)" />
+        <button disabled={busy} type="submit">{busy ? "…" : "Assert"}</button>
+      </form>
+      <p className="hint">Value is parsed as JSON when possible — try <code>true</code>, <code>42</code>, or <code>"text"</code>.</p>
+    </section>
+  );
+}
+
+function EntityPanel() {
+  const [e, setE] = useState("employee:123");
+  const entity = useQuery(api.facts.getEntity, { e });
+
+  return (
+    <section className="panel">
+      <h2>Entity (live)</h2>
+      <div className="row">
+        <input value={e} onChange={(x) => setE(x.target.value)} placeholder="entity id" />
+      </div>
+      {entity === undefined ? (
+        <p className="hint">Loading…</p>
+      ) : Object.keys(entity.attributes).length === 0 ? (
+        <p className="hint">No current facts for <code>{e}</code>.</p>
+      ) : (
+        <table>
+          <tbody>
+            {Object.entries(entity.attributes).map(([attr, vals]) => (
+              <tr key={attr}>
+                <td className="attr">{attr}</td>
+                <td>{(vals as unknown[]).map((v) => JSON.stringify(v)).join(", ")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+const DEFAULT_QUERY = JSON.stringify(
+  {
+    where: [
+      ["?e", "type", "Employee"],
+      ["?e", "employee.status", "active"],
+    ],
+    select: ["?e"],
+  },
+  null,
+  2,
+);
+
+function DatalogPanel() {
+  const [text, setText] = useState(DEFAULT_QUERY);
+  const [args, setArgs] = useState<{ where: unknown[][]; select: string[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const result = useQuery(api.datalog.datalog, args ?? "skip");
+
+  function run() {
+    try {
+      const parsed = JSON.parse(text);
+      setError(null);
+      setArgs({ where: parsed.where, select: parsed.select });
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  return (
+    <section className="panel">
+      <h2>Datalog</h2>
+      <textarea value={text} onChange={(x) => setText(x.target.value)} rows={8} />
+      <div className="row">
+        <button onClick={run}>Run query</button>
+      </div>
+      {error && <pre className="error">{error}</pre>}
+      {args && result !== undefined && (
+        <pre className="result">{JSON.stringify(result, null, 2)}</pre>
+      )}
+    </section>
+  );
+}
+
+export default function App() {
+  // Demonstrates the component's reactive live-reload-on-deploy.
+  const { updateAvailable, reload } = useDeploymentUpdates(
+    api.staticHosting.getCurrentDeployment,
+  );
+
+  return (
+    <main>
+      {updateAvailable && (
+        <div className="banner">
+          A new version was deployed.
+          <button onClick={reload}>Reload</button>
+        </div>
+      )}
+      <h1>Triple Store Explorer</h1>
+      <p className="sub">
+        A bitemporal triple store + Datalog engine on Convex, served as static
+        assets via <code>@convex-dev/static-hosting</code>.
+      </p>
+      <AssertPanel />
+      <EntityPanel />
+      <DatalogPanel />
+    </main>
+  );
+}
