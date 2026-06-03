@@ -1,0 +1,16 @@
+{
+  "name": "convex-triples",
+  "version": "0.1.0",
+  "description": "A reactive bitemporal triple store with a Datalog query engine, built on Convex.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "convex": "^1.40.0",
+    "typescript": "^6.0.3"
+  }
+}
