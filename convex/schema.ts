@@ -166,6 +166,7 @@ export default defineSchema({
     stale: v.optional(v.boolean()),
   })
     .index("by_rule", ["ruleId"])
+    .index("by_rule_e", ["ruleId", "e"])
     .index("by_e_a", ["e", "a"])
     .index("by_a_v", ["a", "v"])
     .index("by_stale", ["stale"]),

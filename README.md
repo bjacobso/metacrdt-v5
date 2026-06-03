@@ -79,6 +79,18 @@ queryFacts({
   includeTombstoned: false,
 })
 
+// Reconstruct an entity at any bitemporal coordinate (general form of asOf*)
+entityAsOf({ e: "employee:123", txTime, validTime })
+
+// Compare what was visible at two coordinates: "what did we believe on May 1?"
+// vs "what is now believed to have been true on May 1?"
+compareFacts({
+  e: "employee:123",
+  a: "employee.status",
+  before: { txTime: Date.parse("2026-05-01"), validTime: Date.parse("2026-05-01") },
+  after:  { txTime: Date.now(),                validTime: Date.parse("2026-05-01") },
+})
+
 // Datalog
 datalog({
   where: [
@@ -103,6 +115,20 @@ Strings beginning with `?` are variables; everything else is a constant.
 
 Every mutation creates a `transactions` row and appends to `factEvents`.
 
+Register a predicate's typed schema (and cardinality) with
+`defineAttribute({ name, valueType, cardinality, ... })`. A `cardinality: "one"`
+attribute makes `assertFact` retract the prior current value (in transaction
+time) before asserting the new one; otherwise multiple values coexist.
+
+## Rules & materialization
+
+`defineRule({ name, where, emit, dependsOnAttributes })` persists a Datalog rule
+whose output is materialized into `derivedFacts`. On any fact change, rules
+depending on the changed attribute are recomputed: **entity-local** rules
+(every clause subject is the emitted entity) recompute incrementally for just
+that entity; cross-entity rules recompute in full. The `ruleInvalidations` queue
+records and clears each pending recomputation.
+
 ## Datalog limits (live queries)
 
 Bounded by design — recursion is materialized asynchronously, never run live:
@@ -112,9 +138,20 @@ maxClauses: 12   maxIntermediateRows: 5_000   maxResultRows: 1_000
 maxClauseScan: 2_000   allowRecursion: false
 ```
 
+## Testing
+
+```bash
+npm test        # vitest run (convex-test + edge-runtime)
+```
+
+Covers the bitemporal visibility quadrants, append-only event replay,
+cardinality-one replacement, tombstones, Datalog joins, and rule
+materialization (incremental recompute through a correction).
+
 ## Status
 
-Early — see [PLAN.md](./PLAN.md) for the MVP build order and milestones.
+M1–M6 implemented and tested — see [PLAN.md](./PLAN.md) for milestones and
+what's still open.
 
 ## Getting started
 

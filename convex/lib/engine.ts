@@ -161,10 +161,11 @@ export async function runWhere(
   ctx: Ctx,
   where: unknown[][],
   coord: BitemporalCoord,
+  seed: Binding = {},
 ): Promise<Binding[]> {
   const plan = planWhere(where);
 
-  let bindings: Binding[] = [{}];
+  let bindings: Binding[] = [{ ...seed }];
   for (const idx of plan.order) {
     const clause = plan.clauses[idx];
     const nextBindings: Binding[] = [];
@@ -184,6 +185,27 @@ export async function runWhere(
     if (bindings.length === 0) break;
   }
   return bindings;
+}
+
+/**
+ * A rule is "entity-local" when every clause's subject (entity position) is
+ * either a constant or the same variable that the rule emits on. Such a rule's
+ * output for entity X depends only on facts about X, so it can be recomputed
+ * incrementally per-entity. Rules that join across entities (a different
+ * variable in any subject position) must be recomputed in full.
+ */
+export function entityVarOf(emitE: string): string | null {
+  return emitE.startsWith("?") ? emitE.slice(1) : null;
+}
+
+export function isEntityLocalRule(where: unknown[][], emitE: string): boolean {
+  const ev = entityVarOf(emitE);
+  if (ev === null) return false;
+  for (const raw of where) {
+    const subject = parseTerm(raw[0]);
+    if (subject.kind === "var" && subject.name !== ev) return false;
+  }
+  return true;
 }
 
 /** Project bindings onto the requested variable names (e.g. ["?e", "?m"]). */

@@ -42,6 +42,16 @@ PLAN.md
 README.md
 ```
 
+## Status (2026-06-03)
+
+M1–M6 are implemented, deployed to `chatty-hare-94`, and covered by tests
+(`npm test`, 25 passing). Done: full schema; assert/retract/tombstone/correct;
+currentFacts projection; `defineAttribute` (cardinality-one now enforced);
+getEntity / queryFacts / history; bounded non-recursive Datalog + explain;
+rules with **incremental, entity-scoped** materialization (full recompute for
+cross-entity rules) driven by the `ruleInvalidations` queue; and M6
+`entityAsOf` / `compareFacts`. Remaining: see "Still open" below.
+
 ## Milestones
 
 ### M0 — Scaffold
@@ -114,6 +124,18 @@ advanced planner/cost model, inverse attributes, distributed partitions.
 - Property test: replaying `factEvents` reconstructs `facts` and `currentFacts`.
 - Datalog: golden tests on `explainDatalog` plans + result correctness on a fixed fixture graph.
 - Limit tests: queries exceeding `maxIntermediateRows` throw cleanly.
+
+## Still open
+
+- **Incremental recompute is entity-local only.** Cross-entity rules (a clause
+  whose subject is a variable other than the emitted entity) still trigger a
+  full recompute on any dependency change. A dependency graph keyed by the
+  joined entity would let those recompute incrementally too.
+- **Valid-time succession for cardinality-one** is caller-driven: auto-replace
+  only supersedes in transaction time. A `validFrom`-aware assert that closes
+  the prior interval in valid time would be a useful convenience.
+- **`sync` materialization** is treated like `async` (always scheduled). True
+  synchronous, in-transaction derivation isn't wired up yet.
 
 ## Open questions
 

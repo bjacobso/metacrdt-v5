@@ -130,9 +130,12 @@ export const assertFact = mutation({
       for (const row of current) {
         const old = await ctx.db.get("facts", row.factId);
         if (old && old.retractedAt === undefined) {
+          // Transaction-time supersession only: the prior value is no longer
+          // current, but we don't assert anything about when it stopped being
+          // true in the world. Its valid interval stays as-is. Callers wanting
+          // valid-time succession should retractFact with an explicit validTo.
           await ctx.db.patch("facts", old._id, {
             retractedAt: now,
-            validTo: old.validTo ?? validFrom,
             lastTxId: txId,
           });
           await ctx.db.insert("factEvents", {
@@ -143,7 +146,6 @@ export const assertFact = mutation({
             e: old.e,
             a: old.a,
             v: old.v,
-            validTo: old.validTo ?? validFrom,
             reason: "superseded by new cardinality-one assertion",
           });
         }
@@ -479,5 +481,88 @@ export const history = query({
       .withIndex("by_e", (q) => q.eq("e", args.e))
       .order("desc")
       .take(limit);
+  },
+});
+
+// --- M6: bitemporal reconstruction & comparison -----------------------------
+
+const coordValidator = v.object({
+  txTime: v.number(),
+  validTime: v.number(),
+});
+
+/**
+ * Reconstruct an entity's attribute map at an arbitrary bitemporal coordinate
+ * directly from the canonical `facts` log (not the currentFacts projection),
+ * so it works for any past txTime / validTime. This is the general form of the
+ * asOf* helpers: pass now/now to reproduce getEntity.
+ */
+export const entityAsOf = query({
+  args: {
+    e: v.string(),
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+    includeTombstoned: v.optional(v.boolean()),
+    includeRetracted: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const rows = await ctx.db
+      .query("facts")
+      .withIndex("by_e", (q) => q.eq("e", args.e))
+      .take(2000);
+
+    const attributes: Record<string, unknown[]> = {};
+    for (const f of rows) {
+      if (
+        !isVisible(f, coord, {
+          includeTombstoned: args.includeTombstoned,
+          includeRetracted: args.includeRetracted,
+        })
+      ) {
+        continue;
+      }
+      (attributes[f.a] ??= []).push(f.v);
+    }
+    return { id: args.e, coord, attributes };
+  },
+});
+
+/**
+ * Compare the visible value(s) of an (e, a) at two bitemporal coordinates —
+ * e.g. "what did we believe on May 1?" vs "what is now believed to have been
+ * true on May 1?". Returns both sides and whether they differ.
+ */
+export const compareFacts = query({
+  args: {
+    e: v.string(),
+    a: v.string(),
+    before: coordValidator,
+    after: coordValidator,
+    includeTombstoned: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("facts")
+      .withIndex("by_e_a", (q) => q.eq("e", args.e).eq("a", args.a))
+      .take(2000);
+
+    const opts = { includeTombstoned: args.includeTombstoned };
+    const visibleValues = (coord: { txTime: number; validTime: number }) =>
+      rows
+        .filter((f) => isVisible(f, coord, opts))
+        .map((f) => f.v)
+        .sort((x, y) => valueKey(x).localeCompare(valueKey(y)));
+
+    const before = visibleValues(args.before);
+    const after = visibleValues(args.after);
+    const changed =
+      JSON.stringify(before.map(valueKey)) !==
+      JSON.stringify(after.map(valueKey));
+
+    return { e: args.e, a: args.a, before, after, changed };
   },
 });

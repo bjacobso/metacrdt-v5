@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as attributes from "../attributes.js";
 import type * as datalog from "../datalog.js";
 import type * as facts from "../facts.js";
 import type * as lib_engine from "../lib/engine.js";
@@ -22,6 +23,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  attributes: typeof attributes;
   datalog: typeof datalog;
   facts: typeof facts;
   "lib/engine": typeof lib_engine;
