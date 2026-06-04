@@ -111,6 +111,28 @@ th {
   margin-top: 0.75rem;
 }
 
+.derived {
+  border: 1px solid #ece9fb;
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  margin-top: 0.6rem;
+  background: #faf9ff;
+}
+
+.derived-head {
+  margin-bottom: 0.3rem;
+}
+
+.because ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.because li {
+  font-size: 0.88rem;
+  margin: 0.1rem 0;
+}
+
 h1 {
   margin-bottom: 0.25rem;
 }

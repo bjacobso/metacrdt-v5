@@ -3,7 +3,7 @@ import { internal } from "./_generated/api";
 import { MutationCtx } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
-import { isEntityLocalRule, runWhere, LIMITS } from "./lib/engine";
+import { isEntityLocalRule, solveWhere, LIMITS } from "./lib/engine";
 import { isVisible } from "./lib/visibility";
 
 /**
@@ -56,7 +56,12 @@ export const processFactChange = internalMutation({
             await ctx.scheduler.runAfter(
               0,
               internal.materialize.incrementalClosureAdd,
-              { ruleId: rule._id, u: fact.e, w: String(fact.v) },
+              {
+                ruleId: rule._id,
+                u: fact.e,
+                w: String(fact.v),
+                edgeFactId: fact._id,
+              },
             );
           }
         } else {
@@ -110,7 +115,7 @@ export const recomputeRule = internalMutation({
 
     const now = Date.now();
     const coord = { txTime: now, validTime: now };
-    const bindings = await runWhere(ctx, (rule.where ?? []) as unknown[], coord);
+    const solved = await solveWhere(ctx, (rule.where ?? []) as unknown[], coord);
 
     // Clear all prior output for this rule, then re-emit.
     const prior = await ctx.db
@@ -119,8 +124,8 @@ export const recomputeRule = internalMutation({
       .collect();
     for (const d of prior) await ctx.db.delete("derivedFacts", d._id);
 
-    for (const b of bindings) {
-      await emitDerived(ctx, rule, b, now);
+    for (const s of solved) {
+      await emitDerived(ctx, rule, s.binding, s.sources, now);
     }
 
     await clearInvalidations(ctx, args.ruleId, now);
@@ -150,7 +155,7 @@ export const recomputeRuleForEntity = internalMutation({
 
     const now = Date.now();
     const coord = { txTime: now, validTime: now };
-    const bindings = await runWhere(ctx, (rule.where ?? []) as unknown[], coord, {
+    const solved = await solveWhere(ctx, (rule.where ?? []) as unknown[], coord, {
       [entityVar]: args.e,
     });
 
@@ -163,8 +168,8 @@ export const recomputeRuleForEntity = internalMutation({
       .collect();
     for (const d of prior) await ctx.db.delete("derivedFacts", d._id);
 
-    for (const b of bindings) {
-      await emitDerived(ctx, rule, b, now);
+    for (const s of solved) {
+      await emitDerived(ctx, rule, s.binding, s.sources, now);
     }
 
     await clearInvalidations(ctx, args.ruleId, now, args.e);
@@ -189,33 +194,38 @@ export const recomputeTransitiveClosure = internalMutation({
     const now = Date.now();
     const coord = { txTime: now, validTime: now };
 
-    // Build adjacency from current visible base-attribute facts.
+    // Build adjacency from current visible base-attribute facts, keeping the
+    // edge's fact id so each closure pair can carry its path provenance.
     const edgeRows = await ctx.db
       .query("facts")
       .withIndex("by_a", (q) => q.eq("a", baseAttribute))
       .take(LIMITS.maxClauseScan);
-    const adj = new Map<string, Set<string>>();
+    const adj = new Map<string, Array<{ to: string; factId: Id<"facts"> }>>();
     for (const r of edgeRows) {
       if (!isVisible(r, coord)) continue;
       const to = String(r.v);
-      if (!adj.has(r.e)) adj.set(r.e, new Set());
-      adj.get(r.e)!.add(to);
+      if (!adj.has(r.e)) adj.set(r.e, []);
+      adj.get(r.e)!.push({ to, factId: r._id });
     }
 
-    // BFS reachability per source, bounded by depth and total pairs.
-    const pairs: Array<{ from: string; to: string }> = [];
+    // BFS reachability per source, bounded by depth and total pairs; the
+    // accumulated edge-fact set on the path is the pair's provenance.
+    const pairs: Array<{ from: string; to: string; prov: Id<"facts">[] }> = [];
     let truncated = false;
     outer: for (const source of adj.keys()) {
       const seen = new Set<string>();
-      let frontier = [source];
+      let frontier: Array<{ node: string; prov: Id<"facts">[] }> = [
+        { node: source, prov: [] },
+      ];
       for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
-        const nextFrontier: string[] = [];
-        for (const node of frontier) {
-          for (const nbr of adj.get(node) ?? []) {
-            if (seen.has(nbr) || nbr === source) continue;
-            seen.add(nbr);
-            nextFrontier.push(nbr);
-            pairs.push({ from: source, to: nbr });
+        const nextFrontier: Array<{ node: string; prov: Id<"facts">[] }> = [];
+        for (const { node, prov } of frontier) {
+          for (const edge of adj.get(node) ?? []) {
+            if (seen.has(edge.to) || edge.to === source) continue;
+            seen.add(edge.to);
+            const pathProv = [...prov, edge.factId];
+            nextFrontier.push({ node: edge.to, prov: pathProv });
+            pairs.push({ from: source, to: edge.to, prov: pathProv });
             if (pairs.length >= LIMITS.maxIntermediateRows) {
               truncated = true;
               break outer;
@@ -224,7 +234,7 @@ export const recomputeTransitiveClosure = internalMutation({
         }
         frontier = nextFrontier;
       }
-      if (reflexive) pairs.push({ from: source, to: source });
+      if (reflexive) pairs.push({ from: source, to: source, prov: [] });
     }
     if (truncated) {
       console.warn(
@@ -239,13 +249,13 @@ export const recomputeTransitiveClosure = internalMutation({
       .collect();
     for (const d of prior) await ctx.db.delete("derivedFacts", d._id);
 
-    for (const { from, to } of pairs) {
+    for (const { from, to, prov } of pairs) {
       await ctx.db.insert("derivedFacts", {
         ruleId: args.ruleId,
         e: from,
         a: closureAttribute,
         v: to,
-        sourceFactIds: [],
+        sourceFactIds: prov,
         derivedAt: now,
         validFrom: now,
         txWatermark: now,
@@ -264,22 +274,30 @@ export const recomputeTransitiveClosure = internalMutation({
  * far cheaper than rebuilding the whole closure on every edge added.
  */
 export const incrementalClosureAdd = internalMutation({
-  args: { ruleId: v.id("rules"), u: v.string(), w: v.string() },
+  args: {
+    ruleId: v.id("rules"),
+    u: v.string(),
+    w: v.string(),
+    edgeFactId: v.optional(v.id("facts")),
+  },
   handler: async (ctx, args) => {
     const rule = await ctx.db.get("rules", args.ruleId);
     if (!rule || !rule.enabled || rule.closure === undefined) return;
     const { closureAttribute, reflexive } = rule.closure;
     const now = Date.now();
+    const edgeProv: Id<"facts">[] = args.edgeFactId ? [args.edgeFactId] : [];
 
     // predecessors(u): x such that (x --closure--> u) already holds, plus u.
+    // Carry each predecessor's path provenance (its x→u source facts).
     const predRows = await ctx.db
       .query("derivedFacts")
       .withIndex("by_a_v", (q) =>
         q.eq("a", closureAttribute).eq("v", args.u),
       )
       .take(LIMITS.maxClauseScan);
-    const preds = new Set<string>(predRows.map((r) => r.e));
-    preds.add(args.u);
+    const predProv = new Map<string, Id<"facts">[]>();
+    for (const r of predRows) predProv.set(r.e, r.sourceFactIds ?? []);
+    predProv.set(args.u, []);
 
     // successors(w): y such that (w --closure--> y) already holds, plus w.
     const succRows = await ctx.db
@@ -288,11 +306,12 @@ export const incrementalClosureAdd = internalMutation({
         q.eq("e", args.w).eq("a", closureAttribute),
       )
       .take(LIMITS.maxClauseScan);
-    const succs = new Set<string>(succRows.map((r) => String(r.v)));
-    succs.add(args.w);
+    const succProv = new Map<string, Id<"facts">[]>();
+    for (const r of succRows) succProv.set(String(r.v), r.sourceFactIds ?? []);
+    succProv.set(args.w, []);
 
     let inserted = 0;
-    for (const x of preds) {
+    for (const [x, xProv] of predProv) {
       // Existing closure targets for x, to dedupe in one read per source.
       const existingRows = await ctx.db
         .query("derivedFacts")
@@ -301,15 +320,16 @@ export const incrementalClosureAdd = internalMutation({
         )
         .take(LIMITS.maxClauseScan);
       const existing = new Set<string>(existingRows.map((r) => String(r.v)));
-      for (const y of succs) {
+      for (const [y, yProv] of succProv) {
         if (x === y && !reflexive) continue;
         if (existing.has(y)) continue;
+        const prov = [...new Set([...xProv, ...edgeProv, ...yProv])];
         await ctx.db.insert("derivedFacts", {
           ruleId: args.ruleId,
           e: x,
           a: closureAttribute,
           v: y,
-          sourceFactIds: [],
+          sourceFactIds: prov,
           derivedAt: now,
           validFrom: now,
           txWatermark: now,
@@ -337,6 +357,7 @@ async function emitDerived(
   ctx: MutationCtx,
   rule: Doc<"rules">,
   binding: Record<string, unknown>,
+  sources: Id<"facts">[],
   now: number,
 ): Promise<void> {
   if (rule.emit === undefined) return;
@@ -348,7 +369,7 @@ async function emitDerived(
     e: String(e),
     a: rule.emit.a,
     v: value,
-    sourceFactIds: [],
+    sourceFactIds: sources,
     derivedAt: now,
     validFrom: now,
     txWatermark: now,

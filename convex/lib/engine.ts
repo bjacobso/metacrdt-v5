@@ -1,4 +1,4 @@
-import { Doc } from "../_generated/dataModel";
+import { Doc, Id } from "../_generated/dataModel";
 import { QueryCtx, MutationCtx } from "../_generated/server";
 import { BitemporalCoord, isVisible, valueKey } from "./visibility";
 
@@ -14,8 +14,15 @@ export const COMPARISON_OPS = new Set([">", "<", ">=", "<=", "==", "!="]);
 
 export type Binding = Record<string, unknown>;
 
-/** Normalized triple — the only fields the join needs from any source row. */
-type Triple = { e: string; a: string; v: unknown };
+/** A binding plus the source facts that justify it (provenance). */
+export type SolvedBinding = { binding: Binding; sources: Id<"facts">[] };
+
+/**
+ * Normalized triple. `prov` is the base-fact provenance of the row: a fact row
+ * contributes its own id; a derived-fact row contributes the base facts it was
+ * itself derived from (so provenance always resolves to source facts).
+ */
+type Triple = { e: string; a: string; v: unknown; prov: Id<"facts">[] };
 
 type Term =
   | { kind: "var"; name: string }
@@ -126,7 +133,7 @@ function dynamicSelectivity(p: PatternClause, bound: Set<string>): number {
 function factsVisible(rows: Doc<"facts">[], coord: BitemporalCoord): Triple[] {
   return rows
     .filter((r) => isVisible(r, coord))
-    .map((r) => ({ e: r.e, a: r.a, v: r.v }));
+    .map((r) => ({ e: r.e, a: r.a, v: r.v, prov: [r._id] }));
 }
 
 function derivedVisible(
@@ -134,7 +141,8 @@ function derivedVisible(
   coord: BitemporalCoord,
 ): Triple[] {
   // Derived facts have no transaction-time/tombstone lifecycle; they're valid
-  // while not stale and within their valid interval.
+  // while not stale and within their valid interval. Their provenance is the
+  // base facts they were derived from.
   return rows
     .filter(
       (r) =>
@@ -142,7 +150,7 @@ function derivedVisible(
         r.validFrom <= coord.validTime &&
         (r.validTo === undefined || r.validTo > coord.validTime),
     )
-    .map((r) => ({ e: r.e, a: r.a, v: r.v }));
+    .map((r) => ({ e: r.e, a: r.a, v: r.v, prov: r.sourceFactIds ?? [] }));
 }
 
 /**
@@ -295,21 +303,22 @@ async function passesNegation(
 // --- the join scheduler -----------------------------------------------------
 
 /**
- * Evaluate a Datalog `where` body to variable bindings. Patterns are joined via
- * indexed nested loops over facts ∪ derivedFacts; comparison and negation
- * clauses run as filters as soon as their variables are bound. Non-recursive
- * and bounded by LIMITS. (Recursion is materialized into derivedFacts instead.)
+ * Evaluate a Datalog `where` body to bindings, each tagged with the base-fact
+ * provenance that justifies it. Patterns are joined via indexed nested loops
+ * over facts ∪ derivedFacts; comparison and negation clauses run as filters as
+ * soon as their variables are bound (they prune but add no positive provenance).
+ * Non-recursive and bounded by LIMITS.
  */
-export async function runWhere(
+export async function solveWhere(
   ctx: Ctx,
   where: unknown[],
   coord: BitemporalCoord,
   seed: Binding = {},
-): Promise<Binding[]> {
+): Promise<SolvedBinding[]> {
   const clauses = parseClauses(where);
   const remaining = clauses.map((_, i) => i);
   const bound = new Set<string>(Object.keys(seed));
-  let bindings: Binding[] = [{ ...seed }];
+  let states: SolvedBinding[] = [{ binding: { ...seed }, sources: [] }];
 
   while (remaining.length > 0) {
     // Prefer a runnable filter (compare/not whose vars are all bound) — cheap
@@ -347,12 +356,17 @@ export async function runWhere(
     const clause = clauses[idx];
 
     if (clause.kind === "pattern") {
-      const next: Binding[] = [];
-      for (const b of bindings) {
-        const candidates = await fetchPattern(ctx, clause, b, coord);
+      const next: SolvedBinding[] = [];
+      for (const st of states) {
+        const candidates = await fetchPattern(ctx, clause, st.binding, coord);
         for (const t of candidates) {
-          const extended = unify(clause, b, t);
-          if (extended) next.push(extended);
+          const extended = unify(clause, st.binding, t);
+          if (extended) {
+            next.push({
+              binding: extended,
+              sources: mergeSources(st.sources, t.prov),
+            });
+          }
         }
         if (next.length > LIMITS.maxIntermediateRows) {
           throw new Error(
@@ -361,21 +375,45 @@ export async function runWhere(
         }
       }
       for (const vn of patternVars(clause)) bound.add(vn);
-      bindings = next;
+      states = next;
     } else if (clause.kind === "compare") {
-      bindings = bindings.filter((b) => satisfiesCompare(clause, b));
+      states = states.filter((st) => satisfiesCompare(clause, st.binding));
     } else {
-      const kept: Binding[] = [];
-      for (const b of bindings) {
-        if (await passesNegation(ctx, clause, b, coord)) kept.push(b);
+      const kept: SolvedBinding[] = [];
+      for (const st of states) {
+        if (await passesNegation(ctx, clause, st.binding, coord)) kept.push(st);
       }
-      bindings = kept;
+      states = kept;
     }
 
-    if (bindings.length === 0) break;
+    if (states.length === 0) break;
   }
 
-  return bindings;
+  return states;
+}
+
+function mergeSources(
+  a: Id<"facts">[],
+  b: Id<"facts">[],
+): Id<"facts">[] {
+  if (b.length === 0) return a;
+  const set = new Set<string>(a as unknown as string[]);
+  for (const id of b) set.add(id as unknown as string);
+  return [...set] as unknown as Id<"facts">[];
+}
+
+/**
+ * Evaluate a Datalog `where` body to variable bindings (provenance discarded).
+ * Thin wrapper over solveWhere for callers that only need the bindings.
+ */
+export async function runWhere(
+  ctx: Ctx,
+  where: unknown[],
+  coord: BitemporalCoord,
+  seed: Binding = {},
+): Promise<Binding[]> {
+  const solved = await solveWhere(ctx, where, coord, seed);
+  return solved.map((s) => s.binding);
 }
 
 /** Project bindings onto the requested variable names (e.g. ["?e", "?m"]). */

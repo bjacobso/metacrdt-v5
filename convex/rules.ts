@@ -123,6 +123,54 @@ export const listRules = query({
   },
 });
 
+/**
+ * Provenance / lineage for an entity's derived facts: for each derived fact,
+ * the source facts that justify it (resolved to their e/a/v) along with the
+ * transaction that asserted each (actor, reason, time). Answers "why is this
+ * true, and who/what caused it?".
+ */
+export const explainDerived = query({
+  args: { e: v.string(), a: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const derived = (
+      await ctx.db
+        .query("derivedFacts")
+        .withIndex("by_e_a", (q) =>
+          args.a ? q.eq("e", args.e).eq("a", args.a) : q.eq("e", args.e),
+        )
+        .take(200)
+    ).filter((d) => !d.stale);
+
+    const out = [];
+    for (const d of derived) {
+      const because = [];
+      for (const fid of d.sourceFactIds) {
+        const f = await ctx.db.get("facts", fid);
+        if (!f) continue;
+        const tx = await ctx.db.get("transactions", f.firstTxId);
+        because.push({
+          factId: fid,
+          e: f.e,
+          a: f.a,
+          v: f.v,
+          assertedAt: f.assertedAt,
+          actor: tx?.actorId,
+          reason: tx?.reason,
+          txTime: tx?.txTime,
+        });
+      }
+      out.push({
+        e: d.e,
+        a: d.a,
+        v: d.v,
+        derivedAt: d.derivedAt,
+        because,
+      });
+    }
+    return out;
+  },
+});
+
 /** Current derived facts for an entity (the materialized rule output). */
 export const derivedForEntity = query({
   args: { e: v.string() },

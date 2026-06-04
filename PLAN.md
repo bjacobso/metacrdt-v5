@@ -39,7 +39,8 @@ Grouped by theme; ordering within a group is rough priority.
 - [x] Transitive-closure rules (`defineTransitiveRule`)
 - [x] Semi-naive closure delta on edge **addition**
 - [ ] Semi-naive closure **deletions** (DRed / counting) instead of full recompute
-- [ ] Provenance: populate `derivedFacts.sourceFactIds` → "why is this true?"
+- [x] Provenance: `sourceFactIds` populated for rules + closures; `explainDerived`
+  lineage query (source facts + asserting transaction) + "why?" UI
 - [ ] True `sync` (in-transaction) materialization
 - [ ] Cross-entity datalog rules recompute incrementally (dependency graph)
 

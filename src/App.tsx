@@ -127,6 +127,48 @@ function DatalogPanel() {
   );
 }
 
+function ProvenancePanel() {
+  const [e, setE] = useState("wtest:1");
+  const explained = useQuery(api.rules.explainDerived, { e });
+
+  return (
+    <section className="panel">
+      <h2>Derived facts & provenance</h2>
+      <div className="row">
+        <input value={e} onChange={(x) => setE(x.target.value)} placeholder="entity id" />
+      </div>
+      {explained === undefined ? (
+        <p className="hint">Loading…</p>
+      ) : explained.length === 0 ? (
+        <p className="hint">No derived facts for <code>{e}</code>.</p>
+      ) : (
+        explained.map((d, i) => (
+          <div key={i} className="derived">
+            <div className="derived-head">
+              <code>{d.a}</code> = <strong>{JSON.stringify(d.v)}</strong>
+            </div>
+            <div className="because">
+              <span className="hint">because:</span>
+              <ul>
+                {d.because.map((b, j) => (
+                  <li key={j}>
+                    <code>{b.e}</code> <code>{b.a}</code> = {JSON.stringify(b.v)}
+                    {b.actor ? <span className="hint"> — {b.actor}{b.reason ? `: ${b.reason}` : ""}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ))
+      )}
+      <p className="hint">
+        Every derived fact links back to the source facts that justify it
+        (rule matches and closure edge-paths), with the asserting transaction.
+      </p>
+    </section>
+  );
+}
+
 export default function App() {
   // Demonstrates the component's reactive live-reload-on-deploy.
   const { updateAvailable, reload } = useDeploymentUpdates(
@@ -168,6 +210,7 @@ export default function App() {
           <AssertPanel />
           <EntityPanel />
           <DatalogPanel />
+          <ProvenancePanel />
         </>
       )}
     </main>
