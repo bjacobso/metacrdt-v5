@@ -48,6 +48,7 @@ export default defineSchema({
     metadata: v.optional(v.any()),
   })
     .index("by_tx", ["txId"])
+    .index("by_e", ["e"])
     .index("by_e_a_tx", ["e", "a", "txTime"])
     .index("by_a_tx", ["a", "txTime"]),
 
@@ -110,25 +111,10 @@ export default defineSchema({
     .index("by_a_v", ["a", "v"])
     .index("by_e_a_v", ["e", "a", "v"]),
 
-  // Typed schema for predicates.
-  attributes: defineTable({
-    name: v.string(),
-    valueType: v.union(
-      v.literal("string"),
-      v.literal("number"),
-      v.literal("boolean"),
-      v.literal("entityRef"),
-      v.literal("date"),
-      v.literal("json"),
-    ),
-    cardinality: v.union(v.literal("one"), v.literal("many")),
-    unique: v.optional(v.boolean()),
-    indexed: v.optional(v.boolean()),
-    materialized: v.optional(v.boolean()),
-    inverseAttribute: v.optional(v.string()),
-    description: v.optional(v.string()),
-    metadata: v.optional(v.any()),
-  }).index("by_name", ["name"]),
+  // NOTE: there is intentionally no `attributes` table. The schema (attribute
+  // definitions, entity-type definitions, type→attribute membership) is modeled
+  // as ordinary bitemporal facts via convex/attributes.ts (schema-as-facts), so
+  // it inherits history, tombstoning, and as-of queries. See convex/lib/meta.ts.
 
   // Datalog rules whose output is materialized into derivedFacts.
   rules: defineTable({

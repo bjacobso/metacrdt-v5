@@ -1,23 +1,67 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { Doc } from "./_generated/dataModel";
+import { isVisible } from "./lib/visibility";
+import {
+  attrId,
+  typeId,
+  attrNameOf,
+  META,
+  META_ATTRIBUTES,
+} from "./lib/meta";
+import { assertInTx, createTransaction, retractInTx } from "./facts";
+
+// Schema-as-facts: attribute definitions, entity-type definitions, and
+// type→attribute membership are all bitemporal triples. Nothing here writes to
+// a dedicated schema table — it all goes through the same fact log as data.
+
+const valueTypeValidator = v.union(
+  v.literal("string"),
+  v.literal("number"),
+  v.literal("boolean"),
+  v.literal("entityRef"),
+  v.literal("date"),
+  v.literal("json"),
+);
+
+/** Reconstruct an entity's attribute map (single-valued where possible). */
+function attrMapFromRows(rows: { a: string; v: unknown }[]): Record<string, unknown[]> {
+  const m: Record<string, unknown[]> = {};
+  for (const r of rows) (m[r.a] ??= []).push(r.v);
+  return m;
+}
+
+async function currentRows(ctx: QueryCtx | MutationCtx, e: string) {
+  return await ctx.db
+    .query("currentFacts")
+    .withIndex("by_e", (q) => q.eq("e", e))
+    .collect();
+}
+
+async function visibleRowsAsOf(
+  ctx: QueryCtx,
+  e: string,
+  coord: { txTime: number; validTime: number },
+): Promise<Doc<"facts">[]> {
+  const rows = await ctx.db
+    .query("facts")
+    .withIndex("by_e", (q) => q.eq("e", e))
+    .take(2000);
+  return rows.filter((r) => isVisible(r, coord));
+}
+
+// --- mutations --------------------------------------------------------------
 
 /**
- * Register (or update by name) the typed schema for a predicate. Cardinality
- * is the one that matters operationally: `one` makes assertFact retract the
- * prior current fact for an (e, a) before asserting the new value; `many`
- * (the default when no attribute is registered) lets multiple values coexist.
+ * Define (or redefine) an attribute as schema facts about `attr:<name>`.
+ * Redefining asserts new values; cardinality/valueType are cardinality-one, so
+ * their prior values are superseded in transaction time — the change is fully
+ * recorded in history.
  */
 export const defineAttribute = mutation({
   args: {
     name: v.string(),
-    valueType: v.union(
-      v.literal("string"),
-      v.literal("number"),
-      v.literal("boolean"),
-      v.literal("entityRef"),
-      v.literal("date"),
-      v.literal("json"),
-    ),
+    valueType: valueTypeValidator,
     cardinality: v.union(v.literal("one"), v.literal("many")),
     unique: v.optional(v.boolean()),
     indexed: v.optional(v.boolean()),
@@ -26,33 +70,219 @@ export const defineAttribute = mutation({
     description: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("attributes")
-      .withIndex("by_name", (q) => q.eq("name", args.name))
-      .unique();
+    const now = Date.now();
+    const txId = await createTransaction(ctx, {
+      reason: `define attribute ${args.name}`,
+      now,
+    });
+    const e = attrId(args.name);
 
-    if (existing) {
-      await ctx.db.patch("attributes", existing._id, args);
-      return { attributeId: existing._id, created: false };
+    const triples: Array<[string, unknown]> = [
+      ["type", META.attributeType],
+      ["name", args.name],
+      ["valueType", args.valueType],
+      ["cardinality", args.cardinality],
+    ];
+    if (args.unique !== undefined) triples.push(["unique", args.unique]);
+    if (args.indexed !== undefined) triples.push(["indexed", args.indexed]);
+    if (args.materialized !== undefined)
+      triples.push(["materialized", args.materialized]);
+    if (args.inverseAttribute !== undefined)
+      triples.push(["inverseAttribute", args.inverseAttribute]);
+    if (args.description !== undefined)
+      triples.push(["description", args.description]);
+
+    for (const [a, value] of triples) {
+      await assertInTx(ctx, txId, now, { e, a, value });
     }
-    const attributeId = await ctx.db.insert("attributes", args);
-    return { attributeId, created: true };
+    return { attributeEntity: e, txId };
   },
 });
 
+/** Retire an attribute definition by retracting its current schema facts. */
+export const retireAttribute = mutation({
+  args: { name: v.string(), reason: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const txId = await createTransaction(ctx, {
+      reason: args.reason ?? `retire attribute ${args.name}`,
+      now,
+    });
+    const e = attrId(args.name);
+    const rows = await currentRows(ctx, e);
+    for (const row of rows) {
+      await retractInTx(ctx, txId, now, row.factId, "attribute retired");
+    }
+    return { attributeEntity: e, retracted: rows.length };
+  },
+});
+
+/**
+ * Define (or extend) an entity type as schema facts about `type:<Name>`, with
+ * `hasAttribute` edges to its attributes (themselves `attr:<name>` entities).
+ */
+export const defineType = mutation({
+  args: {
+    name: v.string(),
+    attributes: v.optional(v.array(v.string())),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const txId = await createTransaction(ctx, {
+      reason: `define type ${args.name}`,
+      now,
+    });
+    const e = typeId(args.name);
+    await assertInTx(ctx, txId, now, { e, a: "type", value: META.entityType });
+    await assertInTx(ctx, txId, now, { e, a: "name", value: args.name });
+    if (args.description !== undefined)
+      await assertInTx(ctx, txId, now, {
+        e,
+        a: "description",
+        value: args.description,
+      });
+    for (const attr of args.attributes ?? []) {
+      await assertInTx(ctx, txId, now, {
+        e,
+        a: "hasAttribute",
+        value: attrId(attr),
+      });
+    }
+    return { typeEntity: e, txId };
+  },
+});
+
+/** Install the meta-attributes as self-describing schema facts. */
+export const bootstrapSchema = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const txId = await createTransaction(ctx, {
+      reason: "bootstrap meta-schema",
+      now,
+    });
+    for (const m of META_ATTRIBUTES) {
+      const e = attrId(m.name);
+      await assertInTx(ctx, txId, now, { e, a: "type", value: META.attributeType });
+      await assertInTx(ctx, txId, now, { e, a: "name", value: m.name });
+      await assertInTx(ctx, txId, now, { e, a: "valueType", value: m.valueType });
+      await assertInTx(ctx, txId, now, { e, a: "cardinality", value: m.cardinality });
+      await assertInTx(ctx, txId, now, { e, a: "description", value: m.description });
+    }
+    return { installed: META_ATTRIBUTES.length };
+  },
+});
+
+// --- queries ----------------------------------------------------------------
+
+function shapeAttribute(name: string, attrs: Record<string, unknown[]>) {
+  const one = (k: string) => attrs[k]?.[0];
+  return {
+    name,
+    valueType: one("valueType"),
+    cardinality: one("cardinality"),
+    unique: one("unique"),
+    indexed: one("indexed"),
+    materialized: one("materialized"),
+    inverseAttribute: one("inverseAttribute"),
+    description: one("description"),
+  };
+}
+
+/** Current definition of an attribute, reconstructed from facts. */
 export const getAttribute = query({
   args: { name: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
-      .query("attributes")
-      .withIndex("by_name", (q) => q.eq("name", args.name))
-      .unique();
+    const rows = await currentRows(ctx, attrId(args.name));
+    if (rows.length === 0) return null;
+    return shapeAttribute(args.name, attrMapFromRows(rows));
   },
 });
 
+/** Definition of an attribute as of a bitemporal coordinate. */
+export const attributeAsOf = query({
+  args: {
+    name: v.string(),
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const rows = await visibleRowsAsOf(ctx, attrId(args.name), coord);
+    if (rows.length === 0) return { name: args.name, coord, exists: false };
+    return {
+      ...shapeAttribute(args.name, attrMapFromRows(rows)),
+      coord,
+      exists: true,
+    };
+  },
+});
+
+/** All currently-defined attributes. */
 export const listAttributes = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("attributes").take(500);
+    const defs = await ctx.db
+      .query("currentFacts")
+      .withIndex("by_a_v", (q) =>
+        q.eq("a", "type").eq("v", META.attributeType),
+      )
+      .take(1000);
+    const out = [];
+    for (const d of defs) {
+      const rows = await currentRows(ctx, d.e);
+      out.push(shapeAttribute(attrNameOf(d.e), attrMapFromRows(rows)));
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  },
+});
+
+/**
+ * Timeline of schema changes to an attribute (every assert/retract/tombstone on
+ * its definition facts), newest first — answers "when was this added / removed
+ * / redefined, and to what".
+ */
+export const attributeLifecycle = query({
+  args: { name: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const events = await ctx.db
+      .query("factEvents")
+      .withIndex("by_e", (q) => q.eq("e", attrId(args.name)))
+      .order("desc")
+      .take(Math.min(args.limit ?? 100, 500));
+    return events.map((e) => ({
+      kind: e.kind,
+      attribute: e.a,
+      value: e.v,
+      txTime: e.txTime,
+    }));
+  },
+});
+
+/**
+ * The declared shape of an entity type as of a bitemporal coordinate — the set
+ * of attribute names reachable via `hasAttribute` at that point in time.
+ */
+export const typeSchemaAsOf = query({
+  args: {
+    type: v.string(),
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const rows = await visibleRowsAsOf(ctx, typeId(args.type), coord);
+    const attributes = rows
+      .filter((r) => r.a === "hasAttribute")
+      .map((r) => attrNameOf(String(r.v)))
+      .sort();
+    return { type: args.type, coord, attributes };
   },
 });

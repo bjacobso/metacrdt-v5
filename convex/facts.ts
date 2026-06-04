@@ -3,10 +3,11 @@ import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { isVisible, valueKey } from "./lib/visibility";
+import { attrId, BUILTIN_CARDINALITY } from "./lib/meta";
 
-// --- internal helpers -------------------------------------------------------
+// --- internal helpers (exported for the schema-as-facts module) -------------
 
-async function createTransaction(
+export async function createTransaction(
   ctx: MutationCtx,
   args: {
     actorId?: string;
@@ -25,15 +26,22 @@ async function createTransaction(
   });
 }
 
+/**
+ * Cardinality is itself schema-as-facts: read the current value of
+ * (attr:<a>, "cardinality", ?). Meta-attributes fall back to a hardcoded
+ * bootstrap map (so asserting schema facts works before schema exists);
+ * anything undeclared defaults to "many".
+ */
 async function cardinalityOf(
   ctx: MutationCtx,
   a: string,
 ): Promise<"one" | "many"> {
-  const attr = await ctx.db
-    .query("attributes")
-    .withIndex("by_name", (q) => q.eq("name", a))
-    .unique();
-  return attr?.cardinality ?? "many";
+  const row = await ctx.db
+    .query("currentFacts")
+    .withIndex("by_e_a", (q) => q.eq("e", attrId(a)).eq("a", "cardinality"))
+    .first();
+  if (row) return row.v === "one" ? "one" : "many";
+  return BUILTIN_CARDINALITY[a] ?? "many";
 }
 
 /** Upsert the current-fact projection row for an (e, a[, v]) key. */
@@ -94,6 +102,127 @@ async function removeCurrentFact(
   }
 }
 
+// --- core write helpers (shared with the schema-as-facts module) ------------
+
+/**
+ * Assert one fact within an already-open transaction. Handles cardinality-one
+ * supersession, the fact interval, the append-only event, the currentFacts
+ * projection, and scheduling materialization. Returns the new fact id.
+ */
+export async function assertInTx(
+  ctx: MutationCtx,
+  txId: Id<"transactions">,
+  now: number,
+  args: {
+    e: string;
+    a: string;
+    value: unknown;
+    validFrom?: number;
+    validTo?: number;
+    reason?: string;
+    source?: string;
+  },
+): Promise<Id<"facts">> {
+  const validFrom = args.validFrom ?? now;
+  const cardinality = await cardinalityOf(ctx, args.a);
+
+  // Cardinality-one: retract any currently-true fact for this (e, a) first, so
+  // transaction-time history stays consistent.
+  if (cardinality === "one") {
+    const current = await ctx.db
+      .query("currentFacts")
+      .withIndex("by_e_a", (q) => q.eq("e", args.e).eq("a", args.a))
+      .collect();
+    for (const row of current) {
+      const old = await ctx.db.get("facts", row.factId);
+      if (old && old.retractedAt === undefined) {
+        await ctx.db.patch("facts", old._id, {
+          retractedAt: now,
+          lastTxId: txId,
+        });
+        await ctx.db.insert("factEvents", {
+          txId,
+          txTime: now,
+          kind: "retract",
+          factId: old._id,
+          e: old.e,
+          a: old.a,
+          v: old.v,
+          reason: "superseded by new cardinality-one assertion",
+        });
+      }
+    }
+  }
+
+  const factId = await ctx.db.insert("facts", {
+    e: args.e,
+    a: args.a,
+    v: args.value,
+    firstTxId: txId,
+    assertedAt: now,
+    validFrom,
+    validTo: args.validTo,
+    source: args.source,
+  });
+
+  await ctx.db.insert("factEvents", {
+    txId,
+    txTime: now,
+    kind: "assert",
+    factId,
+    e: args.e,
+    a: args.a,
+    v: args.value,
+    validFrom,
+    validTo: args.validTo,
+    reason: args.reason,
+  });
+
+  const fact = (await ctx.db.get("facts", factId))!;
+  await upsertCurrentFact(ctx, fact, cardinality, now);
+
+  await ctx.scheduler.runAfter(0, internal.materialize.processFactChange, {
+    e: args.e,
+    a: args.a,
+    factId,
+    txTime: now,
+    changeKind: "assert",
+  });
+
+  return factId;
+}
+
+/** Retract one fact within an already-open transaction. */
+export async function retractInTx(
+  ctx: MutationCtx,
+  txId: Id<"transactions">,
+  now: number,
+  factId: Id<"facts">,
+  reason?: string,
+): Promise<void> {
+  const fact = await ctx.db.get("facts", factId);
+  if (!fact || fact.retractedAt !== undefined) return;
+  await ctx.db.patch("facts", fact._id, { retractedAt: now, lastTxId: txId });
+  await ctx.db.insert("factEvents", {
+    txId,
+    txTime: now,
+    kind: "retract",
+    factId: fact._id,
+    e: fact.e,
+    a: fact.a,
+    v: fact.v,
+    reason,
+  });
+  await removeCurrentFact(ctx, fact._id, fact.e, fact.a);
+  await ctx.scheduler.runAfter(0, internal.materialize.processFactChange, {
+    e: fact.e,
+    a: fact.a,
+    factId: fact._id,
+    txTime: now,
+    changeKind: "retract",
+  });
+}
+
 // --- mutations --------------------------------------------------------------
 
 export const assertFact = mutation({
@@ -109,84 +238,21 @@ export const assertFact = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    const validFrom = args.validFrom ?? now;
-
     const txId = await createTransaction(ctx, {
       actorId: args.actorId,
       reason: args.reason,
       source: args.source,
       now,
     });
-
-    const cardinality = await cardinalityOf(ctx, args.a);
-
-    // Cardinality-one: retract any currently-true fact for this (e, a) before
-    // asserting the new one, so transaction-time history stays consistent.
-    if (cardinality === "one") {
-      const current = await ctx.db
-        .query("currentFacts")
-        .withIndex("by_e_a", (q) => q.eq("e", args.e).eq("a", args.a))
-        .collect();
-      for (const row of current) {
-        const old = await ctx.db.get("facts", row.factId);
-        if (old && old.retractedAt === undefined) {
-          // Transaction-time supersession only: the prior value is no longer
-          // current, but we don't assert anything about when it stopped being
-          // true in the world. Its valid interval stays as-is. Callers wanting
-          // valid-time succession should retractFact with an explicit validTo.
-          await ctx.db.patch("facts", old._id, {
-            retractedAt: now,
-            lastTxId: txId,
-          });
-          await ctx.db.insert("factEvents", {
-            txId,
-            txTime: now,
-            kind: "retract",
-            factId: old._id,
-            e: old.e,
-            a: old.a,
-            v: old.v,
-            reason: "superseded by new cardinality-one assertion",
-          });
-        }
-      }
-    }
-
-    const factId = await ctx.db.insert("facts", {
+    const factId = await assertInTx(ctx, txId, now, {
       e: args.e,
       a: args.a,
-      v: args.value,
-      firstTxId: txId,
-      assertedAt: now,
-      validFrom,
-      validTo: args.validTo,
-      source: args.source,
-    });
-
-    await ctx.db.insert("factEvents", {
-      txId,
-      txTime: now,
-      kind: "assert",
-      factId,
-      e: args.e,
-      a: args.a,
-      v: args.value,
-      validFrom,
+      value: args.value,
+      validFrom: args.validFrom,
       validTo: args.validTo,
       reason: args.reason,
+      source: args.source,
     });
-
-    const fact = (await ctx.db.get("facts", factId))!;
-    await upsertCurrentFact(ctx, fact, cardinality, now);
-
-    await ctx.scheduler.runAfter(0, internal.materialize.processFactChange, {
-      e: args.e,
-      a: args.a,
-      factId,
-      txTime: now,
-      changeKind: "assert",
-    });
-
     return { txId, factId };
   },
 });

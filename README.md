@@ -127,6 +127,31 @@ Register a predicate's typed schema (and cardinality) with
 attribute makes `assertFact` retract the prior current value (in transaction
 time) before asserting the new one; otherwise multiple values coexist.
 
+## Schema as facts (meta-circular)
+
+There is **no schema table**. Attribute definitions, entity-type definitions,
+and type→attribute membership are themselves bitemporal triples about
+`attr:<name>` / `type:<Name>` entities — so the schema inherits history,
+tombstoning, and as-of queries from the same engine as the data. Even
+cardinality is a fact: `assertFact` reads `(attr:<a>, "cardinality", ?)` to
+decide supersession, bootstrapped by a small set of built-in meta-attributes
+(`convex/lib/meta.ts`).
+
+```ts
+defineAttribute({ name: "salary", valueType: "number", cardinality: "one" })
+defineType({ name: "Employee", attributes: ["salary", "title"] })
+
+getAttribute({ name: "salary" })                 // current definition
+attributeAsOf({ name: "salary", txTime, validTime }) // definition as of a coordinate
+attributeLifecycle({ name: "salary" })           // when it was added / removed / redefined
+typeSchemaAsOf({ type: "Employee", txTime })     // the type's shape at a point in time
+retireAttribute({ name: "salary" })              // recorded in history, recoverable
+bootstrapSchema()                                // install self-describing meta-attributes
+```
+
+Because schema entities use the same `type` attribute, `Attribute` and
+`EntityType` show up as browsable types in the Entities view too.
+
 ## Rules & materialization
 
 `defineRule({ name, where, emit, dependsOnAttributes })` persists a Datalog rule

@@ -42,13 +42,16 @@ Grouped by theme; ordering within a group is rough priority.
 - [ ] True `sync` (in-transaction) materialization
 - [ ] Cross-entity datalog rules recompute incrementally (dependency graph)
 
-### Schema as facts / meta-circularity (next keystone)
+### Schema as facts / meta-circularity (shipped)
 
-- [ ] Model attribute definitions as bitemporal triples (migrate the `attributes` registry onto facts)
-- [ ] Model type membership / type shape as facts
-- [ ] `typeSchemaAsOf(txTime, validTime)` — historical entity-type shape
-- [ ] Attribute lifecycle queries — when an attribute was added / removed / redefined
-- [ ] Schema-change audit (who/when/why), for free via the fact log
+- [x] Model attribute definitions as bitemporal triples (the `attributes` table is gone)
+- [x] Model type definitions / type shape as facts (`defineType`, `hasAttribute`)
+- [x] `typeSchemaAsOf(txTime, validTime)` — historical entity-type shape
+- [x] Attribute lifecycle queries — when an attribute was added / removed / redefined
+- [x] Schema-change audit via the fact log (`attributeLifecycle`, `retireAttribute`)
+- [x] Self-describing meta-attributes (`bootstrapSchema`); cardinality is itself a fact
+- [ ] Enforce a type's declared `hasAttribute` shape on assert (strict mode)
+- [ ] Surface schema history in the demo UI
 
 ### Bitemporal UX / demo
 
