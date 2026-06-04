@@ -95,6 +95,19 @@ export const processFactChange = internalMutation({
         });
       }
     }
+
+    // Event path → durable flows: a submission fact resumes any waiting
+    // `collect` run for that (subject, form, scope).
+    if (args.changeKind === "assert" && args.a.startsWith("submitted.")) {
+      const fact = await ctx.db.get("facts", args.factId);
+      if (fact) {
+        await ctx.scheduler.runAfter(0, internal.flows.resumeOnSubmission, {
+          subject: args.e,
+          form: args.a.slice("submitted.".length),
+          scope: String(fact.v),
+        });
+      }
+    }
   },
 });
 

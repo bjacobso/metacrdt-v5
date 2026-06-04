@@ -5,6 +5,7 @@ import { api } from "../convex/_generated/api";
 import EntitiesBrowser from "./EntitiesBrowser";
 import TimeTravel from "./TimeTravel";
 import Compliance from "./Compliance";
+import Flows from "./Flows";
 
 // Coerce a string from the value input into a Convex value: JSON if it parses
 // (numbers, booleans, null, objects), otherwise the raw string.
@@ -177,7 +178,7 @@ export default function App() {
     api.staticHosting.getCurrentDeployment,
   );
   const [tab, setTab] = useState<
-    "entities" | "compliance" | "timetravel" | "explorer"
+    "entities" | "compliance" | "flows" | "timetravel" | "explorer"
   >("entities");
 
   return (
@@ -207,6 +208,12 @@ export default function App() {
           Compliance
         </button>
         <button
+          className={tab === "flows" ? "tab active" : "tab"}
+          onClick={() => setTab("flows")}
+        >
+          Flows
+        </button>
+        <button
           className={tab === "timetravel" ? "tab active" : "tab"}
           onClick={() => setTab("timetravel")}
         >
@@ -223,6 +230,8 @@ export default function App() {
         <EntitiesBrowser />
       ) : tab === "compliance" ? (
         <Compliance />
+      ) : tab === "flows" ? (
+        <Flows />
       ) : tab === "timetravel" ? (
         <TimeTravel />
       ) : (

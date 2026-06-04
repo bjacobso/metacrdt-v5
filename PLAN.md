@@ -40,8 +40,12 @@ Grouped by theme; ordering within a group is rough priority.
 - [x] Guarded requirements (forklift quiz only for forklift jobs)
 - [x] Valid-time expiry: submissions carry `validTo`; a **cron** re-materializes lapsed obligations
 - [x] Demo domain (staffing: worker/employer/client/job/venue + placements) + reactive Compliance UI
+- [x] Collect-step Flow runner: issue → park (`waiting`) → resume on the matching
+  submission fact (event path) → complete; reminder/escalate/expire **scheduler timer
+  ticks**; durable `flowRuns` + append-only `flowEvents`; reactive Flows UI
 - [ ] Reify obligations into entities for per-obligation status/assignment (only if needed)
-- [ ] Async collection step (send form link / E-Verify) via scheduler+actions — needs the Flow runner
+- [ ] External collection action (send form link / call E-Verify) inside the collect step (Convex action)
+- [ ] General Flow DAG runner (`branch`/`http`/multi-step graphs) — collect was the first step type
 - [ ] Rule→rule cascade (task rules currently re-derive over base facts to avoid chaining)
 
 ### Rules & materialization (shipped + next)

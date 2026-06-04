@@ -175,6 +175,41 @@ export default defineSchema({
     .index("by_a_v", ["a", "v"])
     .index("by_stale", ["stale"]),
 
+  // Durable workflow runs (the `collect` step). Operational, high-churn state —
+  // a dedicated table, not triples (per the high-churn-separation guideline).
+  // A run parks in `waiting` and is resumed by a matching submission fact (via
+  // the event path) or advanced by scheduled timer ticks.
+  flowRuns: defineTable({
+    flowName: v.string(),
+    subject: v.string(),
+    form: v.string(),
+    scope: v.string(),
+    status: v.union(
+      v.literal("waiting"),
+      v.literal("completed"),
+      v.literal("expired"),
+      v.literal("cancelled"),
+    ),
+    step: v.string(),
+    issuedAt: v.number(),
+    updatedAt: v.number(),
+    reminderSeconds: v.optional(v.number()),
+    escalateSeconds: v.optional(v.number()),
+    expireSeconds: v.optional(v.number()),
+  })
+    .index("by_subject", ["subject"])
+    .index("by_target", ["subject", "form", "scope"])
+    .index("by_status", ["status"]),
+
+  // Append-only step log per flow run (issued / reminder / escalated /
+  // submitted / completed / expired / cancelled).
+  flowEvents: defineTable({
+    runId: v.id("flowRuns"),
+    ts: v.number(),
+    kind: v.string(),
+    message: v.optional(v.string()),
+  }).index("by_run", ["runId"]),
+
   // Work queue for rule recomputation triggered by fact changes.
   ruleInvalidations: defineTable({
     ruleId: v.id("rules"),
