@@ -1,20 +1,24 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
-import { LIMITS, planWhere, project, runWhere } from "./lib/engine";
+import { LIMITS, describeClauses, project, runWhere } from "./lib/engine";
 
-const whereValidator = v.array(v.array(v.any()));
+// A clause is a [e, a, v] triple, a [term, op, term] comparison, or a
+// { not: [e, a, v] } negation — so clauses are heterogeneous (array | object).
+const whereValidator = v.array(v.any());
 
 /**
- * Bounded, non-recursive Datalog over the bitemporal fact log.
+ * Bounded, non-recursive Datalog over facts ∪ materialized derived facts.
+ * Supports fact patterns, comparison predicates (>, <, >=, <=, ==, !=), and
+ * negation ({ not: [...] }).
  *
  *   datalog({
  *     where: [
  *       ["?e", "type", "Employee"],
- *       ["?e", "employee.status", "active"],
- *       ["?e", "employee.manager", "?m"],
- *       ["?m", "user.email", "ben@example.com"],
+ *       ["?e", "salary", "?s"],
+ *       ["?s", ">", 100000],
+ *       { not: ["?e", "status", "terminated"] },
  *     ],
- *     select: ["?e"],
+ *     select: ["?e", "?s"],
  *   })
  */
 export const datalog = query({
@@ -40,25 +44,14 @@ export const datalog = query({
   },
 });
 
-/** Return the chosen execution plan without running it. */
+/** Classify a query's clauses without running it. Join order is dynamic. */
 export const explainDatalog = query({
   args: { where: whereValidator },
   handler: async (ctx, args) => {
-    const plan = planWhere(args.where);
     return {
       limits: LIMITS,
-      clauseOrder: plan.order,
-      clauses: plan.order.map((i) => {
-        const c = plan.clauses[i];
-        const fmt = (t: { kind: string; name?: string; value?: unknown }) =>
-          t.kind === "var" ? `?${t.name}` : JSON.stringify(t.value);
-        return {
-          index: i,
-          e: fmt(c.e),
-          a: fmt(c.a),
-          v: fmt(c.v),
-        };
-      }),
+      note: "Pattern join order is chosen dynamically by selectivity at run time; filters (compare/not) run as soon as their variables are bound.",
+      clauses: describeClauses(args.where),
     };
   },
 });

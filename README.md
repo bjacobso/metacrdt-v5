@@ -91,20 +91,27 @@ compareFacts({
   after:  { txTime: Date.now(),                validTime: Date.parse("2026-05-01") },
 })
 
-// Datalog
+// Datalog — patterns, comparisons, and negation
 datalog({
   where: [
     ["?e", "type", "Employee"],
-    ["?e", "employee.status", "active"],
-    ["?e", "employee.manager", "?m"],
-    ["?m", "user.email", "ben@example.com"],
+    ["?e", "salary", "?s"],
+    ["?s", ">", 100000],                    // comparison: > < >= <= == !=
+    { not: ["?e", "status", "terminated"] }, // negation
+    ["?e", "reportsTo+", "?vp"],             // materialized transitive closure
   ],
-  select: ["?e"],
-  asOf: { txTime: Date.now(), validTime: Date.now() },
+  select: ["?e", "?vp"],
+  txTime: Date.now(),
+  validTime: Date.now(),
 })
 ```
 
-Strings beginning with `?` are variables; everything else is a constant.
+Strings beginning with `?` are variables; everything else is a constant. A
+clause is a `[e, a, v]` pattern, a `[term, op, term]` comparison, or a
+`{ not: [e, a, v] }` negation. Queries read **facts ∪ materialized derived
+facts**, so a rule's output (including transitive closures) is queryable like
+any other attribute. Join order is chosen dynamically by selectivity;
+comparisons and negations run as soon as their variables are bound.
 
 ## Write API
 
@@ -128,6 +135,12 @@ depending on the changed attribute are recomputed: **entity-local** rules
 (every clause subject is the emitted entity) recompute incrementally for just
 that entity; cross-entity rules recompute in full. The `ruleInvalidations` queue
 records and clears each pending recomputation.
+
+`defineTransitiveRule({ name, baseAttribute, closureAttribute, maxDepth })`
+materializes the transitive closure of a relation (e.g. `reportsTo` →
+`reportsTo+`) via a bounded BFS fixpoint, recomputed when the base attribute
+changes. This is how recursion stays off the live query path while remaining
+queryable — the closure attribute is just another derived fact.
 
 ## Datalog limits (live queries)
 

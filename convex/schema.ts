@@ -133,12 +133,25 @@ export default defineSchema({
   // Datalog rules whose output is materialized into derivedFacts.
   rules: defineTable({
     name: v.string(),
-    where: v.array(v.any()),
-    emit: v.object({
-      e: v.string(),
-      a: v.string(),
-      v: value,
-    }),
+    // "datalog" rules join fact patterns and emit a derived fact per binding.
+    // "closure" rules materialize the transitive closure of a base attribute.
+    kind: v.optional(v.union(v.literal("datalog"), v.literal("closure"))),
+    where: v.optional(v.array(v.any())),
+    emit: v.optional(
+      v.object({
+        e: v.string(),
+        a: v.string(),
+        v: value,
+      }),
+    ),
+    closure: v.optional(
+      v.object({
+        baseAttribute: v.string(),
+        closureAttribute: v.string(),
+        maxDepth: v.number(),
+        reflexive: v.optional(v.boolean()),
+      }),
+    ),
     enabled: v.boolean(),
     materialization: v.union(
       v.literal("sync"),
@@ -167,7 +180,9 @@ export default defineSchema({
   })
     .index("by_rule", ["ruleId"])
     .index("by_rule_e", ["ruleId", "e"])
+    .index("by_e", ["e"])
     .index("by_e_a", ["e", "a"])
+    .index("by_a", ["a"])
     .index("by_a_v", ["a", "v"])
     .index("by_stale", ["stale"]),
 

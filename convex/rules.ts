@@ -10,7 +10,7 @@ import { v } from "convex/values";
 export const defineRule = mutation({
   args: {
     name: v.string(),
-    where: v.array(v.array(v.any())),
+    where: v.array(v.any()),
     emit: v.object({ e: v.string(), a: v.string(), v: v.any() }),
     dependsOnAttributes: v.array(v.string()),
     materialization: v.optional(
@@ -27,6 +27,7 @@ export const defineRule = mutation({
 
     const fields = {
       name: args.name,
+      kind: "datalog" as const,
       where: args.where,
       emit: args.emit,
       dependsOnAttributes: args.dependsOnAttributes,
@@ -47,6 +48,60 @@ export const defineRule = mutation({
     await ctx.scheduler.runAfter(0, internal.materialize.recomputeRule, {
       ruleId,
     });
+    return { ruleId };
+  },
+});
+
+/**
+ * Define (or replace by name) a transitive-closure rule. Materializes the
+ * closure of `baseAttribute` (e.g. "reportsTo") into derived facts under
+ * `closureAttribute` (e.g. "reportsTo+"), which Datalog can then query like any
+ * other attribute. Recomputed asynchronously whenever the base attribute changes.
+ */
+export const defineTransitiveRule = mutation({
+  args: {
+    name: v.string(),
+    baseAttribute: v.string(),
+    closureAttribute: v.string(),
+    maxDepth: v.optional(v.number()),
+    reflexive: v.optional(v.boolean()),
+    enabled: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("rules")
+      .withIndex("by_name", (q) => q.eq("name", args.name))
+      .unique();
+
+    const fields = {
+      name: args.name,
+      kind: "closure" as const,
+      closure: {
+        baseAttribute: args.baseAttribute,
+        closureAttribute: args.closureAttribute,
+        maxDepth: args.maxDepth ?? 16,
+        reflexive: args.reflexive,
+      },
+      dependsOnAttributes: [args.baseAttribute],
+      materialization: "async" as const,
+      enabled: args.enabled ?? true,
+      updatedAt: now,
+    };
+
+    let ruleId;
+    if (existing) {
+      await ctx.db.patch("rules", existing._id, fields);
+      ruleId = existing._id;
+    } else {
+      ruleId = await ctx.db.insert("rules", { ...fields, createdAt: now });
+    }
+
+    await ctx.scheduler.runAfter(
+      0,
+      internal.materialize.recomputeTransitiveClosure,
+      { ruleId },
+    );
     return { ruleId };
   },
 });

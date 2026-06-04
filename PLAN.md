@@ -125,12 +125,29 @@ advanced planner/cost model, inverse attributes, distributed partitions.
 - Datalog: golden tests on `explainDatalog` plans + result correctness on a fixed fixture graph.
 - Limit tests: queries exceeding `maxIntermediateRows` throw cleanly.
 
+## Datalog capabilities (2026-06-03)
+
+The engine now supports, in bounded live queries:
+
+- **Fact patterns** `[e, a, v]` joined via indexed nested loops.
+- **Comparison predicates** `[term, op, term]` for `> < >= <= == !=`.
+- **Negation** `{ not: [e, a, v] }` (safe: negated vars must be bound first).
+- **facts ∪ derivedFacts** — materialized rule output (incl. transitive
+  closures) is transparently queryable as ordinary attributes.
+- **Transitive closure rules** via `defineTransitiveRule`, materialized async by
+  a bounded BFS fixpoint and recomputed on base-attribute changes.
+
+Join order is dynamic (selectivity-driven); filters run as soon as their
+variables bind. `explainDatalog` classifies clauses without executing.
+
 ## Still open
 
-- **Incremental recompute is entity-local only.** Cross-entity rules (a clause
-  whose subject is a variable other than the emitted entity) still trigger a
-  full recompute on any dependency change. A dependency graph keyed by the
-  joined entity would let those recompute incrementally too.
+- **Incremental recompute is entity-local only.** Cross-entity datalog rules
+  and all closure rules still trigger a full recompute on any dependency
+  change. A dependency graph keyed by the joined entity would let those
+  recompute incrementally too.
+- **Closure recompute is full, not semi-naive.** Each base-attribute change
+  rebuilds the whole closure; a delta/semi-naive update would scale better.
 - **Valid-time succession for cardinality-one** is caller-driven: auto-replace
   only supersedes in transaction time. A `validFrom`-aware assert that closes
   the prior interval in valid time would be a useful convenience.

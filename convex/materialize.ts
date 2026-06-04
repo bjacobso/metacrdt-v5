@@ -3,7 +3,8 @@ import { internal } from "./_generated/api";
 import { MutationCtx } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
-import { isEntityLocalRule, runWhere } from "./lib/engine";
+import { isEntityLocalRule, runWhere, LIMITS } from "./lib/engine";
+import { isVisible } from "./lib/visibility";
 
 /**
  * Reacts to a fact change: find enabled rules that depend on the changed
@@ -38,7 +39,21 @@ export const processFactChange = internalMutation({
 
       if (rule.materialization === "manual") continue;
 
-      if (isEntityLocalRule(rule.where as unknown[][], rule.emit.e)) {
+      // Transitive-closure rules are inherently cross-entity: recompute fully.
+      if (rule.kind === "closure") {
+        await markAllDerivedStale(ctx, rule._id);
+        await ctx.scheduler.runAfter(
+          0,
+          internal.materialize.recomputeTransitiveClosure,
+          { ruleId: rule._id },
+        );
+        continue;
+      }
+
+      if (
+        rule.emit !== undefined &&
+        isEntityLocalRule((rule.where ?? []) as unknown[], rule.emit.e)
+      ) {
         // Incremental: only this entity's derived output can have changed.
         await markEntityDerivedStale(ctx, rule._id, args.e);
         await ctx.scheduler.runAfter(
@@ -63,10 +78,19 @@ export const recomputeRule = internalMutation({
   handler: async (ctx, args) => {
     const rule = await ctx.db.get("rules", args.ruleId);
     if (!rule || !rule.enabled) return;
+    if (rule.kind === "closure") {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.materialize.recomputeTransitiveClosure,
+        { ruleId: args.ruleId },
+      );
+      return;
+    }
+    if (rule.emit === undefined) return;
 
     const now = Date.now();
     const coord = { txTime: now, validTime: now };
-    const bindings = await runWhere(ctx, rule.where as unknown[][], coord);
+    const bindings = await runWhere(ctx, (rule.where ?? []) as unknown[], coord);
 
     // Clear all prior output for this rule, then re-emit.
     const prior = await ctx.db
@@ -92,7 +116,7 @@ export const recomputeRuleForEntity = internalMutation({
   args: { ruleId: v.id("rules"), e: v.string() },
   handler: async (ctx, args) => {
     const rule = await ctx.db.get("rules", args.ruleId);
-    if (!rule || !rule.enabled) return;
+    if (!rule || !rule.enabled || rule.emit === undefined) return;
     const entityVar = rule.emit.e.startsWith("?")
       ? rule.emit.e.slice(1)
       : null;
@@ -106,7 +130,7 @@ export const recomputeRuleForEntity = internalMutation({
 
     const now = Date.now();
     const coord = { txTime: now, validTime: now };
-    const bindings = await runWhere(ctx, rule.where as unknown[][], coord, {
+    const bindings = await runWhere(ctx, (rule.where ?? []) as unknown[], coord, {
       [entityVar]: args.e,
     });
 
@@ -127,6 +151,92 @@ export const recomputeRuleForEntity = internalMutation({
   },
 });
 
+/**
+ * Materialize the transitive closure of a base attribute as derived facts.
+ * Reads current edges (e --baseAttribute--> v, where v is an entity ref),
+ * computes reachability up to maxDepth via a bounded BFS fixpoint, and emits
+ * one derived fact (x, closureAttribute, y) per reachable pair. This is how
+ * recursive/transitive logic becomes queryable without running recursion live.
+ */
+export const recomputeTransitiveClosure = internalMutation({
+  args: { ruleId: v.id("rules") },
+  handler: async (ctx, args) => {
+    const rule = await ctx.db.get("rules", args.ruleId);
+    if (!rule || !rule.enabled || rule.closure === undefined) return;
+    const { baseAttribute, closureAttribute, maxDepth, reflexive } =
+      rule.closure;
+
+    const now = Date.now();
+    const coord = { txTime: now, validTime: now };
+
+    // Build adjacency from current visible base-attribute facts.
+    const edgeRows = await ctx.db
+      .query("facts")
+      .withIndex("by_a", (q) => q.eq("a", baseAttribute))
+      .take(LIMITS.maxClauseScan);
+    const adj = new Map<string, Set<string>>();
+    for (const r of edgeRows) {
+      if (!isVisible(r, coord)) continue;
+      const to = String(r.v);
+      if (!adj.has(r.e)) adj.set(r.e, new Set());
+      adj.get(r.e)!.add(to);
+    }
+
+    // BFS reachability per source, bounded by depth and total pairs.
+    const pairs: Array<{ from: string; to: string }> = [];
+    let truncated = false;
+    outer: for (const source of adj.keys()) {
+      const seen = new Set<string>();
+      let frontier = [source];
+      for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
+        const nextFrontier: string[] = [];
+        for (const node of frontier) {
+          for (const nbr of adj.get(node) ?? []) {
+            if (seen.has(nbr) || nbr === source) continue;
+            seen.add(nbr);
+            nextFrontier.push(nbr);
+            pairs.push({ from: source, to: nbr });
+            if (pairs.length >= LIMITS.maxIntermediateRows) {
+              truncated = true;
+              break outer;
+            }
+          }
+        }
+        frontier = nextFrontier;
+      }
+      if (reflexive) pairs.push({ from: source, to: source });
+    }
+    if (truncated) {
+      console.warn(
+        `transitive closure for ${closureAttribute} truncated at ${LIMITS.maxIntermediateRows} pairs`,
+      );
+    }
+
+    // Replace this rule's prior output.
+    const prior = await ctx.db
+      .query("derivedFacts")
+      .withIndex("by_rule", (q) => q.eq("ruleId", args.ruleId))
+      .collect();
+    for (const d of prior) await ctx.db.delete("derivedFacts", d._id);
+
+    for (const { from, to } of pairs) {
+      await ctx.db.insert("derivedFacts", {
+        ruleId: args.ruleId,
+        e: from,
+        a: closureAttribute,
+        v: to,
+        sourceFactIds: [],
+        derivedAt: now,
+        validFrom: now,
+        txWatermark: now,
+        stale: false,
+      });
+    }
+
+    await clearInvalidations(ctx, args.ruleId, now);
+  },
+});
+
 // --- helpers ----------------------------------------------------------------
 
 async function emitDerived(
@@ -135,6 +245,7 @@ async function emitDerived(
   binding: Record<string, unknown>,
   now: number,
 ): Promise<void> {
+  if (rule.emit === undefined) return;
   const e = resolveTerm(rule.emit.e, binding);
   const value = resolveTerm(rule.emit.v, binding);
   if (e === undefined || e === null) return;

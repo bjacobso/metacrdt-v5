@@ -81,6 +81,7 @@ const DEFAULT_QUERY = JSON.stringify(
     where: [
       ["?e", "type", "Employee"],
       ["?e", "employee.status", "active"],
+      { not: ["?e", "status", "terminated"] },
     ],
     select: ["?e"],
   },
@@ -111,6 +112,12 @@ function DatalogPanel() {
       <div className="row">
         <button onClick={run}>Run query</button>
       </div>
+      <p className="hint">
+        Clauses: <code>[e, a, v]</code> patterns, comparisons{" "}
+        <code>["?s", "&gt;", 100000]</code> (&gt; &lt; &gt;= &lt;= == !=), and{" "}
+        <code>{"{ not: [e, a, v] }"}</code>. Materialized closure attributes
+        (e.g. <code>reportsTo+</code>) are queryable too.
+      </p>
       {error && <pre className="error">{error}</pre>}
       {args && result !== undefined && (
         <pre className="result">{JSON.stringify(result, null, 2)}</pre>

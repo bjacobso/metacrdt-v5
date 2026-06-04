@@ -184,16 +184,22 @@ describe("datalog", () => {
     expect(rows).toEqual([{ e: "emp:1", m: "emp:9" }]);
   });
 
-  test("explainDatalog orders the most selective clause first", async () => {
+  test("explainDatalog classifies heterogeneous clauses", async () => {
     const t = convexTest(schema, modules);
     const plan = await t.query(api.datalog.explainDatalog, {
       where: [
-        ["?e", "status", "?s"], // a const only
-        ["emp:1", "status", "active"], // e, a, v all const → most selective
+        ["?e", "salary", "?s"],
+        ["?s", ">", 100000],
+        { not: ["?e", "status", "terminated"] },
       ],
     });
-    // First clause in execution order should be the fully-bound one.
-    expect(plan.clauses[0].e).toBe('"emp:1"');
+    // Join order is dynamic; explain reports clauses in input order, classified.
+    expect(plan.clauses.map((c) => c.kind)).toEqual([
+      "pattern",
+      "compare",
+      "not",
+    ]);
+    expect(plan.note).toMatch(/dynamic/i);
   });
 });
 
