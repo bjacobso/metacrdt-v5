@@ -638,3 +638,84 @@ export const compareFacts = query({
     return { e: args.e, a: args.a, before, after, changed };
   },
 });
+
+/**
+ * Bitemporal time-travel + provenance in one: the facts visible for an entity
+ * at a (txTime, validTime) coordinate, each annotated with the transaction that
+ * asserted it (actor, reason, time) and its valid interval. Powers the
+ * time-travel UI — "what was true as of T, and who/what recorded each fact".
+ */
+export const entityFactsAsOf = query({
+  args: {
+    e: v.string(),
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+    includeTombstoned: v.optional(v.boolean()),
+    includeRetracted: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const rows = await ctx.db
+      .query("facts")
+      .withIndex("by_e", (q) => q.eq("e", args.e))
+      .take(2000);
+
+    const opts = {
+      includeTombstoned: args.includeTombstoned,
+      includeRetracted: args.includeRetracted,
+    };
+    const out = [];
+    for (const f of rows) {
+      if (!isVisible(f, coord, opts)) continue;
+      const tx = await ctx.db.get("transactions", f.firstTxId);
+      out.push({
+        a: f.a,
+        v: f.v,
+        assertedAt: f.assertedAt,
+        retractedAt: f.retractedAt,
+        validFrom: f.validFrom,
+        validTo: f.validTo,
+        tombstonedAt: f.tombstonedAt,
+        actor: tx?.actorId,
+        reason: tx?.reason,
+        txTime: tx?.txTime,
+      });
+    }
+    out.sort((x, y) => x.a.localeCompare(y.a));
+    return { id: args.e, coord, facts: out };
+  },
+});
+
+/**
+ * Full transaction-time event timeline for an entity (assert/retract/tombstone/
+ * correction across all its attributes), newest first, annotated with actor.
+ */
+export const entityTimeline = query({
+  args: { e: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const events = await ctx.db
+      .query("factEvents")
+      .withIndex("by_e", (q) => q.eq("e", args.e))
+      .order("desc")
+      .take(Math.min(args.limit ?? 200, 1000));
+
+    const out = [];
+    for (const ev of events) {
+      const tx = await ctx.db.get("transactions", ev.txId);
+      out.push({
+        kind: ev.kind,
+        a: ev.a,
+        v: ev.v,
+        txTime: ev.txTime,
+        validFrom: ev.validFrom,
+        validTo: ev.validTo,
+        actor: tx?.actorId,
+        reason: ev.reason ?? tx?.reason,
+      });
+    }
+    return out;
+  },
+});

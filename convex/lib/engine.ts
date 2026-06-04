@@ -435,6 +435,93 @@ export function project(
   return out;
 }
 
+// --- aggregation ------------------------------------------------------------
+
+export type AggOp = "count" | "countDistinct" | "sum" | "avg" | "min" | "max";
+export type AggSpec = { op: AggOp; var?: string; as: string };
+
+function stripVar(s: string): string {
+  return s.startsWith("?") ? s.slice(1) : s;
+}
+
+function computeAgg(op: AggOp, values: unknown[], rowCount: number): unknown {
+  switch (op) {
+    case "count":
+      // count() = rows; count(?v) = rows where ?v is bound.
+      return values.length === 0
+        ? rowCount
+        : values.filter((v) => v !== undefined && v !== null).length;
+    case "countDistinct":
+      return new Set(
+        values.filter((v) => v !== undefined && v !== null).map(valueKey),
+      ).size;
+    case "sum": {
+      const nums = values.filter((v): v is number => typeof v === "number");
+      return nums.reduce((a, b) => a + b, 0);
+    }
+    case "avg": {
+      const nums = values.filter((v): v is number => typeof v === "number");
+      return nums.length === 0
+        ? null
+        : nums.reduce((a, b) => a + b, 0) / nums.length;
+    }
+    case "min":
+    case "max": {
+      const present = values.filter((v) => v !== undefined && v !== null);
+      if (present.length === 0) return null;
+      const cmp = (a: unknown, b: unknown) =>
+        typeof a === "number" && typeof b === "number"
+          ? a - b
+          : String(a).localeCompare(String(b));
+      return present.reduce((acc, v) =>
+        op === "min" ? (cmp(v, acc) < 0 ? v : acc) : (cmp(v, acc) > 0 ? v : acc),
+      );
+    }
+  }
+}
+
+/**
+ * Group bindings by the groupBy variables and compute aggregates per group.
+ * groupBy may be empty (single group over all rows). Returns one row per group
+ * with the group key variables plus each aggregate under its `as` name.
+ */
+export function aggregateBindings(
+  bindings: Binding[],
+  groupBy: string[],
+  specs: AggSpec[],
+): Record<string, unknown>[] {
+  const groupVars = groupBy.map(stripVar);
+  const groups = new Map<
+    string,
+    { key: Record<string, unknown>; rows: Binding[] }
+  >();
+
+  for (const b of bindings) {
+    const k = JSON.stringify(groupVars.map((g) => valueKey(b[g])));
+    let group = groups.get(k);
+    if (!group) {
+      const key: Record<string, unknown> = {};
+      for (const g of groupVars) key[g] = b[g];
+      group = { key, rows: [] };
+      groups.set(k, group);
+    }
+    group.rows.push(b);
+  }
+
+  const out: Record<string, unknown>[] = [];
+  for (const group of groups.values()) {
+    const row: Record<string, unknown> = { ...group.key };
+    for (const spec of specs) {
+      const values = spec.var
+        ? group.rows.map((r) => r[stripVar(spec.var!)])
+        : [];
+      row[spec.as] = computeAgg(spec.op, values, group.rows.length);
+    }
+    out.push(row);
+  }
+  return out;
+}
+
 /** A human-readable description of how a query will be classified (for explain). */
 export function describeClauses(where: unknown[]) {
   const fmt = (t: Term) =>

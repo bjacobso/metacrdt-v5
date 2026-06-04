@@ -1,6 +1,12 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
-import { LIMITS, describeClauses, project, runWhere } from "./lib/engine";
+import {
+  LIMITS,
+  aggregateBindings,
+  describeClauses,
+  project,
+  runWhere,
+} from "./lib/engine";
 
 // A clause is a [e, a, v] triple, a [term, op, term] comparison, or a
 // { not: [e, a, v] } negation — so clauses are heterogeneous (array | object).
@@ -38,6 +44,57 @@ export const datalog = query({
     if (rows.length > LIMITS.maxResultRows) {
       throw new Error(
         `query produced ${rows.length} rows, exceeding maxResultRows=${LIMITS.maxResultRows}`,
+      );
+    }
+    return rows;
+  },
+});
+
+/**
+ * Aggregation over a Datalog body: solve the `where`, group by `groupBy`
+ * variables, and compute aggregates per group.
+ *
+ *   aggregate({
+ *     where: [["?e", "type", "Employee"], ["?e", "dept", "?d"], ["?e", "salary", "?s"]],
+ *     groupBy: ["?d"],
+ *     aggregates: [
+ *       { op: "count", as: "headcount" },
+ *       { op: "sum", var: "?s", as: "payroll" },
+ *       { op: "avg", var: "?s", as: "avgSalary" },
+ *     ],
+ *   })
+ */
+export const aggregate = query({
+  args: {
+    where: whereValidator,
+    groupBy: v.optional(v.array(v.string())),
+    aggregates: v.array(
+      v.object({
+        op: v.union(
+          v.literal("count"),
+          v.literal("countDistinct"),
+          v.literal("sum"),
+          v.literal("avg"),
+          v.literal("min"),
+          v.literal("max"),
+        ),
+        var: v.optional(v.string()),
+        as: v.string(),
+      }),
+    ),
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const bindings = await runWhere(ctx, args.where, coord);
+    const rows = aggregateBindings(bindings, args.groupBy ?? [], args.aggregates);
+    if (rows.length > LIMITS.maxResultRows) {
+      throw new Error(
+        `aggregate produced ${rows.length} groups, exceeding maxResultRows=${LIMITS.maxResultRows}`,
       );
     }
     return rows;

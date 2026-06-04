@@ -133,6 +133,66 @@ th {
   margin: 0.1rem 0;
 }
 
+.coords {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 0.5rem 0;
+}
+
+.coords label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+}
+
+tr.retr td {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+tr.tomb td {
+  opacity: 0.5;
+  background: #fff4f4;
+}
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.timeline li {
+  padding: 0.3rem 0;
+  border-top: 1px solid #f0f0f5;
+  font-size: 0.9rem;
+}
+
+.kind {
+  display: inline-block;
+  min-width: 4.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  margin-right: 0.5rem;
+}
+
+.kind-assert { background: #dff5e3; color: #1d6b34; }
+.kind-retract { background: #fdeccd; color: #8a5a14; }
+.kind-tombstone { background: #fbdada; color: #9a2020; }
+.kind-correction { background: #e2e0fb; color: #44309a; }
+
 h1 {
   margin-bottom: 0.25rem;
 }

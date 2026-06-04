@@ -25,7 +25,7 @@ Grouped by theme; ordering within a group is rough priority.
 - [x] Negation (`{ not: [...] }`) with safety check
 - [x] Query facts ∪ materialized derived facts
 - [x] `explainDatalog`; LIMITS guardrails
-- [ ] Aggregation: `count` / `sum` / `min` / `max` / `avg` with group-by
+- [x] Aggregation: `count` / `countDistinct` / `sum` / `avg` / `min` / `max` with group-by
 - [ ] General recursion (stratified rules, fixpoint over `derivedFacts`)
 - [ ] Computed/built-in predicates: arithmetic, string ops (`contains`, `startsWith`)
 - [ ] Disjunction (`or`) within a query
@@ -59,9 +59,11 @@ Grouped by theme; ordering within a group is rough priority.
 
 - [x] Hosted demo via `@convex-dev/static-hosting`
 - [x] Entities browser: type list, dynamic query builder → Datalog, cursor pagination, sort/filter
-- [ ] Time-travel everywhere: thread `(txTime, validTime)` through `getEntity` / `typeAttributes` / `queryEntities`
-- [ ] Two-axis time-travel UI (txTime + validTime sliders) + `compareFacts` diff
-- [ ] Fact-history timeline view for an entity
+- [x] Two-axis time-travel UI (txTime + validTime) + as-of state with per-fact provenance
+- [x] Fact-history timeline view for an entity (`entityTimeline`)
+- [x] `entityFactsAsOf` — as-of state annotated with asserting transaction
+- [ ] Thread `(txTime, validTime)` through `getEntity` / `typeAttributes` / `queryEntities` too
+- [ ] `compareFacts` "now vs then" diff in the UI
 - [ ] Seed-data loader + guided demo tour
 
 ### Integrity / correctness
