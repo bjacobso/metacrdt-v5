@@ -18,6 +18,14 @@ export const processFactChange = internalMutation({
     a: v.string(),
     factId: v.id("facts"),
     txTime: v.number(),
+    changeKind: v.optional(
+      v.union(
+        v.literal("assert"),
+        v.literal("retract"),
+        v.literal("tombstone"),
+        v.literal("correction"),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const enabled = await ctx.db
@@ -39,14 +47,26 @@ export const processFactChange = internalMutation({
 
       if (rule.materialization === "manual") continue;
 
-      // Transitive-closure rules are inherently cross-entity: recompute fully.
       if (rule.kind === "closure") {
-        await markAllDerivedStale(ctx, rule._id);
-        await ctx.scheduler.runAfter(
-          0,
-          internal.materialize.recomputeTransitiveClosure,
-          { ruleId: rule._id },
-        );
+        // Adding an edge only ever adds reachable pairs → semi-naive delta.
+        // Removing/correcting an edge can invalidate arbitrary pairs → full.
+        if (args.changeKind === "assert") {
+          const fact = await ctx.db.get("facts", args.factId);
+          if (fact) {
+            await ctx.scheduler.runAfter(
+              0,
+              internal.materialize.incrementalClosureAdd,
+              { ruleId: rule._id, u: fact.e, w: String(fact.v) },
+            );
+          }
+        } else {
+          await markAllDerivedStale(ctx, rule._id);
+          await ctx.scheduler.runAfter(
+            0,
+            internal.materialize.recomputeTransitiveClosure,
+            { ruleId: rule._id },
+          );
+        }
         continue;
       }
 
@@ -231,6 +251,80 @@ export const recomputeTransitiveClosure = internalMutation({
         txWatermark: now,
         stale: false,
       });
+    }
+
+    await clearInvalidations(ctx, args.ruleId, now);
+  },
+});
+
+/**
+ * Semi-naive delta for a single new edge u --base--> w. The only new reachable
+ * pairs are {predecessors(u) ∪ u} × {successors(w) ∪ w}, computed against the
+ * already-materialized closure. Inserts just the pairs not already present —
+ * far cheaper than rebuilding the whole closure on every edge added.
+ */
+export const incrementalClosureAdd = internalMutation({
+  args: { ruleId: v.id("rules"), u: v.string(), w: v.string() },
+  handler: async (ctx, args) => {
+    const rule = await ctx.db.get("rules", args.ruleId);
+    if (!rule || !rule.enabled || rule.closure === undefined) return;
+    const { closureAttribute, reflexive } = rule.closure;
+    const now = Date.now();
+
+    // predecessors(u): x such that (x --closure--> u) already holds, plus u.
+    const predRows = await ctx.db
+      .query("derivedFacts")
+      .withIndex("by_a_v", (q) =>
+        q.eq("a", closureAttribute).eq("v", args.u),
+      )
+      .take(LIMITS.maxClauseScan);
+    const preds = new Set<string>(predRows.map((r) => r.e));
+    preds.add(args.u);
+
+    // successors(w): y such that (w --closure--> y) already holds, plus w.
+    const succRows = await ctx.db
+      .query("derivedFacts")
+      .withIndex("by_e_a", (q) =>
+        q.eq("e", args.w).eq("a", closureAttribute),
+      )
+      .take(LIMITS.maxClauseScan);
+    const succs = new Set<string>(succRows.map((r) => String(r.v)));
+    succs.add(args.w);
+
+    let inserted = 0;
+    for (const x of preds) {
+      // Existing closure targets for x, to dedupe in one read per source.
+      const existingRows = await ctx.db
+        .query("derivedFacts")
+        .withIndex("by_e_a", (q) =>
+          q.eq("e", x).eq("a", closureAttribute),
+        )
+        .take(LIMITS.maxClauseScan);
+      const existing = new Set<string>(existingRows.map((r) => String(r.v)));
+      for (const y of succs) {
+        if (x === y && !reflexive) continue;
+        if (existing.has(y)) continue;
+        await ctx.db.insert("derivedFacts", {
+          ruleId: args.ruleId,
+          e: x,
+          a: closureAttribute,
+          v: y,
+          sourceFactIds: [],
+          derivedAt: now,
+          validFrom: now,
+          txWatermark: now,
+          stale: false,
+        });
+        existing.add(y);
+        inserted++;
+        if (inserted >= LIMITS.maxIntermediateRows) {
+          console.warn(
+            `incremental closure for ${closureAttribute} hit the pair cap; consider a full recompute`,
+          );
+          await clearInvalidations(ctx, args.ruleId, now);
+          return;
+        }
+      }
     }
 
     await clearInvalidations(ctx, args.ruleId, now);

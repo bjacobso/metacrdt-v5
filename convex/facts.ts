@@ -184,6 +184,7 @@ export const assertFact = mutation({
       a: args.a,
       factId,
       txTime: now,
+      changeKind: "assert",
     });
 
     return { txId, factId };
@@ -236,6 +237,7 @@ export const retractFact = mutation({
       a: fact.a,
       factId: fact._id,
       txTime: now,
+      changeKind: "retract",
     });
 
     return { txId, factId: fact._id };
@@ -284,6 +286,7 @@ export const tombstoneFact = mutation({
       a: fact.a,
       factId: fact._id,
       txTime: now,
+      changeKind: "tombstone",
     });
 
     return { txId, factId: fact._id };
@@ -362,11 +365,14 @@ export const correctFact = mutation({
     const cardinality = await cardinalityOf(ctx, old.a);
     await upsertCurrentFact(ctx, newFact, cardinality, now);
 
+    // A correction changes an edge (old value removed, new added), so closures
+    // must fully recompute — mark it as such.
     await ctx.scheduler.runAfter(0, internal.materialize.processFactChange, {
       e: old.e,
       a: old.a,
       factId: newFactId,
       txTime: now,
+      changeKind: "correction",
     });
 
     return { txId, oldFactId: old._id, newFactId };

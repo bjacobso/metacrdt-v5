@@ -149,7 +149,7 @@ describe("transitive closure", () => {
     }
   });
 
-  test("recomputes when the base relation changes", async () => {
+  test("incremental add extends the closure when an edge is asserted", async () => {
     vi.useFakeTimers();
     try {
       const t = convexTest(schema, modules);
@@ -168,7 +168,7 @@ describe("transitive closure", () => {
       });
       expect(reach.map((r) => r.z).sort()).toEqual(["y"]);
 
-      // Extend the chain y -> z; closure should pick up z for x.
+      // Asserting y -> z takes the semi-naive add path; x should now reach z too.
       await assert(t, "y", "links", "z");
       await flush(t);
 
@@ -177,6 +177,53 @@ describe("transitive closure", () => {
         select: ["?z"],
       });
       expect(reach.map((r) => r.z).sort()).toEqual(["y", "z"]);
+
+      // And prepending w -> x propagates w to {x, y, z}.
+      await assert(t, "w", "links", "x");
+      await flush(t);
+      const wReach = await t.query(api.datalog.datalog, {
+        where: [["w", "links+", "?z"]],
+        select: ["?z"],
+      });
+      expect(wReach.map((r) => r.z).sort()).toEqual(["x", "y", "z"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("full recompute on retraction removes unreachable pairs", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await assert(t, "a", "chain", "b");
+      const bc = await t.mutation(api.facts.assertFact, {
+        e: "b",
+        a: "chain",
+        value: "c",
+      });
+      await t.mutation(api.rules.defineTransitiveRule, {
+        name: "chainClosure",
+        baseAttribute: "chain",
+        closureAttribute: "chain+",
+        maxDepth: 16,
+      });
+      await flush(t);
+
+      let reach = await t.query(api.datalog.datalog, {
+        where: [["a", "chain+", "?z"]],
+        select: ["?z"],
+      });
+      expect(reach.map((r) => r.z).sort()).toEqual(["b", "c"]);
+
+      // Retract b -> c; a can no longer reach c (full recompute path).
+      await t.mutation(api.facts.retractFact, { factId: bc.factId });
+      await flush(t);
+
+      reach = await t.query(api.datalog.datalog, {
+        where: [["a", "chain+", "?z"]],
+        select: ["?z"],
+      });
+      expect(reach.map((r) => r.z).sort()).toEqual(["b"]);
     } finally {
       vi.useRealTimers();
     }

@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useDeploymentUpdates } from "@convex-dev/static-hosting/react";
 import { api } from "../convex/_generated/api";
+import EntitiesBrowser from "./EntitiesBrowser";
 
 // Coerce a string from the value input into a Convex value: JSON if it parses
 // (numbers, booleans, null, objects), otherwise the raw string.
@@ -131,6 +132,7 @@ export default function App() {
   const { updateAvailable, reload } = useDeploymentUpdates(
     api.staticHosting.getCurrentDeployment,
   );
+  const [tab, setTab] = useState<"entities" | "explorer">("entities");
 
   return (
     <main>
@@ -145,9 +147,29 @@ export default function App() {
         A bitemporal triple store + Datalog engine on Convex, served as static
         assets via <code>@convex-dev/static-hosting</code>.
       </p>
-      <AssertPanel />
-      <EntityPanel />
-      <DatalogPanel />
+      <nav className="tabs">
+        <button
+          className={tab === "entities" ? "tab active" : "tab"}
+          onClick={() => setTab("entities")}
+        >
+          Entities
+        </button>
+        <button
+          className={tab === "explorer" ? "tab active" : "tab"}
+          onClick={() => setTab("explorer")}
+        >
+          Explorer
+        </button>
+      </nav>
+      {tab === "entities" ? (
+        <EntitiesBrowser />
+      ) : (
+        <>
+          <AssertPanel />
+          <EntityPanel />
+          <DatalogPanel />
+        </>
+      )}
     </main>
   );
 }

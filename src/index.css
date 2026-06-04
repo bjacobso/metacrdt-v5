@@ -13,9 +13,102 @@ body {
 }
 
 main {
-  max-width: 760px;
+  max-width: 980px;
   margin: 0 auto;
   padding: 2rem 1.25rem 4rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0 0.25rem;
+  border-bottom: 1px solid #e3e3ee;
+}
+
+.tab {
+  background: transparent;
+  color: #5b5bd6;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0.5rem 0.75rem;
+}
+
+.tab.active {
+  border-bottom-color: #5b5bd6;
+  font-weight: 600;
+}
+
+.browser {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.types ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.types h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+button.type {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  background: #fff;
+  color: #1a1a2e;
+  border: 1px solid #e3e3ee;
+  margin-bottom: 0.35rem;
+  text-align: left;
+}
+
+button.type.active {
+  background: #5b5bd6;
+  color: #fff;
+  border-color: #5b5bd6;
+}
+
+.type .count {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.content {
+  min-width: 0;
+}
+
+.row.filter select,
+.row.filter input {
+  flex: 0 1 auto;
+}
+
+.tableHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+th {
+  text-align: left;
+  font-size: 0.8rem;
+  color: #666;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 2px solid #eee;
+  white-space: nowrap;
+}
+
+.pager {
+  margin-top: 0.75rem;
 }
 
 h1 {

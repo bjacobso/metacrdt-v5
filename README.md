@@ -138,9 +138,20 @@ records and clears each pending recomputation.
 
 `defineTransitiveRule({ name, baseAttribute, closureAttribute, maxDepth })`
 materializes the transitive closure of a relation (e.g. `reportsTo` →
-`reportsTo+`) via a bounded BFS fixpoint, recomputed when the base attribute
-changes. This is how recursion stays off the live query path while remaining
-queryable — the closure attribute is just another derived fact.
+`reportsTo+`), recomputed when the base attribute changes. Adding an edge takes
+a **semi-naive delta** (predecessors × successors of the new edge); removing or
+correcting one triggers a full BFS recompute. This is how recursion stays off
+the live query path while remaining queryable — the closure attribute is just
+another derived fact.
+
+## Entities browser (demo)
+
+The hosted demo includes an "Entities" view that treats the `type` attribute as
+a table selector: `listEntityTypes` lists types with counts, `typeAttributes`
+discovers a type's columns, and `queryEntities` runs a dynamic filter/sort spec
+that is **compiled into Datalog** (filters → pattern/comparison clauses), then
+sorted by an attribute and paginated with an opaque cursor. The UI's query
+builder is generated per type and shows the compiled `where` it ran.
 
 ## Datalog limits (live queries)
 

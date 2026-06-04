@@ -146,8 +146,13 @@ variables bind. `explainDatalog` classifies clauses without executing.
   and all closure rules still trigger a full recompute on any dependency
   change. A dependency graph keyed by the joined entity would let those
   recompute incrementally too.
-- **Closure recompute is full, not semi-naive.** Each base-attribute change
-  rebuilds the whole closure; a delta/semi-naive update would scale better.
+- **Closure deletions are still full recompute.** Edge additions now take a
+  semi-naive delta, but retraction/tombstone/correction of a base edge rebuilds
+  the whole closure (deletions can invalidate arbitrary pairs). A
+  counting/provenance scheme (e.g. DRed) would make deletions incremental too.
+- **`queryEntities` re-runs per page.** Cursor pagination recomputes the full
+  (bounded) result set each page and slices it, rather than streaming from a
+  DB-level cursor — fine at demo scale, not for large types.
 - **Valid-time succession for cardinality-one** is caller-driven: auto-replace
   only supersedes in transaction time. A `validFrom`-aware assert that closes
   the prior interval in valid time would be a useful convenience.
