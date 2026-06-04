@@ -32,6 +32,18 @@ Grouped by theme; ordering within a group is rough priority.
 - [ ] Engine-level result pagination / streaming (true cursor)
 - [ ] `select` with computed/bound expressions
 
+### Compliance engine (first vision slice — shipped)
+
+- [x] Obligations-as-facts: requirement rules emit `requires.<form>` keyed by scope entity
+- [x] Reuse-as-scope-key: one submission satisfies all placements sharing a scope (dedup + provenance merge)
+- [x] Tasks via negation: `requirement ∧ ¬submitted` → `task.<form>`, with provenance ("why open")
+- [x] Guarded requirements (forklift quiz only for forklift jobs)
+- [x] Valid-time expiry: submissions carry `validTo`; a **cron** re-materializes lapsed obligations
+- [x] Demo domain (staffing: worker/employer/client/job/venue + placements) + reactive Compliance UI
+- [ ] Reify obligations into entities for per-obligation status/assignment (only if needed)
+- [ ] Async collection step (send form link / E-Verify) via scheduler+actions — needs the Flow runner
+- [ ] Rule→rule cascade (task rules currently re-derive over base facts to avoid chaining)
+
 ### Rules & materialization (shipped + next)
 
 - [x] `defineRule` → derived facts; entity-local incremental recompute
@@ -298,9 +310,11 @@ it's the risk the vision most under-weights.
 generated UIs → projection of schema-as-facts (reactive for free); AI → AST validation + actions + provenance
 facts; the migration discipline and permanently-hybrid end state.
 
-**Suggested next slice (highest leverage):** the **compliance reconciler** as a batched, scheduler-driven
-state machine over obligations-as-facts + reuse-as-generated-query — it exercises the one contract Convex
-makes us get right and reuses the rule/materialization/provenance machinery we already have.
+**Suggested next slice (highest leverage):** ~~the compliance reconciler~~ **— SHIPPED.** The compliance
+engine slice is built (obligations-as-facts, reuse-as-scope-key, tasks-via-negation with provenance,
+guarded requirements, valid-time expiry via cron, reactive UI). Next: the **async collection step**
+(send-form-link / E-Verify) is the natural pull into a general **Flow runner** (scheduler-driven step
+graph) — the deferred-hard piece this slice intentionally stopped short of.
 
 ## Open questions
 

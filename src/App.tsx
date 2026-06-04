@@ -4,6 +4,7 @@ import { useDeploymentUpdates } from "@convex-dev/static-hosting/react";
 import { api } from "../convex/_generated/api";
 import EntitiesBrowser from "./EntitiesBrowser";
 import TimeTravel from "./TimeTravel";
+import Compliance from "./Compliance";
 
 // Coerce a string from the value input into a Convex value: JSON if it parses
 // (numbers, booleans, null, objects), otherwise the raw string.
@@ -175,9 +176,9 @@ export default function App() {
   const { updateAvailable, reload } = useDeploymentUpdates(
     api.staticHosting.getCurrentDeployment,
   );
-  const [tab, setTab] = useState<"entities" | "timetravel" | "explorer">(
-    "entities",
-  );
+  const [tab, setTab] = useState<
+    "entities" | "compliance" | "timetravel" | "explorer"
+  >("entities");
 
   return (
     <main>
@@ -200,6 +201,12 @@ export default function App() {
           Entities
         </button>
         <button
+          className={tab === "compliance" ? "tab active" : "tab"}
+          onClick={() => setTab("compliance")}
+        >
+          Compliance
+        </button>
+        <button
           className={tab === "timetravel" ? "tab active" : "tab"}
           onClick={() => setTab("timetravel")}
         >
@@ -214,6 +221,8 @@ export default function App() {
       </nav>
       {tab === "entities" ? (
         <EntitiesBrowser />
+      ) : tab === "compliance" ? (
+        <Compliance />
       ) : tab === "timetravel" ? (
         <TimeTravel />
       ) : (

@@ -4,7 +4,8 @@ import { MutationCtx } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { isEntityLocalRule, solveWhere, LIMITS } from "./lib/engine";
-import { isVisible } from "./lib/visibility";
+import { isVisible, valueKey } from "./lib/visibility";
+import { SolvedBinding } from "./lib/engine";
 
 /**
  * Reacts to a fact change: find enabled rules that depend on the changed
@@ -124,9 +125,7 @@ export const recomputeRule = internalMutation({
       .collect();
     for (const d of prior) await ctx.db.delete("derivedFacts", d._id);
 
-    for (const s of solved) {
-      await emitDerived(ctx, rule, s.binding, s.sources, now);
-    }
+    await emitSolved(ctx, rule, solved, now);
 
     await clearInvalidations(ctx, args.ruleId, now);
   },
@@ -168,9 +167,7 @@ export const recomputeRuleForEntity = internalMutation({
       .collect();
     for (const d of prior) await ctx.db.delete("derivedFacts", d._id);
 
-    for (const s of solved) {
-      await emitDerived(ctx, rule, s.binding, s.sources, now);
-    }
+    await emitSolved(ctx, rule, solved, now);
 
     await clearInvalidations(ctx, args.ruleId, now, args.e);
   },
@@ -353,28 +350,48 @@ export const incrementalClosureAdd = internalMutation({
 
 // --- helpers ----------------------------------------------------------------
 
-async function emitDerived(
+/**
+ * Emit a rule's derived facts, deduped by (entity, value): multiple bindings
+ * that resolve to the same emitted fact collapse into one row whose provenance
+ * is the union of their sources. (E.g. a worker on two placements at the same
+ * employer yields one I-9 requirement, justified by either placement.)
+ */
+async function emitSolved(
   ctx: MutationCtx,
   rule: Doc<"rules">,
-  binding: Record<string, unknown>,
-  sources: Id<"facts">[],
+  solved: SolvedBinding[],
   now: number,
 ): Promise<void> {
   if (rule.emit === undefined) return;
-  const e = resolveTerm(rule.emit.e, binding);
-  const value = resolveTerm(rule.emit.v, binding);
-  if (e === undefined || e === null) return;
-  await ctx.db.insert("derivedFacts", {
-    ruleId: rule._id,
-    e: String(e),
-    a: rule.emit.a,
-    v: value,
-    sourceFactIds: sources,
-    derivedAt: now,
-    validFrom: now,
-    txWatermark: now,
-    stale: false,
-  });
+  const merged = new Map<
+    string,
+    { e: string; v: unknown; sources: Set<string> }
+  >();
+  for (const s of solved) {
+    const e = resolveTerm(rule.emit.e, s.binding);
+    const value = resolveTerm(rule.emit.v, s.binding);
+    if (e === undefined || e === null) continue;
+    const key = `${String(e)} ${valueKey(value)}`;
+    let m = merged.get(key);
+    if (!m) {
+      m = { e: String(e), v: value, sources: new Set() };
+      merged.set(key, m);
+    }
+    for (const src of s.sources) m.sources.add(src as unknown as string);
+  }
+  for (const m of merged.values()) {
+    await ctx.db.insert("derivedFacts", {
+      ruleId: rule._id,
+      e: m.e,
+      a: rule.emit.a,
+      v: m.v,
+      sourceFactIds: [...m.sources] as unknown as Id<"facts">[],
+      derivedAt: now,
+      validFrom: now,
+      txWatermark: now,
+      stale: false,
+    });
+  }
 }
 
 async function markEntityDerivedStale(

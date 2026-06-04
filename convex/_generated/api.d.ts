@@ -9,6 +9,8 @@
  */
 
 import type * as attributes from "../attributes.js";
+import type * as compliance from "../compliance.js";
+import type * as crons from "../crons.js";
 import type * as datalog from "../datalog.js";
 import type * as entities from "../entities.js";
 import type * as facts from "../facts.js";
@@ -29,6 +31,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   attributes: typeof attributes;
+  compliance: typeof compliance;
+  crons: typeof crons;
   datalog: typeof datalog;
   entities: typeof entities;
   facts: typeof facts;
