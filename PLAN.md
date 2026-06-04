@@ -2,6 +2,84 @@
 
 Implementation plan. Read alongside [README.md](./README.md) for concepts.
 
+## Feature backlog
+
+Running checklist — check items as they ship, add freely. `[x]` done, `[ ]` planned.
+Grouped by theme; ordering within a group is rough priority.
+
+### Core store (shipped)
+
+- [x] Bitemporal fact model (transaction time + valid time)
+- [x] Append-only `factEvents`; canonical `facts` intervals; `currentFacts` projection
+- [x] assert / retract / tombstone / correct, each producing a transaction
+- [x] `defineAttribute` + cardinality-one enforcement
+- [x] `getEntity`, bitemporal `queryFacts`, `history`
+- [x] `entityAsOf` + `compareFacts` (M6)
+- [x] Tests (vitest + convex-test); deployed to `chatty-hare-94`
+
+### Datalog engine (shipped)
+
+- [x] Indexed nested-loop joins, dynamic selectivity planning
+- [x] Comparison predicates (`> < >= <= == !=`)
+- [x] Negation (`{ not: [...] }`) with safety check
+- [x] Query facts ∪ materialized derived facts
+- [x] `explainDatalog`; LIMITS guardrails
+- [ ] Aggregation: `count` / `sum` / `min` / `max` / `avg` with group-by
+- [ ] General recursion (stratified rules, fixpoint over `derivedFacts`)
+- [ ] Computed/built-in predicates: arithmetic, string ops (`contains`, `startsWith`)
+- [ ] Disjunction (`or`) within a query
+- [ ] Engine-level result pagination / streaming (true cursor)
+- [ ] `select` with computed/bound expressions
+
+### Rules & materialization (shipped + next)
+
+- [x] `defineRule` → derived facts; entity-local incremental recompute
+- [x] `ruleInvalidations` queue
+- [x] Transitive-closure rules (`defineTransitiveRule`)
+- [x] Semi-naive closure delta on edge **addition**
+- [ ] Semi-naive closure **deletions** (DRed / counting) instead of full recompute
+- [ ] Provenance: populate `derivedFacts.sourceFactIds` → "why is this true?"
+- [ ] True `sync` (in-transaction) materialization
+- [ ] Cross-entity datalog rules recompute incrementally (dependency graph)
+
+### Schema as facts / meta-circularity (next keystone)
+
+- [ ] Model attribute definitions as bitemporal triples (migrate the `attributes` registry onto facts)
+- [ ] Model type membership / type shape as facts
+- [ ] `typeSchemaAsOf(txTime, validTime)` — historical entity-type shape
+- [ ] Attribute lifecycle queries — when an attribute was added / removed / redefined
+- [ ] Schema-change audit (who/when/why), for free via the fact log
+
+### Bitemporal UX / demo
+
+- [x] Hosted demo via `@convex-dev/static-hosting`
+- [x] Entities browser: type list, dynamic query builder → Datalog, cursor pagination, sort/filter
+- [ ] Time-travel everywhere: thread `(txTime, validTime)` through `getEntity` / `typeAttributes` / `queryEntities`
+- [ ] Two-axis time-travel UI (txTime + validTime sliders) + `compareFacts` diff
+- [ ] Fact-history timeline view for an entity
+- [ ] Seed-data loader + guided demo tour
+
+### Integrity / correctness
+
+- [ ] Schema enforcement on assert (validate value vs `valueType`; enforce `unique`; strict-mode unknown-attribute rejection)
+- [ ] Inverse attributes (auto-maintain reverse edges; `inverseAttribute` field already exists)
+- [ ] Referential integrity for `entityRef` values
+- [ ] Constraints/invariants as first-class rules with severity
+- [ ] Value normalization so `by_a_v` is sound for all value types (objects, dates)
+
+### Scale / performance
+
+- [ ] Denormalized counts (avoid `collect().length` scans, e.g. `listEntityTypes`)
+- [ ] Batched/self-continuing materialization for large rules
+- [ ] DB-cursor pagination for `queryEntities` (stop re-running per page)
+
+### Operational / product
+
+- [ ] **Auth + write authorization** (live site currently accepts public writes)
+- [ ] Branching (`branchId` exists, unused): what-if worlds + merge
+- [ ] Full-text search on string values (Convex search index)
+- [ ] Bulk import / export
+
 ## Guiding design rules
 
 1. Never physically delete source facts by default.
