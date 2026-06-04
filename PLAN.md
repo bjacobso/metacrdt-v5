@@ -246,6 +246,62 @@ variables bind. `explainDatalog` classifies clauses without executing.
 - **`sync` materialization** is treated like `async` (always scheduled). True
   synchronous, in-transaction derivation isn't wired up yet.
 
+## Vision alignment & Convex feasibility (2026-06-04)
+
+Findings from reviewing [`vision/`](./vision) against what we've built. Full technical rebasing in
+[`vision/convex.md`](./vision/convex.md); this is the decision record.
+
+**Verdict.** The vision's *model* is coherent and **already substantially demonstrated** here: facts,
+two-axis bitemporality, schema-as-facts, a Datalog query engine, reactions/materialization with
+provenance, and rebuildable projections all exist. The vision's *substrate assumptions* — Postgres /
+Prisma / Kysely (SQL), Effect-TS DSLs, and a NATS/BullMQ event bus — do **not** match Convex and are
+rebased, not adopted. The model survives; the mechanism changes.
+
+**Already shipped (vision called several of these "eventually"):**
+- Configurable type/attribute registry → **schema-as-facts** (defs are triples, not a side table).
+- Bitemporal → **two-axis** (transaction time *and* valid time); richer than the docs' `validFrom`/`validTo`.
+- Queries-are-data → Datalog AST over **indexed Convex reads**; tx log → append-only `factEvents` source of
+  truth with rebuildable projections; provenance via `sourceFactIds`/`explainDerived`.
+
+**Reframes (decided — see convex.md):**
+- "Datalog AST → one SQL statement" → **nested-loop joins in JS over declared indexes**. No planner, no
+  DB joins, **no arbitrary EAV filtering** (filter/sort needs a covering index/projection).
+- "Promote hot attribute to a native column / GIN" → **separate projection tables / narrow secondary
+  indexes**; Convex can't index dynamic attribute values.
+- "tx log = live event bus" → server reactions run off **`factEvents` + scheduler/materialization**;
+  Convex reactivity is free only for **client reads** (a real win for generated UIs), not server triggers.
+- Effect `Schema`/DSLs/`HttpApi` → **Convex validators, TS builders, components**.
+- Integration = bounded context → **Convex component** (structurally isolated; cleaner than namespace
+  tags + a compiler join-guard). Effect migration → component schema + **batched migration mutation**.
+
+**The constraint the vision omits.** A Convex mutation is a **single transaction with hard read/write
+limits**. Every store-sweeping operation — the compliance **reconciler**, config **`apply`**, projection
+**rebuild**, bulk migration — must be a **batched, resumable, scheduler-driven job**, never one atomic
+statement. This is the operational contract to get right first (the reconciler is the proving ground), and
+it's the risk the vision most under-weights.
+
+**Cuts (decided):**
+- **JIT-compiled per-account `HttpApi`** (`api.md`) — cut. Convex types are per-deployment at codegen time,
+  not per-account at runtime. Replace with one **dynamic `httpAction`** validating against the registry at
+  runtime; optionally emit OpenAPI from the registry as data for offline codegen.
+- **Cost-based projection planner**, **GIN `@>` reuse-match index**, **column promotion** — cut; explicit
+  projection tables instead.
+- **Request-time multi-hop graph authorization** — cut for v1; precompute per-principal visible-subject
+  projections. Authz enforced in function code (no row-level security).
+- **Crypto-shredding as primary erasure** — downscope; Convex **hard-delete** makes erasure feasible
+  directly. Keep crypto-shred for file blobs only.
+- **Data residency** — defer (a Convex project is one deployment; residency = separate per-region deploys).
+- **General `Flow` DAG runner first** — defer; ship the **reconciler** as a scheduler-driven state machine,
+  or adopt the Convex Workflow component. Accept async (scheduler-latency) obligation production.
+
+**Maps cleanly, keep:** notifications/timers → scheduler+crons; documents/e-sign → file storage+actions;
+generated UIs → projection of schema-as-facts (reactive for free); AI → AST validation + actions + provenance
+facts; the migration discipline and permanently-hybrid end state.
+
+**Suggested next slice (highest leverage):** the **compliance reconciler** as a batched, scheduler-driven
+state machine over obligations-as-facts + reuse-as-generated-query — it exercises the one contract Convex
+makes us get right and reuses the rule/materialization/provenance machinery we already have.
+
 ## Open questions
 
 - Value normalization for index keys (entity refs vs scalars vs JSON) — needed for stable `by_a_v` lookups.
