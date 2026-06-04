@@ -17,6 +17,7 @@ import type * as lib_engine from "../lib/engine.js";
 import type * as lib_meta from "../lib/meta.js";
 import type * as lib_visibility from "../lib/visibility.js";
 import type * as materialize from "../materialize.js";
+import type * as rebuild from "../rebuild.js";
 import type * as rules from "../rules.js";
 import type * as staticHosting from "../staticHosting.js";
 
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   "lib/meta": typeof lib_meta;
   "lib/visibility": typeof lib_visibility;
   materialize: typeof materialize;
+  rebuild: typeof rebuild;
   rules: typeof rules;
   staticHosting: typeof staticHosting;
 }>;

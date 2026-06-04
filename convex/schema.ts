@@ -52,8 +52,11 @@ export default defineSchema({
     .index("by_e_a_tx", ["e", "a", "txTime"])
     .index("by_a_tx", ["a", "txTime"]),
 
-  // Canonical bitemporal interval records. Patched in place with lifecycle
-  // fields (retractedAt, validTo, tombstone*) but never structurally rewritten.
+  // Bitemporal interval projection of factEvents: one row per logical fact with
+  // its folded lifecycle (retractedAt, validTo, tombstone*). Read-optimized so a
+  // clause fetch is one indexed range + a single-row visibility check. Fully
+  // rebuildable from the event log via convex/rebuild.ts (the log is the source
+  // of truth); write-time-only metadata (source, confidence, lineage) lives here.
   facts: defineTable({
     e: v.string(),
     a: v.string(),
@@ -94,8 +97,8 @@ export default defineSchema({
     .index("by_retractedAt", ["retractedAt"])
     .index("by_tombstonedAt", ["tombstonedAt"]),
 
-  // Disposable fast read model: the latest visible, non-tombstoned fact per
-  // (e, a) at current transaction time and current valid time.
+  // Now-projection of facts: the visible, non-tombstoned facts at current
+  // transaction + valid time. Disposable; rebuilt from facts by rebuildProjections.
   currentFacts: defineTable({
     e: v.string(),
     a: v.string(),

@@ -10,7 +10,8 @@ Grouped by theme; ordering within a group is rough priority.
 ### Core store (shipped)
 
 - [x] Bitemporal fact model (transaction time + valid time)
-- [x] Append-only `factEvents`; canonical `facts` intervals; `currentFacts` projection
+- [x] Append-only `factEvents` as source of truth; `facts`/`currentFacts`/`derivedFacts` as projections
+- [x] `rebuildProjections` — fold the log to regenerate facts/currentFacts/derived; replay property test
 - [x] assert / retract / tombstone / correct, each producing a transaction
 - [x] `defineAttribute` + cardinality-one enforcement
 - [x] `getEntity`, bitemporal `queryFacts`, `history`
@@ -86,10 +87,12 @@ Grouped by theme; ordering within a group is rough priority.
 ## Guiding design rules
 
 1. Never physically delete source facts by default.
-2. Keep `factEvents` append-only.
-3. Treat `facts` as canonical interval records (only patched with lifecycle fields).
-4. Treat `currentFacts` as a disposable projection.
-5. Treat `derivedFacts` as a disposable projection.
+2. `factEvents` is the append-only **source of truth**.
+3. `facts` is a **rebuildable projection** of the log (bitemporal interval state,
+   read-optimized); patched in place with lifecycle fields, but reconstructable
+   via `rebuildProjections`. Write-time-only metadata (source, lineage) lives here.
+4. Treat `currentFacts` as a disposable projection (now-view of `facts`).
+5. Treat `derivedFacts` as a disposable projection (fold of `facts` + rules).
 6. Keep live Datalog **bounded**; never run recursion in a reactive query.
 7. Materialize expensive / recursive logic asynchronously.
 8. Separate valid time from transaction time everywhere.
