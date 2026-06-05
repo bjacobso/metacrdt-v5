@@ -8,6 +8,9 @@ expensive or recursive logic into live, subscribable UI state.
 
 > An append-only bitemporal fact log with reactive Datalog projections.
 
+See [VISION.md](./VISION.md) for the *why* and where this is going (the substrate →
+engine → emergent-product thesis); this README is the *how* (the engine itself).
+
 ## Why Convex
 
 Convex is a good substrate for this because:
