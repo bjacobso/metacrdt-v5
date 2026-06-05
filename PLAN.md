@@ -43,9 +43,15 @@ Grouped by theme; ordering within a group is rough priority.
 - [x] Collect-step Flow runner: issue → park (`waiting`) → resume on the matching
   submission fact (event path) → complete; reminder/escalate/expire **scheduler timer
   ticks**; durable `flowRuns` + append-only `flowEvents`; reactive Flows UI
+- [x] External collection: `defineForm` (fields as a fact) → **isolated magic-link page**
+  (`/collect?token=`) renders the fields → submit saves field facts + the submission
+  marker → the event path resumes the flow & clears the obligation
+- [x] General Flow **DAG** runner: `defineFlow`/`startFlow`/`advanceFlow` interpreter with
+  step types assert / collect / notify / branch / action / wait / done; parking steps resumed
+  by the event path, scheduler ticks, or an action callback; onboarding demo flow + reactive UI graph
+- [x] **action** step = external boundary (mock E-Verify; would `fetch` a vendor) → result fact → resume
 - [ ] Reify obligations into entities for per-obligation status/assignment (only if needed)
-- [ ] External collection action (send form link / call E-Verify) inside the collect step (Convex action)
-- [ ] General Flow DAG runner (`branch`/`http`/multi-step graphs) — collect was the first step type
+- [ ] Real external integration (live `fetch` in an action step) as a Convex component
 - [ ] Rule→rule cascade (task rules currently re-derive over base facts to avoid chaining)
 
 ### Rules & materialization (shipped + next)

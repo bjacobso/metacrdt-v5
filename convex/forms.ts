@@ -90,7 +90,7 @@ export const collectionByToken = query({
       .query("flowRuns")
       .withIndex("by_token", (q) => q.eq("token", args.token))
       .first();
-    if (!run) return { found: false as const };
+    if (!run || !run.form || !run.scope) return { found: false as const };
     const def = await loadFormDef(ctx, run.form);
     return {
       found: true as const,
@@ -122,6 +122,9 @@ export const submitCollection = mutation({
     if (!run) return { ok: false as const, reason: "unknown token" };
     if (run.status !== "waiting") {
       return { ok: false as const, reason: "already submitted" };
+    }
+    if (!run.form || !run.scope) {
+      return { ok: false as const, reason: "run is not awaiting a collection" };
     }
 
     const now = Date.now();

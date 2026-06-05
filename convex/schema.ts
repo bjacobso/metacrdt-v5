@@ -182,9 +182,12 @@ export default defineSchema({
   flowRuns: defineTable({
     flowName: v.string(),
     subject: v.string(),
-    form: v.string(),
-    scope: v.string(),
+    // Set when a run is parked on a collect step; optional for DAG runs that
+    // haven't reached one yet.
+    form: v.optional(v.string()),
+    scope: v.optional(v.string()),
     status: v.union(
+      v.literal("running"),
       v.literal("waiting"),
       v.literal("completed"),
       v.literal("expired"),

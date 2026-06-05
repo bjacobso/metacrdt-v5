@@ -16,26 +16,63 @@ const STATUS_KIND: Record<string, string> = {
   cancelled: "kind-tombstone",
 };
 
+const I9_FIELDS = [
+  { name: "ssn", label: "SSN", type: "string" as const, required: true },
+  {
+    name: "citizenship",
+    label: "Citizenship",
+    type: "select" as const,
+    options: ["citizen", "permanent_resident", "authorized_alien"],
+    required: true,
+  },
+];
+
 export default function Flows() {
   const [subject, setSubject] = useState("worker:maria");
   const flows = useQuery(api.flows.listFlows, { subject });
+  const onboarding = useQuery(api.flows.getFlowDef, { name: "onboarding" });
   const issueAll = useMutation(api.flows.issueAllOpen);
   const submitForm = useMutation(api.compliance.submitForm);
   const cancelFlow = useMutation(api.flows.cancelFlow);
+  const setupDemoFlow = useMutation(api.flows.setupDemoFlow);
+  const defineForm = useMutation(api.forms.defineForm);
+  const startFlow = useMutation(api.flows.startFlow);
+
+  async function startOnboarding() {
+    await setupDemoFlow({});
+    await defineForm({ form: "i9", title: "Form I-9", fields: I9_FIELDS });
+    await startFlow({
+      flowDefName: "onboarding",
+      subject,
+      context: { employer: "employer:acme" },
+    });
+  }
 
   return (
     <div className="flows">
       <section className="panel">
-        <h2>Collect flows</h2>
+        <h2>Flows</h2>
         <div className="row">
           <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="subject id" />
-          <button onClick={() => issueAll({ subject })}>Issue flows for open obligations</button>
+          <button onClick={() => issueAll({ subject })}>Issue collect flows for open obligations</button>
+          <button onClick={startOnboarding}>Start onboarding DAG</button>
         </div>
         <p className="hint">
-          A durable <code>collect</code> step: issue → park (<em>waiting</em>) → resume
-          when the matching submission fact arrives → complete. Reminder/escalation
-          are scheduler timer ticks (~10s/30s here). All reactive — watch runs advance live.
+          <strong>collect</strong> = issue → park (<em>waiting</em>) → resume on the
+          matching submission fact → complete. The <strong>onboarding DAG</strong>{" "}
+          chains steps: collect I-9 → branch on citizenship → (E-Verify action) →
+          notify → done. Reminders/escalations are scheduler ticks. All reactive.
         </p>
+        {onboarding && (
+          <div className="dag">
+            {onboarding.steps.map((s, i) => (
+              <span key={s.id}>
+                <span className={`dagstep dag-${s.type}`}>{s.id}<small>{s.type}</small></span>
+                {i < onboarding.steps.length - 1 ? <span className="dagarrow">→</span> : null}
+              </span>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="panel">
@@ -54,13 +91,24 @@ export default function Flows() {
                 <span className={`kind ${STATUS_KIND[f.status] ?? "kind-correction"}`}>
                   {f.status}
                 </span>
-                <code>{f.form}</code> for <strong>{shortId(f.scope)}</strong>
-                <span className="hint">· step: {f.step}</span>
-                {f.status === "waiting" && (
+                {f.flowDefName ? (
+                  <>
+                    <code>{f.flowDefName}</code>
+                    <span className="hint">
+                      · {shortId(f.subject)} · step: {f.currentStepId ?? f.step}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <code>{f.form}</code> for <strong>{shortId(f.scope ?? "")}</strong>
+                    <span className="hint">· step: {f.step}</span>
+                  </>
+                )}
+                {f.status === "waiting" && f.form && f.scope && (
                   <span className="flow-actions">
                     <button
                       className="satisfy"
-                      onClick={() => submitForm({ worker: subject, form: f.form, scope: f.scope })}
+                      onClick={() => submitForm({ worker: subject, form: f.form!, scope: f.scope! })}
                     >
                       Submit
                     </button>

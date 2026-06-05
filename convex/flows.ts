@@ -1,7 +1,15 @@
-import { mutation, query, internalMutation, MutationCtx } from "./_generated/server";
+import {
+  mutation,
+  query,
+  internalMutation,
+  internalAction,
+  MutationCtx,
+} from "./_generated/server";
 import { internal } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+import { runWhere } from "./lib/engine";
+import { assertInTx, createTransaction } from "./facts";
 
 // A minimal durable workflow runner for the compliance `collect` step:
 //   issue → park (waiting) → resume on the matching submission fact → complete,
@@ -186,13 +194,19 @@ export const resumeOnSubmission = internalMutation({
     const now = Date.now();
     for (const run of runs) {
       if (run.status !== "waiting") continue;
-      await ctx.db.patch("flowRuns", run._id, {
-        status: "completed",
-        step: "submitted",
-        updatedAt: now,
-      });
       await log(ctx, run._id, "submitted", `${args.form} submitted`);
-      await log(ctx, run._id, "completed", "obligation satisfied");
+      if (run.flowDefName) {
+        // Part of a DAG: advance to the collect step's next step.
+        await resumeToNext(ctx, run, now);
+      } else {
+        // Standalone collect (compliance): just complete.
+        await ctx.db.patch("flowRuns", run._id, {
+          status: "completed",
+          step: "submitted",
+          updatedAt: now,
+        });
+        await log(ctx, run._id, "completed", "obligation satisfied");
+      }
     }
   },
 });
@@ -249,5 +263,352 @@ export const listFlows = query({
       });
     }
     return out;
+  },
+});
+
+export const getFlowDef = query({
+  args: { name: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("flowDefs")
+      .withIndex("by_name", (q) => q.eq("name", args.name))
+      .first();
+  },
+});
+
+// === Phase 2: the general Flow DAG =========================================
+//
+// A flow definition is a named graph of typed steps. A run carries a
+// currentStepId + context; advanceFlow interprets steps in a loop, executing
+// non-parking steps (assert/notify/branch) inline and stopping at parking steps
+// (collect/wait/action), which are resumed by the event path, a timer, or an
+// action callback. `done` (or a missing next) completes the run.
+
+const stepTypeValidator = v.union(
+  v.literal("assert"),
+  v.literal("collect"),
+  v.literal("notify"),
+  v.literal("branch"),
+  v.literal("action"),
+  v.literal("wait"),
+  v.literal("done"),
+);
+
+/** Resolve a config value: "$subject", "$ctx.<key>", or a literal. */
+function resolveVal(raw: unknown, run: Doc<"flowRuns">): unknown {
+  if (typeof raw !== "string") return raw;
+  if (raw === "$subject") return run.subject;
+  if (raw.startsWith("$ctx.")) {
+    const ctxObj = (run.context ?? {}) as Record<string, unknown>;
+    return ctxObj[raw.slice("$ctx.".length)];
+  }
+  return raw;
+}
+
+/** Move a parked run to its current step's `next` and re-enter the interpreter. */
+async function resumeToNext(
+  ctx: MutationCtx,
+  run: Doc<"flowRuns">,
+  now: number,
+): Promise<void> {
+  const def = run.flowDefName
+    ? await ctx.db
+        .query("flowDefs")
+        .withIndex("by_name", (q) => q.eq("name", run.flowDefName!))
+        .first()
+    : null;
+  const step = def?.steps.find((s) => s.id === run.currentStepId);
+  const next = step?.next ?? "";
+  await ctx.db.patch("flowRuns", run._id, {
+    status: "running",
+    currentStepId: next,
+    step: next,
+    updatedAt: now,
+  });
+  await ctx.scheduler.runAfter(0, internal.flows.advanceFlow, { runId: run._id });
+}
+
+export const defineFlow = mutation({
+  args: {
+    name: v.string(),
+    title: v.optional(v.string()),
+    startStepId: v.string(),
+    steps: v.array(
+      v.object({
+        id: v.string(),
+        type: stepTypeValidator,
+        config: v.optional(v.any()),
+        next: v.optional(v.string()),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("flowDefs")
+      .withIndex("by_name", (q) => q.eq("name", args.name))
+      .first();
+    const fields = {
+      name: args.name,
+      title: args.title,
+      startStepId: args.startStepId,
+      steps: args.steps,
+    };
+    if (existing) {
+      await ctx.db.patch("flowDefs", existing._id, fields);
+      return { flowDefId: existing._id };
+    }
+    const flowDefId = await ctx.db.insert("flowDefs", {
+      ...fields,
+      createdAt: Date.now(),
+    });
+    return { flowDefId };
+  },
+});
+
+export const startFlow = mutation({
+  args: {
+    flowDefName: v.string(),
+    subject: v.string(),
+    context: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const def = await ctx.db
+      .query("flowDefs")
+      .withIndex("by_name", (q) => q.eq("name", args.flowDefName))
+      .first();
+    if (!def) throw new Error(`unknown flow: ${args.flowDefName}`);
+    const now = Date.now();
+    const runId = await ctx.db.insert("flowRuns", {
+      flowName: args.flowDefName,
+      flowDefName: args.flowDefName,
+      subject: args.subject,
+      status: "running",
+      step: def.startStepId,
+      currentStepId: def.startStepId,
+      context: args.context ?? {},
+      issuedAt: now,
+      updatedAt: now,
+    });
+    await log(ctx, runId, "started", def.title ?? args.flowDefName);
+    await ctx.scheduler.runAfter(0, internal.flows.advanceFlow, { runId });
+    return { runId };
+  },
+});
+
+/** The interpreter: execute steps until a parking step or completion. */
+export const advanceFlow = internalMutation({
+  args: { runId: v.id("flowRuns") },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get("flowRuns", args.runId);
+    if (!run || !run.flowDefName || run.status !== "running") return;
+    const def = await ctx.db
+      .query("flowDefs")
+      .withIndex("by_name", (q) => q.eq("name", run.flowDefName!))
+      .first();
+    if (!def) return;
+
+    const now = Date.now();
+    let txId: Id<"transactions"> | null = null;
+    const getTx = async () =>
+      (txId ??= await createTransaction(ctx, { reason: `flow ${def.name}`, now }));
+    let stepId = run.currentStepId ?? def.startStepId;
+
+    const complete = async (at: string) => {
+      await ctx.db.patch("flowRuns", run._id, {
+        status: "completed",
+        step: at,
+        currentStepId: at,
+        updatedAt: now,
+      });
+      await log(ctx, run._id, "completed");
+    };
+
+    for (let i = 0; i < 50; i++) {
+      const step = def.steps.find((s) => s.id === stepId);
+      if (!step || step.type === "done") {
+        await complete(stepId || "done");
+        return;
+      }
+      const cfg = (step.config ?? {}) as Record<string, unknown>;
+
+      if (step.type === "assert") {
+        const tx = await getTx();
+        const value = resolveVal(cfg.v, run);
+        await assertInTx(ctx, tx, now, {
+          e: run.subject,
+          a: String(cfg.a),
+          value,
+        });
+        await log(ctx, run._id, "assert", `${cfg.a} = ${JSON.stringify(value)}`);
+      } else if (step.type === "notify") {
+        await log(ctx, run._id, "notify", String(cfg.message ?? ""));
+      } else if (step.type === "branch") {
+        const subjectVar = String(cfg.subjectVar ?? "s");
+        const bindings = await runWhere(
+          ctx,
+          (cfg.where ?? []) as unknown[],
+          { txTime: now, validTime: now },
+          { [subjectVar]: run.subject },
+        );
+        const taken = bindings.length > 0;
+        stepId = String((taken ? cfg.ifTrue : cfg.ifFalse) ?? "");
+        await log(
+          ctx,
+          run._id,
+          "branch",
+          taken ? `true → ${stepId}` : `false → ${stepId}`,
+        );
+        if (!stepId) {
+          await complete("done");
+          return;
+        }
+        await ctx.db.patch("flowRuns", run._id, { currentStepId: stepId, step: stepId, updatedAt: now });
+        continue;
+      } else if (step.type === "collect") {
+        const scope = String(resolveVal(cfg.scope ?? `$ctx.${cfg.scopeFrom}`, run) ?? "");
+        await ctx.db.patch("flowRuns", run._id, {
+          status: "waiting",
+          step: stepId,
+          currentStepId: stepId,
+          form: String(cfg.form),
+          scope,
+          token: crypto.randomUUID(),
+          updatedAt: now,
+        });
+        await log(ctx, run._id, "issued", `collect ${cfg.form} for ${scope}`);
+        await ctx.scheduler.runAfter(DEFAULTS.reminderSeconds * 1000, internal.flows.tick, {
+          runId: run._id,
+          phase: "reminder",
+        });
+        return; // parked
+      } else if (step.type === "wait") {
+        await ctx.db.patch("flowRuns", run._id, {
+          status: "waiting",
+          step: stepId,
+          currentStepId: stepId,
+          updatedAt: now,
+        });
+        await log(ctx, run._id, "wait", `${cfg.seconds ?? 5}s`);
+        await ctx.scheduler.runAfter(Number(cfg.seconds ?? 5) * 1000, internal.flows.wake, {
+          runId: run._id,
+        });
+        return; // parked
+      } else if (step.type === "action") {
+        await ctx.db.patch("flowRuns", run._id, {
+          status: "waiting",
+          step: stepId,
+          currentStepId: stepId,
+          updatedAt: now,
+        });
+        await log(ctx, run._id, "action", String(cfg.label ?? "external action"));
+        await ctx.scheduler.runAfter(
+          Number(cfg.delaySeconds ?? 1) * 1000,
+          internal.flows.runActionStep,
+          { runId: run._id },
+        );
+        return; // parked
+      }
+
+      // Non-parking step done → advance to its `next`.
+      stepId = step.next ?? "";
+      if (!stepId) {
+        await complete("done");
+        return;
+      }
+      await ctx.db.patch("flowRuns", run._id, { currentStepId: stepId, step: stepId, updatedAt: now });
+    }
+  },
+});
+
+/** Wake a `wait` step's parked run. */
+export const wake = internalMutation({
+  args: { runId: v.id("flowRuns") },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get("flowRuns", args.runId);
+    if (!run || run.status !== "waiting") return;
+    await resumeToNext(ctx, run, Date.now());
+  },
+});
+
+/**
+ * Execute an `action` step's external work, then resume. This is the
+ * external-boundary step: it runs as an action (could `fetch` a vendor like
+ * E-Verify); here it's mocked — it records a result fact and advances.
+ */
+export const runActionStep = internalAction({
+  args: { runId: v.id("flowRuns") },
+  handler: async (ctx, args): Promise<void> => {
+    // A real integration would `fetch(...)` here. Mocked for the demo.
+    await ctx.runMutation(internal.flows.resumeAction, { runId: args.runId });
+  },
+});
+
+export const resumeAction = internalMutation({
+  args: { runId: v.id("flowRuns") },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get("flowRuns", args.runId);
+    if (!run || run.status !== "waiting" || !run.flowDefName) return;
+    const def = await ctx.db
+      .query("flowDefs")
+      .withIndex("by_name", (q) => q.eq("name", run.flowDefName!))
+      .first();
+    const step = def?.steps.find((s) => s.id === run.currentStepId);
+    const now = Date.now();
+    const cfg = (step?.config ?? {}) as Record<string, unknown>;
+    if (cfg.resultAttr) {
+      const txId = await createTransaction(ctx, { reason: "action result", now });
+      await assertInTx(ctx, txId, now, {
+        e: run.subject,
+        a: String(cfg.resultAttr),
+        value: cfg.resultValue,
+      });
+      await log(ctx, run._id, "result", `${cfg.resultAttr} = ${JSON.stringify(cfg.resultValue)}`);
+    }
+    await resumeToNext(ctx, run, now);
+  },
+});
+
+/** Install the demo onboarding flow: collect I-9 → branch → E-Verify → welcome. */
+export const setupDemoFlow = mutation({
+  args: {},
+  handler: async (ctx): Promise<{ flowDefId: Id<"flowDefs"> }> => {
+    return await ctx.runMutation(internal.flows.defineOnboarding, {});
+  },
+});
+
+export const defineOnboarding = internalMutation({
+  args: {},
+  handler: async (ctx): Promise<{ flowDefId: Id<"flowDefs"> }> => {
+    const existing = await ctx.db
+      .query("flowDefs")
+      .withIndex("by_name", (q) => q.eq("name", "onboarding"))
+      .first();
+    const steps = [
+      { id: "i9", type: "collect" as const, config: { form: "i9", scopeFrom: "employer" }, next: "branch" },
+      {
+        id: "branch",
+        type: "branch" as const,
+        config: {
+          where: [["?s", "i9/citizenship", "authorized_alien"]],
+          ifTrue: "everify",
+          ifFalse: "welcome",
+        },
+      },
+      {
+        id: "everify",
+        type: "action" as const,
+        config: { label: "E-Verify check", resultAttr: "everify.status", resultValue: "verified" },
+        next: "welcome",
+      },
+      { id: "welcome", type: "notify" as const, config: { message: "Welcome aboard!" }, next: "done" },
+      { id: "done", type: "done" as const },
+    ];
+    const fields = { name: "onboarding", title: "Worker onboarding", startStepId: "i9", steps };
+    if (existing) {
+      await ctx.db.patch("flowDefs", existing._id, fields);
+      return { flowDefId: existing._id };
+    }
+    const flowDefId = await ctx.db.insert("flowDefs", { ...fields, createdAt: Date.now() });
+    return { flowDefId };
   },
 });
