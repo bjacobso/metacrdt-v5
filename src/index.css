@@ -228,6 +228,41 @@ button.ghost {
   margin: 0.15rem 0;
 }
 
+.collect-link {
+  margin-top: 0.4rem;
+  font-size: 0.82rem;
+}
+
+.collect-shell {
+  max-width: 480px;
+  margin: 4rem auto;
+  padding: 0 1rem;
+}
+
+.collect-card h2 {
+  margin-top: 0;
+}
+
+.collect-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.collect-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.collect-form .field input[type="checkbox"] {
+  align-self: flex-start;
+  width: auto;
+}
+
 .kind-assert { background: #dff5e3; color: #1d6b34; }
 .kind-retract { background: #fdeccd; color: #8a5a14; }
 .kind-tombstone { background: #fbdada; color: #9a2020; }

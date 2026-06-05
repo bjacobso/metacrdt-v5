@@ -70,6 +70,14 @@ export default function Flows() {
                   </span>
                 )}
               </div>
+              {f.status === "waiting" && f.token && (
+                <div className="collect-link">
+                  <span className="hint">collection link:</span>{" "}
+                  <a href={`/collect?token=${f.token}`} target="_blank" rel="noreferrer">
+                    /collect?token={f.token.slice(0, 8)}…
+                  </a>
+                </div>
+              )}
               <ol className="flowtimeline">
                 {[...f.events].reverse().map((e, i) => (
                   <li key={i}>

@@ -196,10 +196,43 @@ export default defineSchema({
     reminderSeconds: v.optional(v.number()),
     escalateSeconds: v.optional(v.number()),
     expireSeconds: v.optional(v.number()),
+    // Magic-link token for the isolated collection page.
+    token: v.optional(v.string()),
+    // Collected field values / flow variables.
+    context: v.optional(v.any()),
+    // Phase 2 (general DAG): which flow definition + current step.
+    flowDefName: v.optional(v.string()),
+    currentStepId: v.optional(v.string()),
   })
     .index("by_subject", ["subject"])
     .index("by_target", ["subject", "form", "scope"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_token", ["token"]),
+
+  // Flow definitions (general DAG): a named graph of typed steps. Low-churn
+  // config; steps is a small bounded array.
+  flowDefs: defineTable({
+    name: v.string(),
+    title: v.optional(v.string()),
+    startStepId: v.string(),
+    steps: v.array(
+      v.object({
+        id: v.string(),
+        type: v.union(
+          v.literal("assert"),
+          v.literal("collect"),
+          v.literal("notify"),
+          v.literal("branch"),
+          v.literal("action"),
+          v.literal("wait"),
+          v.literal("done"),
+        ),
+        config: v.optional(v.any()),
+        next: v.optional(v.string()),
+      }),
+    ),
+    createdAt: v.number(),
+  }).index("by_name", ["name"]),
 
   // Append-only step log per flow run (issued / reminder / escalated /
   // submitted / completed / expired / cancelled).

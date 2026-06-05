@@ -15,6 +15,7 @@ import type * as datalog from "../datalog.js";
 import type * as entities from "../entities.js";
 import type * as facts from "../facts.js";
 import type * as flows from "../flows.js";
+import type * as forms from "../forms.js";
 import type * as http from "../http.js";
 import type * as lib_engine from "../lib/engine.js";
 import type * as lib_meta from "../lib/meta.js";
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   entities: typeof entities;
   facts: typeof facts;
   flows: typeof flows;
+  forms: typeof forms;
   http: typeof http;
   "lib/engine": typeof lib_engine;
   "lib/meta": typeof lib_meta;

@@ -6,6 +6,7 @@ import EntitiesBrowser from "./EntitiesBrowser";
 import TimeTravel from "./TimeTravel";
 import Compliance from "./Compliance";
 import Flows from "./Flows";
+import CollectPage from "./CollectPage";
 
 // Coerce a string from the value input into a Convex value: JSON if it parses
 // (numbers, booleans, null, objects), otherwise the raw string.
@@ -180,6 +181,11 @@ export default function App() {
   const [tab, setTab] = useState<
     "entities" | "compliance" | "flows" | "timetravel" | "explorer"
   >("entities");
+
+  // Isolated magic-link collection page — no admin chrome.
+  if (window.location.pathname === "/collect") {
+    return <CollectPage />;
+  }
 
   return (
     <main>

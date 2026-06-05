@@ -57,6 +57,7 @@ export const startCollect = mutation({
       reminderSeconds,
       escalateSeconds,
       expireSeconds: args.expireSeconds,
+      token: crypto.randomUUID(),
     });
     await log(ctx, runId, "issued", `collect ${args.form} for ${args.scope}`);
 
@@ -127,6 +128,7 @@ export const startCollectInternal = internalMutation({
       updatedAt: now,
       reminderSeconds: DEFAULTS.reminderSeconds,
       escalateSeconds: DEFAULTS.escalateSeconds,
+      token: crypto.randomUUID(),
     });
     await log(ctx, runId, "issued", `collect ${args.form} for ${args.scope}`);
     await ctx.scheduler.runAfter(DEFAULTS.reminderSeconds * 1000, internal.flows.tick, {
@@ -240,6 +242,9 @@ export const listFlows = query({
         step: run.step,
         issuedAt: run.issuedAt,
         updatedAt: run.updatedAt,
+        token: run.token,
+        flowDefName: run.flowDefName,
+        currentStepId: run.currentStepId,
         events: events.map((e) => ({ ts: e.ts, kind: e.kind, message: e.message })),
       });
     }
