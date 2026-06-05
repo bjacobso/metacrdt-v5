@@ -32,6 +32,14 @@ export function attrNameOf(e: string): string {
   return e.slice(META.attrPrefix.length);
 }
 
+export function isTypeId(e: string): boolean {
+  return e.startsWith(META.typePrefix);
+}
+
+export function typeNameOf(e: string): string {
+  return e.slice(META.typePrefix.length);
+}
+
 // The meta-attributes (predicates used to describe schema). Their cardinality
 // is hardcoded so that asserting schema facts works before any schema exists —
 // without this, looking up the cardinality of "cardinality" would recurse.
@@ -47,6 +55,12 @@ export const BUILTIN_CARDINALITY: Record<string, "one" | "many"> = {
   inverseAttribute: "one",
   description: "one",
   hasAttribute: "many",
+  // Action-definition predicates (schema-as-facts in convex/actions.ts) — single
+  // valued so redefining an action (e.g. on an applyConfig rerun) supersedes
+  // rather than accumulates.
+  appliesTo: "one",
+  asserts: "one",
+  label: "one",
 };
 
 /** The meta-attributes themselves, for self-description / bootstrap. */

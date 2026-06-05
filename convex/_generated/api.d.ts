@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as actions from "../actions.js";
+import type * as appconfig from "../appconfig.js";
 import type * as attributes from "../attributes.js";
 import type * as compliance from "../compliance.js";
 import type * as crons from "../crons.js";
@@ -19,11 +21,13 @@ import type * as forms from "../forms.js";
 import type * as http from "../http.js";
 import type * as lib_engine from "../lib/engine.js";
 import type * as lib_meta from "../lib/meta.js";
+import type * as lib_origin from "../lib/origin.js";
 import type * as lib_visibility from "../lib/visibility.js";
 import type * as materialize from "../materialize.js";
 import type * as rebuild from "../rebuild.js";
 import type * as rules from "../rules.js";
 import type * as staticHosting from "../staticHosting.js";
+import type * as system from "../system.js";
 
 import type {
   ApiFromModules,
@@ -32,6 +36,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  actions: typeof actions;
+  appconfig: typeof appconfig;
   attributes: typeof attributes;
   compliance: typeof compliance;
   crons: typeof crons;
@@ -43,11 +49,13 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "lib/engine": typeof lib_engine;
   "lib/meta": typeof lib_meta;
+  "lib/origin": typeof lib_origin;
   "lib/visibility": typeof lib_visibility;
   materialize: typeof materialize;
   rebuild: typeof rebuild;
   rules: typeof rules;
   staticHosting: typeof staticHosting;
+  system: typeof system;
 }>;
 
 /**

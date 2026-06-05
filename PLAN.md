@@ -102,6 +102,35 @@ Grouped by theme; ordering within a group is rough priority.
 - [ ] Batched/self-continuing materialization for large rules
 - [ ] DB-cursor pagination for `queryEntities` (stop re-running per page)
 
+### Product shell / config-as-code (shipped)
+
+- [x] **Origin facet** (`convex/lib/origin.ts`): every entity/type/flow is `system`
+  (intrinsic machinery), `configured` (tenant-declared), or `data` (runtime) —
+  read off id prefix + type, not a side table
+- [x] **Configured-type registry**: `listEntityTypes` unions data-discovered types
+  with declared `type:<Name>` entities (so a configured type shows at zero count)
+- [x] `listEntities` origin filter (`data` | `system` | `all`) — hides schema/form/
+  action carriers from the user-facing data browser
+- [x] **`entityDetail`** — the SaaS object page in one query: state + applicable
+  flows (by `subjectType`) + applicable actions (by `appliesTo`) + obligations +
+  flow runs, all computed from type + config (no per-entity wiring)
+- [x] **Actions** (`convex/actions.ts`): `defineAction`/`runAction`/`actionsForType`
+  — the synchronous one-transaction cousin of a flow, declared per type as facts
+- [x] **Flows tagged** with `subjectType` + `origin`; `flowsForType`
+- [x] **System processes** read model (`convex/system.ts`): the reconciler / rule
+  materializer / closure materializer / flow resumer surfaced read-only with live
+  counts (intrinsic, not tenant-authored)
+- [x] **Config-as-code** (`convex/appconfig.ts`): `applyConfig` lowers one literal
+  (types, attributes, forms, flows, requirements, actions) into schema-facts +
+  flow defs + compliance rules + action defs, idempotently, stamped `actor=config`;
+  `STAFFING_BLUEPRINT` + `setupStaffing` replace the scattered imperative bootstrap
+- [x] **SaaS IA**: Data (types grouped user-vs-system) · Workflows · Compliance ·
+  Time travel · System; entity detail page with contextual flows/actions; engine
+  explorer demoted under System (advanced). Verified live on `chatty-hare-94`.
+- [ ] `applyConfig` true reconcile (retract config facts dropped from the literal)
+- [ ] Action steps that take args / open a form (currently fixed `asserts`)
+- [ ] Config history/diff UI (every `applyConfig` is already a transaction)
+
 ### Operational / product
 
 - [ ] **Auth + write authorization** (live site currently accepts public writes)

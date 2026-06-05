@@ -2,10 +2,30 @@ import { query } from "./_generated/server";
 import { QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { COMPARISON_OPS, project, runWhere } from "./lib/engine";
+import { META, typeNameOf } from "./lib/meta";
+import { Origin, entityOrigin, isSystemEntity, typeOrigin } from "./lib/origin";
 
 // The attribute that designates an entity's type (the "table" it belongs to).
 const TYPE_ATTR = "type";
 const SAMPLE = 1000;
+
+/** The set of formally-declared type names (type:<Name> registry entities). */
+async function configuredTypeNames(ctx: QueryCtx): Promise<Set<string>> {
+  const regs = await ctx.db
+    .query("currentFacts")
+    .withIndex("by_a_v", (q) => q.eq("a", TYPE_ATTR).eq("v", META.entityType))
+    .take(SAMPLE);
+  return new Set(regs.map((r) => typeNameOf(r.e)));
+}
+
+/** All `type` values currently asserted on an entity. */
+async function typesOf(ctx: QueryCtx, e: string): Promise<string[]> {
+  const rows = await ctx.db
+    .query("currentFacts")
+    .withIndex("by_e_a", (q) => q.eq("e", e).eq("a", TYPE_ATTR))
+    .collect();
+  return rows.map((r) => String(r.v));
+}
 
 function coerce(raw: string): unknown {
   const t = raw.trim();
@@ -43,7 +63,12 @@ async function loadAttributes(
   return attrs;
 }
 
-/** Distinct entity types (values of the `type` attribute) with counts. */
+/**
+ * Distinct entity types with counts and an `origin` facet. The set is the union
+ * of types discovered in data and types formally declared in the registry
+ * (so a configured type shows even with zero instances). System meta-types are
+ * tagged "system" so the UI can tuck them behind a "show system" affordance.
+ */
 export const listEntityTypes = query({
   args: {},
   handler: async (ctx) => {
@@ -56,17 +81,37 @@ export const listEntityTypes = query({
       const t = String(r.v);
       counts.set(t, (counts.get(t) ?? 0) + 1);
     }
+
+    const configured = await configuredTypeNames(ctx);
+    // Include declared-but-empty configured types.
+    for (const name of configured) if (!counts.has(name)) counts.set(name, 0);
+
     return [...counts.entries()]
-      .map(([type, count]) => ({ type, count }))
+      .map(([type, count]) => ({
+        type,
+        count,
+        origin: typeOrigin(type, configured.has(type)),
+      }))
       .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type));
   },
 });
 
-/** Entity options for a picker: ids (+ name label) of a type, or across all types. */
+/**
+ * Entity options for a picker / list: ids (+ name label) of a type, or across
+ * all types, each tagged with `origin`. `origin: "data"` (the default) hides
+ * system machinery; pass "system" for the schema/form/action carriers, or "all".
+ */
 export const listEntities = query({
-  args: { type: v.optional(v.string()), limit: v.optional(v.number()) },
+  args: {
+    type: v.optional(v.string()),
+    limit: v.optional(v.number()),
+    origin: v.optional(
+      v.union(v.literal("data"), v.literal("system"), v.literal("all")),
+    ),
+  },
   handler: async (ctx, args) => {
     const cap = Math.min(args.limit ?? 500, 1000);
+    const want = args.origin ?? "all";
     const typeRows = args.type
       ? await ctx.db
           .query("currentFacts")
@@ -78,10 +123,13 @@ export const listEntities = query({
           .take(cap);
 
     const seen = new Set<string>();
-    const out: { id: string; name?: string; type: string }[] = [];
+    const out: { id: string; name?: string; type: string; origin: Origin }[] = [];
     for (const r of typeRows) {
       if (seen.has(r.e)) continue;
       seen.add(r.e);
+      const sys = isSystemEntity(r.e, [String(r.v)]);
+      if (want === "data" && sys) continue;
+      if (want === "system" && !sys) continue;
       const nameRow = await ctx.db
         .query("currentFacts")
         .withIndex("by_e_a", (q) => q.eq("e", r.e).eq("a", "name"))
@@ -90,10 +138,111 @@ export const listEntities = query({
         id: r.e,
         name: nameRow ? String(nameRow.v) : undefined,
         type: String(r.v),
+        origin: sys ? "system" : "data",
       });
     }
     out.sort((a, b) => a.id.localeCompare(b.id));
     return out;
+  },
+});
+
+/**
+ * The full picture for one entity — the SaaS detail page in a single query:
+ *   - current state (attribute map) + types/origin
+ *   - flows runnable on it (flowDefs whose subjectType matches a type)
+ *   - actions runnable on it (action:<name> defs whose appliesTo matches a type)
+ *   - its flow runs (recent), and
+ *   - its open obligations (requires./task. derived facts).
+ * Everything is computed from type + config — nothing per-entity is hand-wired.
+ */
+export const entityDetail = query({
+  args: { e: v.string() },
+  handler: async (ctx, args) => {
+    const e = args.e;
+    const attributes = await loadAttributes(ctx, e);
+    const types = (attributes[TYPE_ATTR] ?? []).map(String);
+    const origin = entityOrigin(e, types);
+    const name = (attributes["name"] ?? [])[0];
+
+    // Flows runnable on this entity (subjectType ∈ its types).
+    const allDefs = await ctx.db.query("flowDefs").take(50);
+    const flows = allDefs
+      .filter((d) => d.subjectType && types.includes(d.subjectType))
+      .map((d) => ({
+        name: d.name,
+        title: d.title,
+        steps: d.steps.map((s) => ({ id: s.id, type: s.type })),
+      }));
+
+    // Actions runnable on this entity (appliesTo ∈ its types).
+    const actionDefs = await ctx.db
+      .query("currentFacts")
+      .withIndex("by_a_v", (q) => q.eq("a", TYPE_ATTR).eq("v", "Action"))
+      .take(200);
+    const actions: {
+      name: string;
+      label?: string;
+      asserts: Record<string, unknown>;
+    }[] = [];
+    for (const ad of actionDefs) {
+      const rows = await ctx.db
+        .query("currentFacts")
+        .withIndex("by_e", (q) => q.eq("e", ad.e))
+        .collect();
+      const m: Record<string, unknown[]> = {};
+      for (const r of rows) (m[r.a] ??= []).push(r.v);
+      const appliesTo = (m["appliesTo"] ?? []).map(String);
+      if (!appliesTo.some((t) => types.includes(t))) continue;
+      actions.push({
+        name: ad.e.slice("action:".length),
+        label: m["label"]?.[0] ? String(m["label"][0]) : undefined,
+        asserts: (m["asserts"]?.[0] ?? {}) as Record<string, unknown>,
+      });
+    }
+
+    // This entity's flow runs (most recent first).
+    const runDocs = await ctx.db
+      .query("flowRuns")
+      .withIndex("by_subject", (q) => q.eq("subject", e))
+      .order("desc")
+      .take(20);
+    const runs = runDocs.map((r) => ({
+      _id: r._id,
+      flowDefName: r.flowDefName ?? r.flowName,
+      status: r.status,
+      step: r.currentStepId ?? r.step,
+      form: r.form,
+      scope: r.scope,
+      token: r.token,
+      updatedAt: r.updatedAt,
+    }));
+
+    // Open obligations (derived requires./task. facts).
+    const derived = (
+      await ctx.db
+        .query("derivedFacts")
+        .withIndex("by_e", (q) => q.eq("e", e))
+        .take(500)
+    ).filter((d) => !d.stale);
+    const obligations = derived
+      .filter((d) => d.a.startsWith("requires.") || d.a.startsWith("task."))
+      .map((d) => ({
+        form: d.a.replace(/^(requires|task)\./, ""),
+        scope: String(d.v),
+        open: d.a.startsWith("task."),
+      }));
+
+    return {
+      id: e,
+      name: name !== undefined ? String(name) : undefined,
+      types,
+      origin,
+      attributes,
+      flows,
+      actions,
+      runs,
+      obligations,
+    };
   },
 });
 

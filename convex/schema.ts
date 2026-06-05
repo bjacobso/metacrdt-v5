@@ -217,6 +217,11 @@ export default defineSchema({
   flowDefs: defineTable({
     name: v.string(),
     title: v.optional(v.string()),
+    // The entity type this flow runs on (e.g. "Worker"). Drives the
+    // "available flows" section on an entity's detail page.
+    subjectType: v.optional(v.string()),
+    // Provenance facet: "configured" (tenant-defined) vs "system" (intrinsic).
+    origin: v.optional(v.union(v.literal("configured"), v.literal("system"))),
     startStepId: v.string(),
     steps: v.array(
       v.object({

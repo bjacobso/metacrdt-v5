@@ -276,11 +276,36 @@ export const getFlowDef = query({
   },
 });
 
-/** All flow definitions (for listing / starting). */
+/** All flow definitions (for listing / starting), origin-tagged. */
 export const listFlowDefs = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("flowDefs").take(50);
+    const defs = await ctx.db.query("flowDefs").take(50);
+    return defs.map((d) => ({
+      _id: d._id,
+      name: d.name,
+      title: d.title,
+      subjectType: d.subjectType,
+      origin: d.origin ?? ("configured" as const),
+      startStepId: d.startStepId,
+      steps: d.steps,
+    }));
+  },
+});
+
+/** Flow definitions runnable on a given entity type (by subjectType). */
+export const flowsForType = query({
+  args: { type: v.string() },
+  handler: async (ctx, args) => {
+    const defs = await ctx.db.query("flowDefs").take(50);
+    return defs
+      .filter((d) => d.subjectType === args.type)
+      .map((d) => ({
+        _id: d._id,
+        name: d.name,
+        title: d.title,
+        steps: d.steps.map((s) => ({ id: s.id, type: s.type })),
+      }));
   },
 });
 
@@ -340,6 +365,7 @@ export const defineFlow = mutation({
   args: {
     name: v.string(),
     title: v.optional(v.string()),
+    subjectType: v.optional(v.string()),
     startStepId: v.string(),
     steps: v.array(
       v.object({
@@ -358,6 +384,8 @@ export const defineFlow = mutation({
     const fields = {
       name: args.name,
       title: args.title,
+      subjectType: args.subjectType,
+      origin: "configured" as const,
       startStepId: args.startStepId,
       steps: args.steps,
     };
@@ -611,7 +639,14 @@ export const defineOnboarding = internalMutation({
       { id: "welcome", type: "notify" as const, config: { message: "Welcome aboard!" }, next: "done" },
       { id: "done", type: "done" as const },
     ];
-    const fields = { name: "onboarding", title: "Worker onboarding", startStepId: "i9", steps };
+    const fields = {
+      name: "onboarding",
+      title: "Worker onboarding",
+      subjectType: "Worker",
+      origin: "configured" as const,
+      startStepId: "i9",
+      steps,
+    };
     if (existing) {
       await ctx.db.patch("flowDefs", existing._id, fields);
       return { flowDefId: existing._id };

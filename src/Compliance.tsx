@@ -11,15 +11,13 @@ export default function Compliance() {
   const [worker, setWorker] = useState("worker:maria");
   const [busy, setBusy] = useState(false);
   const compliance = useQuery(api.compliance.workerCompliance, { worker });
-  const setupRules = useMutation(api.compliance.setupComplianceRules);
-  const seed = useMutation(api.compliance.seedStaffingDemo);
+  const setupStaffing = useMutation(api.appconfig.setupStaffing);
   const submitForm = useMutation(api.compliance.submitForm);
 
   async function bootstrap() {
     setBusy(true);
     try {
-      await setupRules({});
-      await seed({});
+      await setupStaffing({});
     } finally {
       setBusy(false);
     }

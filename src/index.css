@@ -421,3 +421,81 @@ pre.error {
   align-items: center;
   gap: 0.75rem;
 }
+
+/* --- SaaS shell: chips, cards, detail page, system view (steps 1–4) --- */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+.chip {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: #ececf5;
+  color: #44309a;
+  border: 1px solid #ddddf0;
+  font-variant: small-caps;
+}
+.chip.origin-data { background: #dff5e3; color: #1d6b34; border-color: #b9e3c4; }
+.chip.origin-configured { background: #e2e0fb; color: #44309a; border-color: #c9c5f0; }
+.chip.origin-system { background: #f0f0f4; color: #555; border-color: #e0e0e8; }
+.chip.linkchip { cursor: pointer; }
+.chip.linkchip:hover { background: #5b5bd6; color: #fff; }
+
+.type .tag {
+  font-size: 0.6rem;
+  margin-left: 0.3rem;
+  padding: 0 0.3rem;
+  border-radius: 4px;
+  background: #e2e0fb;
+  color: #44309a;
+}
+.syshead { margin-top: 1rem; }
+.disclosure {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+.detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.detail-head h2 { margin: 0; }
+
+.cards { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.actioncard {
+  border: 1px solid #e3e3ee;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 260px;
+  flex: 1 1 260px;
+}
+.actioncard-title { display: flex; flex-direction: column; gap: 0.2rem; }
+
+tr.rowlink { cursor: pointer; }
+tr.rowlink:hover td { background: #f4f4fb; }
+.open-arrow { opacity: 0.4; }
+
+.proccard {
+  border: 1px solid #e3e3ee;
+  border-radius: 8px;
+  padding: 0.7rem 0.85rem;
+  flex: 1 1 320px;
+  min-width: 320px;
+}
+.statrow { display: flex; gap: 1.2rem; margin-top: 0.5rem; }
+.stat { font-size: 0.85rem; color: #555; }
+.stat strong { color: #1a1a2e; font-variant-numeric: tabular-nums; }

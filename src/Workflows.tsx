@@ -18,17 +18,6 @@ const STATUS_KIND: Record<string, string> = {
   cancelled: "kind-tombstone",
 };
 
-const I9_FIELDS = [
-  { name: "ssn", label: "SSN", type: "string" as const, required: true },
-  {
-    name: "citizenship",
-    label: "Citizenship",
-    type: "select" as const,
-    options: ["citizen", "permanent_resident", "authorized_alien"],
-    required: true,
-  },
-];
-
 function StepGraph({ steps }: { steps: { id: string; type: string }[] }) {
   return (
     <div className="dag">
@@ -45,57 +34,74 @@ function StepGraph({ steps }: { steps: { id: string; type: string }[] }) {
   );
 }
 
-export default function Flows() {
+/**
+ * Configured (tenant-authored) flow definitions and their runs. Intrinsic
+ * reactive processes (the reconciler etc.) live on the System tab — this is the
+ * user-defined side only.
+ */
+export default function Workflows() {
   const [subject, setSubject] = useState("worker:maria");
-  const [filter, setFilter] = useState(""); // empty = all subjects
+  const [filter, setFilter] = useState("");
   const flows = useQuery(api.flows.listFlows, filter ? { subject: filter } : {});
   const defs = useQuery(api.flows.listFlowDefs, {});
 
   const issueAll = useMutation(api.flows.issueAllOpen);
   const submitForm = useMutation(api.compliance.submitForm);
   const cancelFlow = useMutation(api.flows.cancelFlow);
-  const setupDemoFlow = useMutation(api.flows.setupDemoFlow);
-  const defineForm = useMutation(api.forms.defineForm);
   const startFlow = useMutation(api.flows.startFlow);
-
-  async function startOnboarding() {
-    await setupDemoFlow({});
-    await defineForm({ form: "i9", title: "Form I-9", fields: I9_FIELDS });
-    await startFlow({
-      flowDefName: "onboarding",
-      subject,
-      context: { employer: "employer:acme" },
-    });
-  }
+  const setupStaffing = useMutation(api.appconfig.setupStaffing);
+  const [busy, setBusy] = useState(false);
 
   return (
     <div className="flows">
       <section className="panel">
-        <h2>Start a flow</h2>
+        <h2>Start work</h2>
         <div className="row">
           <EntityPicker type="Worker" value={subject} onChange={setSubject} placeholder="subject (worker)" />
-          <button onClick={() => issueAll({ subject })}>Issue collect flows for open obligations</button>
-          <button onClick={startOnboarding}>Start onboarding DAG</button>
+          <button onClick={() => issueAll({ subject })}>
+            Issue collect flows for open obligations
+          </button>
+          <button
+            className="ghost"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await setupStaffing({});
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? "…" : "Install staffing blueprint"}
+          </button>
         </div>
         <p className="hint">
-          <strong>collect</strong> = issue → park (<em>waiting</em>) → resume on the
-          matching submission fact → complete. A <strong>DAG</strong> chains steps;
-          parking steps resume via the event path, scheduler ticks, or an action callback.
+          A <strong>collect</strong> flow issues → parks (<em>waiting</em>) →
+          resumes on the matching submission fact → completes. A <strong>DAG</strong>{" "}
+          chains typed steps; parking steps resume via the event path, scheduler
+          ticks, or an action callback.
         </p>
       </section>
 
       <section className="panel">
-        <h2>Flow definitions <span className="hint">{defs ? `(${defs.length})` : ""}</span></h2>
+        <h2>
+          Flow definitions <span className="hint">{defs ? `(${defs.length})` : ""}</span>
+        </h2>
         {defs === undefined ? (
           <p className="hint">Loading…</p>
         ) : defs.length === 0 ? (
-          <p className="hint">None yet — click “Start onboarding DAG” to install one.</p>
+          <p className="hint">
+            None yet — click “Install staffing blueprint” to define some via config-as-code.
+          </p>
         ) : (
           defs.map((d) => (
             <div key={d._id} className="derived">
               <div className="derived-head">
                 <code>{d.name}</code>
                 {d.title ? <span className="hint"> · {d.title}</span> : null}
+                {d.subjectType && <span className="chip">{d.subjectType}</span>}
+                <span className={`chip origin-${d.origin}`}>{d.origin}</span>
                 <button
                   className="satisfy"
                   onClick={() =>
@@ -122,7 +128,11 @@ export default function Flows() {
         </div>
         <div className="row">
           <EntityPicker value={filter} onChange={setFilter} placeholder="filter by subject (blank = all)" />
-          {filter && <button className="ghost" onClick={() => setFilter("")}>Show all</button>}
+          {filter && (
+            <button className="ghost" onClick={() => setFilter("")}>
+              Show all
+            </button>
+          )}
         </div>
         {flows === undefined ? (
           <p className="hint">Loading…</p>
