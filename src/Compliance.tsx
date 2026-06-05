@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
+import EntityPicker from "./EntityPicker";
 
 function shortId(s: string): string {
   return s.includes(":") ? s.split(":")[1] : s;
@@ -29,7 +30,7 @@ export default function Compliance() {
       <section className="panel">
         <h2>Worker compliance</h2>
         <div className="row">
-          <input value={worker} onChange={(e) => setWorker(e.target.value)} placeholder="worker id" />
+          <EntityPicker type="Worker" value={worker} onChange={setWorker} placeholder="worker id" />
           <button onClick={bootstrap} disabled={busy}>
             {busy ? "…" : "Seed demo + rules"}
           </button>

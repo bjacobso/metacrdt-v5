@@ -7,6 +7,7 @@ import TimeTravel from "./TimeTravel";
 import Compliance from "./Compliance";
 import Flows from "./Flows";
 import CollectPage from "./CollectPage";
+import EntityPicker from "./EntityPicker";
 
 // Coerce a string from the value input into a Convex value: JSON if it parses
 // (numbers, booleans, null, objects), otherwise the raw string.
@@ -41,7 +42,7 @@ function AssertPanel() {
     <section className="panel">
       <h2>Assert a fact</h2>
       <form onSubmit={onSubmit} className="row">
-        <input value={e} onChange={(x) => setE(x.target.value)} placeholder="entity" />
+        <EntityPicker value={e} onChange={setE} placeholder="entity" />
         <input value={a} onChange={(x) => setA(x.target.value)} placeholder="attribute" />
         <input value={value} onChange={(x) => setValue(x.target.value)} placeholder="value (JSON or text)" />
         <button disabled={busy} type="submit">{busy ? "…" : "Assert"}</button>
@@ -59,7 +60,7 @@ function EntityPanel() {
     <section className="panel">
       <h2>Entity (live)</h2>
       <div className="row">
-        <input value={e} onChange={(x) => setE(x.target.value)} placeholder="entity id" />
+        <EntityPicker value={e} onChange={setE} placeholder="entity id" />
       </div>
       {entity === undefined ? (
         <p className="hint">Loading…</p>
@@ -139,7 +140,7 @@ function ProvenancePanel() {
     <section className="panel">
       <h2>Derived facts & provenance</h2>
       <div className="row">
-        <input value={e} onChange={(x) => setE(x.target.value)} placeholder="entity id" />
+        <EntityPicker value={e} onChange={setE} placeholder="entity id" />
       </div>
       {explained === undefined ? (
         <p className="hint">Loading…</p>

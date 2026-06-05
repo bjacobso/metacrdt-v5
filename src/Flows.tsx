@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
+import EntityPicker from "./EntityPicker";
 
 function shortId(s: string): string {
   return s.includes(":") ? s.split(":")[1] : s;
@@ -10,6 +11,7 @@ function fmt(ms: number): string {
 }
 
 const STATUS_KIND: Record<string, string> = {
+  running: "kind-correction",
   waiting: "kind-retract",
   completed: "kind-assert",
   expired: "kind-tombstone",
@@ -27,10 +29,28 @@ const I9_FIELDS = [
   },
 ];
 
+function StepGraph({ steps }: { steps: { id: string; type: string }[] }) {
+  return (
+    <div className="dag">
+      {steps.map((s, i) => (
+        <span key={s.id}>
+          <span className={`dagstep dag-${s.type}`}>
+            {s.id}
+            <small>{s.type}</small>
+          </span>
+          {i < steps.length - 1 ? <span className="dagarrow">→</span> : null}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export default function Flows() {
   const [subject, setSubject] = useState("worker:maria");
-  const flows = useQuery(api.flows.listFlows, { subject });
-  const onboarding = useQuery(api.flows.getFlowDef, { name: "onboarding" });
+  const [filter, setFilter] = useState(""); // empty = all subjects
+  const flows = useQuery(api.flows.listFlows, filter ? { subject: filter } : {});
+  const defs = useQuery(api.flows.listFlowDefs, {});
+
   const issueAll = useMutation(api.flows.issueAllOpen);
   const submitForm = useMutation(api.compliance.submitForm);
   const cancelFlow = useMutation(api.flows.cancelFlow);
@@ -51,27 +71,47 @@ export default function Flows() {
   return (
     <div className="flows">
       <section className="panel">
-        <h2>Flows</h2>
+        <h2>Start a flow</h2>
         <div className="row">
-          <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="subject id" />
+          <EntityPicker type="Worker" value={subject} onChange={setSubject} placeholder="subject (worker)" />
           <button onClick={() => issueAll({ subject })}>Issue collect flows for open obligations</button>
           <button onClick={startOnboarding}>Start onboarding DAG</button>
         </div>
         <p className="hint">
           <strong>collect</strong> = issue → park (<em>waiting</em>) → resume on the
-          matching submission fact → complete. The <strong>onboarding DAG</strong>{" "}
-          chains steps: collect I-9 → branch on citizenship → (E-Verify action) →
-          notify → done. Reminders/escalations are scheduler ticks. All reactive.
+          matching submission fact → complete. A <strong>DAG</strong> chains steps;
+          parking steps resume via the event path, scheduler ticks, or an action callback.
         </p>
-        {onboarding && (
-          <div className="dag">
-            {onboarding.steps.map((s, i) => (
-              <span key={s.id}>
-                <span className={`dagstep dag-${s.type}`}>{s.id}<small>{s.type}</small></span>
-                {i < onboarding.steps.length - 1 ? <span className="dagarrow">→</span> : null}
-              </span>
-            ))}
-          </div>
+      </section>
+
+      <section className="panel">
+        <h2>Flow definitions <span className="hint">{defs ? `(${defs.length})` : ""}</span></h2>
+        {defs === undefined ? (
+          <p className="hint">Loading…</p>
+        ) : defs.length === 0 ? (
+          <p className="hint">None yet — click “Start onboarding DAG” to install one.</p>
+        ) : (
+          defs.map((d) => (
+            <div key={d._id} className="derived">
+              <div className="derived-head">
+                <code>{d.name}</code>
+                {d.title ? <span className="hint"> · {d.title}</span> : null}
+                <button
+                  className="satisfy"
+                  onClick={() =>
+                    startFlow({
+                      flowDefName: d.name,
+                      subject,
+                      context: { employer: "employer:acme" },
+                    })
+                  }
+                >
+                  Start for {shortId(subject)}
+                </button>
+              </div>
+              <StepGraph steps={d.steps} />
+            </div>
+          ))
         )}
       </section>
 
@@ -80,10 +120,14 @@ export default function Flows() {
           <h2>Runs</h2>
           <span className="hint">{flows ? `${flows.length}` : "…"}</span>
         </div>
+        <div className="row">
+          <EntityPicker value={filter} onChange={setFilter} placeholder="filter by subject (blank = all)" />
+          {filter && <button className="ghost" onClick={() => setFilter("")}>Show all</button>}
+        </div>
         {flows === undefined ? (
           <p className="hint">Loading…</p>
         ) : flows.length === 0 ? (
-          <p className="hint">No flows yet — issue some above.</p>
+          <p className="hint">No flows{filter ? ` for ${shortId(filter)}` : " yet"}.</p>
         ) : (
           flows.map((f) => (
             <div key={f._id} className="derived">
@@ -91,24 +135,21 @@ export default function Flows() {
                 <span className={`kind ${STATUS_KIND[f.status] ?? "kind-correction"}`}>
                   {f.status}
                 </span>
+                <strong>{shortId(f.subject)}</strong>
                 {f.flowDefName ? (
-                  <>
-                    <code>{f.flowDefName}</code>
-                    <span className="hint">
-                      · {shortId(f.subject)} · step: {f.currentStepId ?? f.step}
-                    </span>
-                  </>
+                  <span className="hint">
+                    · <code>{f.flowDefName}</code> · step: {f.currentStepId ?? f.step}
+                  </span>
                 ) : (
-                  <>
-                    <code>{f.form}</code> for <strong>{shortId(f.scope ?? "")}</strong>
-                    <span className="hint">· step: {f.step}</span>
-                  </>
+                  <span className="hint">
+                    · <code>{f.form}</code> for {shortId(f.scope ?? "")} · step: {f.step}
+                  </span>
                 )}
                 {f.status === "waiting" && f.form && f.scope && (
                   <span className="flow-actions">
                     <button
                       className="satisfy"
-                      onClick={() => submitForm({ worker: subject, form: f.form!, scope: f.scope! })}
+                      onClick={() => submitForm({ worker: f.subject, form: f.form!, scope: f.scope! })}
                     >
                       Submit
                     </button>
@@ -130,7 +171,15 @@ export default function Flows() {
                 {[...f.events].reverse().map((e, i) => (
                   <li key={i}>
                     <span className="hint">{fmt(e.ts)}</span>{" "}
-                    <span className={`kind kind-${e.kind === "completed" || e.kind === "submitted" ? "assert" : e.kind === "expired" || e.kind === "cancelled" ? "tombstone" : "correction"}`}>
+                    <span
+                      className={`kind kind-${
+                        e.kind === "completed" || e.kind === "submitted"
+                          ? "assert"
+                          : e.kind === "expired" || e.kind === "cancelled"
+                            ? "tombstone"
+                            : "correction"
+                      }`}
+                    >
                       {e.kind}
                     </span>
                     {e.message ? <span className="hint"> {e.message}</span> : null}

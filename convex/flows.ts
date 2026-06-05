@@ -276,6 +276,14 @@ export const getFlowDef = query({
   },
 });
 
+/** All flow definitions (for listing / starting). */
+export const listFlowDefs = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("flowDefs").take(50);
+  },
+});
+
 // === Phase 2: the general Flow DAG =========================================
 //
 // A flow definition is a named graph of typed steps. A run carries a

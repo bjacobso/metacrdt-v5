@@ -62,6 +62,41 @@ export const listEntityTypes = query({
   },
 });
 
+/** Entity options for a picker: ids (+ name label) of a type, or across all types. */
+export const listEntities = query({
+  args: { type: v.optional(v.string()), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const cap = Math.min(args.limit ?? 500, 1000);
+    const typeRows = args.type
+      ? await ctx.db
+          .query("currentFacts")
+          .withIndex("by_a_v", (q) => q.eq("a", TYPE_ATTR).eq("v", args.type))
+          .take(cap)
+      : await ctx.db
+          .query("currentFacts")
+          .withIndex("by_a", (q) => q.eq("a", TYPE_ATTR))
+          .take(cap);
+
+    const seen = new Set<string>();
+    const out: { id: string; name?: string; type: string }[] = [];
+    for (const r of typeRows) {
+      if (seen.has(r.e)) continue;
+      seen.add(r.e);
+      const nameRow = await ctx.db
+        .query("currentFacts")
+        .withIndex("by_e_a", (q) => q.eq("e", r.e).eq("a", "name"))
+        .first();
+      out.push({
+        id: r.e,
+        name: nameRow ? String(nameRow.v) : undefined,
+        type: String(r.v),
+      });
+    }
+    out.sort((a, b) => a.id.localeCompare(b.id));
+    return out;
+  },
+});
+
 /** Discover the attribute columns present on entities of a given type. */
 export const typeAttributes = query({
   args: { type: v.string() },

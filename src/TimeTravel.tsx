@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
+import EntityPicker from "./EntityPicker";
 
 // datetime-local string ("YYYY-MM-DDTHH:mm") → epoch ms, or undefined if empty.
 function toMs(s: string): number | undefined {
@@ -41,7 +42,7 @@ export default function TimeTravel() {
       <section className="panel">
         <h2>Coordinate</h2>
         <div className="row">
-          <input value={e} onChange={(x) => setE(x.target.value)} placeholder="entity id" />
+          <EntityPicker value={e} onChange={setE} placeholder="entity id" />
         </div>
         <div className="coords">
           <label>
