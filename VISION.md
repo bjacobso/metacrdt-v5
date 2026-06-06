@@ -136,7 +136,10 @@ runnable on it (matched by `subjectType`), the actions (matched by `appliesTo`),
 its obligations, its runs. Add a flow definition and it appears on the right
 entities with zero UI changes — the Foundry "ontology + actions" pattern. Convex's
 reactive reads mean these generated views are live for free. *Ahead:* fully
-schema-driven forms/list views, saved views, per-type layouts.
+schema-driven forms/list views, saved views, per-type layouts — and, taken to its
+conclusion, the client itself as a pure projection of the ontology (the
+Model/Message/view stack as one replayable state machine end to end). See
+[docs/foldkit.md](./docs/foldkit.md).
 
 ### 8. Integrations — the external boundary · [reframed → ahead]
 
