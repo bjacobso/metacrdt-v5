@@ -124,7 +124,10 @@ idempotently, stamped `actor=config`. Because it lowers to facts, the declared
 shape inherits history — every `applyConfig` is a transaction, so config has
 time-travel and diff for free. The staffing demo is now a blueprint, not a pile
 of imperative setup calls. *Ahead:* true reconcile (retract dropped config),
-arg-taking actions, a config diff/history UI, and a richer authoring DSL.
+arg-taking actions, a config diff/history UI, and a richer authoring DSL — see
+[docs/confect.md](./docs/confect.md) for what the whole backend (schema, the
+config DSL, flows, the Datalog engine) looks like rebuilt on Effect + Effect
+`Schema` via the [Confect](https://github.com/rjdellecese/confect) wrapper.
 
 ### 7. Generated experience · [shipped, growing]
 
