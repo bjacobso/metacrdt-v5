@@ -1,5 +1,13 @@
 # VISION.md — one substrate, many products
 
+> **Naming & layers.** **MetaCRDT** is the umbrella — the primitive and the org.
+> The substrate is `@metacrdt/*`; the open spec is *Open Ontology* ([SPEC.md](./SPEC.md));
+> the default blueprint library is *Alpha Ontology*; the authoring/IDE layer is
+> *Schematics* (frontend *Onlang/Forma*); and *Onboarded* is the first application
+> (the datarooms/compliance vertical) built on it. The full map is
+> [docs/architecture.md](./docs/architecture.md); the founding statement is
+> [docs/manifesto.md](./docs/manifesto.md).
+
 Read alongside [README.md](./README.md) (how the engine works) and
 [PLAN.md](./PLAN.md) (the backlog and the vision-vs-Convex assessment). This
 document is the *why* and the *where it's going*.

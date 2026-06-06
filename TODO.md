@@ -15,6 +15,17 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   Durable-Object-per-group (see [foldkit.md](./docs/foldkit.md),
   [alchemy.md](./docs/alchemy.md)).
 
+**Packaging / monorepo (map, not migration — see [docs/architecture.md](./docs/architecture.md))**
+- [ ] **Extract `@metacrdt/core` first** — the pure deterministic core (events,
+  content hash, `≺`, fold, visibility; SPEC §4–5). No I/O, no `Date.now()`/
+  `Math.random()`. It's the convergence guarantee and the most reusable; everything
+  else stays in the reference impl until boundaries are proven.
+- [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
+  `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
+- [ ] `@metacrdt/runtime` (the IR + service interfaces) + targets `@metacrdt/convex`
+  (today), `@metacrdt/cloudflare` (DO), `@metacrdt/local` (browser). Don't factor
+  these until the harness boundary is real.
+
 **Product / engine**
 - [ ] `applyConfig` true reconcile — retract config facts dropped from the blueprint
   (today it's idempotent-by-upsert, never removes).
@@ -51,6 +62,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-05 — naming, docs, and the SaaS/Tailwind rebuild
+- [x] **Consolidated under the MetaCRDT umbrella.** `docs/architecture.md` (the
+  layer/package map: features × IR × targets; where Open/Alpha Ontology, Onlang,
+  Schematics, Onboarded all land) + `docs/manifesto.md` (the founding statement).
+  VISION opens with a naming note; `@metacrdt/core`-first extraction plan tracked.
 - [x] **`SPEC.md` — the MetaCRDT protocol spec** (normative, v0.1): events,
   content addressing, G-Set merge, the `≺` total order, the deterministic
   bitemporal fold + visibility predicate, derivation, HLC + version-vector sync,
