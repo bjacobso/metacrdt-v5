@@ -127,6 +127,11 @@ Grouped by theme; ordering within a group is rough priority.
 - [x] **SaaS IA**: Data (types grouped user-vs-system) · Workflows · Compliance ·
   Time travel · System; entity detail page with contextual flows/actions; engine
   explorer demoted under System (advanced). Verified live on `chatty-hare-94`.
+- [x] **Frontend architecture**: Tailwind v4 (`@tailwindcss/vite`, design tokens
+  from the mockup as `@theme`), React Router v7 (dark grouped-sidebar shell +
+  routed pages: Overview/Entities/`e/:id`/Compliance/Flows/Transaction log/Data
+  model, standalone `/collect`), lucide icons. `overview.summary`/`recentActivity`
+  back the dashboard. Restyled to the Triple Store mockup direction.
 - [ ] `applyConfig` true reconcile (retract config facts dropped from the literal)
 - [ ] Action steps that take args / open a form (currently fixed `asserts`)
 - [ ] Config history/diff UI (every `applyConfig` is already a transaction)

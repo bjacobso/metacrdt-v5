@@ -10,11 +10,13 @@ export default function EntityPicker({
   value,
   onChange,
   placeholder,
+  className = "",
 }: {
   type?: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  className?: string;
 }) {
   const options = useQuery(api.entities.listEntities, type ? { type } : {});
   const listId = `entopts-${type ?? "all"}`;
@@ -25,6 +27,7 @@ export default function EntityPicker({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder ?? "entity id"}
+        className={`rounded-md border border-line bg-surface px-3 py-1.5 font-mono text-[13px] text-ink placeholder:font-sans placeholder:text-faint focus:outline-none focus-visible:ring-2 focus-visible:ring-line ${className}`}
       />
       <datalist id={listId}>
         {(options ?? []).map((o) => (
