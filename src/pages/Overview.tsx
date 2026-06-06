@@ -36,10 +36,43 @@ export default function Overview() {
   const s = useQuery(api.overview.summary, {});
   const activity = useQuery(api.overview.recentActivity, { limit: 12 });
 
+  const PILLARS = [
+    "Fact Convergence",
+    "Provenance",
+    "Derived Coherence",
+    "Agent Participation",
+  ];
+
   return (
     <div className="space-y-6">
+      {/* MetaCRDT research-preview hero */}
+      <div className="rounded-ds border border-line bg-brand px-6 py-5 text-white">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-sm font-semibold tracking-tight">MetaCRDT</span>
+          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium text-white/80">
+            Research Preview
+          </span>
+        </div>
+        <p className="mt-1.5 max-w-2xl text-[15px] text-white/80">
+          A convergence substrate for structured coordination across distributed
+          runtimes. This workspace is the{" "}
+          <span className="font-medium text-white">datarooms</span> elaboration —
+          compliance as a mergeable fact log.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {PILLARS.map((p) => (
+            <span
+              key={p}
+              className="rounded-full border border-white/15 bg-white/5 px-2.5 py-0.5 text-[11px] text-white/80"
+            >
+              {p}
+            </span>
+          ))}
+        </div>
+      </div>
+
       <div>
-        <Eyebrow>Acme Staffing Workspace</Eyebrow>
+        <Eyebrow>Datarooms · Acme Staffing</Eyebrow>
         <h2 className="mt-1 text-3xl font-semibold tracking-tight text-ink">
           Overview
         </h2>

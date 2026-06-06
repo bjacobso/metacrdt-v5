@@ -128,12 +128,12 @@ export default function Layout({ children }: { children: ReactNode }) {
       {/* Sidebar */}
       <aside className="flex w-60 shrink-0 flex-col bg-brand text-white">
         <div className="flex items-center gap-2.5 px-4 py-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent-bright text-brand">
-            <span className="text-sm font-bold">O</span>
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent-bright font-mono text-brand">
+            <span className="text-sm font-bold">M</span>
           </div>
           <div className="leading-tight">
-            <div className="text-sm font-semibold">Onboarded</div>
-            <div className="text-[11px] text-brand-muted">Triple Store</div>
+            <div className="text-sm font-semibold">MetaCRDT</div>
+            <div className="text-[11px] text-brand-muted">Research Preview</div>
           </div>
         </div>
 
