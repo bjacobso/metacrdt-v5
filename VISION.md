@@ -148,7 +148,10 @@ webhook). Today it's mocked-but-real-shaped: it runs as a Convex action that cou
 `fetch`, captures a result into run state, and branches. *Ahead:* egress-guarded
 HTTP steps, a `notify` step that asserts a `notification.*` fact, and integration
 as a **Convex component** (structurally isolated) rather than the vision's
-namespace-tag-plus-compiler-guard.
+namespace-tag-plus-compiler-guard. Taken further, integrations and edge state
+(R2 blobs, Queues for batched jobs, Durable Objects as per-flow/per-session/
+per-entity actors) become resources bound into one Effect program via Alchemy,
+with Convex as system of record — see [docs/alchemy.md](./docs/alchemy.md).
 
 ### 9. Authorization — the deferred pillar · [ahead]
 
