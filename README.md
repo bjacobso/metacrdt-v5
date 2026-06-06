@@ -11,6 +11,7 @@ expensive or recursive logic into live, subscribable UI state.
 This README is the *how* (the engine itself). For the *why* and where it's going:
 
 - **[docs/metacrdt.md](./docs/metacrdt.md)** — the positioning: MetaCRDT, a convergence substrate (the name + the technical spine).
+- **[SPEC.md](./SPEC.md)** — the MetaCRDT protocol spec (normative): events, the G-Set merge, the deterministic bitemporal fold, derivation, sync, coordination profiles.
 - **[VISION.md](./VISION.md)** — the substrate → engine → emergent-product thesis and pillars.
 - **[PLAN.md](./PLAN.md)** — backlog + the vision-vs-Convex assessment.
 - Elaboration notes: **[confect.md](./docs/confect.md)** (the app as Effect), **[foldkit.md](./docs/foldkit.md)** (the client as a projection), **[alchemy.md](./docs/alchemy.md)** (infra as the same program).

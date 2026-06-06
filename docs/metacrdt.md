@@ -53,7 +53,8 @@ These are not aspirations; each pillar is backed by code in this repo today.
 
 ## The technical spine
 
-The claim "MetaCRDT" has to earn is *convergence*. Here is the honest version.
+The claim "MetaCRDT" has to earn is *convergence*. Here is the honest version; the
+formal, normative version is the protocol spec in [SPEC.md](../SPEC.md).
 
 **The log is a CRDT.** `factEvents` is append-only and immutable — a **grow-only set
 (G-Set)**, the canonical state-based CRDT. Merging two replicas is set union: no

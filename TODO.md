@@ -6,12 +6,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ## Now / up next
 
-**Substrate frontier (cashes the name)**
-- [ ] Commutative supersession — pick the surviving cardinality-one value by a
-  deterministic, replica-independent tiebreak (`txTime → actorId → factId`) in
-  `assertInTx`, not arrival order. Small; makes "the log is a CRDT" structurally true.
-- [ ] Multi-replica convergence runtime — offline / p2p / Durable-Object-per-group
-  sync. The open research surface (see [foldkit.md](./docs/foldkit.md),
+**Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
+- [ ] Commutative supersession — implement the `≺` total order
+  (`hlc → actorId → eventId`, SPEC §5.1) so cardinality-one resolves by it, not
+  arrival order (SPEC §5.2). Small; makes "the log is a CRDT" structurally true.
+- [ ] HLC `(l, r)` + per-replica `seq` + version-vector anti-entropy sync
+  (SPEC §3.2, §8) — the multi-replica convergence runtime: offline / p2p /
+  Durable-Object-per-group (see [foldkit.md](./docs/foldkit.md),
   [alchemy.md](./docs/alchemy.md)).
 
 **Product / engine**
@@ -50,6 +51,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-05 — naming, docs, and the SaaS/Tailwind rebuild
+- [x] **`SPEC.md` — the MetaCRDT protocol spec** (normative, v0.1): events,
+  content addressing, G-Set merge, the `≺` total order, the deterministic
+  bitemporal fold + visibility predicate, derivation, HLC + version-vector sync,
+  and the coordination profiles (capabilities / membership / quorum / read authz).
 - [x] **Named the substrate MetaCRDT.** Whitepaper `docs/metacrdt.md` (log as a
   G-set CRDT, deterministic-fold projections, bitemporal+provenance as the
   meta-layer; frontier named honestly). Live rebrand: sidebar, Overview
