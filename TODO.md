@@ -21,10 +21,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   order, G-Set log/merge, the bitemporal fold; SPEC §4–5). 46 tests: CRDT laws,
   fold determinism, ≺-max supersession, visibility quadrants. No I/O, no
   `Date.now()`/`Math.random()` (HLC takes wallclock as a param).
-- [ ] **Rewire `convex/` to depend on `@metacrdt/core`** — replace
-  `lib/visibility.ts` + the arrival-order supersession in `facts.ts` with the
-  core fold/`≺` (verify Convex's esbuild resolves the workspace package). This is
-  what makes the centralized runtime *use* the convergent semantics it now ships.
+- [x] **Read path on `@metacrdt/core`** — `lib/visibility.ts` is now a thin
+  adapter that folds each `facts` row through core's `visible` (SPEC §5.3); every
+  read query + `rebuildProjections` uses it. Confirmed Convex's esbuild bundles
+  the workspace `.ts` directly (no dist build needed). All 66 convex + 46 core
+  tests green; verified live.
+- [ ] **Write path on core** — stamp `eventId` + `hlc` onto `factEvents`, and
+  switch cardinality-one supersession from arrival-order to `≺`-max (the
+  commutative rule, SPEC §5.2). Then fold raw `factEvents` through core directly
+  (toward retiring the hand-maintained `facts` projection).
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [ ] `@metacrdt/runtime` (the IR + service interfaces) + targets `@metacrdt/convex`
@@ -65,6 +70,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-06 — wire the read path through @metacrdt/core
+- [x] **`convex/lib/visibility.ts` now delegates to `@metacrdt/core`** — the
+  bitemporal visibility predicate has one definition (core, SPEC §5.3); the Convex
+  adapter maps a folded `facts` row → core events (assert + optional retract/
+  tombstone) and asks `core.visible`. All read queries (`entityFactsAsOf`,
+  `entityAsOf`, `queryFacts`, `compareFacts`) and `rebuildProjections` inherit it,
+  no call-site changes, behavior preserved.
+- [x] **Step 0 retired the bundler unknown** — Convex's esbuild bundles the
+  workspace package's `.ts` source directly; no `dist` build required.
+- [x] 66 convex + 46 core tests green; convex typecheck clean; verified live on
+  `chatty-hare-94` (the time-travel as-of read renders through the core fold).
 
 ### 2026-06-06 — the first package: @metacrdt/core
 - [x] **Extracted `@metacrdt/core`** (`packages/core`) — the pure, dependency-free
