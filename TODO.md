@@ -16,10 +16,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   [alchemy.md](./docs/alchemy.md)).
 
 **Packaging / monorepo (map, not migration — see [docs/architecture.md](./docs/architecture.md))**
-- [ ] **Extract `@metacrdt/core` first** — the pure deterministic core (events,
-  content hash, `≺`, fold, visibility; SPEC §4–5). No I/O, no `Date.now()`/
-  `Math.random()`. It's the convergence guarantee and the most reusable; everything
-  else stays in the reference impl until boundaries are proven.
+- [x] **`@metacrdt/core` extracted** — `packages/core`, pure & dependency-free
+  (sha256, base32, canonical encoding, HLC, Event + content addressing, the `≺`
+  order, G-Set log/merge, the bitemporal fold; SPEC §4–5). 46 tests: CRDT laws,
+  fold determinism, ≺-max supersession, visibility quadrants. No I/O, no
+  `Date.now()`/`Math.random()` (HLC takes wallclock as a param).
+- [ ] **Rewire `convex/` to depend on `@metacrdt/core`** — replace
+  `lib/visibility.ts` + the arrival-order supersession in `facts.ts` with the
+  core fold/`≺` (verify Convex's esbuild resolves the workspace package). This is
+  what makes the centralized runtime *use* the convergent semantics it now ships.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [ ] `@metacrdt/runtime` (the IR + service interfaces) + targets `@metacrdt/convex`
@@ -60,6 +65,23 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-06 — the first package: @metacrdt/core
+- [x] **Extracted `@metacrdt/core`** (`packages/core`) — the pure, dependency-free
+  convergence kernel implementing SPEC §4–5: zero-dep `sha256` (NIST-vector
+  tested) + `base32` for content-addressed `EventId`s, canonical value encoding
+  (§A.1, with a pure `utf8` so the package pulls in no DOM/ambient globals), the
+  HLC (`tick`/`receive` take wallclock as a param — no `Date.now`), the immutable
+  `Event` + builders, the `≺` total order (§5.1), the G-Set `Log` + union `merge`
+  (§4.3), and the deterministic bitemporal `fold`/`visible` (§5.3–5.4).
+- [x] 46 tests: SHA-256 vectors; canonical key-order independence + type
+  distinction; `eventId` content-addressing (seq/sig excluded); merge
+  commutativity/associativity/idempotence; `≺` totality; **fold determinism under
+  shuffled insertion order** (convergence) and **cardinality-one supersession =
+  `≺`-max regardless of order**; full visibility quadrants + retract/tombstone/
+  untombstone + flags.
+- [x] npm workspaces (`packages/*`); root vitest scoped to `convex/**` so the pure
+  package runs under its own (node) config. Root convex suite still 66/66.
 
 ### 2026-06-05 — naming, docs, and the SaaS/Tailwind rebuild
 - [x] **Consolidated under the MetaCRDT umbrella.** `docs/architecture.md` (the

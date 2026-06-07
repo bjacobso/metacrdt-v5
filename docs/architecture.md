@@ -98,9 +98,11 @@ not invented:
 
 1. **A map, not a migration.** This repo stays one reference implementation until
    the boundaries are *proven*. Factoring into nine packages now is the
-   premature-coupling trap. **Publish `@metacrdt/core` first** — it's the
-   determinism guarantee, the most reusable, and the thing SPEC pins; everything
-   else extracts as it stabilizes. (Tracked in [TODO.md](../TODO.md).)
+   premature-coupling trap. **`@metacrdt/core` is published first** — it exists now
+   at `packages/core`: pure, dependency-free, and tested (SPEC §4–5; the events,
+   `≺` order, G-Set merge, and deterministic bitemporal fold). It's the determinism
+   guarantee and the most reusable; everything else extracts as it stabilizes, and
+   `convex/` will be rewired to depend on it next. (Tracked in [TODO.md](../TODO.md).)
 2. **The name is the thesis — so protect what makes it true.** *Databases store
    facts; CRDTs synchronize facts; MetaCRDT synchronizes facts, logic, workflows,
    permissions, agents, and interfaces.* That sentence is only true because the log

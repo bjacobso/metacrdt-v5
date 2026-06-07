@@ -4,6 +4,9 @@
   "description": "A reactive bitemporal triple store with a Datalog query engine, built on Convex.",
   "type": "module",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "convex dev",
     "dev:web": "vite",
@@ -12,7 +15,8 @@
     "deploy": "convex deploy",
     "deploy:static": "static-hosting deploy",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:core": "npm test --workspace @metacrdt/core"
   },
   "license": "MIT",
   "dependencies": {
