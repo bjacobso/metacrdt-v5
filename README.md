@@ -1,225 +1,342 @@
-# convex-triples
+# MetaCRDT
 
-A reactive **bitemporal triple store** with a **Datalog query engine**, built on [Convex](https://convex.dev).
+**A convergence substrate for structured coordination across distributed runtimes.**
 
-Triples are the source of truth. Convex provides transactional writes and reactive,
-cached reads. Datalog is the declarative query layer. Materialized projections turn
-expensive or recursive logic into live, subscribable UI state.
+MetaCRDT starts from one primitive:
 
-> An append-only bitemporal fact log with reactive Datalog projections.
+> a convergent graph of facts, constraints, intentions, and effects.
 
-This README is the *how* (the engine itself). For the *why* and where it's going:
+Databases store facts. CRDTs synchronize facts. **MetaCRDT synchronizes facts,
+logic, workflows, permissions, agents, and interfaces.**
 
-- **[docs/manifesto.md](./docs/manifesto.md)** — the founding statement: what MetaCRDT is and what we believe.
-- **[docs/architecture.md](./docs/architecture.md)** — the umbrella map: layers, the `@metacrdt/*` packages, and where every prior idea lands.
-- **[docs/package-consolidation.md](./docs/package-consolidation.md)** — the proposal for folding Open Ontology's packages into this canonical `@metacrdt/*` monorepo (`@metacrdt/forma`, query/schema/workflow/views, targets).
-- **[docs/metacrdt.md](./docs/metacrdt.md)** — the positioning: MetaCRDT, a convergence substrate (the name + the technical spine).
-- **[SPEC.md](./SPEC.md)** — the MetaCRDT protocol spec (normative): events, the G-Set merge, the deterministic bitemporal fold, derivation, sync, coordination profiles.
-- **[VISION.md](./VISION.md)** — the substrate → engine → emergent-product thesis and pillars.
-- **[PLAN.md](./PLAN.md)** — backlog + the vision-vs-Convex assessment.
-- Elaboration notes: **[confect.md](./docs/confect.md)** (the app as Effect), **[foldkit.md](./docs/foldkit.md)** (the client as a projection), **[alchemy.md](./docs/alchemy.md)** (infra as the same program).
+This repository is the canonical MetaCRDT reference implementation and package
+monorepo. It currently runs on [Convex](https://convex.dev) as a centralized,
+reactive reference runtime, with the pure convergence kernel already extracted as
+`@metacrdt/core`.
 
-## Why Convex
+---
 
-Convex is a good substrate for this because:
+## First Principles
 
-- **Mutations are transactional** — every write can atomically append to the log *and* update read projections.
-- **Queries are reactive and cached** — derived views rerun and push to clients automatically when underlying facts change.
-- **Indexed reads are the expected performance path** — `withIndex()` over declared indexes maps cleanly onto triple-pattern lookups.
-- **Scheduled / internal functions** let expensive recursive materialization run asynchronously, off the live query path.
+Operational systems are edited by humans, services, workflows, and agents. Those
+edits are not only rows in a database or messages in a queue. They are facts,
+tasks, reviews, violations, proposals, forms, signatures, decisions, and derived
+views that need to remain meaningful as they move across runtimes.
 
-The deliberate non-goal: this is **not** "Datomic on Convex" or an RDF/SPARQL engine.
-It's *reactive operational Datalog* — bounded live queries plus materialized views for
-the heavy stuff.
+MetaCRDT models those changes as immutable events in an append-only fact log.
+State is not mutated in place. State is a deterministic fold of events.
 
-## Core concepts
+That gives the substrate four properties:
 
-| Concept | Meaning |
+| Property | Meaning |
 | --- | --- |
-| **Entity** (`e`) | Anything with identity, e.g. `"employee:123"`. |
-| **Attribute** (`a`) | A typed predicate, e.g. `"employee.status"`. |
-| **Value** (`v`) | A scalar, entity ref, or JSON value. |
-| **Fact / triple** | `[e, a, v]` — one assertion. |
-| **Transaction time** | When the system *recorded* a fact (`assertedAt`, `retractedAt`, `tombstonedAt`). |
-| **Valid time** | When the fact is *true in the modeled world* (`validFrom`, `validTo`). |
-| **Retract** | The fact stopped being true. |
-| **Tombstone** | The assertion itself was wrong / deleted / redacted — distinct from retraction. |
-| **Correction** | Sugar for tombstone-old + assert-new, linked via `supersedes` / `supersededBy`. |
+| **Fact Convergence** | Operational facts merge as a grow-only set of events. |
+| **Provenance** | Every assertion records who made it, when, and why. |
+| **Derived Coherence** | Rules, obligations, views, and workflows are recomputed from facts rather than copied between tools. |
+| **Agent Participation** | Agents write proposals and actions under the same merge/provenance semantics as humans. |
 
-### Bitemporality in one sentence
+The "meta" in MetaCRDT is that derivation also converges. If every derived value
+is a pure deterministic fold over the same event set, then constraints, tasks,
+permissions, workflow state, and UI projections converge without being separately
+synchronized.
 
-Every fact answers two independent questions: *when did we know this?* (transaction time)
-and *when was it true?* (valid time). That lets you ask "what did we believe on May 1?"
-separately from "what is now believed to have been true on May 1?".
+---
 
-## Visibility predicate
+## The Model
 
-A fact is visible for a read at `(txTime, validTime)` when:
+MetaCRDT has two layers:
+
+1. **The log is a CRDT.** Events are immutable and content-addressed. Merging two
+   replicas is set union: commutative, associative, idempotent.
+2. **Everything else is a fold.** Current state, bitemporal reads, Datalog
+   derivations, obligations, flow state, generated views, and agent explanations
+   are deterministic projections of that event set.
+
+```text
+events (G-Set CRDT)
+  ├─ current facts
+  ├─ bitemporal facts at (txTime, validTime)
+  ├─ derived facts and rule output
+  ├─ obligations, tasks, violations
+  ├─ workflow runs and actions
+  ├─ generated views
+  └─ agent-readable provenance
+```
+
+Convergence is therefore a projection, not a destructive merge. A normal CRDT
+converges to one "now" state and discards the path. MetaCRDT keeps the path:
+valid time, transaction time, causal references, actor identity, and provenance.
+
+Truth has a tense.
+
+---
+
+## Protocol
+
+The normative protocol is [SPEC.md](./SPEC.md).
+
+It defines:
+
+- immutable events (`assert`, `retract`, `tombstone`, `untombstone`)
+- content-addressed `EventId`s
+- Hybrid Logical Clock timestamps
+- the `≺` total order (`hlc → actorId → eventId`)
+- the grow-only-set log merge
+- the deterministic bitemporal visibility predicate
+- pure derivation rules
+- provenance and actor identity
+- version-vector anti-entropy sync
+- coordination profiles: capability links, membership, quorum, read grants
+
+The current Convex runtime implements the centralized reference path. The
+multi-replica sync runtime (browser / Durable Object / peer-to-peer) is the
+research frontier, tracked explicitly in [TODO.md](./TODO.md).
+
+---
+
+## Package Graph
+
+This repo is becoming the canonical `@metacrdt/*` monorepo.
+
+Current package:
+
+- **`@metacrdt/core`** (`packages/core`) — pure, dependency-free convergence
+  kernel: SHA-256, base32, canonical values, HLC, events, `≺`, G-Set merge, and
+  the bitemporal fold.
+
+Planned package graph:
+
+```text
+@metacrdt/core        protocol kernel: events, ids, order, fold
+@metacrdt/forma       Lisp authoring language
+@metacrdt/schema      schema-as-facts, types, attributes
+@metacrdt/query       Datalog, rules, derivation
+@metacrdt/workflow    processes, flows, obligations
+@metacrdt/forms       forms, collection, prompt-response
+@metacrdt/views       ViewSpec / generated response surfaces
+@metacrdt/agent       agent actors, proposals, skills
+@metacrdt/runtime     IR + service interfaces
+@metacrdt/convex      Convex target / component / bindings
+@metacrdt/cloudflare  Durable Object / Worker target
+@metacrdt/local       browser/local-first target
+@metacrdt/node        Node target
+```
+
+Open Ontology is vendored as a context submodule at
+[.context/open-ontology](./.context/open-ontology). The fold plan is documented
+in [docs/package-consolidation.md](./docs/package-consolidation.md):
+
+- Open Ontology's Lisp layer becomes `@metacrdt/forma`.
+- ViewSpec becomes `@metacrdt/views`.
+- The old triple-store/database concepts split into `@metacrdt/core`,
+  `@metacrdt/query`, and target packages.
+- Migration is extraction by proven package boundary, not bulk copy.
+
+---
+
+## Reference Implementation
+
+The running reference implementation is a Convex app that demonstrates MetaCRDT
+as a live operational substrate.
+
+Built today:
+
+- append-only bitemporal fact log
+- rebuildable projections (`facts`, `currentFacts`, `derivedFacts`)
+- Datalog query engine with joins, comparisons, negation, aggregation, and
+  materialized transitive closure
+- schema-as-facts: entity types and attributes are facts too
+- rules and provenance: derived facts explain why they exist
+- compliance obligations as derived facts
+- durable flow DAGs and synchronous actions
+- config-as-code blueprints
+- generated entity detail pages
+- Tailwind + React Router research-preview UI
+- `@metacrdt/core` wired into the Convex read path for bitemporal visibility
+
+The demo elaboration is **datarooms**: compliance/onboarding as a mergeable fact
+log. That product surface is intentionally just one physics over the substrate,
+not the substrate itself.
+
+---
+
+## Bitemporality
+
+Every fact answers two independent questions:
+
+- **Transaction time:** when did the system record or learn this?
+- **Valid time:** when was this true in the modeled world?
+
+That lets the system ask different questions precisely:
+
+- What did we believe on May 1?
+- What do we now believe was true on May 1?
+- Why was this worker considered compliant at that time?
+- Which facts caused this obligation, permission, or workflow step?
+
+The core visibility predicate is implemented in `@metacrdt/core` and used by the
+Convex runtime:
 
 ```ts
-fact.assertedAt   <= txTime
+visible(event, { txTime, validTime }, log)
+```
+
+The old row-level form is equivalent:
+
+```ts
+fact.assertedAt <= txTime
 && (fact.retractedAt === undefined || fact.retractedAt > txTime)
-&& fact.validFrom  <= validTime
-&& (fact.validTo   === undefined || fact.validTo   > validTime)
+&& fact.validFrom <= validTime
+&& (fact.validTo === undefined || fact.validTo > validTime)
 && fact.tombstonedAt === undefined
 ```
 
-Audit reads may opt into `includeTombstoned` / `includeRetracted`.
+---
 
-## Data model (tables)
+## Convex Runtime
 
-- **`transactions`** — one document per write; actor, reason, source, `txTime`.
-- **`factEvents`** — append-only, immutable audit trail (`assert` / `retract` / `tombstone` / `untombstone` / `correction`).
-- **`facts`** — canonical bitemporal interval records (patched with `retractedAt` / `validTo` / tombstone fields).
-- **`currentFacts`** — disposable fast read model: latest visible, non-tombstoned fact per `e`/`a`.
-- **`attributes`** — typed schema for predicates (value type, cardinality, uniqueness, inverse).
-- **`rules`** + **`derivedFacts`** + **`ruleInvalidations`** — Datalog rules and their materialized output.
+Convex is the current reference target because it gives the demo the operational
+properties needed to prove the substrate:
 
-## Query API
+- transactional mutations for appending events and updating projections
+- reactive cached queries for live generated views
+- indexed reads for triple-pattern lookup
+- scheduled/internal functions for materialization, flow resumption, and
+  reconciler work
+
+Important tables:
+
+| Table | Role |
+| --- | --- |
+| `transactions` | one document per write: actor, reason, source, transaction time |
+| `factEvents` | immutable audit log |
+| `facts` | bitemporal interval projection |
+| `currentFacts` | disposable current read model |
+| `derivedFacts` | materialized rule output with provenance |
+| `attributes` / schema facts | predicate and type metadata |
+| `flowDefs` / `flowRuns` | durable workflow definitions and executions |
+
+The next runtime step is to move the write path onto core semantics: stamp
+`eventId` + HLC metadata onto `factEvents` and resolve cardinality-one conflicts
+by the `≺` order rather than arrival order.
+
+---
+
+## Query and Write Surface
+
+Examples from the current Convex API:
 
 ```ts
-// Current entity view (reads currentFacts)
-getEntity({ e: "employee:123" })
+// Current entity view
+getEntity({ e: "worker:maria" })
 
 // Bitemporal point query
 queryFacts({
-  e: "employee:123",
-  a: "employee.status",
-  txTime: Date.parse("2026-05-01"),    // defaults to now
-  validTime: Date.parse("2026-05-01"), // defaults to now
-  includeTombstoned: false,
+  e: "worker:maria",
+  a: "worker.status",
+  txTime: Date.parse("2026-05-01"),
+  validTime: Date.parse("2026-05-01"),
 })
 
-// Reconstruct an entity at any bitemporal coordinate (general form of asOf*)
-entityAsOf({ e: "employee:123", txTime, validTime })
-
-// Compare what was visible at two coordinates: "what did we believe on May 1?"
-// vs "what is now believed to have been true on May 1?"
-compareFacts({
-  e: "employee:123",
-  a: "employee.status",
-  before: { txTime: Date.parse("2026-05-01"), validTime: Date.parse("2026-05-01") },
-  after:  { txTime: Date.now(),                validTime: Date.parse("2026-05-01") },
-})
-
-// Datalog — patterns, comparisons, and negation
+// Datalog over facts + derived facts
 datalog({
   where: [
-    ["?e", "type", "Employee"],
-    ["?e", "salary", "?s"],
-    ["?s", ">", 100000],                    // comparison: > < >= <= == !=
-    { not: ["?e", "status", "terminated"] }, // negation
-    ["?e", "reportsTo+", "?vp"],             // materialized transitive closure
+    ["?e", "type", "Worker"],
+    ["?e", "worker.status", "active"],
+    { not: ["?e", "status", "terminated"] },
   ],
-  select: ["?e", "?vp"],
-  txTime: Date.now(),
-  validTime: Date.now(),
+  select: ["?e"],
 })
+
+// Writes
+assertFact({ e, a, value, validFrom, validTo, reason })
+retractFact({ factId, validTo, reason })
+tombstoneFact({ factId, reason })
+correctFact({ factId, newValue, reason })
 ```
 
-Strings beginning with `?` are variables; everything else is a constant. A
-clause is a `[e, a, v]` pattern, a `[term, op, term]` comparison, or a
-`{ not: [e, a, v] }` negation. Queries read **facts ∪ materialized derived
-facts**, so a rule's output (including transitive closures) is queryable like
-any other attribute. Join order is chosen dynamically by selectivity;
-comparisons and negations run as soon as their variables are bound.
+Every write creates a transaction and appends event history. Projections are
+rebuildable from that history.
 
-## Write API
+---
 
-- `assertFact({ e, a, value, validFrom?, validTo?, reason? })`
-- `retractFact({ factId, validTo?, reason? })` — no longer true.
-- `tombstoneFact({ factId, reason })` — the assertion was invalid.
-- `correctFact({ factId, newValue?, newValidFrom?, newValidTo?, reason })` — tombstone + reassert + link.
+## Documentation Map
 
-Every mutation creates a `transactions` row and appends to `factEvents`.
+- [docs/manifesto.md](./docs/manifesto.md) — founding statement.
+- [docs/architecture.md](./docs/architecture.md) — package/layer map.
+- [docs/package-consolidation.md](./docs/package-consolidation.md) — Open
+  Ontology → MetaCRDT fold plan.
+- [docs/metacrdt.md](./docs/metacrdt.md) — positioning and research preview.
+- [SPEC.md](./SPEC.md) — protocol specification.
+- [VISION.md](./VISION.md) — product/substrate thesis and pillars.
+- [PLAN.md](./PLAN.md) — full backlog and milestone plan.
+- [TODO.md](./TODO.md) — running worklog and near-term next steps.
+- [docs/confect.md](./docs/confect.md) — backend as Effect via Confect.
+- [docs/foldkit.md](./docs/foldkit.md) — client as projection.
+- [docs/alchemy.md](./docs/alchemy.md) — infrastructure as the same program.
 
-Register a predicate's typed schema (and cardinality) with
-`defineAttribute({ name, valueType, cardinality, ... })`. A `cardinality: "one"`
-attribute makes `assertFact` retract the prior current value (in transaction
-time) before asserting the new one; otherwise multiple values coexist.
+---
 
-## Schema as facts (meta-circular)
+## Development
 
-There is **no schema table**. Attribute definitions, entity-type definitions,
-and type→attribute membership are themselves bitemporal triples about
-`attr:<name>` / `type:<Name>` entities — so the schema inherits history,
-tombstoning, and as-of queries from the same engine as the data. Even
-cardinality is a fact: `assertFact` reads `(attr:<a>, "cardinality", ?)` to
-decide supersession, bootstrapped by a small set of built-in meta-attributes
-(`convex/lib/meta.ts`).
-
-```ts
-defineAttribute({ name: "salary", valueType: "number", cardinality: "one" })
-defineType({ name: "Employee", attributes: ["salary", "title"] })
-
-getAttribute({ name: "salary" })                 // current definition
-attributeAsOf({ name: "salary", txTime, validTime }) // definition as of a coordinate
-attributeLifecycle({ name: "salary" })           // when it was added / removed / redefined
-typeSchemaAsOf({ type: "Employee", txTime })     // the type's shape at a point in time
-retireAttribute({ name: "salary" })              // recorded in history, recoverable
-bootstrapSchema()                                // install self-describing meta-attributes
-```
-
-Because schema entities use the same `type` attribute, `Attribute` and
-`EntityType` show up as browsable types in the Entities view too.
-
-## Rules & materialization
-
-`defineRule({ name, where, emit, dependsOnAttributes })` persists a Datalog rule
-whose output is materialized into `derivedFacts`. On any fact change, rules
-depending on the changed attribute are recomputed: **entity-local** rules
-(every clause subject is the emitted entity) recompute incrementally for just
-that entity; cross-entity rules recompute in full. The `ruleInvalidations` queue
-records and clears each pending recomputation.
-
-`defineTransitiveRule({ name, baseAttribute, closureAttribute, maxDepth })`
-materializes the transitive closure of a relation (e.g. `reportsTo` →
-`reportsTo+`), recomputed when the base attribute changes. Adding an edge takes
-a **semi-naive delta** (predecessors × successors of the new edge); removing or
-correcting one triggers a full BFS recompute. This is how recursion stays off
-the live query path while remaining queryable — the closure attribute is just
-another derived fact.
-
-## Entities browser (demo)
-
-The hosted demo includes an "Entities" view that treats the `type` attribute as
-a table selector: `listEntityTypes` lists types with counts, `typeAttributes`
-discovers a type's columns, and `queryEntities` runs a dynamic filter/sort spec
-that is **compiled into Datalog** (filters → pattern/comparison clauses), then
-sorted by an attribute and paginated with an opaque cursor. The UI's query
-builder is generated per type and shows the compiled `where` it ran.
-
-## Datalog limits (live queries)
-
-Bounded by design — recursion is materialized asynchronously, never run live:
-
-```
-maxClauses: 12   maxIntermediateRows: 5_000   maxResultRows: 1_000
-maxClauseScan: 2_000   allowRecursion: false
-```
-
-## Testing
+Install dependencies:
 
 ```bash
-npm test        # vitest run (convex-test + edge-runtime)
+npm install
 ```
 
-Covers the bitemporal visibility quadrants, append-only event replay,
-cardinality-one replacement, tombstones, Datalog joins, and rule
-materialization (incremental recompute through a correction).
+Run the Convex backend:
+
+```bash
+npx convex dev
+```
+
+Run the Vite frontend:
+
+```bash
+npm run dev:web
+```
+
+Run tests:
+
+```bash
+npm test        # Convex backend suite
+npm run test:core
+```
+
+Build frontend:
+
+```bash
+npm run build
+```
+
+Deploy notes are tracked in [TODO.md](./TODO.md). In short: `npx convex dev
+--once` pushes functions to the dev deployment, and `npx @convex-dev/static-hosting
+upload` uploads static assets to the dev `.convex.site` host.
+
+---
 
 ## Status
 
-M1–M6 implemented and tested — see [PLAN.md](./PLAN.md) for milestones and
-what's still open.
+Research Preview.
 
-## Getting started
+Built:
 
-```bash
-npm create convex@latest      # scaffold (if not already done)
-npx convex ai-files install   # make Claude Code Convex-aware
-npx convex dev                # leave running in a separate terminal
-```
+- Convex reference runtime
+- datarooms/compliance elaboration
+- `@metacrdt/core`
+- bitemporal visibility via core in the read path
+- docs/spec/architecture package plan
+
+Frontier:
+
+- commutative supersession in the write path
+- HLC + version-vector sync across replicas
+- Durable Object and local-first targets
+- `@metacrdt/forma` extraction
+- runtime harness and target packages
+
+See [TODO.md](./TODO.md) for the running pulse.
 
 ## License
 
