@@ -79,6 +79,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ## Log
 
+### 2026-06-07 — PLAN.md becomes the executable goal file
+- [x] Rewrote `PLAN.md` from the old triple-store milestone backlog into a
+  goal-oriented MetaCRDT execution plan: Goal 1 is core-shaped Convex writes
+  (`eventId`/HLC/replica metadata, `≺`-max cardinality-one supersession,
+  rebuild-from-log tests); Goal 2 is a scoped Confect spike after the protocol
+  semantics are correct; later goals cover `@metacrdt/convex` and
+  `@metacrdt/forma`.
+
 ### 2026-06-06 — wire the read path through @metacrdt/core
 - [x] **Planned the Open Ontology → MetaCRDT fold** in
   `docs/package-consolidation.md`: this repo is canonical; Open Ontology remains a

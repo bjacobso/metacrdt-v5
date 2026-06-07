@@ -1,368 +1,462 @@
-# PLAN.md — Convex Bitemporal Triple Store + Datalog Engine
+# PLAN.md — MetaCRDT Execution Goal
 
-Implementation plan. Read alongside [README.md](./README.md) for concepts.
+**Current goal:** make the Convex reference runtime actually produce and consume
+MetaCRDT protocol-shaped events, then evaluate Confect as the typed Effect layer
+for the Convex target.
 
-## Feature backlog
+This plan is the operational goal file. Read it with:
 
-Running checklist — check items as they ship, add freely. `[x]` done, `[ ]` planned.
-Grouped by theme; ordering within a group is rough priority.
+- [README.md](./README.md) — first-principles project overview
+- [SPEC.md](./SPEC.md) — normative protocol
+- [TODO.md](./TODO.md) — running worklog and open-item pulse
+- [docs/architecture.md](./docs/architecture.md) — package/layer map
+- [docs/package-consolidation.md](./docs/package-consolidation.md) — Open
+  Ontology fold plan
+- [docs/confect.md](./docs/confect.md) — Confect/Effect direction
 
-### Core store (shipped)
+When changing Convex code, read
+[`convex/_generated/ai/guidelines.md`](./convex/_generated/ai/guidelines.md)
+first. Those generated Convex guidelines override prior assumptions.
 
-- [x] Bitemporal fact model (transaction time + valid time)
-- [x] Append-only `factEvents` as source of truth; `facts`/`currentFacts`/`derivedFacts` as projections
-- [x] `rebuildProjections` — fold the log to regenerate facts/currentFacts/derived; replay property test
-- [x] assert / retract / tombstone / correct, each producing a transaction
-- [x] `defineAttribute` + cardinality-one enforcement
-- [x] `getEntity`, bitemporal `queryFacts`, `history`
-- [x] `entityAsOf` + `compareFacts` (M6)
-- [x] Tests (vitest + convex-test); deployed to `chatty-hare-94`
+---
 
-### Datalog engine (shipped)
+## North Star
 
-- [x] Indexed nested-loop joins, dynamic selectivity planning
-- [x] Comparison predicates (`> < >= <= == !=`)
-- [x] Negation (`{ not: [...] }`) with safety check
-- [x] Query facts ∪ materialized derived facts
-- [x] `explainDatalog`; LIMITS guardrails
-- [x] Aggregation: `count` / `countDistinct` / `sum` / `avg` / `min` / `max` with group-by
-- [ ] General recursion (stratified rules, fixpoint over `derivedFacts`)
-- [ ] Computed/built-in predicates: arithmetic, string ops (`contains`, `startsWith`)
-- [ ] Disjunction (`or`) within a query
-- [ ] Engine-level result pagination / streaming (true cursor)
-- [ ] `select` with computed/bound expressions
+MetaCRDT names a primitive:
 
-### Compliance engine (first vision slice — shipped)
+> a convergent graph of facts, constraints, intentions, and effects.
 
-- [x] Obligations-as-facts: requirement rules emit `requires.<form>` keyed by scope entity
-- [x] Reuse-as-scope-key: one submission satisfies all placements sharing a scope (dedup + provenance merge)
-- [x] Tasks via negation: `requirement ∧ ¬submitted` → `task.<form>`, with provenance ("why open")
-- [x] Guarded requirements (forklift quiz only for forklift jobs)
-- [x] Valid-time expiry: submissions carry `validTo`; a **cron** re-materializes lapsed obligations
-- [x] Demo domain (staffing: worker/employer/client/job/venue + placements) + reactive Compliance UI
-- [x] Collect-step Flow runner: issue → park (`waiting`) → resume on the matching
-  submission fact (event path) → complete; reminder/escalate/expire **scheduler timer
-  ticks**; durable `flowRuns` + append-only `flowEvents`; reactive Flows UI
-- [x] External collection: `defineForm` (fields as a fact) → **isolated magic-link page**
-  (`/collect?token=`) renders the fields → submit saves field facts + the submission
-  marker → the event path resumes the flow & clears the obligation
-- [x] General Flow **DAG** runner: `defineFlow`/`startFlow`/`advanceFlow` interpreter with
-  step types assert / collect / notify / branch / action / wait / done; parking steps resumed
-  by the event path, scheduler ticks, or an action callback; onboarding demo flow + reactive UI graph
-- [x] **action** step = external boundary (mock E-Verify; would `fetch` a vendor) → result fact → resume
-- [ ] Reify obligations into entities for per-obligation status/assignment (only if needed)
-- [ ] Real external integration (live `fetch` in an action step) as a Convex component
-- [ ] Rule→rule cascade (task rules currently re-derive over base facts to avoid chaining)
+The repository should make that statement true in code:
 
-### Rules & materialization (shipped + next)
+1. `@metacrdt/core` defines the pure deterministic protocol kernel.
+2. The Convex reference runtime writes core-shaped events.
+3. Read projections are rebuildable deterministic folds of those events.
+4. Later runtime targets (Cloudflare Durable Objects, browser/local-first, Node)
+   can import the same core and converge to the same projections.
+5. Confect/Effect improves the Convex target's schema, error, and service
+   boundaries without becoming the protocol.
 
-- [x] `defineRule` → derived facts; entity-local incremental recompute
-- [x] `ruleInvalidations` queue
-- [x] Transitive-closure rules (`defineTransitiveRule`)
-- [x] Semi-naive closure delta on edge **addition**
-- [ ] Semi-naive closure **deletions** (DRed / counting) instead of full recompute
-- [x] Provenance: `sourceFactIds` populated for rules + closures; `explainDerived`
-  lineage query (source facts + asserting transaction) + "why?" UI
-- [ ] True `sync` (in-transaction) materialization
-- [ ] Cross-entity datalog rules recompute incrementally (dependency graph)
+The immediate technical gap is the write path: reads already delegate bitemporal
+visibility to `@metacrdt/core`, but writes still use the older Convex-specific
+projection logic and arrival-order cardinality-one supersession.
 
-### Schema as facts / meta-circularity (shipped)
+---
 
-- [x] Model attribute definitions as bitemporal triples (the `attributes` table is gone)
-- [x] Model type definitions / type shape as facts (`defineType`, `hasAttribute`)
-- [x] `typeSchemaAsOf(txTime, validTime)` — historical entity-type shape
-- [x] Attribute lifecycle queries — when an attribute was added / removed / redefined
-- [x] Schema-change audit via the fact log (`attributeLifecycle`, `retireAttribute`)
-- [x] Self-describing meta-attributes (`bootstrapSchema`); cardinality is itself a fact
-- [ ] Enforce a type's declared `hasAttribute` shape on assert (strict mode)
-- [ ] Surface schema history in the demo UI
+## Current State
 
-### Bitemporal UX / demo
+### Shipped
 
-- [x] Hosted demo via `@convex-dev/static-hosting`
-- [x] Entities browser: type list, dynamic query builder → Datalog, cursor pagination, sort/filter
-- [x] Two-axis time-travel UI (txTime + validTime) + as-of state with per-fact provenance
-- [x] Fact-history timeline view for an entity (`entityTimeline`)
-- [x] `entityFactsAsOf` — as-of state annotated with asserting transaction
-- [ ] Thread `(txTime, validTime)` through `getEntity` / `typeAttributes` / `queryEntities` too
-- [ ] `compareFacts` "now vs then" diff in the UI
-- [ ] Seed-data loader + guided demo tour
+- `@metacrdt/core` exists in [`packages/core`](./packages/core):
+  - SHA-256
+  - base32 EventIds
+  - canonical values
+  - HLC helpers
+  - immutable events
+  - `≺` total order
+  - G-Set log merge
+  - bitemporal fold / visibility
+- Core has 46 tests proving:
+  - CRDT merge laws
+  - content addressing
+  - fold determinism under insertion-order shuffle
+  - cardinality-one supersession by `≺`-max
+  - bitemporal visibility quadrants
+- Convex read path delegates visibility to core via
+  [`convex/lib/visibility.ts`](./convex/lib/visibility.ts).
+- Convex backend tests are green: 66 tests at last verification.
+- Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
+  live elaboration.
+- Open Ontology is a pinned submodule under
+  [`.context/open-ontology`](./.context/open-ontology).
 
-### Integrity / correctness
+### Not Yet True
 
-- [ ] Schema enforcement on assert (validate value vs `valueType`; enforce `unique`; strict-mode unknown-attribute rejection)
-- [ ] Inverse attributes (auto-maintain reverse edges; `inverseAttribute` field already exists)
-- [ ] Referential integrity for `entityRef` values
-- [ ] Constraints/invariants as first-class rules with severity
-- [ ] Value normalization so `by_a_v` is sound for all value types (objects, dates)
+- `factEvents` do not yet carry core `eventId` / HLC / replica sequence metadata.
+- Cardinality-one write conflict resolution is still arrival-order, not the
+  protocol `≺` order.
+- `facts` and `currentFacts` are still maintained as imperative projections,
+  not folded directly from raw core-shaped events.
+- Multi-replica sync is specified but not implemented.
+- Confect is documented as a direction, not integrated.
 
-### Scale / performance
+---
 
-- [ ] Denormalized counts (avoid `collect().length` scans, e.g. `listEntityTypes`)
-- [ ] Batched/self-continuing materialization for large rules
-- [ ] DB-cursor pagination for `queryEntities` (stop re-running per page)
+## Goal 1 — Core-Shaped Convex Write Path
 
-### Product shell / config-as-code (shipped)
+**Objective:** Convex mutations must append events shaped like MetaCRDT protocol
+events, and cardinality-one semantics must use the core `≺` order.
 
-- [x] **Origin facet** (`convex/lib/origin.ts`): every entity/type/flow is `system`
-  (intrinsic machinery), `configured` (tenant-declared), or `data` (runtime) —
-  read off id prefix + type, not a side table
-- [x] **Configured-type registry**: `listEntityTypes` unions data-discovered types
-  with declared `type:<Name>` entities (so a configured type shows at zero count)
-- [x] `listEntities` origin filter (`data` | `system` | `all`) — hides schema/form/
-  action carriers from the user-facing data browser
-- [x] **`entityDetail`** — the SaaS object page in one query: state + applicable
-  flows (by `subjectType`) + applicable actions (by `appliesTo`) + obligations +
-  flow runs, all computed from type + config (no per-entity wiring)
-- [x] **Actions** (`convex/actions.ts`): `defineAction`/`runAction`/`actionsForType`
-  — the synchronous one-transaction cousin of a flow, declared per type as facts
-- [x] **Flows tagged** with `subjectType` + `origin`; `flowsForType`
-- [x] **System processes** read model (`convex/system.ts`): the reconciler / rule
-  materializer / closure materializer / flow resumer surfaced read-only with live
-  counts (intrinsic, not tenant-authored)
-- [x] **Config-as-code** (`convex/appconfig.ts`): `applyConfig` lowers one literal
-  (types, attributes, forms, flows, requirements, actions) into schema-facts +
-  flow defs + compliance rules + action defs, idempotently, stamped `actor=config`;
-  `STAFFING_BLUEPRINT` + `setupStaffing` replace the scattered imperative bootstrap
-- [x] **SaaS IA**: Data (types grouped user-vs-system) · Workflows · Compliance ·
-  Time travel · System; entity detail page with contextual flows/actions; engine
-  explorer demoted under System (advanced). Verified live on `chatty-hare-94`.
-- [x] **Frontend architecture**: Tailwind v4 (`@tailwindcss/vite`, design tokens
-  from the mockup as `@theme`), React Router v7 (dark grouped-sidebar shell +
-  routed pages: Overview/Entities/`e/:id`/Compliance/Flows/Transaction log/Data
-  model, standalone `/collect`), lucide icons. `overview.summary`/`recentActivity`
-  back the dashboard. Restyled to the Triple Store mockup direction.
-- [ ] `applyConfig` true reconcile (retract config facts dropped from the literal)
-- [ ] Action steps that take args / open a form (currently fixed `asserts`)
-- [ ] Config history/diff UI (every `applyConfig` is already a transaction)
+This is the next implementation goal.
 
-### Operational / product
+### Acceptance Criteria
 
-- [ ] **Auth + write authorization** (live site currently accepts public writes)
-- [ ] Branching (`branchId` exists, unused): what-if worlds + merge
-- [ ] Full-text search on string values (Convex search index)
-- [ ] Bulk import / export
+- `factEvents` include enough data to reconstruct a core `Event`:
+  - `eventId`
+  - `kind`
+  - `e`, `a`, `v`
+  - `validFrom`, `validTo`
+  - HLC timestamp
+  - `actor`, `actorType`
+  - causal references / target IDs for lifecycle events
+  - replica ID and per-replica sequence where appropriate
+- Event IDs are deterministic and verified with `@metacrdt/core.verifyId` or an
+  equivalent adapter.
+- Cardinality-one attributes choose the surviving visible value by core `≺`,
+  not by write arrival order.
+- Existing public behavior is preserved for normal single-writer Convex use.
+- Tests cover same-coordinate / concurrent-like writes in shuffled order and
+  prove the same winner.
+- `rebuildProjections` can rebuild from the event log without hidden dependency
+  on prior `facts` state.
+- `npm test`, `npm run test:core`, and Convex typecheck pass.
 
-## Guiding design rules
+### Design Rules
 
-1. Never physically delete source facts by default.
-2. `factEvents` is the append-only **source of truth**.
-3. `facts` is a **rebuildable projection** of the log (bitemporal interval state,
-   read-optimized); patched in place with lifecycle fields, but reconstructable
-   via `rebuildProjections`. Write-time-only metadata (source, lineage) lives here.
-4. Treat `currentFacts` as a disposable projection (now-view of `facts`).
-5. Treat `derivedFacts` as a disposable projection (fold of `facts` + rules).
-6. Keep live Datalog **bounded**; never run recursion in a reactive query.
-7. Materialize expensive / recursive logic asynchronously.
-8. Separate valid time from transaction time everywhere.
-9. Tombstone assertions — don't pretend they never existed.
-10. Every mutation produces a `transactions` row.
+1. **Do not make Confect part of this step.**
+   This goal is protocol correction, not framework migration.
+2. **Keep `@metacrdt/core` dependency-free.**
+   Any Convex adaptation belongs in `convex/` for now, later
+   `@metacrdt/convex`.
+3. **Keep projections for now.**
+   `facts`, `currentFacts`, and `derivedFacts` remain read models until the fold
+   path is proven and migration risk is lower.
+4. **Prefer additive schema migration.**
+   Add event fields; do not break existing rows before a backfill/rebuild path is
+   available.
+5. **Make old events readable.**
+   Adapters should tolerate missing `eventId` / HLC fields for existing dev data
+   until `rebuildProjections` or a migration stamps them.
 
-## Convex constraints that shape the design
+### Work Breakdown
 
-- Reactive queries must read through declared indexes (`withIndex`) for performance, not scans.
-- A query's reactivity tracks the documents it reads — keep live Datalog result sets bounded so re-execution stays cheap.
-- Mutations are transactional: append to log + update projections atomically in one handler.
-- Use `ctx.scheduler.runAfter` + internal mutations for async materialization.
-- `v.any()` for values is pragmatic now; tighten per-attribute typing later via `attributes`.
+#### 1. Read Convex Guidelines
 
-## Repository layout (target)
+- [ ] Read `convex/_generated/ai/guidelines.md`.
+- [ ] Note any generated rules that affect schema, indexes, validators, or
+  scheduler usage.
 
-```
-convex/
-  schema.ts
-  facts.ts        # assertFact, retractFact, tombstoneFact, correctFact,
-                  # queryFacts, getEntity, history
-  datalog.ts      # datalog, explainDatalog, compileQuery
-  rules.ts        # defineRule, recomputeRule, recomputeEntityRules
-  lib/
-    visibility.ts # isVisible() predicate, shared by queries
-    planner.ts    # normalize + plan + clause selectivity
-    join.ts       # in-memory binding join + projection
-  internal/
-    materialize.ts # processRuleInvalidation, recomputeDerivedFacts, processFactChange
-PLAN.md
-README.md
+#### 2. Audit Existing Write Path
+
+- [ ] Inspect:
+  - `convex/schema.ts`
+  - `convex/facts.ts`
+  - `convex/lib/visibility.ts`
+  - `convex/internal/materialize.ts`
+  - tests that assert/retract/tombstone/correct facts
+- [ ] Identify where each event kind is appended.
+- [ ] Identify where `facts` and `currentFacts` are patched.
+- [ ] Identify where cardinality-one supersession is decided.
+
+#### 3. Define Convex ↔ Core Adapters
+
+Create local Convex adapters first; extract to `@metacrdt/convex` later.
+
+- [ ] Add adapter module, likely `convex/lib/coreEvent.ts`.
+- [ ] Implement:
+  - Convex event row → core `Event`
+  - core `Event` → Convex event row fields
+  - transaction actor/source → core actor fields
+  - timestamp → HLC fallback
+  - missing legacy metadata fallback
+- [ ] Keep conversion deterministic and testable.
+
+Recommended shape:
+
+```ts
+toCoreEvent(row): Event
+eventBodyFromAssert(args, tx, hlc): EventBody
+sealEventForConvex(body, seq): { eventId, hlc, ...rowFields }
 ```
 
-## Status (2026-06-03)
+#### 4. Extend Schema
 
-M1–M6 are implemented, deployed to `chatty-hare-94`, and covered by tests
-(`npm test`, 25 passing). Done: full schema; assert/retract/tombstone/correct;
-currentFacts projection; `defineAttribute` (cardinality-one now enforced);
-getEntity / queryFacts / history; bounded non-recursive Datalog + explain;
-rules with **incremental, entity-scoped** materialization (full recompute for
-cross-entity rules) driven by the `ruleInvalidations` queue; and M6
-`entityAsOf` / `compareFacts`. Remaining: see "Still open" below.
+- [ ] Add fields to `factEvents`:
+  - `eventId?: string`
+  - `hlc?: { pt: number; l: number; r: string }` or flattened fields
+  - `replicaId?: string`
+  - `seq?: number`
+  - `targetEventId?: string` / lifecycle refs if needed
+  - `causes?: string[]`
+- [ ] Add indexes only if needed by the implementation:
+  - by `eventId`
+  - by `replicaId, seq`
+- [ ] Keep old fields in place for compatibility with current tests and UI.
 
-## Milestones
+#### 5. Stamp New Events
 
-### M0 — Scaffold
-- [ ] `npm create convex@latest` (or init in place), `npx convex ai-files install`.
-- [ ] `npx convex dev --once` to provision a local backend.
-- [ ] Commit baseline.
+- [ ] In `assertFact`, build a core assert event body and seal it.
+- [ ] In `retractFact`, build a core retract event targeting the asserted event.
+- [ ] In `tombstoneFact`, build a core tombstone event.
+- [ ] In `correctFact`, express correction as tombstone-old + assert-new, linked
+  by causal metadata.
+- [ ] Preserve transaction rows and existing event semantics.
 
-### M1 — Schema (`convex/schema.ts`)
-Define all tables with indexes:
-- [ ] `transactions` — `by_txTime`, `by_actor`.
-- [ ] `factEvents` — `by_tx`, `by_e_a_tx`, `by_a_tx`.
-- [ ] `facts` — `by_e_a`, `by_e_a_validFrom`, `by_a`, `by_a_validFrom`, `by_a_v`, `by_a_v_validFrom`, `by_assertedAt`, `by_retractedAt`, `by_tombstonedAt`.
-- [ ] `currentFacts` — `by_e`, `by_e_a`, `by_a`, `by_a_v`, `by_e_a_v`.
-- [ ] `attributes` — `by_name`.
-- [ ] `rules` — `by_name`, `by_enabled`.
-- [ ] `derivedFacts` — `by_rule`, `by_e_a`, `by_a_v`, `by_stale`.
-- [ ] `ruleInvalidations` — `by_rule_processed`.
+#### 6. Implement HLC / Replica Metadata
 
-### M2 — Write path (`convex/facts.ts`)
-- [ ] `assertFact` — create tx, append event, insert interval, upsert `currentFacts`.
-- [ ] Cardinality-one handling: when `e+a` has a current visible fact, retract it (set `retractedAt`, optionally `validTo`) before inserting the new one.
-- [ ] `retractFact` — append event, patch `retractedAt` (+ optional `validTo`), remove/update `currentFacts`, mark affected `derivedFacts` stale.
-- [ ] `tombstoneFact` — append event, patch `tombstonedAt`/`tombstoneTxId`/reason, remove from `currentFacts`, mark dependents stale.
-- [ ] `correctFact` — tombstone old + assert new + link `supersedes`/`supersededBy`.
+For the centralized Convex runtime, this can be minimal but protocol-shaped.
 
-### M3 — Read path
-- [ ] `lib/visibility.ts` — `isVisible(fact, txTime, validTime, opts)`.
-- [ ] `getEntity({ e })` — collect `currentFacts` by `by_e`, group into attribute map (respect cardinality).
-- [ ] `queryFacts({ e?, a?, v?, txTime?, validTime?, includeTombstoned? })` — pick the most selective index from the bound terms, filter with `isVisible`.
-- [ ] `history({ e, a? })` — walk `facts` / `factEvents` for an entity's timeline.
+- [ ] Define a stable replica ID for the deployment / runtime.
+  - Initial pragmatic value can be `"convex:<deployment>"` or `"convex:dev"`.
+  - Avoid reading browser/client state.
+- [ ] Add a per-replica sequence source.
+  - Could be transaction-time derived for now if tests prove determinism, but
+    SPEC wants per-replica seq for sync.
+  - If a real counter is added, keep it transactional and indexed.
+- [ ] HLC physical time can start from transaction time.
+- [ ] HLC logical component can be `0` for normal single-writer writes, but tests
+  should be able to construct same-physical-time events.
 
-### M4 — Datalog (bounded, non-recursive)
-- [ ] `lib/planner.ts`:
-  - normalize: parse `?vars`, validate attributes, classify const vs var.
-  - plan: order clauses by selectivity — `[e,a,v]` > `[e,a,?]` > `[?,a,v]` > `[?,a,?]` > `[e,?,?]`.
-  - reject recursion / unsupported clauses on the live path.
-- [ ] `lib/join.ts` — fetch candidates per clause via the chosen index, unify bindings, project `select`.
-- [ ] `datalog` query — drive plan → fetch → join, enforce limits (`maxClauses`, `maxIntermediateRows`, etc.).
-- [ ] `explainDatalog` — return the chosen plan without executing.
+#### 7. Switch Cardinality-One Supersession
 
-### M5 — Rules & materialization
-- [ ] `rules.ts: defineRule` — persist a rule (`where`, `emit`, `dependsOnAttributes`, `materialization`).
-- [ ] Invalidation: on fact change, find rules depending on the changed attribute, enqueue `ruleInvalidations`, mark prior `derivedFacts` stale.
-- [ ] `internal/materialize.ts: processFactChange` / `recomputeDerivedFacts` — scheduled recompute via `ctx.scheduler.runAfter(0, ...)`.
-- [ ] Wire `assertFact`/`retractFact`/`tombstoneFact` to schedule materialization.
+- [ ] Replace "current arrival-order prior fact wins/loses" logic with a
+  core-order comparison among visible candidate assertions for `(e, a)`.
+- [ ] Surviving value for `cardinality: "one"` is the `≺`-max visible assert.
+- [ ] Non-surviving visible asserts should be represented as superseded/retracted
+  in the projection without pretending their events never existed.
+- [ ] Preserve user-facing current state for ordinary sequential writes.
 
-### M6 — Bitemporal ergonomics
-- [ ] `compareFacts({ e, a, before, after })` — diff beliefs across two bitemporal coordinates.
-- [ ] `asOfTx` / `asOfValid` / `asOfBoth` helpers.
+Important distinction:
 
-## MVP cut (build in this order)
+- The event log should keep all concurrent assertions.
+- The projection chooses one current value for cardinality-one.
+- The losing event remains explainable/auditable.
 
-1. `schema.ts`
-2. `assertFact`
-3. `retractFact`
-4. `tombstoneFact`
-5. `currentFacts` projection
-6. `getEntity`
-7. `queryFacts` with `txTime` + `validTime`
-8. tiny non-recursive Datalog
-9. rule materialization
-10. correction / supersession
+#### 8. Rebuild From Event Log
 
-**Deferred (not in MVP):** branching/`branchId`, recursive Datalog, query cache,
-advanced planner/cost model, inverse attributes, distributed partitions.
+- [ ] Update `rebuildProjections` to prefer core-shaped events when present.
+- [ ] Keep compatibility with legacy event rows.
+- [ ] Prove rebuild produces the same `facts` / `currentFacts` result as live
+  writes.
+- [ ] Ensure derived-rule materialization still runs from rebuilt facts.
 
-## Testing strategy
+#### 9. Tests
 
-- Unit-test `isVisible` against the four-quadrant bitemporal matrix (asserted/retracted × valid/invalid).
-- Property test: replaying `factEvents` reconstructs `facts` and `currentFacts`.
-- Datalog: golden tests on `explainDatalog` plans + result correctness on a fixed fixture graph.
-- Limit tests: queries exceeding `maxIntermediateRows` throw cleanly.
+Add focused tests before broader refactors.
 
-## Datalog capabilities (2026-06-03)
+- [ ] Core adapter tests:
+  - Event row round-trips to core event.
+  - `eventId` verifies.
+  - Legacy event row can still be adapted.
+- [ ] Write-path tests:
+  - `assertFact` writes `eventId` and HLC metadata.
+  - retract/tombstone/correct events reference the target event/fact correctly.
+- [ ] Cardinality tests:
+  - two same-coordinate cardinality-one assertions converge to the `≺`-max.
+  - insertion order does not change final `currentFacts`.
+  - losing assertion remains in history/provenance.
+- [ ] Rebuild tests:
+  - live projection equals rebuilt projection.
+  - derived facts still rebuild.
 
-The engine now supports, in bounded live queries:
+#### 10. Verification
 
-- **Fact patterns** `[e, a, v]` joined via indexed nested loops.
-- **Comparison predicates** `[term, op, term]` for `> < >= <= == !=`.
-- **Negation** `{ not: [e, a, v] }` (safe: negated vars must be bound first).
-- **facts ∪ derivedFacts** — materialized rule output (incl. transitive
-  closures) is transparently queryable as ordinary attributes.
-- **Transitive closure rules** via `defineTransitiveRule`, materialized async by
-  a bounded BFS fixpoint and recomputed on base-attribute changes.
+Run:
 
-Join order is dynamic (selectivity-driven); filters run as soon as their
-variables bind. `explainDatalog` classifies clauses without executing.
+```bash
+npm run test:core
+npm test
+npx tsc --noEmit -p convex/tsconfig.json
+npx tsc --noEmit -p tsconfig.json
+npx convex dev --once
+```
 
-## Still open
+If frontend-visible behavior changes:
 
-- **Incremental recompute is entity-local only.** Cross-entity datalog rules
-  and all closure rules still trigger a full recompute on any dependency
-  change. A dependency graph keyed by the joined entity would let those
-  recompute incrementally too.
-- **Closure deletions are still full recompute.** Edge additions now take a
-  semi-naive delta, but retraction/tombstone/correction of a base edge rebuilds
-  the whole closure (deletions can invalidate arbitrary pairs). A
-  counting/provenance scheme (e.g. DRed) would make deletions incremental too.
-- **`queryEntities` re-runs per page.** Cursor pagination recomputes the full
-  (bounded) result set each page and slices it, rather than streaming from a
-  DB-level cursor — fine at demo scale, not for large types.
-- **Valid-time succession for cardinality-one** is caller-driven: auto-replace
-  only supersedes in transaction time. A `validFrom`-aware assert that closes
-  the prior interval in valid time would be a useful convenience.
-- **`sync` materialization** is treated like `async` (always scheduled). True
-  synchronous, in-transaction derivation isn't wired up yet.
+```bash
+npm run build
+npx @convex-dev/static-hosting upload
+```
 
-## Vision alignment & Convex feasibility (2026-06-04)
+Then verify the live site at `chatty-hare-94`.
 
-Findings from reviewing [`vision/`](./vision) against what we've built. Full technical rebasing in
-[`vision/convex.md`](./vision/convex.md); this is the decision record.
+---
 
-**Verdict.** The vision's *model* is coherent and **already substantially demonstrated** here: facts,
-two-axis bitemporality, schema-as-facts, a Datalog query engine, reactions/materialization with
-provenance, and rebuildable projections all exist. The vision's *substrate assumptions* — Postgres /
-Prisma / Kysely (SQL), Effect-TS DSLs, and a NATS/BullMQ event bus — do **not** match Convex and are
-rebased, not adopted. The model survives; the mechanism changes.
+## Goal 2 — Confect Spike for the Convex Target
 
-**Already shipped (vision called several of these "eventually"):**
-- Configurable type/attribute registry → **schema-as-facts** (defs are triples, not a side table).
-- Bitemporal → **two-axis** (transaction time *and* valid time); richer than the docs' `validFrom`/`validTo`.
-- Queries-are-data → Datalog AST over **indexed Convex reads**; tx log → append-only `factEvents` source of
-  truth with rebuildable projections; provenance via `sourceFactIds`/`explainDerived`.
+**Objective:** evaluate whether Confect should become the authoring/runtime style
+for `@metacrdt/convex`, after core write semantics are correct.
 
-**Reframes (decided — see convex.md):**
-- "Datalog AST → one SQL statement" → **nested-loop joins in JS over declared indexes**. No planner, no
-  DB joins, **no arbitrary EAV filtering** (filter/sort needs a covering index/projection).
-- "Promote hot attribute to a native column / GIN" → **separate projection tables / narrow secondary
-  indexes**; Convex can't index dynamic attribute values.
-- "tx log = live event bus" → server reactions run off **`factEvents` + scheduler/materialization**;
-  Convex reactivity is free only for **client reads** (a real win for generated UIs), not server triggers.
-- Effect `Schema`/DSLs/`HttpApi` → **Convex validators, TS builders, components**.
-- Integration = bounded context → **Convex component** (structurally isolated; cleaner than namespace
-  tags + a compiler join-guard). Effect migration → component schema + **batched migration mutation**.
+This is intentionally after Goal 1.
 
-**The constraint the vision omits.** A Convex mutation is a **single transaction with hard read/write
-limits**. Every store-sweeping operation — the compliance **reconciler**, config **`apply`**, projection
-**rebuild**, bulk migration — must be a **batched, resumable, scheduler-driven job**, never one atomic
-statement. This is the operational contract to get right first (the reconciler is the proving ground), and
-it's the risk the vision most under-weights.
+### Why After Goal 1
 
-**Cuts (decided):**
-- **JIT-compiled per-account `HttpApi`** (`api.md`) — cut. Convex types are per-deployment at codegen time,
-  not per-account at runtime. Replace with one **dynamic `httpAction`** validating against the registry at
-  runtime; optionally emit OpenAPI from the registry as data for offline codegen.
-- **Cost-based projection planner**, **GIN `@>` reuse-match index**, **column promotion** — cut; explicit
-  projection tables instead.
-- **Request-time multi-hop graph authorization** — cut for v1; precompute per-principal visible-subject
-  projections. Authz enforced in function code (no row-level security).
-- **Crypto-shredding as primary erasure** — downscope; Convex **hard-delete** makes erasure feasible
-  directly. Keep crypto-shred for file blobs only.
-- **Data residency** — defer (a Convex project is one deployment; residency = separate per-region deploys).
-- **General `Flow` DAG runner first** — defer; ship the **reconciler** as a scheduler-driven state machine,
-  or adopt the Convex Workflow component. Accept async (scheduler-latency) obligation production.
+Confect improves schema, service, and error boundaries. It does not define the
+MetaCRDT protocol. Converting to Confect before the write path is protocol-shaped
+would move complexity sideways while preserving the central correctness gap.
 
-**Maps cleanly, keep:** notifications/timers → scheduler+crons; documents/e-sign → file storage+actions;
-generated UIs → projection of schema-as-facts (reactive for free); AI → AST validation + actions + provenance
-facts; the migration discipline and permanently-hybrid end state.
+### Spike Scope
 
-**Suggested next slice (highest leverage):** ~~the compliance reconciler~~ **— SHIPPED.** The compliance
-engine slice is built (obligations-as-facts, reuse-as-scope-key, tasks-via-negation with provenance,
-guarded requirements, valid-time expiry via cron, reactive UI). Next: the **async collection step**
-(send-form-link / E-Verify) is the natural pull into a general **Flow runner** (scheduler-driven step
-graph) — the deferred-hard piece this slice intentionally stopped short of.
+Port one vertical slice only:
 
-## Open questions
+- Recommended slice: `convex/facts.ts`
+- Keep public API behavior stable.
+- Do not port flows, compliance, forms, or frontend in the first spike.
 
-- Value normalization for index keys (entity refs vs scalars vs JSON) — needed for stable `by_a_v` lookups.
-- Cardinality-many retraction semantics when only one of several values should end.
-- How `currentFacts` tracks valid-time "now" as wall-clock advances (future-dated `validFrom`).
-- Whether `derivedFacts` should themselves be queryable via Datalog (stratification).
+### Acceptance Criteria
+
+- One mutation/query group is expressed through Confect/Effect.
+- Args/returns/errors use Effect Schema where practical.
+- Existing tests pass or have a clear minimal harness adaptation.
+- Bundle/build/deploy work with Convex.
+- The code is simpler or more defensible than the plain Convex version.
+- Decision recorded in `docs/confect.md` or a follow-up ADR.
+
+### Spike Tasks
+
+- [ ] Verify current Confect API from its source/docs before coding.
+- [ ] Install dependencies only if needed and record why.
+- [ ] Create a small Confect-backed function group.
+- [ ] Model typed errors:
+  - unknown fact
+  - invalid attribute value
+  - cardinality conflict / denied write if relevant
+- [ ] Evaluate test ergonomics.
+- [ ] Evaluate generated Convex function compatibility.
+- [ ] Write a decision note:
+  - adopt broadly
+  - adopt only at package boundary
+  - defer
+  - reject
+
+---
+
+## Goal 3 — Extract `@metacrdt/convex`
+
+**Objective:** turn the proven Convex reference code into a reusable Convex target
+package.
+
+Do this only after Goal 1, and preferably after the Confect spike.
+
+### Target Shape
+
+One package:
+
+```text
+packages/convex/
+  package.json        # @metacrdt/convex
+  src/
+    component/        # Convex component surface, if used
+    bindings/         # lower-level function/schema factories
+    adapters/         # Convex row ↔ core event
+```
+
+### Surfaces
+
+- Convex component for drop-in use.
+- Lower-level bindings for apps that want to own their own tables.
+- Schema fragments / validators.
+- Rebuild/materialization helpers.
+- Testkit utilities.
+
+### Non-Goals
+
+- Do not include Cloudflare or local-first code.
+- Do not include Forma compiler code.
+- Do not include product UI.
+
+---
+
+## Goal 4 — Extract `@metacrdt/forma`
+
+**Objective:** fold the durable Open Ontology Lisp language layer into the
+MetaCRDT package graph as the formal authoring language.
+
+Use [docs/package-consolidation.md](./docs/package-consolidation.md) as the
+source map.
+
+### Source Material
+
+- `.context/open-ontology/packages/language-ts`
+- `.context/open-ontology/packages/language-host`
+- `.context/open-ontology/packages/language-editor`
+- `.context/open-ontology/specs/language/*`
+- `.context/open-ontology/docs/lisp/*`
+- selected language tests
+
+### Acceptance Criteria
+
+- `packages/forma` exists as `@metacrdt/forma`.
+- README states what Forma owns and does not own.
+- No runtime/target dependencies.
+- No imports from `.context/open-ontology`.
+- Selected Lisp fixtures parse/evaluate/typecheck.
+- Any old Onlang naming is either removed or documented as legacy alias.
+
+---
+
+## Parked Product/Engine Backlog
+
+These remain valuable, but they should not interrupt Goal 1.
+
+### Product / Config
+
+- [ ] `applyConfig` true reconcile: retract config facts removed from the
+  blueprint.
+- [ ] Config history/diff UI.
+- [ ] Arg-taking actions / actions that open forms.
+- [ ] Dry-run compliance: hypothetical worker + scope, no writes.
+
+### Auth / Privacy
+
+- [ ] Auth + write authorization for the live site.
+- [ ] Attribute-level read grants / PII authorization.
+- [ ] Collect-token single-use / expiry hardening.
+
+### Query / Rules
+
+- [ ] Engine-level result pagination / streaming.
+- [ ] Computed predicates: arithmetic, string ops.
+- [ ] Disjunction.
+- [ ] Cross-entity rule incremental recompute.
+- [ ] DRed/counting for transitive closure deletions.
+
+### UX
+
+- [ ] Schema-driven list columns.
+- [ ] Schema-driven forms.
+- [ ] Search / command menu.
+- [ ] Guided demo tour.
+- [ ] "New entity" flow.
+
+### Docs
+
+- [ ] `docs/physics.md`: compliance, small-group co-signing, and agent swarms
+  as three blueprints over one substrate.
+
+---
+
+## Working Rules
+
+1. **Protocol before framework.**
+   Fix MetaCRDT write semantics before Confect migration.
+2. **Core stays pure.**
+   No Convex, Effect, DOM, `Date.now()`, `Math.random()`, or runtime I/O in
+   `@metacrdt/core`.
+3. **Adapters live at the edge.**
+   Convex row/document adaptation belongs in `convex/` now, later
+   `@metacrdt/convex`.
+4. **Projection tables are disposable.**
+   Keep them for performance, but preserve rebuildability from `factEvents`.
+5. **Do not bulk-copy Open Ontology.**
+   Extract package by package with tests and a clean owner.
+6. **Every convergence claim needs a test.**
+   If the README/SPEC says order-independent, write a shuffled-order test.
+7. **Docs and TODO move with code.**
+   Any shipped phase updates `TODO.md`; any architectural change updates the
+   relevant doc.
+
+---
+
+## Definition of Done for the Current Goal
+
+Goal 1 is complete when:
+
+- Convex writes protocol-shaped events.
+- Event IDs verify through `@metacrdt/core`.
+- Cardinality-one projections use `≺`-max.
+- Rebuild from events matches live projection.
+- Existing demo behavior is preserved.
+- Tests cover deterministic convergence under shuffled write/event order.
+- `TODO.md` marks the write-path item complete and records the next Confect
+  spike.
+- The change is committed and pushed.
