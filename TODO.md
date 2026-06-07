@@ -86,6 +86,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   rebuild-from-log tests); Goal 2 is a scoped Confect spike after the protocol
   semantics are correct; later goals cover `@metacrdt/convex` and
   `@metacrdt/forma`.
+- [x] Tightened `PLAN.md` from review feedback: `correction` is now explicitly an
+  operation that expands to tombstone+assert protocol events; centralized Convex
+  `≺` behavior is framed as a test-proven convergence property, not a visible UX
+  change; global sequence counters are deferred to real replicas to avoid
+  write-contention; legacy event metadata policy is explicit (tolerant adapter
+  first, optional backfill later).
 
 ### 2026-06-06 — wire the read path through @metacrdt/core
 - [x] **Planned the Open Ontology → MetaCRDT fold** in
