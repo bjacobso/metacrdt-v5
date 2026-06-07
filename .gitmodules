@@ -1,0 +1,3 @@
+[submodule ".context/open-ontology"]
+	path = .context/open-ontology
+	url = https://github.com/bjacobso/open-ontology
