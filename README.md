@@ -12,6 +12,7 @@ This README is the *how* (the engine itself). For the *why* and where it's going
 
 - **[docs/manifesto.md](./docs/manifesto.md)** — the founding statement: what MetaCRDT is and what we believe.
 - **[docs/architecture.md](./docs/architecture.md)** — the umbrella map: layers, the `@metacrdt/*` packages, and where every prior idea lands.
+- **[docs/package-consolidation.md](./docs/package-consolidation.md)** — the proposal for folding Open Ontology's packages into this canonical `@metacrdt/*` monorepo (`@metacrdt/forma`, query/schema/workflow/views, targets).
 - **[docs/metacrdt.md](./docs/metacrdt.md)** — the positioning: MetaCRDT, a convergence substrate (the name + the technical spine).
 - **[SPEC.md](./SPEC.md)** — the MetaCRDT protocol spec (normative): events, the G-Set merge, the deterministic bitemporal fold, derivation, sync, coordination profiles.
 - **[VISION.md](./VISION.md)** — the substrate → engine → emergent-product thesis and pillars.

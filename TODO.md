@@ -21,6 +21,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   order, G-Set log/merge, the bitemporal fold; SPEC §4–5). 46 tests: CRDT laws,
   fold determinism, ≺-max supersession, visibility quadrants. No I/O, no
   `Date.now()`/`Math.random()` (HLC takes wallclock as a param).
+- [x] **Open Ontology fold proposal** — `docs/package-consolidation.md` maps the
+  submodule package graph into the canonical `@metacrdt/*` monorepo:
+  `@metacrdt/forma` (Lisp), `schema/query/workflow/forms/views/agent`, runtime
+  harness, and target packages. It explicitly rejects early `triplestore` /
+  `database` package names in favor of core + query + targets.
 - [x] **Read path on `@metacrdt/core`** — `lib/visibility.ts` is now a thin
   adapter that folds each `facts` row through core's `visible` (SPEC §5.3); every
   read query + `rebuildProjections` uses it. Confirmed Convex's esbuild bundles
@@ -32,6 +37,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   (toward retiring the hand-maintained `facts` projection).
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
+- [ ] **Extract `@metacrdt/forma`** from Open Ontology's language packages
+  (`language-ts`, selected `language-host` / docs / tests). Forma owns the Lisp
+  authoring language; runtime lowering stays out until the IR boundary proves it.
 - [ ] `@metacrdt/runtime` (the IR + service interfaces) + targets `@metacrdt/convex`
   (today), `@metacrdt/cloudflare` (DO), `@metacrdt/local` (browser). Don't factor
   these until the harness boundary is real.
@@ -72,6 +80,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-06 — wire the read path through @metacrdt/core
+- [x] **Planned the Open Ontology → MetaCRDT fold** in
+  `docs/package-consolidation.md`: this repo is canonical; Open Ontology remains a
+  pinned context submodule; the Lisp layer becomes `@metacrdt/forma`; ViewSpec
+  becomes `@metacrdt/views`; database/triplestore concepts split into
+  `@metacrdt/core` + `@metacrdt/query` + target packages; migration is extraction
+  by package boundary, not bulk copy.
 - [x] **`convex/lib/visibility.ts` now delegates to `@metacrdt/core`** — the
   bitemporal visibility predicate has one definition (core, SPEC §5.3); the Convex
   adapter maps a folded `facts` row → core events (assert + optional retract/

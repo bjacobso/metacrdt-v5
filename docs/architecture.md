@@ -12,7 +12,9 @@ isn't the primitive. *The primitive is the convergent fact graph* — and that's
 what "MetaCRDT" names. This doc is the map: where every layer, package, and prior
 idea lives. (Companion: [manifesto.md](./manifesto.md) for the *why*,
 [SPEC.md](../SPEC.md) for the protocol, [metacrdt.md](./metacrdt.md) for the
-positioning, [VISION.md](../VISION.md) for the pillars.)
+positioning, [VISION.md](../VISION.md) for the pillars, and
+[package-consolidation.md](./package-consolidation.md) for folding the Open
+Ontology monorepo into this `@metacrdt/*` package graph.)
 
 ---
 
@@ -45,6 +47,12 @@ MetaCRDT — the umbrella: the primitive, the thesis, the org
 │
 └─ APPLICATIONS      Onboarded = the first app (the datarooms vertical), buyer-facing
 ```
+
+The detailed package fold from the Open Ontology submodule is specified in
+[package-consolidation.md](./package-consolidation.md): `@metacrdt/forma` for
+the Lisp language, `@metacrdt/views` for ViewSpec, feature packages for schema /
+query / workflow / forms / agent, and target packages for Convex / Cloudflare /
+local / node.
 
 ## Three axes, kept separate
 
