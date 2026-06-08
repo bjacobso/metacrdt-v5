@@ -177,6 +177,9 @@ export default defineSchema({
     a: v.string(),
     v: value,
     sourceFactIds: v.array(v.id("facts")),
+    // For closure-derived facts, number of currently visible path supports for
+    // this reachable pair. Datalog-derived rows omit it.
+    supportCount: v.optional(v.number()),
     derivedAt: v.number(),
     validFrom: v.number(),
     validTo: v.optional(v.number()),

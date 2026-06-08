@@ -7,6 +7,13 @@ import { isEntityLocalRule, solveWhere, LIMITS } from "./lib/engine";
 import { isVisible, valueKey } from "./lib/visibility";
 import { SolvedBinding } from "./lib/engine";
 
+type ClosureSupport = {
+  from: string;
+  to: string;
+  prov: Id<"facts">[];
+  supportCount: number;
+};
+
 /**
  * Reacts to a fact change: find enabled rules that depend on the changed
  * attribute and schedule recomputation. Entity-local rules recompute only for
@@ -33,9 +40,14 @@ export const processFactChange = internalMutation({
       .query("rules")
       .withIndex("by_enabled", (q) => q.eq("enabled", true))
       .collect();
+    const changedFact = await ctx.db.get(args.factId);
 
-    const affected = enabled.filter((r) =>
-      r.dependsOnAttributes.includes(args.a),
+    const affected = enabled.filter(
+      (r) =>
+        (args.changeKind !== "assert" ||
+          changedFact === null ||
+          changedFact._creationTime >= r._creationTime) &&
+        r.dependsOnAttributes.includes(args.a),
     );
 
     for (const rule of affected) {
@@ -264,59 +276,59 @@ export const recomputeTransitiveClosure = internalMutation({
       adj.get(r.e)!.push({ to, factId: r._id });
     }
 
-    // BFS reachability per source, bounded by depth and total pairs; the
-    // accumulated edge-fact set on the path is the pair's provenance.
-    const pairs: Array<{ from: string; to: string; prov: Id<"facts">[] }> = [];
-    let truncated = false;
-    outer: for (const source of adj.keys()) {
-      const seen = new Set<string>();
-      let frontier: Array<{ node: string; prov: Id<"facts">[] }> = [
-        { node: source, prov: [] },
-      ];
-      for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
-        const nextFrontier: Array<{ node: string; prov: Id<"facts">[] }> = [];
-        for (const { node, prov } of frontier) {
-          for (const edge of adj.get(node) ?? []) {
-            if (seen.has(edge.to) || edge.to === source) continue;
-            seen.add(edge.to);
-            const pathProv = [...prov, edge.factId];
-            nextFrontier.push({ node: edge.to, prov: pathProv });
-            pairs.push({ from: source, to: edge.to, prov: pathProv });
-            if (pairs.length >= LIMITS.maxIntermediateRows) {
-              truncated = true;
-              break outer;
-            }
-          }
-        }
-        frontier = nextFrontier;
-      }
-      if (reflexive) pairs.push({ from: source, to: source, prov: [] });
-    }
+    const { pairs, truncated } = computeClosureSupports(
+      adj,
+      maxDepth,
+      reflexive ?? false,
+    );
     if (truncated) {
       console.warn(
         `transitive closure for ${closureAttribute} truncated at ${LIMITS.maxIntermediateRows} pairs`,
       );
     }
 
-    // Replace this rule's prior output.
+    // Reconcile this rule's prior output instead of deleting/reinserting every
+    // pair. Support counts are the deletion-safe part: if one path disappears but
+    // another remains, the row stays live with a lower support count.
     const prior = await ctx.db
       .query("derivedFacts")
       .withIndex("by_rule", (q) => q.eq("ruleId", args.ruleId))
       .collect();
-    for (const d of prior) await ctx.db.delete("derivedFacts", d._id);
+    const priorByPair = new Map(
+      prior
+        .filter((d) => d.a === closureAttribute)
+        .map((d) => [closureKey(d.e, String(d.v)), d]),
+    );
 
-    for (const { from, to, prov } of pairs) {
-      await ctx.db.insert("derivedFacts", {
-        ruleId: args.ruleId,
-        e: from,
-        a: closureAttribute,
-        v: to,
-        sourceFactIds: prov,
-        derivedAt: now,
-        validFrom: now,
-        txWatermark: now,
-        stale: false,
-      });
+    for (const pair of pairs.values()) {
+      const existing = priorByPair.get(closureKey(pair.from, pair.to));
+      if (existing) {
+        priorByPair.delete(closureKey(pair.from, pair.to));
+        await ctx.db.patch(existing._id, {
+          sourceFactIds: pair.prov,
+          supportCount: pair.supportCount,
+          derivedAt: now,
+          txWatermark: now,
+          stale: false,
+        });
+      } else {
+        await ctx.db.insert("derivedFacts", {
+          ruleId: args.ruleId,
+          e: pair.from,
+          a: closureAttribute,
+          v: pair.to,
+          sourceFactIds: pair.prov,
+          supportCount: pair.supportCount,
+          derivedAt: now,
+          validFrom: now,
+          txWatermark: now,
+          stale: false,
+        });
+      }
+    }
+
+    for (const stale of priorByPair.values()) {
+      await ctx.db.delete(stale._id);
     }
 
     await clearInvalidations(ctx, args.ruleId, now);
@@ -351,9 +363,17 @@ export const incrementalClosureAdd = internalMutation({
         q.eq("a", closureAttribute).eq("v", args.u),
       )
       .take(LIMITS.maxClauseScan);
-    const predProv = new Map<string, Id<"facts">[]>();
-    for (const r of predRows) predProv.set(r.e, r.sourceFactIds ?? []);
-    predProv.set(args.u, []);
+    const predProv = new Map<
+      string,
+      { prov: Id<"facts">[]; supportCount: number }
+    >();
+    for (const r of predRows) {
+      predProv.set(r.e, {
+        prov: r.sourceFactIds ?? [],
+        supportCount: r.supportCount ?? 1,
+      });
+    }
+    predProv.set(args.u, { prov: [], supportCount: 1 });
 
     // successors(w): y such that (w --closure--> y) already holds, plus w.
     const succRows = await ctx.db
@@ -362,12 +382,20 @@ export const incrementalClosureAdd = internalMutation({
         q.eq("e", args.w).eq("a", closureAttribute),
       )
       .take(LIMITS.maxClauseScan);
-    const succProv = new Map<string, Id<"facts">[]>();
-    for (const r of succRows) succProv.set(String(r.v), r.sourceFactIds ?? []);
-    succProv.set(args.w, []);
+    const succProv = new Map<
+      string,
+      { prov: Id<"facts">[]; supportCount: number }
+    >();
+    for (const r of succRows) {
+      succProv.set(String(r.v), {
+        prov: r.sourceFactIds ?? [],
+        supportCount: r.supportCount ?? 1,
+      });
+    }
+    succProv.set(args.w, { prov: [], supportCount: 1 });
 
     let inserted = 0;
-    for (const [x, xProv] of predProv) {
+    for (const [x, xSupport] of predProv) {
       // Existing closure targets for x, to dedupe in one read per source.
       const existingRows = await ctx.db
         .query("derivedFacts")
@@ -375,23 +403,40 @@ export const incrementalClosureAdd = internalMutation({
           q.eq("e", x).eq("a", closureAttribute),
         )
         .take(LIMITS.maxClauseScan);
-      const existing = new Set<string>(existingRows.map((r) => String(r.v)));
-      for (const [y, yProv] of succProv) {
+      const existing = new Map<string, Doc<"derivedFacts">>(
+        existingRows.map((r) => [String(r.v), r]),
+      );
+      for (const [y, ySupport] of succProv) {
         if (x === y && !reflexive) continue;
-        if (existing.has(y)) continue;
-        const prov = [...new Set([...xProv, ...edgeProv, ...yProv])];
+        const prov = [
+          ...new Set([...xSupport.prov, ...edgeProv, ...ySupport.prov]),
+        ];
+        const addedSupports = xSupport.supportCount * ySupport.supportCount;
+        const current = existing.get(y);
+        if (current) {
+          await ctx.db.patch(current._id, {
+            supportCount: (current.supportCount ?? 1) + addedSupports,
+            txWatermark: now,
+            stale: false,
+          });
+          existing.set(y, {
+            ...current,
+            supportCount: (current.supportCount ?? 1) + addedSupports,
+          });
+          continue;
+        }
         await ctx.db.insert("derivedFacts", {
           ruleId: args.ruleId,
           e: x,
           a: closureAttribute,
           v: y,
           sourceFactIds: prov,
+          supportCount: addedSupports,
           derivedAt: now,
           validFrom: now,
           txWatermark: now,
           stale: false,
         });
-        existing.add(y);
         inserted++;
         if (inserted >= LIMITS.maxIntermediateRows) {
           console.warn(
@@ -408,6 +453,73 @@ export const incrementalClosureAdd = internalMutation({
 });
 
 // --- helpers ----------------------------------------------------------------
+
+function closureKey(from: string, to: string): string {
+  return `${from}\u0000${valueKey(to)}`;
+}
+
+function computeClosureSupports(
+  adj: Map<string, Array<{ to: string; factId: Id<"facts"> }>>,
+  maxDepth: number,
+  reflexive: boolean,
+): { pairs: Map<string, ClosureSupport>; truncated: boolean } {
+  const pairs = new Map<string, ClosureSupport>();
+  let paths = 0;
+  let truncated = false;
+
+  outer: for (const source of adj.keys()) {
+    let frontier: Array<{
+      node: string;
+      prov: Id<"facts">[];
+      visited: Set<string>;
+    }> = [{ node: source, prov: [], visited: new Set([source]) }];
+
+    for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
+      const nextFrontier: typeof frontier = [];
+      for (const { node, prov, visited } of frontier) {
+        for (const edge of adj.get(node) ?? []) {
+          if (visited.has(edge.to)) continue;
+          const pathProv = [...prov, edge.factId];
+          const key = closureKey(source, edge.to);
+          const existing = pairs.get(key);
+          if (existing) {
+            existing.supportCount++;
+          } else {
+            pairs.set(key, {
+              from: source,
+              to: edge.to,
+              prov: pathProv,
+              supportCount: 1,
+            });
+          }
+          paths++;
+          if (paths >= LIMITS.maxIntermediateRows) {
+            truncated = true;
+            break outer;
+          }
+          nextFrontier.push({
+            node: edge.to,
+            prov: pathProv,
+            visited: new Set([...visited, edge.to]),
+          });
+        }
+      }
+      frontier = nextFrontier;
+    }
+
+    if (reflexive) {
+      const key = closureKey(source, source);
+      pairs.set(key, {
+        from: source,
+        to: source,
+        prov: [],
+        supportCount: (pairs.get(key)?.supportCount ?? 0) + 1,
+      });
+    }
+  }
+
+  return { pairs, truncated };
+}
 
 /**
  * For a variable-emitting Datalog rule, find the output entities that could be
@@ -517,7 +629,7 @@ async function emitSolved(
     const e = resolveTerm(rule.emit.e, s.binding);
     const value = resolveTerm(rule.emit.v, s.binding);
     if (e === undefined || e === null) continue;
-    const key = `${String(e)} ${valueKey(value)}`;
+    const key = `${String(e)}\u0000${valueKey(value)}`;
     let m = merged.get(key);
     if (!m) {
       m = { e: String(e), v: value, sources: new Set() };

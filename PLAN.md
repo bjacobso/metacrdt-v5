@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 47 (cross-entity rule affected-output recompute)
+**Current goal:** Goal 48 (counted closure deletion reconciliation)
 has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth, or
@@ -79,7 +79,7 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 127 tests at last verification.
+- Convex backend tests are green: 128 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -262,6 +262,13 @@ arguments.
     recompute
   - corrections notify materialization as tombstone-old + assert-new so stale
     outputs and replacement outputs are both visible to the incremental path
+- Transitive-closure materialization is counted and deletion-safe:
+  - closure-derived rows carry optional `supportCount`
+  - full closure recompute reconciles existing rows instead of deleting every row
+    first
+  - alternate paths keep a reachable pair live when one edge/path is removed
+  - incremental add increments support counts when it discovers another path to
+    an already-reachable pair
 - Config history/diff exists:
   - `configHistory.currentManifest` reconstructs the current owned-artifact
     manifest from `config:default`
@@ -374,8 +381,6 @@ arguments.
   treated as `anonymous` for reads, PII is denied by default, and general public
   writes now fail with `Not authenticated`. The hardened collection-token path
   remains the intentional anonymous write surface.
-- Transitive-closure deletions and corrections are correct but conservative:
-  they still use full closure recompute, not DRed/counting.
 - Confect is integrated as a narrow sidecar spike:
   - `confect/` defines a typed Effect Schema function group.
   - `convex/metacrdtConfect.ts` manually mounts the generated registered
@@ -4705,6 +4710,101 @@ convex/datalog.test.ts
 
 ---
 
+## Goal 48 — Counted Closure Deletion Reconciliation
+
+**Status:** shipped in the Convex closure materializer.
+
+**Objective:** close the transitive-closure deletion correctness/efficiency
+backlog item by tracking path support counts for closure-derived pairs and
+reconciling closure output rows instead of deleting/reinserting every pair on
+edge removals or corrections.
+
+### Scope
+
+Schema:
+
+```text
+convex/schema.ts
+  derivedFacts.supportCount
+```
+
+Materializer:
+
+```text
+convex/materialize.ts
+  recomputeTransitiveClosure
+  incrementalClosureAdd
+  computeClosureSupports
+```
+
+Tests:
+
+```text
+convex/datalog.test.ts
+```
+
+### Semantics
+
+- Closure-derived rows may carry `supportCount`, the number of currently visible
+  bounded simple paths supporting that `(from, closureAttribute, to)` pair.
+- Full closure recompute now computes a counted support map and reconciles it
+  against existing rows:
+  - reachable existing rows are patched with the new representative provenance
+    and support count
+  - newly reachable rows are inserted
+  - no-longer reachable rows are deleted
+- Incremental closure add still uses the semi-naive predecessor × successor
+  delta, but now increments `supportCount` when the new edge creates another
+  path to a pair that was already reachable.
+- `sourceFactIds` remains one representative path for provenance/explain UI.
+  `supportCount` is the multiplicity signal.
+- Fact-change jobs queued before a closure rule is created are ignored for that
+  rule on the `assert` path; the rule definition's initial full materialization
+  is the source of truth. Later retractions/tombstones/corrections still
+  invalidate the rule.
+
+### Non-Goals
+
+- Do not add recursive live Datalog.
+- Do not store every support path; keep one representative path plus a count.
+- Do not make closure deletion fully semi-naive in this slice. Deletions and
+  corrections still recompute the bounded closure support map, but they reconcile
+  counted rows instead of wholesale projection replacement.
+
+### Acceptance Criteria
+
+- A closure pair supported by two alternate paths has `supportCount = 2`.
+- Removing one supporting edge leaves the pair live with `supportCount = 1`.
+- Removing the final supporting edge removes the pair.
+- Corrections replace stale closure pairs with replacement pairs.
+- Incremental add, provenance explanation, Datalog queries over closure
+  attributes, and existing closure retraction behavior remain unchanged.
+
+### Verification
+
+- `npx vitest run convex/datalog.test.ts convex/provenance.test.ts convex/compliance.test.ts convex/triples.test.ts`
+  passed (43 focused tests).
+- Full gate passed:
+  - `npm run test:core` passed (46 tests).
+  - `npm run test:convex-package` passed.
+  - `npm test` passed (17 backend test files, 128 tests).
+  - `npm run test:runtime` passed.
+  - `npm run test:local` passed.
+  - `npm run test:cloudflare` passed.
+  - `npm run test:forma` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+- Deployed with `npx convex dev --once` and
+  `npx @convex-dev/static-hosting upload`.
+- Live smoke passed:
+  - `curl -I https://chatty-hare-94.convex.site` returned `HTTP/2 200`.
+  - `npx convex run datalog:explainDatalog ...` reached the deployed Datalog
+    module after the schema/materializer deploy.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -4766,7 +4866,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Disjunction.
 - [x] Cross-entity rule incremental recompute for variable-emitting rules
   (affected output entities only; unsupported shapes fall back to full).
-- [ ] DRed/counting for transitive closure deletions.
+- [x] DRed/counting for transitive closure deletions (counted support reconcile;
+  deletion/correction still recomputes the bounded support map).
 
 ### UX
 

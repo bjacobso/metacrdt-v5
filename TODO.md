@@ -176,6 +176,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   changed source fact, discovered from prior provenance and current solved
   bindings. Corrections notify materialization as tombstone-old + assert-new.
   Unsupported/constant-emitting rules still fall back to full recompute.
+- [x] **Counted transitive-closure deletion reconciliation** — closure-derived
+  rows now carry `supportCount`; recompute reconciles counted support rows rather
+  than replacing the whole projection, and incremental add increments support
+  counts for newly discovered alternate paths.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
@@ -212,8 +216,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [ ] Targets: live Cloudflare deployment/auth and migrating more reference
   runtime business logic onto `@metacrdt/convex` component-owned state
   (component-owned collect reminder/escalation/expiry timers now shipped).
-- [ ] Query/rules: DRed/counting for transitive closure deletions. Closure
-  deletions/corrections are currently correct by full recompute.
+- [x] Query/rules: DRed/counting for transitive closure deletions (counted
+  support reconcile shipped; deletion/correction still computes the bounded
+  support map before reconciling rows).
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -306,6 +311,17 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — counted closure deletion reconciliation
+- [x] **Goal 48 shipped:** closure-derived rows can carry `supportCount`, the
+  number of bounded simple paths currently supporting the reachable pair.
+- [x] **Reconcile, don't replace.** Full closure recompute now patches reachable
+  rows, inserts new pairs, and deletes unreachable pairs. Removing one of two
+  alternate paths keeps the pair live with a decremented support count; removing
+  the final support deletes it.
+- [x] **Incremental add understands multiplicity.** Semi-naive add still uses
+  predecessor × successor deltas, but increments support for already-reachable
+  pairs when a new edge creates another path.
 
 ### 2026-06-08 — cross-entity rule affected-output recompute
 - [x] **Goal 47 shipped:** variable-emitting cross-entity Datalog rules now

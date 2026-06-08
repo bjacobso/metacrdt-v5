@@ -181,7 +181,8 @@ Built today:
   predicates, negation, aggregation, cursor-paged result APIs, and materialized
   transitive closure
 - rule materialization with entity-local and affected-output cross-entity
-  recompute; closure deletions/corrections remain correct via full recompute
+  recompute; transitive-closure rows track path support counts so deletions
+  reconcile alternate-path reachability correctly
 - schema-as-facts: entity types and attributes are facts too
 - rules and provenance: derived facts explain why they exist
 - compliance obligations as derived facts

@@ -525,6 +525,70 @@ describe("transitive closure", () => {
     }
   });
 
+  test("counting reconcile keeps closure pairs while an alternate path remains", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await assert(t, "a", "path", "b");
+      const bc = await t.mutation(api.facts.assertFact, {
+        e: "b",
+        a: "path",
+        value: "c",
+      });
+      await assert(t, "a", "path", "d");
+      const dc = await t.mutation(api.facts.assertFact, {
+        e: "d",
+        a: "path",
+        value: "c",
+      });
+      await t.mutation(api.rules.defineTransitiveRule, {
+        name: "pathClosure",
+        baseAttribute: "path",
+        closureAttribute: "path+",
+        maxDepth: 16,
+      });
+      await flush(t);
+
+      let closure = await t.run(async (ctx) => {
+        return await ctx.db
+          .query("derivedFacts")
+          .withIndex("by_e_a", (q) => q.eq("e", "a").eq("a", "path+"))
+          .collect();
+      });
+      let aToC = closure.find((row) => row.v === "c");
+      expect(aToC?.supportCount).toBe(2);
+
+      await t.mutation(api.facts.retractFact, { factId: bc.factId });
+      await flush(t);
+
+      let reach = await t.query(api.datalog.datalog, {
+        where: [["a", "path+", "?z"]],
+        select: ["?z"],
+      });
+      expect(reach.map((r) => r.z).sort()).toEqual(["b", "c", "d"]);
+
+      closure = await t.run(async (ctx) => {
+        return await ctx.db
+          .query("derivedFacts")
+          .withIndex("by_e_a", (q) => q.eq("e", "a").eq("a", "path+"))
+          .collect();
+      });
+      aToC = closure.find((row) => row.v === "c");
+      expect(aToC?.supportCount).toBe(1);
+
+      await t.mutation(api.facts.retractFact, { factId: dc.factId });
+      await flush(t);
+
+      reach = await t.query(api.datalog.datalog, {
+        where: [["a", "path+", "?z"]],
+        select: ["?z"],
+      });
+      expect(reach.map((r) => r.z).sort()).toEqual(["b", "d"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("full recompute on correction replaces stale closure pairs", async () => {
     vi.useFakeTimers();
     try {
