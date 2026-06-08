@@ -33,5 +33,19 @@ export {
   type CardinalityOneReconcileResult,
   type ReconcileCandidate,
 } from "./reconcile";
+export {
+  buildAssertFactEvent,
+  buildLifecycleFactEvent,
+  createProtocolFactEventWriter,
+  summarizeProtocolEventRows,
+  type AppendedProtocolFactEvent,
+  type AppendAssertArgs,
+  type AppendLifecycleArgs,
+  type BuiltProtocolFactEvent,
+  type ProtocolFactEventInsert,
+  type ProtocolFactEventInserter,
+  type ProtocolFactEventWriter,
+  type ProtocolLifecycleKind,
+} from "./functions";
 export { hlcValidator, protocolMetadataValidators } from "./validators";
 export { confectSidecarWarning, type ManualConfectMountDecision } from "./confect";

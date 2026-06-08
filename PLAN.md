@@ -88,6 +88,10 @@ configured actions can now take small typed arguments.
   - package-owned bitemporal visibility adapter
   - protocol metadata validators
   - event-row verification/summarization helpers used by the Confect sidecar
+  - helper factories for building/appending protocol fact-event rows through a
+    host-provided inserter
+  - helper for summarizing/verifying rows through a host-provided transaction
+    lookup
   - an explicit Confect sidecar warning/helper documenting the manual-mount
     lesson from Goal 2
   - package-local tests for deterministic event reconstruction and legacy
@@ -749,16 +753,19 @@ packages/convex/
 
 - [x] Export validators/schema fragments for protocol metadata fields.
 - [x] Export pure cardinality-one reconcile selection by `≺`.
-- [ ] Export function factories for:
+- [x] Export host-mounted helper factories for:
   - append protocol assert event
   - append lifecycle event
   - verify event rows
+- [ ] Export registered Convex component/functions for the same helpers once the
+  component API is clear.
 - [ ] Keep host apps free to mount functions under their own names.
 
 Deferred rationale: Goal 3 ships reusable, target-shaped helpers before
-mountable functions. Function factories and a full component surface should come
-after one more host-app usage or the component API shape is clear; otherwise they
-risk fossilizing the current reference app's projection choices as public API.
+mountable functions. The package now owns host-mounted helpers; a full registered
+component surface should come after one more host-app usage or the component API
+shape is clear, otherwise it risks fossilizing the current reference app's
+projection choices as public API.
 
 #### 4. Confect integration decision
 
@@ -1557,7 +1564,7 @@ These remain valuable, but they should not interrupt the current goal.
 
 - [x] `@metacrdt/runtime` harness groundwork.
 - [ ] Durable anti-entropy transport and version vectors.
-- [ ] Full `@metacrdt/convex` component/function factory surface.
+- [ ] Full registered `@metacrdt/convex` component/function surface.
 - [ ] Cloudflare Durable Object target.
 - [ ] Browser/local-first target.
 

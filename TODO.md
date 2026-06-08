@@ -45,17 +45,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **`@metacrdt/convex` adapter package extracted** — `packages/convex` owns
   Convex/core event construction, row reconstruction/verification summaries,
   visibility mapping, protocol metadata validators, pure cardinality-one
-  reconcile selection by `≺`, and the Confect sidecar warning. The reference app
-  consumes it from `convex/lib/coreEvent.ts`, `convex/lib/visibility.ts`, and
-  `confect/metacrdt.impl.ts`. Component/function factories remain deferred until
-  the host-app API boundary is clearer.
+  reconcile selection by `≺`, host-mounted append/verify helper factories, and
+  the Confect sidecar warning. The reference app consumes it from
+  `convex/lib/coreEvent.ts`, `convex/lib/visibility.ts`, and
+  `confect/metacrdt.impl.ts`. Registered component/functions remain deferred
+  until the host-app API boundary is clearer.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
   a memory target/harness proving G-Set exchange convergence. It does not yet own
   Convex or durable sync.
-- [ ] Targets: `@metacrdt/cloudflare` (DO), `@metacrdt/local` (browser), and the
-  fuller `@metacrdt/convex` component/function factory surface.
+- [ ] Targets: `@metacrdt/cloudflare` (DO), `@metacrdt/local` (browser), and a
+  fuller registered `@metacrdt/convex` component/function surface.
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -268,13 +269,20 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   goal moves to true `applyConfig` reconcile.
 
 ### 2026-06-07 — @metacrdt/convex adapter package extraction
+- [x] **Host-mounted append/verify helpers added to `@metacrdt/convex`.**
+  `packages/convex/src/functions.ts` exports builders and a
+  `createProtocolFactEventWriter` factory that append protocol assert/lifecycle
+  rows through an injected inserter, plus `summarizeProtocolEventRows` through an
+  injected transaction lookup. This is the reusable helper layer before a
+  registered Convex component surface. Current verification:
+  `npm run test:convex-package` is 17 tests.
 - [x] **Cardinality-one reconcile helper moved into `@metacrdt/convex`.**
   `packages/convex/src/reconcile.ts` now exports a pure
   `reconcileCardinalityOneCandidates` helper and shared supersession reason; the
   Convex reference app uses it while retaining host-owned DB/projection writes.
   Package tests cover `≺` winner selection, order independence, empty input, and
   the shared lifecycle reason. Current verification: `npm run test:convex-package`
-  is 13 tests.
+  was 13 tests before the append/verify helper slice.
 - [x] **Goal 3 shipped adapter-first:** `packages/convex` now publishes
   `@metacrdt/convex` with package-owned Convex/core event adapters, HLC fallback,
   `eventPatch`, protocol row reconstruction/summarization, bitemporal visibility
