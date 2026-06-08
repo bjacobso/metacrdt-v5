@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   aggregateBindings,
   applyCompute,
+  chooseNextClausePosition,
   derivedRowsFromBindings,
   describeClauses,
   dynamicSelectivity,
@@ -101,6 +102,34 @@ describe("@metacrdt/query term and filter helpers", () => {
         lower: "maria",
       });
     }
+  });
+
+  test("chooses the next runnable clause deterministically", () => {
+    const clauses = parseClauses([
+      ["?e", "type", "Worker"],
+      ["?e", "worker.status", "active"],
+      ["?salary", ">", 100],
+      { compute: ["lower", "?name"], as: "?lower" },
+    ]);
+
+    // With no variables bound, choose the most selective pattern first. Attribute
+    // constants dominate the score, then entity/value knowledge.
+    expect(chooseNextClausePosition(clauses, [0, 1, 2, 3], new Set())).toBe(0);
+
+    // Once `salary` is bound, comparison can run before later patterns because
+    // it is now a pure filter and can prune the row set.
+    expect(
+      chooseNextClausePosition(clauses, [1, 2, 3], new Set(["e", "salary"])),
+    ).toBe(1);
+
+    // Compute clauses follow the same rule: run as soon as their inputs exist.
+    expect(
+      chooseNextClausePosition(clauses, [1, 3], new Set(["e", "name"])),
+    ).toBe(1);
+
+    expect(() =>
+      chooseNextClausePosition([parseClause(["?salary", ">", 100])], [0], new Set()),
+    ).toThrow(/query is unsafe/);
   });
 });
 

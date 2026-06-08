@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 86 (`@metacrdt/query` Rule Emit Shaping) has
+**Current goal:** Goal 87 (`@metacrdt/query` Clause Planner) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -75,8 +75,13 @@ async join scheduler. Goal 86 moves read-only rule emit shaping into
 `@metacrdt/query`: emit-term resolution and deterministic derived-row shaping
 for `deriveFromEventLog`, consumed by `convex/datalog.ts` through
 `convex/lib/engine.ts`, while Convex still owns solving, triple sources, read
-authorization, provenance, and materialized derived storage. The next active
-goal should be chosen from the remaining TODO candidates:
+authorization, provenance, and materialized derived storage. Goal 87 extracts
+the pure Datalog clause-pick planner into `@metacrdt/query`:
+`chooseNextClausePosition` chooses runnable filter/compute/negation/disjunction
+clauses before the most selective pattern, preserving the existing unsafe-query
+error while leaving Convex in charge of async execution, triple fetching, read
+authorization, and provenance. The next active goal should be chosen from the
+remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
 the next projection dependency (closure/derived provenance or remaining
@@ -166,6 +171,7 @@ arguments.
   - entity-local rule analysis
   - rule emit-term resolution and deterministic derived-row shaping for
     read-only rule previews
+  - pure clause-pick planning for the Datalog scheduler
   - Convex compatibility re-export through `convex/lib/engine.ts`
 - New Convex writes stamp protocol metadata on `factEvents`:
   `eventId`, HLC, `replicaId`, `targetEventId`, and `causalRefs` where
@@ -8043,6 +8049,58 @@ materialization lifecycle.
   `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
 - A live `datalog:deriveFromEventLog` query returned deterministic derived rows
   through the deployed package helper.
+
+---
+
+## Goal 87 — `@metacrdt/query` Clause Planner
+
+**Status:** shipped as the next solver-adjacent pure query boundary.
+
+**Objective:** move the deterministic clause-pick planning used by the Convex
+Datalog scheduler into `@metacrdt/query`, without moving async execution, triple
+fetching, read authorization, provenance, or the database-backed join loop.
+
+### Semantics
+
+- `packages/query` now owns `chooseNextClausePosition`.
+- The helper accepts parsed clauses, the remaining clause indexes, and the set of
+  currently bound variables, then returns the position to remove from
+  `remaining`.
+- It preserves the existing scheduling rule:
+  - run non-pattern clauses as soon as all required variables are bound, so
+    compare/compute/negation/disjunction clauses can prune early;
+  - otherwise pick the pattern with the highest `dynamicSelectivity` score;
+  - throw the existing unsafe-query error when no runnable filter and no pattern
+    can make progress.
+- `convex/lib/engine.ts` imports and re-exports the helper for compatibility.
+- `solveParsedWhere` now delegates clause-pick planning to the package while
+  retaining Convex-owned fetching, joins, provenance merging, read auth, and
+  async branch recursion.
+
+### Non-Goals
+
+- Do not move `solveWhere`, `runWhere`, `fetchPattern`, `passesNegation`, or
+  branch recursion into the package.
+- Do not move `TripleSource`, read authorization, projected triple fetching, or
+  source provenance.
+- Do not change query syntax, safety behavior, execution order semantics,
+  result shapes, or limits.
+
+### Verification
+
+- `npm run test:query` passed (11 package tests).
+- `npx tsc --noEmit -p packages/query/tsconfig.json` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npm run test:core` passed (46 core tests).
+- `npm run test:schema` passed (8 schema tests).
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
+- A live `datalog:datalog` query returned rows through the deployed
+  package-backed planner.
 
 ---
 

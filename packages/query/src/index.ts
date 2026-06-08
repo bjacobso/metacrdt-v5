@@ -254,6 +254,49 @@ export function dynamicSelectivity(p: PatternClause, bound: Set<string>): number
   return score;
 }
 
+/**
+ * Pick the next clause to evaluate from `remaining`, returning the position in
+ * that `remaining` array. This is the pure planning half of the Datalog
+ * scheduler: non-pattern clauses run as soon as their required vars are bound;
+ * otherwise the most selective pattern runs next. Target runtimes still own
+ * fetching, joins, provenance, read auth, and async execution.
+ */
+export function chooseNextClausePosition(
+  clauses: AnyClause[],
+  remaining: number[],
+  bound: ReadonlySet<string>,
+): number {
+  const runnableFilter = remaining.findIndex((i) => {
+    const c = clauses[i];
+    return (
+      c !== undefined &&
+      c.kind !== "pattern" &&
+      requiredVars(c).every((vn) => bound.has(vn))
+    );
+  });
+  if (runnableFilter !== -1) return runnableFilter;
+
+  let best = -1;
+  let bestScore = -1;
+  const boundSet = bound instanceof Set ? bound : new Set(bound);
+  for (let k = 0; k < remaining.length; k++) {
+    const idx = remaining[k];
+    if (idx === undefined) continue;
+    const c = clauses[idx];
+    if (c === undefined || c.kind !== "pattern") continue;
+    const score = dynamicSelectivity(c, boundSet);
+    if (score > bestScore) {
+      bestScore = score;
+      best = k;
+    }
+  }
+  if (best !== -1) return best;
+
+  throw new Error(
+    "query is unsafe: a comparison, compute, negation, or disjunction clause has variables that no earlier clause can bind",
+  );
+}
+
 export function unifyPattern(
   clause: PatternClause,
   binding: Binding,

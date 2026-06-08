@@ -134,6 +134,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   typed-value dedupe, and stable sort. `deriveFromEventLog` consumes it through
   `convex/lib/engine.ts`; Convex still owns solving, triple sources, read auth,
   provenance, and materialized derived storage.
+- [x] **`@metacrdt/query` clause planner extracted** — the package now owns
+  `chooseNextClausePosition`, the pure scheduling decision used by the Convex
+  Datalog solver: runnable non-pattern filters first, otherwise the most
+  selective pattern, with the same unsafe-query error when no clause can advance.
+  Convex still owns async execution, triple fetching, read auth, provenance, and
+  branch recursion.
 - [ ] Then peel off, as they stabilize: more `@metacrdt/query` solver/rule AST
   seams, then `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/views`, and
   `@metacrdt/agent`.
@@ -403,6 +409,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 87 shipped:** `@metacrdt/query` clause planner. Added
+  `chooseNextClausePosition`, the pure scheduler choice from the Convex Datalog
+  loop: pick runnable compare/compute/negation/disjunction clauses as soon as
+  their required vars are bound; otherwise pick the most selective pattern; throw
+  the same unsafe-query error when no clause can progress. `solveParsedWhere`
+  now delegates that decision through `convex/lib/engine.ts` while keeping
+  Convex-owned async execution, triple fetching, read authorization, provenance,
+  and recursive branch solving.
 - [x] **Goal 86 shipped:** `@metacrdt/query` rule emit shaping. Added pure
   helpers for resolving emit placeholders and shaping deterministic derived rows
   from solved bindings: skip unbound/null emitted entities, coerce entity ids to

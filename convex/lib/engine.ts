@@ -3,8 +3,8 @@ import { QueryCtx, MutationCtx } from "../_generated/server";
 import {
   LIMITS,
   applyCompute,
+  chooseNextClausePosition,
   clauseBoundVars,
-  dynamicSelectivity,
   parseClauses,
   patternVars,
   project,
@@ -26,6 +26,7 @@ export {
   COMPUTE_OPS,
   LIMITS,
   aggregateBindings,
+  chooseNextClausePosition,
   derivedRowsFromBindings,
   describeClauses,
   entityVarOf,
@@ -301,33 +302,7 @@ async function solveParsedWhere(
   ];
 
   while (remaining.length > 0) {
-    let pickAt = remaining.findIndex((i) => {
-      const c = clauses[i];
-      return (
-        c.kind !== "pattern" &&
-        requiredVars(c).every((vn) => bound.has(vn))
-      );
-    });
-
-    if (pickAt === -1) {
-      let best = -1;
-      let bestScore = -1;
-      for (let k = 0; k < remaining.length; k++) {
-        const c = clauses[remaining[k]];
-        if (c.kind !== "pattern") continue;
-        const s = dynamicSelectivity(c, bound);
-        if (s > bestScore) {
-          bestScore = s;
-          best = k;
-        }
-      }
-      if (best === -1) {
-        throw new Error(
-          "query is unsafe: a comparison, compute, negation, or disjunction clause has variables that no earlier clause can bind",
-        );
-      }
-      pickAt = best;
-    }
+    const pickAt = chooseNextClausePosition(clauses, remaining, bound);
 
     const idx = remaining.splice(pickAt, 1)[0];
     const clause = clauses[idx];
