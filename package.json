@@ -31,7 +31,7 @@
     "test:confect": "vitest run convex/confect.test.ts convex/complianceConfect.test.ts",
     "test:packages": "turbo run test --filter='./packages/*'",
     "test:all": "npm run test:packages && npm test",
-    "typecheck": "npm run typecheck:packages && tsc --noEmit -p tsconfig.json",
+    "typecheck": "npm run build:packages && npm run typecheck:packages && tsc --noEmit -p tsconfig.json",
     "typecheck:packages": "turbo run typecheck --filter='./packages/*'"
   },
   "license": "MIT",

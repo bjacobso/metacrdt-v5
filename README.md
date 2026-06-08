@@ -415,8 +415,11 @@ ignored for raw public fact writes. The isolated `/collect` flow is the intentio
 exception: possession of a valid, unexpired, unconsumed collection token is the
 write capability, so external evidence collection can remain login-free. The
 frontend is auth-aware and routes protected controls through one sign-in-required
-modal instead of firing anonymous writes, but the actual production provider
-choice and `convex/auth.config.ts` wiring remain a deployment decision.
+modal instead of firing anonymous writes. The backend has an explicit
+`convex/auth.config.ts`, currently fail-closed with no accepted JWT providers.
+The remaining production auth work is choosing a provider, filling that config
+with its issuer/audience, and adding the provider-specific React wrapper that
+returns Convex JWTs to `ConvexProviderWithAuth`.
 
 Generated UI reads the same schema facts. `typeSchemaAsOf` returns declared
 columns with attribute definitions, the entity browser uses those columns for
@@ -550,6 +553,45 @@ Run the Convex backend:
 ```bash
 npx convex dev
 ```
+
+Configure backend JWT auth when a provider is chosen:
+
+```ts
+// convex/auth.config.ts
+export default {
+  providers: [
+    {
+      domain: "https://your-issuer.example.com",
+      applicationID: "convex",
+    },
+  ],
+};
+```
+
+For deployments where the issuer/audience should come from Convex environment
+values, use this shape after setting the values:
+
+```bash
+npx convex env set CONVEX_AUTH_ISSUER https://your-issuer.example.com
+npx convex env set CONVEX_AUTH_APPLICATION_ID convex
+```
+
+```ts
+// convex/auth.config.ts, after both env vars exist in the deployment
+export default {
+  providers: [
+    {
+      domain: process.env.CONVEX_AUTH_ISSUER!,
+      applicationID: process.env.CONVEX_AUTH_APPLICATION_ID!,
+    },
+  ],
+};
+```
+
+Convex requires any environment variable referenced by `auth.config.ts` to exist
+in the deployment. The checked-in config therefore references no env vars and
+accepts no providers until the product provider is selected. The frontend still
+uses an explicit no-provider hook until that provider-specific wrapper is added.
 
 Run the Vite frontend:
 

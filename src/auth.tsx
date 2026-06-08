@@ -17,7 +17,7 @@ const AuthUiContext = createContext<AuthUi | null>(null);
 const DEFAULT_DIALOG: AuthDialog = {
   title: "Sign in required",
   description:
-    "This workspace already enforces authenticated writes on the server. Choose and configure a provider before using protected write controls.",
+    "This workspace enforces authenticated writes on the server. Configure a frontend provider that returns Convex JWTs before using protected write controls.",
 };
 
 export function AuthUiProvider({ children }: { children: ReactNode }) {
@@ -60,14 +60,17 @@ export function AuthUiProvider({ children }: { children: ReactNode }) {
               <p>
                 The backend derives writers from{" "}
                 <code className="font-mono text-ink">ctx.auth.getUserIdentity()</code>
-                . This frontend is now auth-aware, but no hosted provider is wired in
-                yet.
+                . <code className="font-mono text-ink">convex/auth.config.ts</code>{" "}
+                exists and currently accepts no JWT providers, so protected writes
+                fail closed until production auth is configured.
               </p>
               <p>
-                Production setup still needs a provider decision
-                (Convex Auth, Clerk, WorkOS, Auth0, or custom OIDC), a matching{" "}
-                <code className="font-mono text-ink">convex/auth.config.ts</code>,
-                and a provider-specific React wrapper that returns Convex JWTs.
+                Production setup still needs a provider choice (Convex Auth,
+                Clerk, WorkOS, Auth0, or custom OIDC), the matching backend
+                issuer/audience config, and a provider-specific React wrapper that
+                implements Convex's{" "}
+                <code className="font-mono text-ink">fetchAccessToken</code>{" "}
+                contract.
               </p>
             </div>
             <div className="flex justify-end border-t border-line-soft px-5 py-3.5">

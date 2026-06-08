@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 99 (Package Build Tooling) has
+**Current goal:** Goal 100 (Backend Auth Config Seam) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -131,12 +131,15 @@ Goal 99 adds Turbo-orchestrated package builds and tsdown/Rolldown package
 emit: all `@metacrdt/*` package exports now resolve to generated `dist` JS and
 declarations, while the React application remains a Vite app build. Package
 payloads are `dist`-only (plus package metadata and the Cloudflare Wrangler
-example), and dry-run npm packs verify no `src` or test files ship. The next active goal
+example), and dry-run npm packs verify no `src` or test files ship. Goal 100
+adds a fail-closed `convex/auth.config.ts`: the backend now has the required auth
+config file but accepts no JWT providers until a production provider is chosen
+and the config is filled with that issuer/audience. The next active goal
 should be chosen from the remaining TODO candidates:
-choosing/wiring the real auth provider and `convex/auth.config.ts`, live
-Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
-the next projection dependency (closure/derived provenance or remaining
-operational process state).
+choosing/wiring the provider-specific React wrapper/JWT flow, live Cloudflare
+deployment/auth, another carefully scoped Confect/domain wrapper, or the next
+projection dependency (closure/derived provenance or remaining operational
+process state).
 
 This plan is the operational goal file. Read it with:
 
@@ -584,6 +587,13 @@ arguments.
   - component-owned write wrappers require the same authenticated principal
     before passing actor context across the component boundary
   - `/collect` submission remains token-authorized rather than login-authorized
+- Backend auth provider configuration seam exists:
+  - `convex/auth.config.ts` exists and exports a fail-closed empty provider list
+  - Convex deployments do not reference optional env vars until a provider is
+    chosen, because Convex requires every env var mentioned in `auth.config.ts`
+    to be set
+  - protected writes continue to fail closed until that provider-specific
+    issuer/audience config and frontend wrapper are added
 - Frontend write controls are auth-aware:
   - the React tree uses Convex's auth-aware provider shape, currently backed by
     an explicit no-provider hook until a production provider is selected
@@ -695,13 +705,13 @@ arguments.
   local-first target. `@metacrdt/cloudflare` now provides Durable Object
   storage-backed runtime services, a structural WebSocket relay shell, and a
   Worker-facing router/DO class example, but not a live deployed service or auth.
-- Full app provider configuration is not complete; unauthenticated callers are
+- Full frontend provider wiring is not complete; unauthenticated callers are
   treated as `anonymous` for reads, PII is denied by default, and general public
-  writes still fail with `Not authenticated`. The frontend now presents that
-  requirement consistently, but production still needs a concrete provider
-  choice (Convex Auth, Clerk, WorkOS, Auth0, or custom OIDC) plus
-  `convex/auth.config.ts`. The hardened collection-token path remains the
-  intentional anonymous write surface.
+  writes still fail with `Not authenticated`. The backend `convex/auth.config.ts`
+  file exists and is fail-closed, but production still needs a concrete provider
+  choice (Convex Auth, Clerk, WorkOS, Auth0, or custom OIDC), matching
+  issuer/audience config, and a provider-specific React wrapper/JWT flow. The
+  hardened collection-token path remains the intentional anonymous write surface.
 - Confect is integrated as a narrow sidecar spike:
   - `confect/` defines a typed Effect Schema function group.
   - `convex/metacrdtConfect.ts` manually mounts the generated registered
@@ -8781,6 +8791,56 @@ publishes.
 
 ---
 
+## Goal 100 — Backend Auth Config Seam
+
+**Status:** shipped.
+
+**Objective:** satisfy the Convex backend requirement that an auth-using app has
+an `auth.config.ts`, while still avoiding a fake or premature frontend provider
+choice. The backend should be explicit and fail-closed today, with the provider
+activation path documented for the later product/provider decision.
+
+### What Shipped
+
+- Added `convex/auth.config.ts`.
+- The checked-in config exports `providers: []`, so the deployment accepts no
+  JWT providers until a production provider is chosen.
+- The auth-required modal now reflects the real state: backend auth config
+  exists and is fail-closed, but the frontend still needs a provider-specific
+  wrapper that implements Convex's `fetchAccessToken` contract.
+- README documents the future provider shape and the operational rule discovered
+  during verification: Convex requires any env var referenced by
+  `auth.config.ts` to exist in the deployment, so optional-env activation cannot
+  live in the checked-in config.
+- Root `npm run typecheck` now builds packages before package typechecking so
+  root app typecheck never fails only because `dist` exports are missing.
+
+### Non-Goals
+
+- Do not pick Clerk/Auth0/WorkOS/Convex Auth in code without a product/provider
+  decision.
+- Do not add fake local identities, spoofable actor arguments, or a dev-only JWT
+  bypass.
+- Do not require login for `/collect`; collection tokens remain the intentional
+  anonymous capability.
+
+### Remaining Work
+
+- Choose the production provider.
+- Implement the provider-specific React wrapper passed to `ConvexProviderWithAuth`.
+- Fill `convex/auth.config.ts` with the chosen provider's issuer/application id
+  (literal values or required deployment env vars).
+
+### Verification
+
+- Convex typecheck passes with the new fail-closed `auth.config.ts`.
+- Root frontend typecheck/build pass with the updated auth modal copy.
+- `npx convex dev --once` accepts the config and prepares functions.
+- Existing write-auth tests still prove anonymous writes fail and authenticated
+  test identities succeed.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -8832,8 +8892,8 @@ These remain valuable, but they should not interrupt the current goal.
 
 - [x] Backend write authorization for public mutations.
 - [x] Auth-aware frontend write gates and provider-neutral sign-in/setup UX.
-- [ ] Choose and wire the production provider
-  (`convex/auth.config.ts` + provider-specific React wrapper).
+- [x] Backend `convex/auth.config.ts` fail-closed config file.
+- [ ] Choose and wire the production frontend provider wrapper / JWT flow.
 - [x] Collect-token single-use / expiry hardening.
 
 ### Query / Rules

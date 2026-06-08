@@ -412,11 +412,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Backend write authorization — general public write mutations now require
   Convex auth identity and derive actors server-side; `/collect` remains
   token-authorized.
+- [x] Backend auth config seam — `convex/auth.config.ts` exists and exports a
+  fail-closed empty provider list. Production provider activation is documented
+  but intentionally not checked in until the provider is chosen.
 - [x] Auth-aware frontend write gates — admin routes now have Convex auth-state
   context and protected controls open a shared auth-required modal instead of
   firing anonymous writes.
-- [ ] Choose and wire the production auth provider
-  (`convex/auth.config.ts` + provider-specific React wrapper/JWT flow).
+- [ ] Choose and wire the production frontend auth provider wrapper/JWT flow.
 
 **Next goal candidates**
 - [x] Choose the next active goal: Goal 39, component-owned compliance
@@ -480,6 +482,19 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `npx convex dev --once`, public import smoke across all package entry points,
   `npm pack --dry-run --workspaces --json`, and a live `datalog:datalog` smoke
   against `chatty-hare-94` all passed.
+
+### 2026-06-08 — backend auth config seam
+- [x] **Goal 100 shipped:** added `convex/auth.config.ts` as the backend JWT
+  config file, checked in fail-closed (`providers: []`). Convex requires any env
+  var referenced by `auth.config.ts` to exist in the deployment, so optional-env
+  provider activation is documented as the future provider step rather than
+  living in the default config.
+- [x] **Frontend copy and docs now match the split.** The auth-required modal no
+  longer says the backend config is missing; README documents the provider shape
+  and env-var caveat. Remaining work is provider choice plus the React wrapper
+  that returns Convex JWTs.
+- [x] **Root typecheck hardened:** `npm run typecheck` builds packages before
+  package/root typechecking so `dist`-based package exports are always present.
 
 ### 2026-06-08 — host event-log entity fold
 - [x] **Goal 98 shipped:** `@metacrdt/query` guarded positive-pattern extension.
