@@ -47,9 +47,11 @@ replace only the touched current projection coordinate and fold only matching
 assertions plus lifecycle events found by target id. It now also has the first
 operational collection capability rows over SQLite: deterministic caller-provided
 tokens can be issued, read, listed, and submitted with stored payload/status. It
-still has no historical SQL-optimized indexed triple queries, no live
-invalidation fanout, no field-to-fact lowering for submitted collection data, no
-flow/DAG run surface, and no DO alarm multiplexing.
+can also lower optional submitted assertions into protocol events for the
+collection subject through the existing append/reconcile path. It still has no
+historical SQL-optimized indexed triple queries, no live invalidation fanout, no
+collection ticks/reminders, no flow/DAG run surface, and no DO alarm
+multiplexing.
 
 This doc defines what it takes to bring Cloudflare to parity, in what order, and
 which decisions must be settled first — and it makes **live frontend queries an
@@ -206,8 +208,8 @@ lifecycle events discovered through the SQLite `target` index. Explicit
 
 **Still ahead for parity:** richer append function surface, SQL-indexed query
 provider optimization/conformance for historical bitemporal queries,
-live invalidation fanout, field-to-fact lowering for submitted collection data,
-and the full flow/DAG/alarm surface.
+live invalidation fanout, collection ticks/reminders, and the full
+flow/DAG/alarm surface.
 
 ### Phase D — Operational surface + alarms
 
@@ -224,10 +226,11 @@ submitted payload JSON, and optional `runId` / `stepId` / `scope`. The current
 facade exposes `issueCollection`, `collectionByToken`, `listCollections`, and
 `submitCollection`. `submitCollection` persists submitted payload/status and
 intentionally rejects already-submitted or expired tokens, marking late tokens as
-`expired`.
+`expired`. It also accepts optional submitted assertions, appends them as
+protocol events for the collection subject through the existing append/reconcile
+path, and returns event/projection summaries for those lowered assertions.
 
-**Still ahead for Phase D parity:** submitted field-to-fact lowering through the
-existing append/reconcile path, collection ticking/reminders, DAG run rows,
+**Still ahead for Phase D parity:** collection ticking/reminders, DAG run rows,
 timer multiplexing over DO alarms, and any WebSocket live-query fanout.
 
 ### Phase E — Sharding + real multi-replica sync
@@ -315,8 +318,8 @@ keeps it converged.
 The Phase B adapters (~600–800 LOC) get **shared, not rewritten**. The
 Cloudflare-specific work is comparable to the existing Convex component: the
 runtime-service SQLite seed and first log/current/query facade are now present;
-the remaining work is optimized SQL-indexed query-provider parity, field-to-fact
-collection submission, flow/DAG rows, and the alarm-multiplexing layer.
+the remaining work is optimized SQL-indexed query-provider parity, collection
+ticks/reminders, flow/DAG rows, and the alarm-multiplexing layer.
 Roughly 2–4 focused sessions remain, gated on shared fold/reconcile reuse. The
 live-query stretch goal is a separate later increment on top.
 

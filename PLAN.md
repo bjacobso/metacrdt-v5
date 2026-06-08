@@ -218,12 +218,15 @@ with caller-provided tokens and `issueCollection` / `collectionByToken` /
 `listCollections` / `submitCollection` on the current facade, persisting
 submitted payload/status while leaving field-to-fact lowering, collection ticks,
 flow/DAG rows, alarm multiplexing, live fanout, and historical SQL-indexed query
-optimization as remaining parity work. The next active goal
+optimization as remaining parity work. Goal 124 adds collection field-to-fact
+lowering: `submitCollection` can optionally append submitted assertions for the
+collection subject through the existing append/reconcile path and return
+event/projection summaries for those lowered assertions. The next active goal
 should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite historical SQL-indexed-query/operational parity
-(field-to-fact collection submission, flow/DAG rows, alarms, live fanout),
+(collection ticks/reminders, flow/DAG rows, alarms, live fanout),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9438,6 +9441,49 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 124 — Cloudflare DO SQLite Collection Field-to-Fact Lowering
+
+**Status:** shipped.
+
+**Objective:** make Cloudflare DO SQLite collection submission capable of
+turning submitted fields into protocol assertions for the collection subject,
+while preserving the existing payload/status persistence and current-projection
+invalidation path.
+
+### What Shipped
+
+- Extended `submitCollection` args with optional `assertions`.
+- Each submitted assertion:
+  - inherits the persisted collection row's `subject` as `e`;
+  - supplies `a`, `v`, `actor`, and optional validity/actor-type/causal/reason
+    metadata;
+  - appends through `applyOperationEffect`, not direct event-table writes;
+  - reconciles through `reconcileDurableObjectSqliteCurrentEventEffect`.
+- `submitCollection` now returns:
+  - the persisted `collection` row;
+  - an `assertions` array containing each lowered event plus its projection
+    change summary.
+- Payload-only submissions remain supported and return `assertions: []`.
+- Existing already-submitted and expired-token behavior remains fail-closed.
+
+### Non-Goals
+
+- Do not infer field definitions from `form` yet; callers provide the assertion
+  lowering explicitly in this slice.
+- Do not add collection ticks/reminders, DAG run rows, DO alarm multiplexing,
+  live-query fanout, or historical SQL-indexed query-provider parity.
+- Do not touch root `convex/`.
+
+### Verification
+
+- `npm test --workspace @metacrdt/cloudflare` passes with coverage proving
+  payload-only submission still works and assertion submission appends protocol
+  events, updates current projection rows, and returns deterministic projection
+  change summaries.
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
 
 ---
 

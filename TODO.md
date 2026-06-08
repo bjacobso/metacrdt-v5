@@ -14,10 +14,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   methods `issueCollection`, `collectionByToken`, `listCollections`, and
   `submitCollection`. Tokens are caller-provided, submitted payload/status is
   persisted, and already-submitted or expired tokens are rejected intentionally.
-- [ ] **Next collection slice: field-to-fact lowering** — submitted collection
-  data should optionally append protocol assertions for the subject through the
-  existing append/reconcile path so projection invalidation summaries remain
-  correct.
+- [x] **Goal 124 shipped: collection field-to-fact lowering** —
+  `submitCollection` now accepts optional submitted assertions, appends them as
+  protocol events for the collection subject through the existing
+  append/reconcile path, and returns event/projection summaries for those
+  lowered assertions. Simple payload-only submissions still persist data/status
+  with an empty assertion result list.
 - [ ] **Remaining Cloudflare Phase D parity** — collection ticks/reminders,
   flow/DAG rows, DO alarm multiplexing, live-query fanout, and historical
   SQL-indexed query-provider optimization remain open; do not claim full parity
@@ -69,8 +71,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Cloudflare Durable Object SQLite collection capability seed —
   `collections` rows persist caller-provided tokens with subject/form/status,
   timestamps, submitted payload JSON, and optional run/step/scope; the current
-  facade exposes issue/read/list/submit methods while leaving submitted
-  field-to-fact lowering for the next slice.
+  facade exposes issue/read/list/submit methods for the operational surface.
+- [x] Cloudflare Durable Object SQLite collection field-to-fact lowering —
+  `submitCollection` can lower submitted assertions into protocol events for
+  the collection subject and reconcile touched current coordinates through the
+  same projection invalidation path as ordinary appends.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -80,9 +85,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — historical
-  SQL-indexed query-provider optimization, collection field-to-fact lowering,
-  flow/DAG rows, DO alarm multiplexing, and live-query WebSocket fanout/plumbing
-  (see [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
+  SQL-indexed query-provider optimization, collection ticks/reminders, flow/DAG
+  rows, DO alarm multiplexing, and live-query WebSocket fanout/plumbing (see
+  [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 

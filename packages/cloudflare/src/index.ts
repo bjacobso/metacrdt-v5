@@ -66,6 +66,7 @@ export {
   reconcileDurableObjectSqliteCurrentEventEffect,
   rebuildDurableObjectSqliteCurrentEffect,
   submitDurableObjectSqliteCollectionEffect,
+  submitAndLowerDurableObjectSqliteCollectionEffect,
   type DurableObjectSqliteAppendAndRebuildResult,
   type DurableObjectSqliteAppendAssertArgs,
   type DurableObjectSqliteAppendLifecycleArgs,
@@ -85,6 +86,7 @@ export {
   type DurableObjectSqliteRebuildCurrentArgs,
   type DurableObjectSqliteRebuildCurrentResult,
   type DurableObjectSqliteSubmitCollectionArgs,
+  type DurableObjectSqliteSubmitCollectionResult,
 } from "./sqliteCurrent.js";
 
 export {

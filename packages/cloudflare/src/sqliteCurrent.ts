@@ -119,6 +119,28 @@ export const DurableObjectSqliteSubmitCollectionArgsSchema = Schema.Struct({
   token: Schema.String,
   submittedAt: Schema.optionalWith(Schema.Number, { exact: true }),
   data: Schema.optionalWith(Schema.Any, { exact: true }),
+  assertions: Schema.optionalWith(
+    Schema.Array(
+      Schema.Struct({
+        a: Schema.String,
+        v: Schema.Any,
+        validFrom: Schema.optionalWith(Schema.Number, { exact: true }),
+        validTo: Schema.optionalWith(Schema.Union(Schema.Number, Schema.Null), {
+          exact: true,
+        }),
+        actor: Schema.String,
+        actorType: Schema.optionalWith(
+          Schema.Literal("human", "agent", "system", "migration"),
+          { exact: true },
+        ),
+        causalRefs: Schema.optionalWith(Schema.Array(Schema.String), {
+          exact: true,
+        }),
+        reason: Schema.optionalWith(Schema.String, { exact: true }),
+      }),
+    ),
+    { exact: true },
+  ),
 });
 
 export const DurableObjectSqliteAppendAssertArgsSchema = Schema.Struct({
@@ -206,6 +228,11 @@ export type DurableObjectSqliteAppendAndRebuildResult = {
   readonly projection: DurableObjectSqliteRebuildCurrentResult;
 };
 
+export type DurableObjectSqliteSubmitCollectionResult = {
+  readonly collection: DurableObjectSqliteCollection;
+  readonly assertions: readonly DurableObjectSqliteAppendAndRebuildResult[];
+};
+
 export type DurableObjectSqliteCurrentSurfaceOptions = {
   readonly cardinalityOf: CardinalityOf;
   readonly currentCoord?: () => Coord;
@@ -248,7 +275,7 @@ export type DurableObjectSqliteCurrentSurface = {
   ): Promise<DurableObjectSqliteCollection[]>;
   submitCollection(
     args: DurableObjectSqliteSubmitCollectionArgs,
-  ): Promise<DurableObjectSqliteCollection>;
+  ): Promise<DurableObjectSqliteSubmitCollectionResult>;
   listCurrent(
     args?: DurableObjectSqliteCurrentFilter,
   ): Promise<ProjectionRow[]>;
@@ -637,6 +664,62 @@ export function submitDurableObjectSqliteCollectionEffect(
   });
 }
 
+export function submitAndLowerDurableObjectSqliteCollectionEffect(
+  collections: DurableObjectSqliteCollectionStore,
+  args: DurableObjectSqliteSubmitCollectionArgs,
+  defaultSubmittedAt: number,
+  cardinalityOf: CardinalityOf,
+  coord: Coord,
+): Effect.Effect<
+  DurableObjectSqliteSubmitCollectionResult,
+  RuntimeError | DurableObjectSqliteCurrentSurfaceError,
+  | EventStoreService
+  | ProjectionStoreService
+  | RuntimeClockService
+  | RuntimeSequencerService
+  | RuntimeProfileService
+  | TransportService
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "submitCollection",
+      DurableObjectSqliteSubmitCollectionArgsSchema,
+      args,
+    );
+    const collection = yield* Effect.tryPromise({
+      try: () =>
+        collections.submit({
+          token: decoded.token,
+          submittedAt: decoded.submittedAt ?? defaultSubmittedAt,
+          data: decoded.data,
+        }),
+      catch: (cause) => surfaceError("submitCollection", cause),
+    });
+    const assertions: DurableObjectSqliteAppendAndRebuildResult[] = [];
+    for (const assertion of decoded.assertions ?? []) {
+      const event = yield* applyOperationEffect({
+        op: "assert",
+        e: collection.subject,
+        a: assertion.a,
+        v: assertion.v,
+        validFrom: assertion.validFrom,
+        validTo: assertion.validTo,
+        actor: assertion.actor,
+        actorType: assertion.actorType as ActorType | undefined,
+        causalRefs: assertion.causalRefs,
+        reason: assertion.reason,
+      });
+      const projection = yield* reconcileDurableObjectSqliteCurrentEventEffect(
+        event,
+        cardinalityOf,
+        coord,
+      );
+      assertions.push({ event, projection });
+    }
+    return { collection, assertions };
+  });
+}
+
 export function queryDurableObjectSqliteEffect(
   args: DatalogQueryArgsType,
 ): Effect.Effect<DatalogQueryResult, RuntimeError, DatalogQueryService> {
@@ -978,11 +1061,13 @@ export function createDurableObjectSqliteCurrentSurface(
         listDurableObjectSqliteCollectionsEffect(runtime.collections, args),
       ),
     submitCollection: (args) =>
-      runCollection(
-        submitDurableObjectSqliteCollectionEffect(
+      run(
+        submitAndLowerDurableObjectSqliteCollectionEffect(
           runtime.collections,
           args,
           coord().txTime,
+          options.cardinalityOf,
+          coord(),
         ),
       ),
     listCurrent: (args = {}) => run(listDurableObjectSqliteCurrentEffect(args)),

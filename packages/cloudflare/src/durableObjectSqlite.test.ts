@@ -563,6 +563,107 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       data: { name: "Maria", acceptedPolicy: true },
     });
     expect(submitted).toEqual({
+      collection: {
+        token: "collection:worker:maria:onboard",
+        subject: "worker:maria",
+        form: "forms:onboarding",
+        status: "submitted",
+        issuedAt: coord.txTime,
+        expiresAt: 12_000,
+        submittedAt: 11_000,
+        data: { name: "Maria", acceptedPolicy: true },
+        runId: "run:1",
+        stepId: "step:collect",
+        scope: "tenant:demo",
+      },
+      assertions: [],
+    });
+    await expect(
+      surface.listCollections({ status: "submitted" }),
+    ).resolves.toEqual([submitted.collection]);
+    await expect(
+      surface.submitCollection({
+        token: "collection:worker:maria:onboard",
+        submittedAt: 11_500,
+        data: { duplicate: true },
+      }),
+    ).rejects.toThrow(/already submitted/);
+
+    const lowered = await surface.submitCollection({
+      token: "collection:worker:ada:onboard",
+      submittedAt: 11_100,
+      data: { name: "Ada", status: "active" },
+      assertions: [
+        {
+          a: "name",
+          v: "Ada",
+          actor: "user:collection",
+          reason: "collection submission",
+        },
+        {
+          a: "worker.status",
+          v: "active",
+          actor: "user:collection",
+          reason: "collection submission",
+        },
+      ],
+    });
+    expect(lowered.collection).toMatchObject({
+      token: "collection:worker:ada:onboard",
+      subject: "worker:ada",
+      status: "submitted",
+      submittedAt: 11_100,
+      data: { name: "Ada", status: "active" },
+    });
+    expect(lowered.assertions).toHaveLength(2);
+    expect(lowered.assertions.map((result) => result.event)).toMatchObject([
+      {
+        kind: "assert",
+        e: "worker:ada",
+        a: "name",
+        v: "Ada",
+        actor: "user:collection",
+      },
+      {
+        kind: "assert",
+        e: "worker:ada",
+        a: "worker.status",
+        v: "active",
+        actor: "user:collection",
+      },
+    ]);
+    expect(lowered.assertions.map((result) => result.projection.changed)).toEqual([
+      [
+        {
+          e: "worker:ada",
+          a: "name",
+          beforeEventIds: [],
+          afterEventIds: [lowered.assertions[0]!.event.id],
+        },
+      ],
+      [
+        {
+          e: "worker:ada",
+          a: "worker.status",
+          beforeEventIds: [],
+          afterEventIds: [lowered.assertions[1]!.event.id],
+        },
+      ],
+    ]);
+    await expect(surface.getCurrentEntity({ e: "worker:ada" })).resolves.toMatchObject({
+      e: "worker:ada",
+      attributes: {
+        name: ["Ada"],
+        "worker.status": ["active"],
+      },
+    });
+    await expect(
+      surface.listEvents({ e: "worker:ada" }),
+    ).resolves.toHaveLength(2);
+
+    await expect(
+      surface.collectionByToken({ token: "collection:worker:maria:onboard" }),
+    ).resolves.toEqual({
       token: "collection:worker:maria:onboard",
       subject: "worker:maria",
       form: "forms:onboarding",
@@ -575,16 +676,6 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       stepId: "step:collect",
       scope: "tenant:demo",
     });
-    await expect(
-      surface.listCollections({ status: "submitted" }),
-    ).resolves.toEqual([submitted]);
-    await expect(
-      surface.submitCollection({
-        token: "collection:worker:maria:onboard",
-        submittedAt: 11_500,
-        data: { duplicate: true },
-      }),
-    ).rejects.toThrow(/already submitted/);
 
     const expired = await surface.issueCollection({
       token: "collection:worker:expired:onboard",
