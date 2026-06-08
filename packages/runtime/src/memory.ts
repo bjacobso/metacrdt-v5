@@ -15,6 +15,7 @@ import {
   RuntimeCapability,
   RuntimeClock,
   RuntimeProfile,
+  RuntimeSequencer,
   RuntimeServices,
   ScheduledOperation,
   Scheduler,
@@ -26,8 +27,11 @@ export class MemoryEventStore implements EventStore {
 
   async append(event: Event): Promise<AppendResult> {
     if (!verifyId(event)) throw new Error(`invalid event id: ${event.id}`);
-    const inserted = !this.#events.has(event.id);
-    this.#events.set(event.id, event);
+    const existing = this.#events.get(event.id);
+    const inserted = existing === undefined;
+    if (inserted || (existing.seq === undefined && event.seq !== undefined)) {
+      this.#events.set(event.id, event);
+    }
     return { event, inserted };
   }
 
@@ -81,6 +85,25 @@ export class MemoryClock implements RuntimeClock {
   }
 }
 
+export class MemorySequencer implements RuntimeSequencer {
+  #seq = 0;
+
+  constructor(readonly replicaId: string) {}
+
+  async next(): Promise<number> {
+    this.#seq += 1;
+    return this.#seq;
+  }
+
+  current(): number {
+    return this.#seq;
+  }
+
+  observe(seq: number): void {
+    if (seq > this.#seq) this.#seq = seq;
+  }
+}
+
 export class MemoryScheduler implements Scheduler {
   readonly scheduled: { ms: number; op: ScheduledOperation }[] = [];
 
@@ -109,6 +132,7 @@ export function createMemoryRuntime(
 ): RuntimeServices & {
   store: MemoryEventStore;
   clock: MemoryClock;
+  sequencer: MemorySequencer;
   scheduler: MemoryScheduler;
   transport: MemoryTransport;
 } {
@@ -124,6 +148,7 @@ export function createMemoryRuntime(
     profile,
     store: new MemoryEventStore(),
     clock: new MemoryClock(options.replicaId, options.wall),
+    sequencer: new MemorySequencer(options.replicaId),
     scheduler: new MemoryScheduler(),
     transport: new MemoryTransport(),
   };

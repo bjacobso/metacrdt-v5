@@ -1,10 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { fromEvents, valueOf } from "@metacrdt/core";
+import { assert as assertEvent, fromEvents, valueOf } from "@metacrdt/core";
 import {
   applyOperation,
   createMemoryRuntime,
+  deltaSince,
+  exchangeDeltas,
   mergeFrom,
   requireCapability,
+  versionVector,
 } from "./index.js";
 
 const many = () => "many" as const;
@@ -25,6 +28,7 @@ describe("@metacrdt/runtime memory harness", () => {
     });
 
     expect(event.hlc).toEqual({ pt: 100, l: 0, r: "r1" });
+    expect(event.seq).toBe(1);
     expect(await rt.store.get(event.id)).toEqual(event);
     expect(rt.transport.published).toEqual([[event]]);
 
@@ -37,6 +41,7 @@ describe("@metacrdt/runtime memory harness", () => {
       actor: "user:1",
     });
     expect(next.hlc).toEqual({ pt: 100, l: 1, r: "r1" });
+    expect(next.seq).toBe(2);
 
     const log = fromEvents(await rt.store.scan());
     expect(valueOf("worker:maria", "worker.status", coord, log, one)).toBe(
@@ -73,6 +78,97 @@ describe("@metacrdt/runtime memory harness", () => {
     const valuesB = (valueOf("task:1", "tag", coord, logB, many) as string[]).sort();
     expect(valuesA).toEqual(valuesB);
     expect(valuesA).toEqual(["left", "right"]);
+  });
+
+  test("version-vector deltas send only unseen sequenced events", async () => {
+    const a = createMemoryRuntime({ replicaId: "ra", wall: () => 100 });
+    const first = await applyOperation(a, {
+      op: "assert",
+      e: "task:1",
+      a: "tag",
+      v: "left",
+      actor: "alice",
+    });
+    const second = await applyOperation(a, {
+      op: "assert",
+      e: "task:2",
+      a: "tag",
+      v: "right",
+      actor: "alice",
+    });
+
+    const events = await a.store.scan();
+    expect(versionVector(events)).toEqual({ ra: 2 });
+    expect(deltaSince(events, {}).events.map((e) => e.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
+    expect(deltaSince(events, { ra: 1 }).events.map((e) => e.id)).toEqual([
+      second.id,
+    ]);
+    expect(deltaSince(events, { ra: 2 }).events).toEqual([]);
+  });
+
+  test("anti-entropy exchange is idempotent and converges version vectors", async () => {
+    const a = createMemoryRuntime({ replicaId: "ra", wall: () => 100 });
+    const b = createMemoryRuntime({ replicaId: "rb", wall: () => 100 });
+
+    await applyOperation(a, {
+      op: "assert",
+      e: "task:1",
+      a: "tag",
+      v: "left",
+      actor: "alice",
+    });
+    await applyOperation(b, {
+      op: "assert",
+      e: "task:1",
+      a: "tag",
+      v: "right",
+      actor: "bob",
+    });
+
+    const first = await exchangeDeltas(a, b);
+    expect(first).toMatchObject({
+      sentFromA: 1,
+      sentFromB: 1,
+      insertedIntoA: 1,
+      insertedIntoB: 1,
+      vvA: { ra: 1, rb: 1 },
+      vvB: { ra: 1, rb: 1 },
+    });
+
+    const second = await exchangeDeltas(a, b);
+    expect(second).toMatchObject({
+      sentFromA: 0,
+      sentFromB: 0,
+      insertedIntoA: 0,
+      insertedIntoB: 0,
+    });
+  });
+
+  test("legacy unsequenced events remain compatible with delta exchange", async () => {
+    const a = createMemoryRuntime({ replicaId: "ra", wall: () => 100 });
+    const b = createMemoryRuntime({ replicaId: "rb", wall: () => 100 });
+    const event = assertEvent({
+      e: "legacy:1",
+      a: "status",
+      v: "visible",
+      actor: "alice",
+      actorType: "human",
+      validFrom: 100,
+      validTo: null,
+      hlc: { pt: 100, l: 0, r: "ra" },
+    });
+    await a.store.append(event);
+
+    expect(event.seq).toBeUndefined();
+    expect(deltaSince([event], { ra: 99 }).events).toEqual([event]);
+
+    const first = await exchangeDeltas(a, b);
+    const second = await exchangeDeltas(a, b);
+    expect(first.insertedIntoB).toBe(1);
+    expect(second.insertedIntoB).toBe(0);
   });
 
   test("target lifecycle operations are regular convergent events", async () => {

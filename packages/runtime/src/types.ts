@@ -28,6 +28,8 @@ export type MergeResult = {
   seen: number;
 };
 
+export type VersionVector = Readonly<Record<string, number>>;
+
 export type EventFilter = {
   e?: string;
   a?: string;
@@ -48,6 +50,12 @@ export interface RuntimeClock {
   receive(remote: Hlc): Promise<Hlc>;
 }
 
+export interface RuntimeSequencer {
+  readonly replicaId: string;
+  next(): Promise<number>;
+  current(): number;
+}
+
 export interface Scheduler {
   after(ms: number, op: ScheduledOperation): Promise<void>;
 }
@@ -65,6 +73,7 @@ export type RuntimeServices = {
   profile: RuntimeProfile;
   store: EventStore;
   clock: RuntimeClock;
+  sequencer?: RuntimeSequencer;
   scheduler?: Scheduler;
   transport?: Transport;
 };

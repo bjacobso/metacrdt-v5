@@ -10,8 +10,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Commutative supersession — centralized Convex writes now stamp
   event/HLC metadata, and cardinality-one current projection reconciles by the
   `≺` total order (`hlc → actorId → eventId`, SPEC §5.1), not arrival order.
-- [ ] HLC `(l, r)` + per-replica `seq` + version-vector anti-entropy sync
-  (SPEC §3.2, §8) — the multi-replica convergence runtime: offline / p2p /
+- [x] Runtime harness sequencing + version-vector anti-entropy — memory runtimes
+  stamp local events with per-replica `seq`, compute version vectors, exchange
+  deltas, and converge idempotently (SPEC §8 shape, not durable transport yet).
+- [ ] Durable HLC/`seq`/version-vector transport targets — offline / p2p /
   Durable-Object-per-group (see [foldkit.md](./docs/foldkit.md),
   [alchemy.md](./docs/alchemy.md)).
 
@@ -53,8 +55,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
-  a memory target/harness proving G-Set exchange convergence. It does not yet own
-  Convex or durable sync.
+  a memory target/harness proving G-Set exchange convergence and version-vector
+  anti-entropy. It does not yet own Convex or durable transport.
 - [ ] Targets: `@metacrdt/cloudflare` (DO), `@metacrdt/local` (browser), and a
   fuller registered `@metacrdt/convex` component/function surface.
 
@@ -140,6 +142,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-07 — Goal 13 @metacrdt/runtime harness groundwork
+- [x] **Version-vector anti-entropy shape implemented in memory.** Runtime
+  operations now stamp events with per-replica `seq` when a target supplies a
+  sequencer. `sync.ts` adds `versionVector`, `deltaSince`,
+  `mergeVersionVectors`, and `exchangeDeltas`; memory tests prove unseen-event
+  deltas, idempotent repeated exchange, and legacy unsequenced compatibility.
 - [x] **First runtime harness package.** `packages/runtime` defines the portable
   service boundary (`EventStore`, `RuntimeClock`, `Scheduler`, `Transport`),
   runtime profiles/capabilities, and operation helpers (`applyOperation`,

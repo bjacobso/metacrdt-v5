@@ -111,6 +111,9 @@ Current packages:
 - **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
   authoring language extracted from Open Ontology: reader, formatter, evaluator,
   VM, type inference, and language-owned elaboration utilities.
+- **`@metacrdt/runtime`** (`packages/runtime`) — target-neutral service contracts
+  and memory harness: injected HLC clock, optional per-replica sequencer,
+  operation helpers, version-vector delta calculation, and anti-entropy exchange.
 
 Planned package graph:
 

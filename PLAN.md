@@ -104,11 +104,12 @@ configured actions can now take small typed arguments.
   - no source imports from `.context/open-ontology`
 - `@metacrdt/runtime` exists in [`packages/runtime`](./packages/runtime):
   - target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
-    `Transport`)
+    `Transport`, optional `RuntimeSequencer`)
   - capability metadata and operation helpers over `@metacrdt/core`
   - an in-memory target/harness for proving convergence across runtimes
-  - package-local tests for HLC injection, G-Set exchange convergence, lifecycle
-    events, and capability checks
+  - version-vector delta calculation and one-round anti-entropy exchange helpers
+  - package-local tests for HLC injection, per-replica sequencing, G-Set exchange
+    convergence, version-vector deltas, lifecycle events, and capability checks
 - `applyConfig` now behaves as a true section-scoped reconciler:
   - configured artifact ownership is tracked on `config:default`
   - explicitly supplied config sections compute desired sets
@@ -164,8 +165,10 @@ configured actions can now take small typed arguments.
   A full Convex component surface and mutation factories remain deferred until
   the package boundary is proven against more host-app usage.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
-  reference runtime and does not implement durable transport / anti-entropy sync.
-- Multi-replica sync is specified but not implemented.
+  reference runtime and does not implement durable transport targets.
+- Multi-replica sync is specified and now implemented as in-memory
+  version-vector anti-entropy, but not yet bound to Cloudflare/local/Convex
+  transports.
 - Full app login/write authorization is not configured; unauthenticated callers
   are treated as `anonymous`, so PII is denied by default but general public
   writes remain demo-grade.
@@ -1501,16 +1504,18 @@ Package:
 
 ```text
 packages/runtime/
-  src/types.ts       # EventStore, RuntimeClock, Scheduler, Transport, capabilities
+  src/types.ts       # EventStore, Clock, Sequencer, Scheduler, Transport, caps
   src/operations.ts  # applyOperation, mergeFrom, capability checks
   src/memory.ts      # in-memory store/clock/scheduler/transport target
+  src/sync.ts        # version vectors, deltas, anti-entropy exchange
   src/index.ts       # public API
 ```
 
-This is **not** a Convex migration and **not** the multi-replica sync runtime.
-Convex remains the reference target; the memory harness exists so future Convex /
+This is **not** a Convex migration and **not** a durable transport target. Convex
+remains the reference target; the memory harness exists so future Convex /
 Cloudflare / local targets can share one contract and one set of convergence
-tests.
+tests. The harness now implements SPEC §8's version-vector anti-entropy shape in
+memory.
 
 ### Acceptance Criteria
 
@@ -1518,6 +1523,7 @@ tests.
 - Define target-neutral service interfaces:
   - `EventStore`
   - `RuntimeClock`
+  - optional `RuntimeSequencer`
   - `Scheduler`
   - `Transport`
   - `RuntimeProfile` / capabilities
@@ -1530,11 +1536,20 @@ tests.
 - Add an in-memory runtime target:
   - verified event-id append;
   - HLC clock with injected wall time;
+  - per-replica sequencer;
   - scheduler/transport fakes for tests.
+- Add version-vector sync helpers:
+  - `versionVector`
+  - `deltaSince`
+  - `exchangeDeltas`
 - Add tests proving:
   - injected HLC behavior;
+  - per-replica sequence stamping;
   - append/publish path;
   - two runtimes converge after exchanging G-Set events;
+  - version-vector deltas send only unseen sequenced events;
+  - repeated anti-entropy exchange is idempotent;
+  - legacy unsequenced events remain compatibility deltas;
   - lifecycle target operations fold correctly;
   - capability checks fail clearly.
 - Add root `npm run test:runtime`.
@@ -1543,7 +1558,7 @@ tests.
 
 ### Verification
 
-- `npm run test:runtime` passed (4 tests).
+- `npm run test:runtime` passed (7 tests).
 - Runtime package typecheck passed.
 - Full gate for this slice is recorded in the commit that shipped it.
 
@@ -1563,7 +1578,8 @@ These remain valuable, but they should not interrupt the current goal.
 ### Runtime / Targets
 
 - [x] `@metacrdt/runtime` harness groundwork.
-- [ ] Durable anti-entropy transport and version vectors.
+- [x] In-memory version-vector anti-entropy helpers.
+- [ ] Durable anti-entropy transport targets.
 - [ ] Full registered `@metacrdt/convex` component/function surface.
 - [ ] Cloudflare Durable Object target.
 - [ ] Browser/local-first target.

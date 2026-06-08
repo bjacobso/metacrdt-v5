@@ -67,9 +67,14 @@ export async function applyOperation(
               reason: operation.reason,
             });
 
-  await runtime.store.append(event);
-  await runtime.transport?.publish([event]);
-  return event;
+  const sequenced =
+    runtime.sequencer === undefined
+      ? event
+      : { ...event, seq: await runtime.sequencer.next() };
+
+  await runtime.store.append(sequenced);
+  await runtime.transport?.publish([sequenced]);
+  return sequenced;
 }
 
 export async function mergeFrom(
