@@ -244,6 +244,68 @@ export type NodeSyncClient = {
   effect: NodeSyncClientEffect;
 };
 
+export type NodeProductionStorageOptions =
+  | {
+      kind: "memory";
+    }
+  | {
+      kind: "sqlite";
+      db: NodeSqliteDatabaseLike;
+      tablePrefix?: string;
+      initialize?: boolean;
+    }
+  | {
+      kind: "postgres";
+      client: NodePostgresClientLike;
+      tablePrefix?: string;
+      initialize?: boolean;
+    };
+
+export type NodeProductionSyncOptions = {
+  basePath?: string;
+  protocol?: string;
+  /** Optional remote URL for the bundled SDK client, e.g. https://host/sync. */
+  clientBaseUrl?: string;
+  clientFetch?: NodeSyncClientFetch;
+  clientHeaders?: Readonly<Record<string, string>>;
+};
+
+export type NodeProductionRuntimeOptions = {
+  replicaId: string;
+  name?: string;
+  storage: NodeProductionStorageOptions;
+  sync?: NodeProductionSyncOptions;
+  wall?: () => number;
+  capabilities?: Iterable<RuntimeCapability>;
+};
+
+type NodeProductionRuntimeServices = RuntimeServices & {
+  projection: ProjectionStore;
+  sequencer: RuntimeSequencer;
+};
+
+export type NodeProductionRuntime = {
+  storage: NodeProductionStorageOptions["kind"];
+  runtime: NodeProductionRuntimeServices;
+  layer: Layer.Layer<ProjectionRuntimeServices>;
+  handleSync: ReturnType<typeof createNodeSyncHttpHandler>;
+  listener: NodeHttpRequestListener;
+  basePath: string;
+  protocol: string;
+  lifecycle?: NodeSqlLifecyclePlan;
+  client?: NodeSyncClient;
+  effectClient?: NodeSyncClientEffect;
+};
+
+export class NodeProductionRuntimeError extends Data.TaggedError(
+  "NodeProductionRuntimeError",
+)<{
+  readonly operation: string;
+  readonly message: string;
+  readonly storage?: NodeProductionStorageOptions["kind"];
+  readonly cause?: unknown;
+}> {}
+
 const DEFAULT_SYNC_PROTOCOL = "metacrdt.node.http.v1";
 
 const VersionVectorSchema = Schema.Record({
@@ -933,6 +995,125 @@ export function createNodeSyncClient(options: NodeSyncClientOptions): NodeSyncCl
     push: (events) => Effect.runPromise(effect.push(events)),
     syncFrom: (runtime) => Effect.runPromise(effect.syncFrom(runtime)),
   };
+}
+
+function productionRuntimeError(
+  operation: string,
+  storage: NodeProductionStorageOptions["kind"] | undefined,
+  cause: unknown,
+): NodeProductionRuntimeError {
+  if (cause instanceof NodeProductionRuntimeError) return cause;
+  return new NodeProductionRuntimeError({
+    operation,
+    storage,
+    message: cause instanceof Error ? cause.message : String(cause),
+    cause,
+  });
+}
+
+function sqlLifecycleForStorage(
+  storage: NodeProductionStorageOptions,
+): NodeSqlLifecyclePlan | undefined {
+  if (storage.kind === "memory") return undefined;
+  return createNodeSqlLifecyclePlan({
+    dialect: storage.kind,
+    tablePrefix: storage.tablePrefix,
+  });
+}
+
+async function createRuntimeForStorage(
+  options: NodeProductionRuntimeOptions,
+): Promise<NodeProductionRuntimeServices> {
+  const common = {
+    replicaId: options.replicaId,
+    name: options.name,
+    wall: options.wall,
+    capabilities: options.capabilities,
+  };
+  switch (options.storage.kind) {
+    case "memory":
+      return createNodeMemoryRuntime(common);
+    case "sqlite":
+      return await createNodeSqliteRuntime({
+        ...common,
+        db: options.storage.db,
+        tablePrefix: options.storage.tablePrefix,
+        initialize: options.storage.initialize,
+      });
+    case "postgres":
+      return await createNodePostgresRuntime({
+        ...common,
+        client: options.storage.client,
+        tablePrefix: options.storage.tablePrefix,
+        initialize: options.storage.initialize,
+      });
+  }
+}
+
+/**
+ * Effect-native production assembly for the Node target.
+ *
+ * This is still deliberately framework- and driver-neutral: callers bring the
+ * concrete SQLite/Postgres driver and the HTTP server. The helper returns the
+ * selected runtime, its Layer, the structural HTTP/SSE sync handler, a native
+ * `node:http`-style listener, lifecycle metadata for SQL stores, and an optional
+ * SDK client for a configured remote sync base URL.
+ */
+export function createNodeProductionRuntimeEffect(
+  options: NodeProductionRuntimeOptions,
+): Effect.Effect<NodeProductionRuntime, NodeProductionRuntimeError> {
+  return Effect.tryPromise({
+    try: async () => {
+      const runtime = await createRuntimeForStorage(options);
+      const basePath = normalizeBasePath(options.sync?.basePath ?? "/sync");
+      const protocol = options.sync?.protocol ?? DEFAULT_SYNC_PROTOCOL;
+      const syncOptions = { basePath, protocol };
+      const handleSync = createNodeSyncHttpHandler(runtime, syncOptions);
+      const listener = createNodeHttpRequestListener(runtime, syncOptions);
+      const lifecycle = sqlLifecycleForStorage(options.storage);
+      const base = {
+        storage: options.storage.kind,
+        runtime,
+        layer: runtimeServicesLayer(runtime),
+        handleSync,
+        listener,
+        basePath,
+        protocol,
+        ...(lifecycle ? { lifecycle } : {}),
+      };
+      if (options.sync?.clientBaseUrl) {
+        const effectClient = createNodeSyncClientEffect({
+          baseUrl: options.sync.clientBaseUrl,
+          fetch: options.sync.clientFetch,
+          headers: options.sync.clientHeaders,
+          protocol,
+        });
+        return {
+          ...base,
+          effectClient,
+          client: createNodeSyncClient({
+            baseUrl: options.sync.clientBaseUrl,
+            fetch: options.sync.clientFetch,
+            headers: options.sync.clientHeaders,
+            protocol,
+          }),
+        };
+      }
+      return base;
+    },
+    catch: (cause) =>
+      productionRuntimeError(
+        "createNodeProductionRuntime",
+        options.storage.kind,
+        cause,
+      ),
+  });
+}
+
+export function createNodeProductionRuntime(
+  options: NodeProductionRuntimeOptions,
+): Promise<NodeProductionRuntime> {
+  return Effect.runPromise(createNodeProductionRuntimeEffect(options));
 }
 
 export class NodeSqliteEventStore implements EventStore {

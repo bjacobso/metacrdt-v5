@@ -45,6 +45,12 @@ different storage adapters behind the same runtime contracts.
   client validates response boundaries with `effect/Schema` and reports
   `NodeSyncClientError` in the Effect error channel; the Promise facade is for
   ordinary Node consumers.
+- **Production assembly helper** — `createNodeProductionRuntimeEffect` and
+  `createNodeProductionRuntime` select `memory | sqlite | postgres`, initialize
+  the matching runtime, expose its Effect `Layer`, create the structural
+  HTTP/SSE handler and native-style listener, return SQL lifecycle metadata for
+  durable stores, and optionally bundle the sync SDK client for a configured
+  remote base URL. It is still framework- and driver-neutral.
 - **Packaged dev server CLI** — `metacrdt-node-dev`, an in-memory local sync
   server over native `node:http`. It is a convenience wrapper over
   `createNodeMemoryRuntime` + `createNodeHttpRequestListener`, with configurable
@@ -74,8 +80,10 @@ and the shared SQL lifecycle plan used by both SQL adapters. It also tests the
 HTTP/SSE handler's health, delta pull, event push, SSE response paths, and the
 native-style listener adapter's response writing and streamed POST body merge.
 The sync SDK client is tested for health/pull/push/bidirectional sync and tagged
-Effect error behavior. The dev-server CLI is tested by starting a real ephemeral
-`node:http` server and querying its health route.
+Effect error behavior. The production assembly helper is tested for memory
+runtime/listener/client/Layer wiring, Postgres lifecycle metadata, and tagged
+Effect initialization errors. The dev-server CLI is tested by starting a real
+ephemeral `node:http` server and querying its health route.
 
 ## Usage
 
@@ -83,6 +91,8 @@ Effect error behavior. The dev-server CLI is tested by starting a real ephemeral
 import {
   createNodeMemoryRuntimeLayer,
   createNodeHttpRequestListener,
+  createNodeProductionRuntime,
+  createNodeProductionRuntimeEffect,
   createNodeSyncClient,
   createNodeSyncClientEffect,
   createNodePostgresRuntimeLayer,
@@ -161,6 +171,45 @@ const plan = createNodeSqlLifecyclePlan({
 for (const sql of plan.initializeStatements) {
   await client.query(sql);
 }
+```
+
+Production assembly without choosing a web framework:
+
+```ts
+const node = await createNodeProductionRuntime({
+  replicaId: "node:prod",
+  storage: {
+    kind: "postgres",
+    client, // pg Pool/Client, Neon wrapper, etc.
+    tablePrefix: "metacrdt",
+  },
+  sync: {
+    basePath: "/sync",
+    clientBaseUrl: "https://peer.example.com/sync", // optional
+    clientHeaders: { authorization: `Bearer ${token}` },
+  },
+});
+
+// Mount however your host wants:
+// http.createServer((req, res) => void node.listener(req, res)).listen(8787)
+
+// Or adapt the structural handler to Express/Fastify/Hono/Bun/etc.
+const response = await node.handleSync({
+  method: "GET",
+  url: "/sync/health",
+});
+
+// Effect-native code can provide the target Layer directly.
+const layer = node.layer;
+```
+
+Effect-native initialization keeps failures in the typed error channel:
+
+```ts
+const program = createNodeProductionRuntimeEffect({
+  replicaId: "node:prod",
+  storage: { kind: "postgres", client },
+});
 ```
 
 Local in-memory dev server:

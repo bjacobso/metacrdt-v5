@@ -181,9 +181,13 @@ Current packages:
   `createNodeHttpRequestListener` adapter for native `node:http`-style
   request/response objects, plus `createNodeSyncClientEffect` /
   `createNodeSyncClient` for consuming those same routes from Effect or ordinary
-  Promise-based Node code. It also ships `metacrdt-node-dev`, an in-memory local
-  sync server CLI over native `node:http`. Memory, SQLite, and Postgres runtimes
-  expose Effect Layer providers and pass `@metacrdt/testkit`.
+  Promise-based Node code. `createNodeProductionRuntimeEffect` /
+  `createNodeProductionRuntime` assemble the runtime, Layer, sync handler,
+  native-style listener, SQL lifecycle metadata, and optional sync client for
+  production hosts without choosing a framework or driver. It also ships
+  `metacrdt-node-dev`, an in-memory local sync server CLI over native
+  `node:http`. Memory, SQLite, and Postgres runtimes expose Effect Layer
+  providers and pass `@metacrdt/testkit`.
 - **`@metacrdt/testkit`** (`packages/testkit`) — target conformance helpers:
   Effect Layer-backed checks for EventStore idempotency/filtering/content-id
   verification, version-vector anti-entropy, deterministic fold convergence, and
@@ -231,7 +235,7 @@ Planned package graph:
 @metacrdt/cloudflare  Durable Object / Worker target
 @metacrdt/local       browser/local-first target
 @metacrdt/testkit     target conformance checks
-@metacrdt/node        Node target (memory + structural SQLite/Postgres + SQL lifecycle plan + HTTP/SSE + listener + sync client + dev-server CLI shipped)
+@metacrdt/node        Node target (memory + structural SQLite/Postgres + SQL lifecycle plan + HTTP/SSE + listener + sync client + production assembly + dev-server CLI shipped)
 ```
 
 Open Ontology is vendored as a context submodule at
@@ -701,6 +705,7 @@ Frontier:
 - HLC + version-vector sync across replicas
 - Durable Object + SQLite triple-store parity
 - production database lifecycle/migrations beyond the current Node SQL DDL plan
+  and structural production assembly helper
 - optimized/materialized Datalog/query providers beyond the shared
   EventStore-backed `DatalogQueryService`
 

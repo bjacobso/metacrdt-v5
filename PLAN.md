@@ -184,11 +184,16 @@ events/meta DDL for both SQLite and Postgres, consumed by both adapters without
 extracting a premature `@metacrdt/sql` package. Goal 112 adds the Node sync SDK
 helper: a dependency-free client for the existing HTTP/SSE sync routes, with an
 Effect-native facade (`effect/Schema` response validation and tagged
-`NodeSyncClientError`) plus a Promise wrapper for ordinary Node consumers. The
-next active goal should be chosen from the remaining TODO candidates:
-choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
-production deployment guidance, Cloudflare DO+SQLite parity, another carefully
-scoped Confect/domain wrapper, or the next projection dependency
+`NodeSyncClientError`) plus a Promise wrapper for ordinary Node consumers. Goal
+113 adds the Node production assembly helper: a framework- and driver-neutral
+constructor that selects `memory | sqlite | postgres`, initializes the matching
+runtime, returns its Effect Layer, HTTP/SSE handler, native-style listener, SQL
+lifecycle metadata for durable stores, and optional sync client wiring. The next
+active goal should be chosen from the remaining TODO candidates:
+choosing/wiring the provider-specific React wrapper/JWT flow, adding concrete
+Node deployment recipes for real drivers/process managers, Cloudflare
+DO+SQLite parity, another carefully scoped Confect/domain wrapper, or the next
+projection dependency
 (closure/derived provenance or remaining operational process state).
 
 This plan is the operational goal file. Read it with:
@@ -9388,6 +9393,57 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 113 — @metacrdt/node Production Assembly Helper
+
+**Status:** shipped.
+
+**Objective:** close the gap between the Node target's shipped pieces and a
+repeatable production host shape without choosing a concrete web framework,
+database driver, process manager, or hosted provider. The package should make it
+obvious how an app assembles the runtime, sync surface, SQL lifecycle metadata,
+Layer provider, and optional remote sync client while remaining dependency-free.
+
+### What Shipped
+
+- Added `createNodeProductionRuntimeEffect(options)`:
+  - accepts `storage.kind: "memory" | "sqlite" | "postgres"`;
+  - initializes the corresponding runtime via the existing memory/SQLite/Postgres
+    adapters;
+  - returns the target runtime plus `runtimeServicesLayer(runtime)`;
+  - creates the structural HTTP/SSE handler and native-style
+    `node:http` listener;
+  - returns `createNodeSqlLifecyclePlan` metadata for SQLite/Postgres stores;
+  - optionally bundles the sync SDK client when a remote `clientBaseUrl` is
+    supplied;
+  - reports `NodeProductionRuntimeError` in the Effect error channel.
+- Added `createNodeProductionRuntime(options)` as the Promise facade for ordinary
+  Node consumers.
+- Documented the production assembly path in `packages/node/README.md` and
+  narrowed `docs/targets.md`'s next Node slice to concrete deployment recipes
+  over real drivers/process managers.
+
+### Non-Goals
+
+- Do not import Node `http` types, Express/Fastify/Hono, pg, better-sqlite3, or
+  any hosted provider SDK.
+- Do not introduce migrations beyond the existing SQL lifecycle DDL plan.
+- Do not add retries, auth, process supervision, or observability middleware in
+  this slice.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/node` passes.
+- `npm test --workspace @metacrdt/node` passes, now with twenty-nine Node tests.
+- New tests prove:
+  - memory production assembly returns runtime, Layer, handler/listener, and
+    optional client wiring;
+  - the returned Layer exposes the runtime EventStore through Effect services;
+  - bidirectional sync works through the assembled client;
+  - Postgres assembly exposes SQL lifecycle metadata;
+  - initialization failures are typed `NodeProductionRuntimeError` values.
 
 ---
 

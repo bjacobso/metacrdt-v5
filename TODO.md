@@ -517,8 +517,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Choose the next Node slice: shared SQL lifecycle plan.
 - [x] Choose the next Node slice: sync SDK client over the shipped HTTP/SSE
   surface.
-- [ ] Choose between production provider wiring, Node production deployment
-  guidance, Cloudflare DO+SQLite parity, or another parked Query/Rules item.
+- [x] Choose the next Node slice: framework-neutral production assembly helper.
+- [ ] Choose between production provider wiring, concrete Node deployment
+  recipes over real drivers/process managers, Cloudflare DO+SQLite parity, or
+  another parked Query/Rules item.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -552,6 +554,23 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — @metacrdt/node production assembly helper
+- [x] **Added framework-neutral production assembly.** `@metacrdt/node` now
+  exports `createNodeProductionRuntimeEffect` and `createNodeProductionRuntime`:
+  choose `memory | sqlite | postgres`, initialize the corresponding runtime,
+  return the Effect Layer, structural HTTP/SSE handler, native-style listener,
+  SQL lifecycle metadata for durable stores, and optional sync SDK client wiring
+  for a remote base URL.
+- [x] **Typed boundary.** Initialization failures are
+  `NodeProductionRuntimeError` values in the Effect error channel; the Promise
+  facade is just `Effect.runPromise` for ordinary Node consumers.
+- [x] **Tests and docs.** Node package tests are now 29/29, covering memory
+  runtime/listener/client/Layer wiring, Postgres lifecycle metadata, and typed
+  init errors. `packages/node/README.md`, `docs/targets.md`, `PLAN.md`, and the
+  top-level README now describe the production assembly path. Concrete
+  deployment recipes over real drivers/process managers remain the next Node
+  documentation slice.
 
 ### 2026-06-08 — @metacrdt/node sync SDK client
 - [x] **Added the Node sync client.** `@metacrdt/node` now exports

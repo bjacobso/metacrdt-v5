@@ -70,7 +70,11 @@ On open hosts the adapter is a selectable dependency.
   in-memory dev-server CLI. It also exposes a shared SQL lifecycle plan for the
   SQLite/Postgres runtime tables and Effect Layers for memory, SQLite, and
   Postgres. A dependency-free sync SDK client now talks to the same HTTP/SSE
-  routes through an Effect-native facade plus Promise wrapper.
+  routes through an Effect-native facade plus Promise wrapper. The production
+  assembly helper selects `memory | sqlite | postgres`, returns the runtime
+  Layer + handler/listener, exposes SQL lifecycle metadata for durable stores,
+  and optionally bundles the sync client for a remote base URL without choosing
+  a Node framework or concrete driver.
 - `@metacrdt/runtime`'s in-memory target/Layer — the reference harness.
 - `@metacrdt/testkit` — Effect Layer-backed conformance helpers for EventStore,
   anti-entropy, deterministic fold convergence, EventStore-backed projection,
@@ -95,9 +99,10 @@ On open hosts the adapter is a selectable dependency.
 
 ### Should exist next
 
-- **`@metacrdt/node` next slices** — add production database/deployment guidance
-  on top of the memory/SQLite/Postgres host, lifecycle DDL plan, HTTP/SSE sync
-  surface, sync client, and packaged dev server now in place.
+- **`@metacrdt/node` next slices** — add concrete deployment recipes for real
+  drivers/process managers (for example pg + native `node:http`, better-sqlite3,
+  Docker/systemd/Fly/Render/Railway-style hosts) on top of the structural
+  production assembly helper now in place.
 
 ### Defer until a real need justifies them
 

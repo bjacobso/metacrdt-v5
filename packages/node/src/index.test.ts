@@ -24,6 +24,8 @@ import {
 import {
   createNodeHttpRequestListener,
   createNodeMemoryRuntimeLayer,
+  createNodeProductionRuntime,
+  createNodeProductionRuntimeEffect,
   createNodePostgresRuntimeLayer,
   createNodeMemoryRuntime,
   createNodePostgresRuntime,
@@ -1021,6 +1023,117 @@ describe("@metacrdt/node target", () => {
       expect(malformedResult.left).toMatchObject({
         _tag: "NodeSyncClientError",
         operation: "health",
+      });
+    }
+  });
+
+  test("production runtime helper assembles runtime, Layer, listener, and optional client", async () => {
+    const remote = createNodeMemoryRuntime({
+      replicaId: "node:remote-prod",
+      wall: () => 9_000,
+    });
+    const remoteEvent = await applyOperation(remote, {
+      op: "assert",
+      e: "case:remote-prod",
+      a: "case.status",
+      v: "open",
+      actor: "user:1",
+    });
+    const production = await createNodeProductionRuntime({
+      replicaId: "node:prod",
+      storage: { kind: "memory" },
+      wall: () => 10_000,
+      sync: {
+        basePath: "sync",
+        clientBaseUrl: "https://node.test/sync",
+        clientFetch: fetchFromHandler(
+          createNodeSyncHttpHandler(remote, { basePath: "/sync" }),
+        ),
+      },
+    });
+
+    expect(production.storage).toBe("memory");
+    expect(production.basePath).toBe("/sync");
+    expect(production.lifecycle).toBeUndefined();
+    expect(production.client).toBeDefined();
+
+    const localEvent = await applyOperation(production.runtime, {
+      op: "assert",
+      e: "case:prod",
+      a: "case.status",
+      v: "draft",
+      actor: "user:2",
+    });
+    const response = await production.handleSync({
+      method: "GET",
+      url: "/sync/health",
+    });
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      ok: true,
+      profile: { replicaId: "node:prod" },
+      vv: { "node:prod": 1 },
+    });
+
+    const serviceEventIds = await Effect.runPromise(
+      Effect.gen(function* () {
+        const store = yield* EventStoreService;
+        return (yield* store.scan()).map((event) => event.id);
+      }).pipe(Effect.provide(production.layer)),
+    );
+    expect(serviceEventIds).toEqual([localEvent.id]);
+
+    const sync = await production.client!.syncFrom(production.runtime);
+    expect(sync).toMatchObject({
+      pulled: 1,
+      pushed: 1,
+      insertedLocal: 1,
+      insertedRemote: 1,
+    });
+    expect(await production.runtime.store.get(remoteEvent.id)).toEqual(remoteEvent);
+    expect(await remote.store.get(localEvent.id)).toEqual(localEvent);
+  });
+
+  test("production runtime helper exposes SQL lifecycle metadata and typed init errors", async () => {
+    const pg = new FakePostgresClient();
+    const production = await createNodeProductionRuntime({
+      replicaId: "node:pg-prod",
+      storage: {
+        kind: "postgres",
+        client: pg,
+        tablePrefix: "tenant_prod",
+      },
+    });
+
+    expect(production.storage).toBe("postgres");
+    expect(production.lifecycle).toMatchObject({
+      dialect: "postgres",
+      tablePrefix: "tenant_prod",
+    });
+    expect(production.lifecycle?.tables.events).toBe('"tenant_prod_events"');
+
+    const failed = await Effect.runPromise(
+      Effect.either(
+        createNodeProductionRuntimeEffect({
+          replicaId: "node:bad",
+          storage: {
+            kind: "sqlite",
+            db: {
+              prepare() {
+                throw new Error("cannot open database");
+              },
+            },
+          },
+        }),
+      ),
+    );
+    expect(failed._tag).toBe("Left");
+    if (failed._tag === "Left") {
+      expect(failed.left).toMatchObject({
+        _tag: "NodeProductionRuntimeError",
+        operation: "createNodeProductionRuntime",
+        storage: "sqlite",
+        message: "cannot open database",
       });
     }
   });
