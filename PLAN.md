@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 52 (event-log-backed Datalog proof query)
+**Current goal:** Goal 53 (event-log Datalog page/aggregate proof APIs)
 has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth, or
@@ -91,7 +91,10 @@ arguments.
 - `api.datalog.datalogFromEventLog` reuses the normal Datalog solver with an
   injected triple source over protocol-shaped `factEvents`, proving joins,
   compute predicates, and negation can run over the source log for base facts.
-- Convex backend tests are green: 134 tests at last verification.
+- `api.datalog.datalogPageFromEventLog`, `aggregateFromEventLog`, and
+  `aggregatePageFromEventLog` extend the same event-log triple source to paged
+  projected rows and aggregate group rows for base facts.
+- Convex backend tests are green: 137 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -5143,6 +5146,81 @@ TODO.md
 - `npx vitest run convex/datalog.test.ts` passed (24 tests).
 - Broader gate passed:
   - `npm test` passed (17 backend test files, 134 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+
+---
+
+## Goal 53 — Event-Log Datalog Page/Aggregate Proof APIs
+
+**Status:** shipped as bounded proof/read-model APIs in the Convex reference
+runtime.
+
+**Objective:** extend the event-log Datalog proof surface from single result
+sets to the rest of the public Datalog read shapes: paged projected rows,
+aggregate rows, and paged aggregate rows.
+
+### Scope
+
+Backend:
+
+```text
+convex/datalog.ts
+  datalogPageFromEventLog
+  aggregateFromEventLog
+  aggregatePageFromEventLog
+```
+
+Tests:
+
+```text
+convex/datalog.test.ts
+```
+
+Docs:
+
+```text
+README.md
+PLAN.md
+TODO.md
+```
+
+### Semantics
+
+- `datalogPageFromEventLog` is the paginated counterpart to
+  `datalogFromEventLog`; it pages deterministic projected rows using the existing
+  engine cursor helper.
+- `aggregateFromEventLog` runs the existing aggregate helper over bindings
+  solved from protocol-shaped `factEvents`.
+- `aggregatePageFromEventLog` pages aggregate group rows with the same engine
+  cursor helper as `aggregatePage`.
+- All three APIs are base-fact-only in this slice and reuse the event-log
+  `TripleSource` from Goal 52.
+
+### Non-Goals
+
+- Do not replace production `datalogPage`, `aggregate`, or `aggregatePage`.
+- Do not include materialized `derivedFacts` in the event-log proof APIs yet.
+- Do not add new aggregate semantics; this only swaps the fact source.
+
+### Acceptance Criteria
+
+- `datalogPageFromEventLog` pages deterministic projected rows.
+- `aggregateFromEventLog` matches projection-backed aggregate results for normal
+  base facts.
+- `aggregatePageFromEventLog` pages deterministic aggregate group rows.
+- Convex typecheck and focused Datalog tests pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/datalog.test.ts` passed (27 tests).
+- Broader gate passed:
+  - `npm test` passed (17 backend test files, 137 tests).
   - `npm run test:convex-package` passed (33 tests).
   - `npm run test:core` passed (46 tests).
   - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.

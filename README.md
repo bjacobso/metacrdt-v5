@@ -181,8 +181,10 @@ Built today:
   `factEvents` (`api.facts.entityFromEventLog`,
   `api.facts.queryFactsFromEventLog`) as the proof path for retiring current-state
   projections
-- event-log-backed Datalog proof queries (`api.datalog.datalogFromEventLog`) via
-  an injected triple source over protocol-shaped `factEvents`
+- event-log-backed Datalog proof queries (`api.datalog.datalogFromEventLog`,
+  `datalogPageFromEventLog`, `aggregateFromEventLog`,
+  `aggregatePageFromEventLog`) via an injected triple source over
+  protocol-shaped `factEvents`
 - Datalog query engine with joins, comparisons, computed arithmetic/string
   predicates, negation, aggregation, cursor-paged result APIs, and materialized
   transitive closure

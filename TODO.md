@@ -61,7 +61,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   protocol-shaped `factEvents` + schema cardinality events, and
   `api.facts.queryFactsFromEventLog` answers bounded bitemporal point queries
   directly from protocol-shaped `factEvents`. `api.datalog.datalogFromEventLog`
-  now reuses the Datalog solver with an injected event-log source for base facts.
+  now reuses the Datalog solver with an injected event-log source for base facts,
+  and the event-log proof surface includes paged Datalog and aggregate variants.
   Remaining: continue toward retiring the hand-maintained `facts` projection for
   rules/materialization and derived Datalog reads.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
@@ -321,6 +322,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 53 shipped:** `api.datalog.datalogPageFromEventLog`,
+  `aggregateFromEventLog`, and `aggregatePageFromEventLog` extend the Goal 52
+  event-log Datalog source to cursor-paged result rows and aggregate group rows.
+- [x] **Page/aggregate parity.** Tests prove event-log pagination returns the
+  deterministic projected row stream, aggregate rows match projection-backed
+  aggregate results for base facts, and aggregate pages split deterministic group
+  rows correctly.
 - [x] **Goal 52 shipped:** Datalog now has an injectable `TripleSource`, and
   `api.datalog.datalogFromEventLog` runs the existing parser/join scheduler/
   compute/negation path over protocol-shaped `factEvents` for base facts.

@@ -277,6 +277,115 @@ describe("result pagination", () => {
       }),
     ).rejects.toThrow(/invalid pagination cursor/);
   });
+
+  test("datalogPageFromEventLog pages deterministic projected rows", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    for (let i = 0; i < 5; i++) {
+      await assert(t, `event-paged:${i}`, "type", "EventPagedWorker");
+      await assert(t, `event-paged:${i}`, "rank", i);
+    }
+
+    const first = await t.query(api.datalog.datalogPageFromEventLog, {
+      where: [["?e", "type", "EventPagedWorker"]],
+      select: ["?e"],
+      paginationOpts: { numItems: 2, cursor: null },
+    });
+    const second = await t.query(api.datalog.datalogPageFromEventLog, {
+      where: [["?e", "type", "EventPagedWorker"]],
+      select: ["?e"],
+      paginationOpts: { numItems: 2, cursor: first.continueCursor },
+    });
+    const third = await t.query(api.datalog.datalogPageFromEventLog, {
+      where: [["?e", "type", "EventPagedWorker"]],
+      select: ["?e"],
+      paginationOpts: { numItems: 2, cursor: second.continueCursor },
+    });
+
+    expect(first.page).toHaveLength(2);
+    expect(second.page).toHaveLength(2);
+    expect(third.page).toHaveLength(1);
+    expect(third.isDone).toBe(true);
+    expect([...first.page, ...second.page, ...third.page].map((r) => r.e).sort())
+      .toEqual([
+        "event-paged:0",
+        "event-paged:1",
+        "event-paged:2",
+        "event-paged:3",
+        "event-paged:4",
+      ]);
+  });
+});
+
+describe("aggregation", () => {
+  test("aggregateFromEventLog matches projection aggregate for base facts", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await assert(t, "agg:1", "type", "AggWorker");
+    await assert(t, "agg:1", "dept", "ops");
+    await assert(t, "agg:1", "salary", 100);
+    await assert(t, "agg:2", "type", "AggWorker");
+    await assert(t, "agg:2", "dept", "ops");
+    await assert(t, "agg:2", "salary", 200);
+    await assert(t, "agg:3", "type", "AggWorker");
+    await assert(t, "agg:3", "dept", "field");
+    await assert(t, "agg:3", "salary", 50);
+
+    const args = {
+      where: [
+        ["?e", "type", "AggWorker"],
+        ["?e", "dept", "?dept"],
+        ["?e", "salary", "?salary"],
+      ],
+      groupBy: ["?dept"],
+      aggregates: [
+        { op: "count" as const, as: "headcount" },
+        { op: "sum" as const, var: "?salary", as: "payroll" },
+        { op: "avg" as const, var: "?salary", as: "average" },
+      ],
+    };
+
+    const projected = await t.query(api.datalog.aggregate, args);
+    const fromLog = await t.query(api.datalog.aggregateFromEventLog, args);
+    expect(fromLog.sort((a, b) => String(a.dept).localeCompare(String(b.dept))))
+      .toEqual(projected.sort((a, b) => String(a.dept).localeCompare(String(b.dept))));
+  });
+
+  test("aggregatePageFromEventLog pages deterministic group rows", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    for (const dept of ["a", "b", "c"]) {
+      await assert(t, `event-agg:${dept}`, "type", "EventAggWorker");
+      await assert(t, `event-agg:${dept}`, "dept", dept);
+      await assert(t, `event-agg:${dept}`, "salary", 10);
+    }
+
+    const first = await t.query(api.datalog.aggregatePageFromEventLog, {
+      where: [
+        ["?e", "type", "EventAggWorker"],
+        ["?e", "dept", "?dept"],
+      ],
+      groupBy: ["?dept"],
+      aggregates: [{ op: "count", as: "headcount" }],
+      paginationOpts: { numItems: 2, cursor: null },
+    });
+    const second = await t.query(api.datalog.aggregatePageFromEventLog, {
+      where: [
+        ["?e", "type", "EventAggWorker"],
+        ["?e", "dept", "?dept"],
+      ],
+      groupBy: ["?dept"],
+      aggregates: [{ op: "count", as: "headcount" }],
+      paginationOpts: { numItems: 2, cursor: first.continueCursor },
+    });
+
+    expect(first.page).toHaveLength(2);
+    expect(first.isDone).toBe(false);
+    expect(second.page).toHaveLength(1);
+    expect(second.isDone).toBe(true);
+    expect([...first.page, ...second.page].map((r) => r.dept).sort()).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+  });
 });
 
 describe("negation", () => {

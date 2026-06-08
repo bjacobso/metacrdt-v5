@@ -252,6 +252,28 @@ export const datalogPage = query({
   },
 });
 
+/** Paginated variant of `datalogFromEventLog` over deterministic projected rows. */
+export const datalogPageFromEventLog = query({
+  args: {
+    where: whereValidator,
+    select: v.array(v.string()),
+    paginationOpts: paginationOptsValidator,
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const bindings = await runWhere(ctx, args.where, coord, {}, {
+      enforceReadAuth: true,
+      source: eventLogTripleSource,
+    });
+    return paginateRows(project(bindings, args.select), args.paginationOpts);
+  },
+});
+
 /**
  * Aggregation over a Datalog body: solve the `where`, group by `groupBy`
  * variables, and compute aggregates per group.
@@ -305,6 +327,47 @@ export const aggregate = query({
   },
 });
 
+/** Aggregation variant of `datalogFromEventLog` over base protocol event facts. */
+export const aggregateFromEventLog = query({
+  args: {
+    where: whereValidator,
+    groupBy: v.optional(v.array(v.string())),
+    aggregates: v.array(
+      v.object({
+        op: v.union(
+          v.literal("count"),
+          v.literal("countDistinct"),
+          v.literal("sum"),
+          v.literal("avg"),
+          v.literal("min"),
+          v.literal("max"),
+        ),
+        var: v.optional(v.string()),
+        as: v.string(),
+      }),
+    ),
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const bindings = await runWhere(ctx, args.where, coord, {}, {
+      enforceReadAuth: true,
+      source: eventLogTripleSource,
+    });
+    const rows = aggregateBindings(bindings, args.groupBy ?? [], args.aggregates);
+    if (rows.length > LIMITS.maxResultRows) {
+      throw new Error(
+        `aggregate produced ${rows.length} groups, exceeding maxResultRows=${LIMITS.maxResultRows}`,
+      );
+    }
+    return rows;
+  },
+});
+
 /** Paginated variant of `aggregate` over the deterministic group rows. */
 export const aggregatePage = query({
   args: {
@@ -335,6 +398,45 @@ export const aggregatePage = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
+    });
+    return paginateRows(
+      aggregateBindings(bindings, args.groupBy ?? [], args.aggregates),
+      args.paginationOpts,
+    );
+  },
+});
+
+/** Paginated aggregation variant of `aggregateFromEventLog`. */
+export const aggregatePageFromEventLog = query({
+  args: {
+    where: whereValidator,
+    groupBy: v.optional(v.array(v.string())),
+    aggregates: v.array(
+      v.object({
+        op: v.union(
+          v.literal("count"),
+          v.literal("countDistinct"),
+          v.literal("sum"),
+          v.literal("avg"),
+          v.literal("min"),
+          v.literal("max"),
+        ),
+        var: v.optional(v.string()),
+        as: v.string(),
+      }),
+    ),
+    paginationOpts: paginationOptsValidator,
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const bindings = await runWhere(ctx, args.where, coord, {}, {
+      enforceReadAuth: true,
+      source: eventLogTripleSource,
     });
     return paginateRows(
       aggregateBindings(bindings, args.groupBy ?? [], args.aggregates),
