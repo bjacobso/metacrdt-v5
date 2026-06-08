@@ -17,6 +17,7 @@
     "confect:codegen": "node scripts/confect-codegen-sidecar.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:cloudflare": "npm test --workspace @metacrdt/cloudflare",
     "test:core": "npm test --workspace @metacrdt/core",
     "test:convex-package": "npm test --workspace @metacrdt/convex",
     "test:forma": "npm test --workspace @metacrdt/forma",

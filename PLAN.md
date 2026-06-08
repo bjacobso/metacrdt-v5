@@ -1,9 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 15 (`@metacrdt/runtime` BroadcastChannel transport seed)
-has shipped. The next active goal should be chosen from the remaining TODO
-candidates: full app write authorization, relay/Cloudflare Durable Object
-transports, a full `@metacrdt/local` package, or a state-owning
+**Current goal:** Goal 16 (`@metacrdt/cloudflare` Durable Object runtime
+services) has shipped. The next active goal should be chosen from the remaining
+TODO candidates: full app write authorization, a Cloudflare Worker/WebSocket
+relay shell, a full `@metacrdt/local` package, or a state-owning
 `@metacrdt/convex` component slice.
 
 This plan is the operational goal file. Read it with:
@@ -122,6 +122,14 @@ configured actions can now take small typed arguments.
   - package-local tests for HLC injection, per-replica sequencing, G-Set exchange
     convergence, version-vector deltas, persisted local state, BroadcastChannel
     publish/hello/delta behavior, lifecycle events, and capability checks
+- `@metacrdt/cloudflare` exists in
+  [`packages/cloudflare`](./packages/cloudflare):
+  - Durable Object storage-backed `EventStore`
+  - Durable Object storage-backed HLC clock
+  - Durable Object storage-backed per-replica sequencer
+  - async `createDurableObjectRuntime` target services over `@metacrdt/runtime`
+  - package-local tests proving restart durability, G-Set convergence, version
+    vectors, and stored event verification
 - `applyConfig` now behaves as a true section-scoped reconciler:
   - configured artifact ownership is tracked on `config:default`
   - explicitly supplied config sections compute desired sets
@@ -177,11 +185,12 @@ configured actions can now take small typed arguments.
   A state-owning Convex component and durable mutation factories remain deferred
   until the package boundary is proven against more host-app usage.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
-  reference runtime and does not implement relay/Cloudflare/p2p transport targets.
+  reference runtime.
 - Multi-replica sync is specified and now implemented as in-memory
   version-vector anti-entropy, and the localStorage target persists event/HLC/seq
   state. A BroadcastChannel transport now handles same-origin browser publish and
-  hello/delta catch-up, but sync is not yet bound to Cloudflare/Convex relays or
+  hello/delta catch-up. `@metacrdt/cloudflare` now provides Durable Object
+  storage-backed runtime services, but not the Worker/WebSocket relay shell or
   cross-device networking.
 - Full app login/write authorization is not configured; unauthenticated callers
   are treated as `anonymous`, so PII is denied by default but general public
@@ -1698,6 +1707,67 @@ Cloudflare/relay/p2p transport and **not** a full `@metacrdt/local` package.
 
 ---
 
+## Goal 16 — `@metacrdt/cloudflare` Durable Object Runtime Services
+
+**Status:** shipped as the first Cloudflare target package.
+
+**Objective:** make the Durable Object target concrete without yet building a
+Worker fetch/WebSocket relay. The package owns Cloudflare-shaped storage
+services for the same runtime contract used by memory/local targets: event log,
+HLC clock, and per-replica sequence.
+
+### Scope
+
+Package additions:
+
+```text
+packages/cloudflare/
+  src/durableObject.ts       # DO storage-backed runtime services
+  src/durableObject.test.ts  # fake DO storage tests
+  src/index.ts               # public API
+```
+
+This is **not** a deployed Worker app. It deliberately uses a structural
+`DurableObjectStorageLike` interface rather than importing Cloudflare Worker
+types, so the package stays testable and the eventual Worker shell can bind the
+real `state.storage` object with no protocol logic.
+
+### Acceptance Criteria
+
+- Add `@metacrdt/cloudflare` as an npm workspace package.
+- Add `DurableObjectStorageLike` for the async subset of Durable Object storage
+  used by the target.
+- Add `DurableObjectEventStore`:
+  - stores each event under a stable namespace key;
+  - maintains an event-id index;
+  - verifies event IDs on read/write;
+  - preserves G-Set/idempotent merge semantics;
+  - upgrades legacy duplicate events when the duplicate carries missing `seq`
+    metadata.
+- Add `DurableObjectClock`:
+  - loads/persists HLC per namespace + replica;
+  - takes wall time as an injected function.
+- Add `DurableObjectSequencer`:
+  - loads/persists per-replica sequence.
+- Add async `createDurableObjectRuntime` returning `RuntimeServices` compatible
+  with `@metacrdt/runtime` operation and sync helpers.
+- Add root `npm run test:cloudflare`.
+- Add tests proving:
+  - event log, HLC, and `seq` survive runtime recreation;
+  - same-wall-clock recreation increments HLC logical time;
+  - two DO runtimes exchange deltas and persist convergence;
+  - repeated exchange is idempotent after restart;
+  - invalid stored events are rejected on read.
+- Do **not** implement the Worker fetch/WebSocket relay in this slice.
+
+### Verification
+
+- `npm run test:cloudflare` passed (3 tests).
+- Cloudflare package typecheck passed.
+- Full gate for this slice is recorded in the commit that shipped it.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -1715,9 +1785,10 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] In-memory version-vector anti-entropy helpers.
 - [x] Browser/localStorage runtime target seed (durable event log + HLC + seq).
 - [x] BroadcastChannel-compatible anti-entropy transport seed.
-- [ ] Relay / Cloudflare Durable Object / p2p transport targets.
+- [x] `@metacrdt/cloudflare` Durable Object runtime services.
+- [ ] Cloudflare Worker/WebSocket relay shell.
+- [ ] Relay / p2p transport targets.
 - [ ] Full registered `@metacrdt/convex` component/function surface.
-- [ ] Cloudflare Durable Object target.
 - [ ] Full `@metacrdt/local` browser/local-first package (IndexedDB/SQLite and
   browser transport still deferred).
 

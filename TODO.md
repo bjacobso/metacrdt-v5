@@ -19,7 +19,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] BroadcastChannel transport seed — same-origin browser anti-entropy:
   publish local events, announce version vectors, answer hellos with deltas, and
   merge incoming events through the G-Set/HLC path.
-- [ ] Durable relay / Durable-Object-per-group / p2p transports (see
+- [x] Cloudflare Durable Object runtime services — storage-backed event log, HLC,
+  and per-replica `seq` in `@metacrdt/cloudflare`.
+- [ ] Durable Worker/WebSocket relay / p2p transports (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
 **Packaging / monorepo (map, not migration — see [docs/architecture.md](./docs/architecture.md))**
@@ -71,9 +73,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **BroadcastChannel transport seed** — `packages/runtime/src/broadcast.ts`
   adds `BroadcastChannelTransport` and `attachBroadcastTransport` for
   same-origin browser anti-entropy over any runtime target.
-- [ ] Targets: `@metacrdt/cloudflare` (DO), full `@metacrdt/local` (browser /
-  IndexedDB or SQLite + transport), and a state-owning `@metacrdt/convex`
-  component/function surface.
+- [x] **`@metacrdt/cloudflare` Durable Object runtime services** —
+  `packages/cloudflare` provides storage-backed event log, HLC, and per-replica
+  sequencer services plus `createDurableObjectRuntime`.
+- [ ] Targets: Cloudflare Worker/WebSocket relay shell, full `@metacrdt/local`
+  (browser / IndexedDB or SQLite + transport), and a state-owning
+  `@metacrdt/convex` component/function surface.
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -131,8 +136,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   outside the hardened collection-token path.
 
 **Next goal candidates**
-- [ ] Choose the next active goal: full app write authorization, relay/Cloudflare
-  Durable Object transports, full `@metacrdt/local`, or a state-owning
+- [ ] Choose the next active goal: full app write authorization, Cloudflare
+  Worker/WebSocket relay, full `@metacrdt/local`, or a state-owning
   `@metacrdt/convex` component slice.
 
 **Docs**
@@ -158,6 +163,20 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — @metacrdt/cloudflare Durable Object runtime services
+- [x] **Added the first Cloudflare target package.** `packages/cloudflare`
+  exports `DurableObjectStorageLike`, `DurableObjectEventStore`,
+  `DurableObjectClock`, `DurableObjectSequencer`, and
+  `createDurableObjectRuntime`.
+- [x] **Durable Object storage target behavior proved with fake async DO
+  storage.** Tests cover restart durability for event log/HLC/`seq`,
+  same-wall-clock logical HLC increment, version-vector delta convergence between
+  two DO runtimes, post-restart idempotence, and rejection of invalid stored
+  events.
+- [x] This is deliberately **not** the Worker/WebSocket relay shell yet; the
+  protocol logic now lives in a reusable target package, and the eventual Worker
+  can bind real `state.storage` to the structural storage interface.
 
 ### 2026-06-07 — runtime BroadcastChannel transport seed
 - [x] **Added same-origin browser anti-entropy transport inside
