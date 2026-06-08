@@ -140,6 +140,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   live component compliance plan into component-owned `requires.<form>` and open
   `task.<form>` facts, and retract stale task facts when submitted evidence turns
   a collection into reuse.
+- [x] **Goal 41: component-owned DAG flow starter/resumer** — run configured host
+  flow definitions over component-owned state, support assert/notify/subject-local
+  branch/synchronous action/collect/done, park at component-owned collection
+  tokens, and resume by rerunning after submission without host `flowRuns`.
 - [x] **Datalog disjunction** — Datalog `where` bodies now support bounded
   `{ or: [[...clauses], ...] }` branches. Branches run from the current binding,
   union/dedupe their bindings with provenance merged, and continue into later
@@ -241,8 +245,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 **Next goal candidates**
 - [x] Choose the next active goal: Goal 39, component-owned compliance
   issue/reuse.
-- [ ] After Goal 40, choose between provider-backed login UI / production auth,
-  live Cloudflare deployment/auth, or a component-owned DAG flow runner.
+- [x] After Goal 40, choose component-owned DAG flow starter/resumer.
+- [ ] After Goal 41, choose between provider-backed login UI / production auth,
+  live Cloudflare deployment/auth, persisted component-owned DAG scheduler, or a
+  parked Query/Rules item.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -267,6 +273,17 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — component-owned DAG flow starter/resumer
+- [x] **Goal 41 shipped:** `api.metacrdtComponent.startOwnedFlow` interprets
+  host `flowDefs` over component-owned current state and writes step effects into
+  the installed `@metacrdt/convex` component log.
+- [x] **Collect parks in component state.** A collect step issues/reuses a
+  component-owned collection token; after `/collect` submission, rerunning the
+  flow sees `submitted.<form> = scope`, skips the collect step, and continues.
+- [x] **UI and tests prove the boundary.** `/component/e/:id` renders configured
+  flows by entity type, shows returned status/link/events, and focused tests
+  prove assert-only and collect→branch→action flows create no host `flowRuns`.
 
 ### 2026-06-07 — component-owned compliance materialization
 - [x] **Goal 40 shipped:** `api.metacrdtComponent.materializeOwnedCompliance`

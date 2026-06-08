@@ -117,7 +117,9 @@ Current packages:
   and an Entities-page component-owned browser/detail/action path that reads the
   component projection/event log and can run configured host actions into
   component-owned state, including actions that open collection-token forms whose
-  definitions and submissions fold back into component-owned current state.
+  definitions and submissions fold back into component-owned current state. The
+  component detail path can also run configured host flow definitions over
+  component-owned state as a bounded starter/resumer.
   Includes Confect sidecar guidance.
 - **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
   authoring language extracted from Open Ontology: reader, formatter, evaluator,
@@ -196,6 +198,10 @@ Built today:
 - component-owned compliance materialization: the same Worker page can write
   component-owned `requires.<form>` and open `task.<form>` facts, and retract
   stale task facts once submitted evidence becomes reusable
+- component-owned DAG flow starter/resumer: component detail pages can run
+  configured host flow definitions over component-owned state, park at
+  component-owned collection tokens, and resume by rerunning after submission
+  without creating host `flowRuns` rows
 - single-use, expiring collection tokens for the public `/collect` page
 - Tailwind + React Router research-preview UI
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility

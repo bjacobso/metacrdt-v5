@@ -221,6 +221,177 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     ]);
   });
 
+  test("runs a component-owned assert flow without host flowRuns", async () => {
+    const t = mountedTest();
+
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "owned-flow:worker",
+      type: "Worker",
+      name: "Owned Flow Worker",
+    });
+    await t.mutation(api.flows.defineFlow, {
+      name: "owned_tiny",
+      title: "Owned tiny",
+      subjectType: "Worker",
+      startStepId: "stage",
+      steps: [
+        {
+          id: "stage",
+          type: "assert",
+          config: { a: "workflow.stage", v: "started" },
+          next: "done",
+        },
+        { id: "done", type: "done" },
+      ],
+    });
+
+    const result = await t.mutation(api.metacrdtComponent.startOwnedFlow, {
+      flowDefName: "owned_tiny",
+      subject: "owned-flow:worker",
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.asserted).toHaveLength(1);
+    expect(result.events.map((event) => event.kind)).toEqual([
+      "asserted",
+      "completed",
+    ]);
+    const entity = await t.query(api.metacrdtComponent.getOwnedCurrentEntity, {
+      e: "owned-flow:worker",
+    });
+    expect(entity?.attributes).toContainEqual(
+      expect.objectContaining({
+        a: "workflow.stage",
+        values: ["started"],
+      }),
+    );
+
+    const hostRuns = await t.query(api.flows.listFlows, {
+      subject: "owned-flow:worker",
+    });
+    expect(hostRuns).toEqual([]);
+  });
+
+  test("parks a component-owned collect flow, then resumes from submitted facts", async () => {
+    const t = mountedTest();
+
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "owned-flow:alien",
+      type: "Worker",
+      name: "Owned Flow Alien",
+    });
+    await t.mutation(api.metacrdtComponent.defineOwnedForm, {
+      form: "owned_i9",
+      title: "Owned I-9",
+      fields: [
+        {
+          name: "citizenship",
+          label: "Citizenship",
+          type: "select",
+          options: ["citizen", "authorized_alien"],
+          required: true,
+        },
+      ],
+    });
+    await t.mutation(api.flows.defineFlow, {
+      name: "owned_collect_branch",
+      title: "Owned collect branch",
+      subjectType: "Worker",
+      startStepId: "i9",
+      steps: [
+        {
+          id: "i9",
+          type: "collect",
+          config: { form: "owned_i9", scope: "$ctx.employer" },
+          next: "branch",
+        },
+        {
+          id: "branch",
+          type: "branch",
+          config: {
+            where: [["?s", "owned_i9/citizenship", "authorized_alien"]],
+            ifTrue: "everify",
+            ifFalse: "done",
+          },
+        },
+        {
+          id: "everify",
+          type: "action",
+          config: {
+            resultAttr: "everify.status",
+            resultValue: "verified",
+          },
+          next: "done",
+        },
+        { id: "done", type: "done" },
+      ],
+    });
+
+    const first = await t.mutation(api.metacrdtComponent.startOwnedFlow, {
+      flowDefName: "owned_collect_branch",
+      subject: "owned-flow:alien",
+      context: { employer: "employer:acme" },
+    });
+
+    expect(first).toMatchObject({
+      status: "waiting",
+      currentStepId: "i9",
+      collect: {
+        collectUrl: expect.stringContaining("/collect?token="),
+        reused: false,
+      },
+    });
+    expect(first.asserted).toEqual([]);
+
+    const submitted = await t.mutation(api.forms.submitCollection, {
+      token: first.collect!.token,
+      values: { citizenship: "authorized_alien" },
+    });
+    expect(submitted).toEqual({ ok: true });
+
+    const resumed = await t.mutation(api.metacrdtComponent.startOwnedFlow, {
+      flowDefName: "owned_collect_branch",
+      subject: "owned-flow:alien",
+      context: { employer: "employer:acme" },
+    });
+
+    expect(resumed.status).toBe("completed");
+    expect(resumed.events.map((event) => event.kind)).toEqual([
+      "collect-satisfied",
+      "branch",
+      "action",
+      "completed",
+    ]);
+    expect(resumed.asserted).toHaveLength(1);
+
+    const entity = await t.query(api.metacrdtComponent.getOwnedCurrentEntity, {
+      e: "owned-flow:alien",
+    });
+    expect(entity?.attributes).toContainEqual(
+      expect.objectContaining({
+        a: "submitted.owned_i9",
+        values: ["employer:acme"],
+      }),
+    );
+    expect(entity?.attributes).toContainEqual(
+      expect.objectContaining({
+        a: "owned_i9/citizenship",
+        values: ["authorized_alien"],
+      }),
+    );
+    expect(entity?.attributes).toContainEqual(
+      expect.objectContaining({
+        a: "everify.status",
+        values: ["verified"],
+      }),
+    );
+
+    const hostRuns = await t.query(api.flows.listFlows, {
+      subject: "owned-flow:alien",
+    });
+    expect(hostRuns).toEqual([]);
+  });
+
   test("sets component-owned worker status through app wrapper", async () => {
     const t = mountedTest();
 

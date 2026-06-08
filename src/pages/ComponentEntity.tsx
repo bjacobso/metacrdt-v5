@@ -18,6 +18,14 @@ export default function ComponentEntity() {
   const [actionResults, setActionResults] = useState<
     Record<string, { collectUrl?: string; reused?: boolean }>
   >({});
+  const [flowResult, setFlowResult] = useState<{
+    flowDefName: string;
+    status: string;
+    currentStepId?: string;
+    collect?: { collectUrl: string; reused: boolean };
+    asserted: Array<{ eventId: string }>;
+    events: Array<{ stepId: string; type: string; kind: string; message?: string }>;
+  } | null>(null);
   const [issueResult, setIssueResult] = useState<{
     issued: number;
     reused: number;
@@ -39,6 +47,7 @@ export default function ComponentEntity() {
     };
   } | null>(null);
   const runOwnedAction = useMutation(api.metacrdtComponent.runOwnedAction);
+  const startOwnedFlow = useMutation(api.metacrdtComponent.startOwnedFlow);
   const issueOwnedOpenCollections = useMutation(
     api.metacrdtComponent.issueOwnedOpenCollections,
   );
@@ -61,6 +70,10 @@ export default function ComponentEntity() {
   const primaryType = types[0];
   const actions = useQuery(
     api.actions.actionsForType,
+    primaryType ? { type: primaryType } : "skip",
+  );
+  const flows = useQuery(
+    api.flows.flowsForType,
     primaryType ? { type: primaryType } : "skip",
   );
   const compliance = useQuery(
@@ -102,6 +115,20 @@ export default function ComponentEntity() {
     }
   }
 
+  async function runConfiguredFlow(flow: NonNullable<typeof flows>[number]) {
+    setBusy(`flow:${flow.name}`);
+    try {
+      const result = await startOwnedFlow({
+        flowDefName: flow.name,
+        subject: id,
+        context: { employer: "employer:acme" },
+      });
+      setFlowResult(result);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function issueComplianceCollections() {
     setBusy("compliance");
     try {
@@ -127,6 +154,7 @@ export default function ComponentEntity() {
     events === undefined ||
     collections === undefined ||
     (primaryType !== undefined && actions === undefined) ||
+    (primaryType !== undefined && flows === undefined) ||
     (primaryType === "Worker" && compliance === undefined)
   ) {
     return <p className="text-[13px] text-muted">Loading…</p>;
@@ -291,6 +319,84 @@ export default function ComponentEntity() {
               </div>
             ))}
           </div>
+        </Card>
+      )}
+
+      {(flows ?? []).length > 0 && (
+        <Card>
+          <CardHeader
+            title="Component flows"
+            hint="host flow definitions over component-owned state"
+          />
+          <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">
+            {(flows ?? []).map((flow) => (
+              <div
+                key={flow.name}
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-ds border border-line px-4 py-3 text-[13px]"
+              >
+                <div className="min-w-0">
+                  <div className="font-medium text-ink">{flow.title ?? flow.name}</div>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {flow.steps.map((step) => (
+                      <Chip key={step.id} tone="system">
+                        {step.type}
+                      </Chip>
+                    ))}
+                  </div>
+                </div>
+                <Button
+                  disabled={busy === `flow:${flow.name}`}
+                  onClick={() => runConfiguredFlow(flow)}
+                >
+                  Run
+                </Button>
+              </div>
+            ))}
+          </div>
+          {flowResult !== null && (
+            <div className="border-t border-line-soft px-5 py-3 text-[12px] text-ink-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Chip
+                  tone={
+                    flowResult.status === "completed"
+                      ? "data"
+                      : flowResult.status === "waiting"
+                        ? "configured"
+                        : "system"
+                  }
+                >
+                  {flowResult.status}
+                </Chip>
+                <span className="font-medium">{flowResult.flowDefName}</span>
+                {flowResult.currentStepId && (
+                  <>
+                    <span className="text-muted">at</span>
+                    <Mono>{flowResult.currentStepId}</Mono>
+                  </>
+                )}
+                <span className="text-muted">
+                  asserted {flowResult.asserted.length}
+                </span>
+              </div>
+              {flowResult.collect && (
+                <div className="mt-2 rounded-md bg-orange-soft px-3 py-2 text-orange-ink">
+                  collection link:{" "}
+                  <a className="font-medium underline" href={flowResult.collect.collectUrl}>
+                    {flowResult.collect.collectUrl}
+                  </a>
+                  {flowResult.collect.reused ? " (reused)" : ""}
+                </div>
+              )}
+              <ul className="mt-2 space-y-1 text-muted">
+                {flowResult.events.map((event, i) => (
+                  <li key={`${event.stepId}:${i}`}>
+                    <Mono>{event.stepId}</Mono> {event.kind}
+                    {event.message ? ` - ${event.message}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Card>
       )}
 

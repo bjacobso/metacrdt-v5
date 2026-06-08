@@ -189,6 +189,29 @@ const ownedComplianceMaterializeResultValidator = v.object({
   }),
 });
 
+const ownedFlowStatus = v.union(
+  v.literal("completed"),
+  v.literal("waiting"),
+  v.literal("unsupported"),
+);
+
+const ownedFlowEventValidator = v.object({
+  stepId: v.string(),
+  type: v.string(),
+  kind: v.string(),
+  message: v.optional(v.string()),
+});
+
+const startOwnedFlowResultValidator = v.object({
+  flowDefName: v.string(),
+  subject: v.string(),
+  status: ownedFlowStatus,
+  currentStepId: v.optional(v.string()),
+  collect: v.optional(collectResultValidator),
+  asserted: v.array(appendOwnedResultValidator),
+  events: v.array(ownedFlowEventValidator),
+});
+
 const ownedCurrentFactValidator = v.object({
   factId: v.string(),
   e: v.string(),
@@ -347,6 +370,39 @@ type DesiredComplianceFact = {
   value: string;
 };
 
+type OwnedFlowEvent = {
+  stepId: string;
+  type: string;
+  kind: string;
+  message?: string;
+};
+
+type AppendOwnedResult = {
+  txId: string;
+  rowId: string;
+  eventId: string;
+  factId?: string;
+};
+
+type CollectResult = {
+  runId: string;
+  token: string;
+  collectUrl: string;
+  reused: boolean;
+};
+
+type OwnedFlowStatus = "completed" | "waiting" | "unsupported";
+
+type OwnedFlowResult = {
+  flowDefName: string;
+  subject: string;
+  status: OwnedFlowStatus;
+  currentStepId?: string;
+  collect?: CollectResult;
+  asserted: AppendOwnedResult[];
+  events: OwnedFlowEvent[];
+};
+
 function isPattern(x: unknown): x is [unknown, unknown, unknown] {
   return Array.isArray(x) && x.length === 3;
 }
@@ -373,6 +429,66 @@ function hasValue(attrs: OwnedEntityMap, a: string, v: unknown): boolean {
 
 function hasType(attrs: OwnedEntityMap, type: string): boolean {
   return hasValue(attrs, "type", type);
+}
+
+function recordOrEmpty(x: unknown): Record<string, unknown> {
+  return x !== null && typeof x === "object" && !Array.isArray(x)
+    ? (x as Record<string, unknown>)
+    : {};
+}
+
+function resolveFlowValue(
+  raw: unknown,
+  subject: string,
+  context: Record<string, unknown>,
+): unknown {
+  if (typeof raw !== "string") return raw;
+  if (raw === "$subject") return subject;
+  if (raw.startsWith("$ctx.")) return context[raw.slice("$ctx.".length)];
+  return raw;
+}
+
+function collectScope(
+  cfg: Record<string, unknown>,
+  subject: string,
+  context: Record<string, unknown>,
+): string {
+  const raw =
+    cfg.scope !== undefined
+      ? cfg.scope
+      : typeof cfg.scopeFrom === "string"
+        ? `$ctx.${cfg.scopeFrom}`
+        : undefined;
+  return String(resolveFlowValue(raw, subject, context) ?? "");
+}
+
+function entityTermMatchesSubject(
+  term: unknown,
+  subjectVar: string,
+  subject: string,
+): boolean {
+  return term === `?${subjectVar}` || term === "$subject" || term === subject;
+}
+
+function branchMatchesOwnedState(
+  attrs: OwnedEntityMap,
+  where: unknown,
+  subjectVar: string,
+  subject: string,
+  context: Record<string, unknown>,
+): boolean {
+  const clauses = Array.isArray(where) ? where : [];
+  const patterns = clauses.filter(isPattern);
+  if (patterns.length === 0) return false;
+
+  for (const [e, a, v] of patterns) {
+    if (!entityTermMatchesSubject(e, subjectVar, subject)) return false;
+    if (typeof a !== "string") return false;
+    if (typeof v === "string" && v.startsWith("?")) return false;
+    if (!hasValue(attrs, a, resolveFlowValue(v, subject, context))) return false;
+  }
+
+  return true;
 }
 
 function complianceFactKey(a: string, value: unknown): string {
@@ -971,6 +1087,295 @@ export const materializeOwnedCompliance = mutation({
         retracted: retracted.length,
         kept,
       },
+    };
+  },
+});
+
+function ownedFlowEvent(
+  stepId: string,
+  type: string,
+  kind: string,
+  message?: string,
+): OwnedFlowEvent {
+  return message === undefined
+    ? { stepId, type, kind }
+    : { stepId, type, kind, message };
+}
+
+/**
+ * Bounded component-owned DAG runner. It reuses host `flowDefs` as configuration,
+ * but executes against component-owned facts and component-owned collection tokens.
+ *
+ * This is deliberately not a persisted scheduler yet: if it parks at `collect`,
+ * the durable state is the collection capability row plus the submitted.<form>
+ * marker. Calling this mutation again after collection submission resumes by
+ * skipping already-satisfied collect steps and continuing the graph.
+ */
+export const startOwnedFlow = mutation({
+  args: {
+    flowDefName: v.string(),
+    subject: v.string(),
+    context: v.optional(v.any()),
+  },
+  returns: startOwnedFlowResultValidator,
+  handler: async (ctx, args): Promise<OwnedFlowResult> => {
+    const actor = await actorContext(ctx);
+    const def = await ctx.db
+      .query("flowDefs")
+      .withIndex("by_name", (q) => q.eq("name", args.flowDefName))
+      .first();
+    if (def === null) throw new Error(`unknown flow: ${args.flowDefName}`);
+
+    const entity = await loadOwnedEntity(ctx, args.subject);
+    if (entity === null) {
+      throw new Error(`component-owned entity ${args.subject} not found`);
+    }
+    let attrs = entityMap(entity);
+    if (def.subjectType !== undefined && !hasType(attrs, def.subjectType)) {
+      throw new Error(
+        `flow ${def.name} applies to ${def.subjectType}, not this component-owned entity`,
+      );
+    }
+
+    const context = recordOrEmpty(args.context);
+    const asserted: AppendOwnedResult[] = [];
+    const events: OwnedFlowEvent[] = [];
+    let stepId = def.startStepId;
+
+    for (let i = 0; i < 50; i++) {
+      const step = def.steps.find((s) => s.id === stepId);
+      if (step === undefined || step.type === "done") {
+        events.push(ownedFlowEvent(stepId || "done", "done", "completed"));
+        return {
+          flowDefName: args.flowDefName,
+          subject: args.subject,
+          status: "completed",
+          currentStepId: stepId || "done",
+          asserted,
+          events,
+        };
+      }
+
+      const cfg = recordOrEmpty(step.config);
+      if (step.type === "assert") {
+        const attr = cfg.a;
+        if (typeof attr !== "string") {
+          return {
+            flowDefName: args.flowDefName,
+            subject: args.subject,
+            status: "unsupported",
+            currentStepId: step.id,
+            asserted,
+            events: [
+              ...events,
+              ownedFlowEvent(step.id, step.type, "unsupported", "assert missing string attr"),
+            ],
+          };
+        }
+        const value = resolveFlowValue(cfg.v, args.subject, context);
+        const result = await ctx.runMutation(
+          components.metacrdt.log.appendAssert,
+          withoutUndefined({
+            ...actor,
+            e: args.subject,
+            a: attr,
+            v: value,
+            reason: `component-owned flow ${def.name} step ${step.id}`,
+            source: "metacrdtComponent.startOwnedFlow",
+            cardinality: await hostCardinalityOf(ctx, attr),
+          }),
+        );
+        asserted.push(result);
+        events.push(
+          ownedFlowEvent(step.id, step.type, "asserted", `${attr} = ${JSON.stringify(value)}`),
+        );
+        attrs = entityMap(await loadOwnedEntity(ctx, args.subject));
+      } else if (step.type === "notify") {
+        events.push(
+          ownedFlowEvent(
+            step.id,
+            step.type,
+            "notify",
+            cfg.message === undefined ? undefined : String(cfg.message),
+          ),
+        );
+      } else if (step.type === "branch") {
+        const subjectVar = String(cfg.subjectVar ?? "s");
+        const taken = branchMatchesOwnedState(
+          attrs,
+          cfg.where,
+          subjectVar,
+          args.subject,
+          context,
+        );
+        stepId = String((taken ? cfg.ifTrue : cfg.ifFalse) ?? "");
+        events.push(
+          ownedFlowEvent(
+            step.id,
+            step.type,
+            "branch",
+            taken ? `true -> ${stepId}` : `false -> ${stepId}`,
+          ),
+        );
+        if (!stepId) {
+          return {
+            flowDefName: args.flowDefName,
+            subject: args.subject,
+            status: "completed",
+            currentStepId: "done",
+            asserted,
+            events,
+          };
+        }
+        continue;
+      } else if (step.type === "collect") {
+        const form = cfg.form;
+        if (typeof form !== "string") {
+          return {
+            flowDefName: args.flowDefName,
+            subject: args.subject,
+            status: "unsupported",
+            currentStepId: step.id,
+            asserted,
+            events: [
+              ...events,
+              ownedFlowEvent(step.id, step.type, "unsupported", "collect missing string form"),
+            ],
+          };
+        }
+        const scope = collectScope(cfg, args.subject, context);
+        if (hasValue(attrs, `submitted.${form}`, scope)) {
+          events.push(
+            ownedFlowEvent(
+              step.id,
+              step.type,
+              "collect-satisfied",
+              `${form} already submitted for ${scope}`,
+            ),
+          );
+        } else {
+          const collect = await ctx.runMutation(
+            components.metacrdt.log.issueCollection,
+            withoutUndefined({
+              ...actor,
+              subject: args.subject,
+              form,
+              scope,
+            }),
+          );
+          events.push(
+            ownedFlowEvent(
+              step.id,
+              step.type,
+              collect.reused ? "collect-reused" : "collect-issued",
+              `${form} for ${scope}`,
+            ),
+          );
+          return {
+            flowDefName: args.flowDefName,
+            subject: args.subject,
+            status: "waiting",
+            currentStepId: step.id,
+            collect,
+            asserted,
+            events,
+          };
+        }
+      } else if (step.type === "action") {
+        if (typeof cfg.resultAttr === "string") {
+          const value = resolveFlowValue(cfg.resultValue, args.subject, context);
+          const result = await ctx.runMutation(
+            components.metacrdt.log.appendAssert,
+            withoutUndefined({
+              ...actor,
+              e: args.subject,
+              a: cfg.resultAttr,
+              v: value,
+              reason: `component-owned flow ${def.name} action ${step.id}`,
+              source: "metacrdtComponent.startOwnedFlow",
+              cardinality: await hostCardinalityOf(ctx, cfg.resultAttr),
+            }),
+          );
+          asserted.push(result);
+          attrs = entityMap(await loadOwnedEntity(ctx, args.subject));
+          events.push(
+            ownedFlowEvent(
+              step.id,
+              step.type,
+              "action",
+              `${cfg.resultAttr} = ${JSON.stringify(value)}`,
+            ),
+          );
+        } else {
+          events.push(
+            ownedFlowEvent(
+              step.id,
+              step.type,
+              "action",
+              cfg.label === undefined ? "external action acknowledged" : String(cfg.label),
+            ),
+          );
+        }
+      } else if (step.type === "wait") {
+        return {
+          flowDefName: args.flowDefName,
+          subject: args.subject,
+          status: "unsupported",
+          currentStepId: step.id,
+          asserted,
+          events: [
+            ...events,
+            ownedFlowEvent(
+              step.id,
+              step.type,
+              "unsupported",
+              "component-owned waits require a persisted scheduler",
+            ),
+          ],
+        };
+      } else {
+        return {
+          flowDefName: args.flowDefName,
+          subject: args.subject,
+          status: "unsupported",
+          currentStepId: step.id,
+          asserted,
+          events: [
+            ...events,
+            ownedFlowEvent(
+              step.id,
+              String(step.type),
+              "unsupported",
+              `unsupported step type ${String(step.type)}`,
+            ),
+          ],
+        };
+      }
+
+      stepId = step.next ?? "";
+      if (!stepId) {
+        events.push(ownedFlowEvent("done", "done", "completed"));
+        return {
+          flowDefName: args.flowDefName,
+          subject: args.subject,
+          status: "completed",
+          currentStepId: "done",
+          asserted,
+          events,
+        };
+      }
+    }
+
+    return {
+      flowDefName: args.flowDefName,
+      subject: args.subject,
+      status: "unsupported",
+      currentStepId: stepId,
+      asserted,
+      events: [
+        ...events,
+        ownedFlowEvent(stepId, "loop", "unsupported", "flow exceeded 50 steps"),
+      ],
     };
   },
 });

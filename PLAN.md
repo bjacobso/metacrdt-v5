@@ -1,10 +1,11 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 40 (component-owned compliance materialization) has
+**Current goal:** Goal 41 (component-owned DAG flow starter/resumer) has
 shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth,
-component-owned DAG flows, or another parked Query/Rules item.
+persisted component-owned DAG scheduler/timeline, or another parked Query/Rules
+item.
 
 This plan is the operational goal file. Read it with:
 
@@ -79,7 +80,7 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 110 tests at last verification.
+- Convex backend tests are green: 115 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -316,9 +317,12 @@ arguments.
   onto component-owned state.
 - Component-owned action collection, standalone collect runs,
   compliance-issued collection links, and materialized `requires.*` / `task.*`
-  facts now live inside the component. Host-owned DAG flows/actions still use
-  the host `flowRuns` table, and a component-owned DAG flow runner / scheduler
-  remains future work.
+  facts now live inside the component. A bounded component-owned DAG
+  starter/resumer can run host flow definitions over component-owned state,
+  including `assert`, `notify`, subject-local `branch`, synchronous `action`, and
+  `collect` parking through component collection tokens. Host-owned DAG flows
+  still use the host `flowRuns` table, and a persisted component-owned DAG
+  scheduler/timeline remains future work.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime.
 - Multi-replica sync is specified and now implemented as in-memory
@@ -3950,6 +3954,112 @@ Live smoke:
 
 ---
 
+## Goal 41 — Component-Owned DAG Flow Starter/Resumer
+
+**Status:** shipped as a bounded app-side interpreter over component-owned
+state; not yet a persisted component scheduler.
+
+**Objective:** let component-owned entities run configured host flow definitions
+without creating host `flowRuns` rows, using component-owned facts and
+component-owned collection tokens as the durable state.
+
+### Scope
+
+Reference app wrapper:
+
+```text
+convex/metacrdtComponent.ts
+  startOwnedFlow
+```
+
+Frontend:
+
+```text
+src/pages/ComponentEntity.tsx
+  Component flows card
+```
+
+Tests:
+
+```text
+convex/metacrdtComponent.test.ts
+```
+
+### Semantics
+
+`startOwnedFlow({ flowDefName, subject, context })`:
+
+- requires host write auth and derives actor server-side;
+- loads the host `flowDefs` row by name;
+- validates `subjectType` against component-owned current `type` facts;
+- executes up to 50 steps synchronously;
+- supports:
+  - `assert`: append a component-owned fact with host schema cardinality;
+  - `notify`: record an in-memory result event only;
+  - `branch`: evaluate bounded subject-local fact patterns against
+    component-owned current state;
+  - `action`: append a synchronous `resultAttr` / `resultValue` fact when the
+    step declares one;
+  - `collect`: if `submitted.<form> = scope` already exists, skip and continue;
+    otherwise issue/reuse a component-owned collection token and return
+    `status = "waiting"`;
+  - `done`: return `status = "completed"`.
+- returns a transient execution summary with status, step events, asserted event
+  ids, and any collection link.
+
+The resume model is intentionally simple: after the `/collect` token is
+submitted, calling `startOwnedFlow` again sees the component-owned
+`submitted.<form>` marker, skips the collect step, and continues the DAG.
+
+### Non-Goals
+
+- Do not add a component-owned `flowRuns` DAG table.
+- Do not implement component-owned reminders, waits, delayed actions, or
+  scheduler wakeups.
+- Do not replace host `flows.startFlow`.
+- Do not implement a full component-owned Datalog engine for branches; branches
+  support bounded subject-local fact patterns only.
+- Do not claim component collection capability rows are full DAG run rows.
+
+### Acceptance Criteria
+
+- A component-owned assert flow writes component-owned current facts and creates
+  no host `flowRuns` rows.
+- A collect flow parks with a component-owned `/collect` token and creates no
+  host `flowRuns` rows.
+- Submitting that token through the existing public `/collect` path writes
+  component-owned field facts plus `submitted.<form>`.
+- Rerunning the same flow after submission skips the satisfied collect step,
+  evaluates a subject-local branch, runs a synchronous action step, and completes.
+- Component entity pages show runnable configured flows by type and display the
+  returned status/link/events.
+
+### Verification
+
+- `npx vitest run convex/metacrdtComponent.test.ts convex/forms.test.ts convex/flowdag.test.ts`
+  passed (26 focused tests).
+- `npm run test:core` passed (46 tests).
+- `npm run test:convex-package` passed (31 tests).
+- `npm run test:runtime` passed (18 tests).
+- `npm run test:local` passed (13 tests).
+- `npm run test:cloudflare` passed (12 tests).
+- `npm run test:forma` passed (9 tests).
+- `npm test` passed (17 backend test files, 115 tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex dev --once` deployed backend functions to `chatty-hare-94`.
+- `npx @convex-dev/static-hosting upload` deployed the frontend to
+  `https://chatty-hare-94.convex.site`.
+
+Live smoke:
+
+- `curl -I https://chatty-hare-94.convex.site` returned HTTP 200.
+- `npx convex run flows:flowsForType '{"type":"Worker"}'` returned the deployed
+  onboarding flow shape used by component-owned Worker pages.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -3992,7 +4102,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Component-owned standalone collect runs.
 - [x] Goal 39: component-owned compliance issue/reuse.
 - [x] Goal 40: component-owned compliance materialization.
-- [ ] Component-owned DAG flow runner / scheduler after Goal 40.
+- [x] Goal 41: component-owned DAG flow starter/resumer.
+- [ ] Persisted component-owned DAG flow runner / scheduler after Goal 41.
 
 ### Auth / Privacy
 
@@ -4050,10 +4161,10 @@ or intentionally moved out of this repo's scope. Each shipped slice must update
 `PLAN.md` / `TODO.md`, pass the relevant test/typecheck/build gate, and be
 committed/pushed with the verification recorded.
 
-Goal 40 is complete: component-owned Worker detail can materialize
-`requires.<form>` and open `task.<form>` facts from configured requirement rules,
-retract stale task facts when submitted evidence becomes reusable, and preserve
-host compliance / host `flowRuns` behavior.
+Goal 41 is complete: component-owned detail pages can run configured host flow
+definitions against component-owned state, park at component-owned collection
+tokens, resume by rerunning after submission, and preserve host `flowRuns`
+behavior.
 
 The next shipped slice should update this section with its own concrete
 definition of done before implementation starts.
