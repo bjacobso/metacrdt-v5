@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { ArrowLeft } from "lucide-react";
 import { Button, Card, CardHeader, Chip, Input, Mono, shortId } from "../ui";
+import { useWriteGate } from "../auth";
 
 function val(v: unknown): string {
   return typeof v === "string" ? v : JSON.stringify(v);
@@ -46,6 +47,7 @@ export default function ComponentEntity() {
       kept: number;
     };
   } | null>(null);
+  const { guardWrite } = useWriteGate();
   const runOwnedAction = useMutation(api.metacrdtComponent.runOwnedAction);
   const startOwnedFlow = useMutation(api.metacrdtComponent.startOwnedFlow);
   const issueOwnedOpenCollections = useMutation(
@@ -100,11 +102,14 @@ export default function ComponentEntity() {
   async function runConfiguredAction(action: NonNullable<typeof actions>[number]) {
     setBusy(`action:${action.name}`);
     try {
-      const result = await runOwnedAction({
-        action: action.name,
-        entity: id,
-        args: actionArgs[action.name] ?? {},
-      });
+      const result = await guardWrite(`Run ${action.label ?? action.name}`, () =>
+        runOwnedAction({
+          action: action.name,
+          entity: id,
+          args: actionArgs[action.name] ?? {},
+        }),
+      );
+      if (result === undefined) return;
       if (result.collect) {
         setActionResults((prev) => ({
           ...prev,
@@ -122,11 +127,14 @@ export default function ComponentEntity() {
   async function runConfiguredFlow(flow: NonNullable<typeof flows>[number]) {
     setBusy(`flow:${flow.name}`);
     try {
-      const result = await startOwnedFlow({
-        flowDefName: flow.name,
-        subject: id,
-        context: { employer: "employer:acme" },
-      });
+      const result = await guardWrite(`Run ${flow.title ?? flow.name}`, () =>
+        startOwnedFlow({
+          flowDefName: flow.name,
+          subject: id,
+          context: { employer: "employer:acme" },
+        }),
+      );
+      if (result === undefined) return;
       setFlowResult(result);
     } finally {
       setBusy(null);
@@ -136,7 +144,10 @@ export default function ComponentEntity() {
   async function issueComplianceCollections() {
     setBusy("compliance");
     try {
-      const result = await issueOwnedOpenCollections({ worker: id });
+      const result = await guardWrite("Issue component-owned collections", () =>
+        issueOwnedOpenCollections({ worker: id }),
+      );
+      if (result === undefined) return;
       setIssueResult(result);
     } finally {
       setBusy(null);
@@ -146,7 +157,10 @@ export default function ComponentEntity() {
   async function materializeComplianceFacts() {
     setBusy("materialize-compliance");
     try {
-      const result = await materializeOwnedCompliance({ worker: id });
+      const result = await guardWrite("Materialize component compliance facts", () =>
+        materializeOwnedCompliance({ worker: id }),
+      );
+      if (result === undefined) return;
       setMaterializeResult(result);
     } finally {
       setBusy(null);

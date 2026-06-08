@@ -351,9 +351,10 @@ Convex auth identity and derive the transaction actor from
 `ctx.auth.getUserIdentity().tokenIdentifier`; caller-supplied `actorId` values are
 ignored for raw public fact writes. The isolated `/collect` flow is the intentional
 exception: possession of a valid, unexpired, unconsumed collection token is the
-write capability, so external evidence collection can remain login-free. A
-provider-backed login UI / production auth configuration is still a separate
-deployment decision.
+write capability, so external evidence collection can remain login-free. The
+frontend is auth-aware and routes protected controls through one sign-in-required
+modal instead of firing anonymous writes, but the actual production provider
+choice and `convex/auth.config.ts` wiring remain a deployment decision.
 
 Generated UI reads the same schema facts. `typeSchemaAsOf` returns declared
 columns with attribute definitions, the entity browser uses those columns for

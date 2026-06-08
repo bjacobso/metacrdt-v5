@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { ChevronRight, ChevronDown } from "lucide-react";
 import { Card, Button, Mono, shortId } from "../ui";
+import { useWriteGate } from "../auth";
 
 function displayValue(v: unknown): string {
   return typeof v === "string" ? v : JSON.stringify(v);
@@ -16,6 +17,7 @@ export default function Entities() {
   const [showSystem, setShowSystem] = useState(false);
   const setupStaffing = useMutation(api.appconfig.setupStaffing);
   const [busy, setBusy] = useState(false);
+  const { guardWrite } = useWriteGate();
 
   const schema = useQuery(
     api.attributes.typeSchemaAsOf,
@@ -45,7 +47,7 @@ export default function Entities() {
   async function bootstrap() {
     setBusy(true);
     try {
-      await setupStaffing({});
+      await guardWrite("Set up staffing demo", () => setupStaffing({}));
     } finally {
       setBusy(false);
     }

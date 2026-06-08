@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import EntityPicker from "../EntityPicker";
 import { Card, CardHeader, Button, Chip, StatusBadge, Mono, shortId } from "../ui";
+import { useWriteGate } from "../auth";
 
 function fmt(ms: number): string {
   return new Date(ms).toLocaleTimeString();
@@ -48,6 +49,16 @@ export default function Flows() {
   const startFlow = useMutation(api.flows.startFlow);
   const setupStaffing = useMutation(api.appconfig.setupStaffing);
   const [busy, setBusy] = useState(false);
+  const { guardWrite } = useWriteGate();
+
+  async function installBlueprint() {
+    setBusy(true);
+    try {
+      await guardWrite("Install staffing blueprint", () => setupStaffing({}));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -60,20 +71,17 @@ export default function Flows() {
             placeholder="subject (worker)"
             className="w-56"
           />
-          <Button onClick={() => issueAll({ subject })}>
+          <Button
+            onClick={() =>
+              guardWrite("Issue collect flows", () => issueAll({ subject }))
+            }
+          >
             Issue collect flows for open obligations
           </Button>
           <Button
             variant="ghost"
             disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await setupStaffing({});
-              } finally {
-                setBusy(false);
-              }
-            }}
+            onClick={installBlueprint}
           >
             {busy ? "Installing…" : "Install staffing blueprint"}
           </Button>
@@ -110,11 +118,13 @@ export default function Flows() {
                   <Button
                     className="ml-auto"
                     onClick={() =>
-                      startFlow({
+                      guardWrite(`Start ${d.name}`, () =>
+                        startFlow({
                         flowDefName: d.name,
                         subject,
                         context: { employer: "employer:acme" },
-                      })
+                        }),
+                      )
                     }
                   >
                     Start for {shortId(subject)}
@@ -175,12 +185,23 @@ export default function Flows() {
                       <Button
                         variant="collect"
                         onClick={() =>
-                          submitForm({ worker: f.subject, form: f.form!, scope: f.scope! })
+                          guardWrite(`Submit ${f.form}`, () =>
+                            submitForm({
+                              worker: f.subject,
+                              form: f.form!,
+                              scope: f.scope!,
+                            }),
+                          )
                         }
                       >
                         Submit
                       </Button>
-                      <Button variant="ghost" onClick={() => cancelFlow({ runId: f._id })}>
+                      <Button
+                        variant="ghost"
+                        onClick={() =>
+                          guardWrite("Cancel flow", () => cancelFlow({ runId: f._id }))
+                        }
+                      >
                         Cancel
                       </Button>
                     </span>

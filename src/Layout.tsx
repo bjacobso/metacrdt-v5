@@ -17,10 +17,12 @@ import {
   Plus,
   X,
   HelpCircle,
+  LogIn,
 } from "lucide-react";
 import CommandMenu from "./CommandMenu";
 import GuidedTour, { tourDismissed } from "./GuidedTour";
 import { Button, Input } from "./ui";
+import { useWriteGate } from "./auth";
 
 type Item = {
   to: string;
@@ -110,6 +112,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [newStatus, setNewStatus] = useState("active");
   const [newRole, setNewRole] = useState("driver");
   const [creating, setCreating] = useState(false);
+  const { isAuthenticated, openAuthDialog, guardWrite } = useWriteGate();
   const createOwnedEntity = useMutation(api.metacrdtComponent.createOwnedEntity);
   const compliance = useQuery(api.compliance.workerCompliance, {
     worker: "worker:maria",
@@ -140,17 +143,56 @@ export default function Layout({ children }: { children: ReactNode }) {
     ];
     setCreating(true);
     try {
-      await createOwnedEntity({
-        e,
-        type,
-        name: name || undefined,
-        attributes,
-      });
+      const created = await guardWrite("Create component-owned entity", () =>
+        createOwnedEntity({
+          e,
+          type,
+          name: name || undefined,
+          attributes,
+        }),
+      );
+      if (created === undefined) return;
       setNewOpen(false);
       navigate(`/component/e/${encodeURIComponent(e)}`);
     } finally {
       setCreating(false);
     }
+  }
+
+  function openNewEntity() {
+    if (!isAuthenticated) {
+      openAuthDialog({
+        description:
+          "Creating a component-owned entity is a protected write. Configure and sign in with an auth provider before creating data.",
+      });
+      return;
+    }
+    setNewOpen(true);
+  }
+
+  function AuthStatus() {
+    if (isAuthenticated) {
+      return (
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-green/30 bg-green-soft px-2.5 py-1 text-[12px] font-medium text-green">
+          <CircleDot className="h-3.5 w-3.5" />
+          Signed in
+        </span>
+      );
+    }
+    return (
+      <Button
+        variant="ghost"
+        onClick={() =>
+          openAuthDialog({
+            description:
+              "Production login is intentionally provider-backed. Choose Convex Auth, Clerk, WorkOS, Auth0, or custom OIDC, then wire the provider to Convex.",
+          })
+        }
+      >
+        <LogIn className="h-3.5 w-3.5" />
+        Sign in
+      </Button>
+    );
   }
 
   const workspace: Item[] = [
@@ -243,10 +285,11 @@ export default function Layout({ children }: { children: ReactNode }) {
               <HelpCircle className="h-3.5 w-3.5" />
               Tour
             </Button>
-            <Button variant="primary" onClick={() => setNewOpen(true)}>
+            <Button variant="primary" onClick={openNewEntity}>
               <Plus className="h-3.5 w-3.5" />
               New entity
             </Button>
+            <AuthStatus />
             <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-[12px] font-medium text-ink">
               <CircleDot className="h-3.5 w-3.5 text-green" />
               Live

@@ -1,7 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 66 (configured action registry reads from the event log) has
-shipped.
+**Current goal:** Goal 67 (auth-aware frontend write gates) has shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
 `factEvents`. Goal 60 promoted the already-proven `queryFactsFromEventLog`
@@ -17,11 +16,12 @@ lists, and type-attribute discovery on `currentFacts` until later goals. Goal 65
 moved those discovery/picker surfaces (`listEntityTypes`, `listEntities`, and
 `typeAttributes`) to protocol-shaped `factEvents`. Goal 66 moved configured
 action registry reads (`actionsForType`, `listActions`, `runAction` action-def
-loading, and `entityDetail.actions`) to protocol-shaped `factEvents`. The next
-active goal should be chosen from the remaining TODO candidates: provider-backed
-login UI / production auth, live Cloudflare deployment/auth, or a carefully
-scoped Confect wrapper now that the main production base fact reads have moved
-to event-log folds.
+loading, and `entityDetail.actions`) to protocol-shaped `factEvents`. Goal 67
+added a provider-neutral frontend auth boundary and routed protected write
+controls through a shared auth-required UX instead of raw mutation failures.
+The next active goal should be chosen from the remaining TODO candidates:
+choosing/wiring the real auth provider and `convex/auth.config.ts`, live
+Cloudflare deployment/auth, or another carefully scoped Confect/domain wrapper.
 
 This plan is the operational goal file. Read it with:
 
@@ -382,6 +382,14 @@ arguments.
   - component-owned write wrappers require the same authenticated principal
     before passing actor context across the component boundary
   - `/collect` submission remains token-authorized rather than login-authorized
+- Frontend write controls are auth-aware:
+  - the React tree uses Convex's auth-aware provider shape, currently backed by
+    an explicit no-provider hook until a production provider is selected
+  - the shell exposes a sign-in/auth-setup affordance instead of a fake user
+    action
+  - protected write controls route through a shared auth-required modal before
+    calling mutations
+  - `/collect` remains isolated and token-authorized
 - Component-owned configured actions can open forms:
   - `runOwnedAction` no longer rejects `opensForm` definitions
   - it resolves `opensForm.form` / `opensForm.scope` with the same action arg
@@ -485,10 +493,13 @@ arguments.
   local-first target. `@metacrdt/cloudflare` now provides Durable Object
   storage-backed runtime services, a structural WebSocket relay shell, and a
   Worker-facing router/DO class example, but not a live deployed service or auth.
-- Full app login/provider UI is not configured; unauthenticated callers are
+- Full app provider configuration is not complete; unauthenticated callers are
   treated as `anonymous` for reads, PII is denied by default, and general public
-  writes now fail with `Not authenticated`. The hardened collection-token path
-  remains the intentional anonymous write surface.
+  writes still fail with `Not authenticated`. The frontend now presents that
+  requirement consistently, but production still needs a concrete provider
+  choice (Convex Auth, Clerk, WorkOS, Auth0, or custom OIDC) plus
+  `convex/auth.config.ts`. The hardened collection-token path remains the
+  intentional anonymous write surface.
 - Confect is integrated as a narrow sidecar spike:
   - `confect/` defines a typed Effect Schema function group.
   - `convex/metacrdtConfect.ts` manually mounts the generated registered
@@ -6551,6 +6562,73 @@ Docs:
 
 ---
 
+## Goal 67 — Auth-Aware Frontend Write Gates
+
+**Status:** shipped as provider-neutral frontend auth UX over the already
+protected backend write path.
+
+**Objective:** make the live UI honest about server-enforced write
+authorization. Protected controls should not optimistically fire mutations that
+anonymous users cannot run, and the app should be ready to swap in a real
+provider without rewriting every page. `/collect` remains token-authorized and
+outside the admin auth shell.
+
+### Scope
+
+Frontend:
+
+- `src/main.tsx`
+  - switch the React tree to Convex's auth-aware provider shape
+  - use an explicit no-provider hook until a production provider is selected
+- `src/auth.tsx`
+  - central auth-required modal
+  - `useWriteGate()` helper that blocks anonymous writes before calling
+    protected mutations and catches server `Not authenticated` rejections
+- Protected write surfaces:
+  - global New Entity modal
+  - staffing blueprint install buttons
+  - raw assert console
+  - host entity actions / flows / manual submissions / flow cancellation
+  - component-owned entity actions / flows / compliance materialization /
+    collection issuing
+
+Non-scope:
+
+- Do not choose Clerk/Auth0/WorkOS/Convex Auth in code without a product
+  decision.
+- Do not add fake client-side identity or spoofable actor arguments.
+- Do not require login for `/collect`; a valid unexpired token remains the
+  capability.
+
+### Acceptance Criteria
+
+- The app has a Convex auth-state context available to all admin routes.
+- With no provider configured, protected write controls open an auth-required
+  modal instead of directly sending anonymous mutations.
+- The modal explains the remaining production setup: provider choice,
+  `convex/auth.config.ts`, and a provider-specific React wrapper that returns
+  Convex JWTs.
+- Existing protected mutations remain server-enforced.
+- `/collect` still submits through `api.forms.submitCollection` without the
+  admin auth gate.
+- Frontend typecheck and build pass.
+
+### Verification
+
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npm test` passed (17 backend test files, 149 tests).
+- `npm run test:convex-package` passed (33 tests).
+- `npm run test:core` passed (46 tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+- `npx @convex-dev/static-hosting upload` deployed the rebuilt static app to
+  `https://chatty-hare-94.convex.site`.
+- Live static smoke: fetched the deployed HTML and verified it references the
+  rebuilt JS/CSS assets containing the auth-aware provider and write-gate code.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -6601,7 +6679,9 @@ These remain valuable, but they should not interrupt the current goal.
 ### Auth / Privacy
 
 - [x] Backend write authorization for public mutations.
-- [ ] Provider-backed login UI / production auth configuration for the live app.
+- [x] Auth-aware frontend write gates and provider-neutral sign-in/setup UX.
+- [ ] Choose and wire the production provider
+  (`convex/auth.config.ts` + provider-specific React wrapper).
 - [x] Collect-token single-use / expiry hardening.
 
 ### Query / Rules

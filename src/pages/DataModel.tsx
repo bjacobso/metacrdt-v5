@@ -4,6 +4,7 @@ import { api } from "../../convex/_generated/api";
 import { Clock, Zap } from "lucide-react";
 import EntityPicker from "../EntityPicker";
 import { Card, CardHeader, Button, Chip, Input, Mono } from "../ui";
+import { useWriteGate } from "../auth";
 
 function coerce(raw: string): unknown {
   const t = raw.trim();
@@ -83,12 +84,15 @@ function AssertConsole() {
   const [a, setA] = useState("worker.status");
   const [value, setValue] = useState("active");
   const [busy, setBusy] = useState(false);
+  const { guardWrite } = useWriteGate();
 
   async function onSubmit(ev: FormEvent) {
     ev.preventDefault();
     setBusy(true);
     try {
-      await assertFact({ e, a, value: coerce(value) });
+      await guardWrite("Assert raw fact", () =>
+        assertFact({ e, a, value: coerce(value) }),
+      );
     } finally {
       setBusy(false);
     }

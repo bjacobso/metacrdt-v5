@@ -13,6 +13,7 @@ import {
   Input,
   shortId,
 } from "../ui";
+import { useWriteGate } from "../auth";
 
 function val(v: unknown): string {
   return typeof v === "string" ? v : JSON.stringify(v);
@@ -38,11 +39,12 @@ export default function EntityDetail() {
     Record<string, { collectUrl?: string; reused?: boolean }>
   >({});
   const [busy, setBusy] = useState<string | null>(null);
+  const { guardWrite } = useWriteGate();
 
-  async function run<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  async function run<T>(label: string, fn: () => Promise<T>): Promise<T | undefined> {
     setBusy(label);
     try {
-      return await fn();
+      return await guardWrite(label, fn);
     } finally {
       setBusy(null);
     }
@@ -91,6 +93,7 @@ export default function EntityDetail() {
         args: actionArgs[action.name] ?? {},
       }),
     );
+    if (res === undefined) return;
     if (res.collect) {
       setActionResults((prev) => ({
         ...prev,
@@ -374,7 +377,12 @@ export default function EntityDetail() {
                       >
                         Submit
                       </Button>
-                      <Button variant="ghost" onClick={() => cancelFlow({ runId: r._id })}>
+                      <Button
+                        variant="ghost"
+                        onClick={() =>
+                          run("Cancel flow", () => cancelFlow({ runId: r._id }))
+                        }
+                      >
                         Cancel
                       </Button>
                     </span>

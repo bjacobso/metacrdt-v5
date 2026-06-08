@@ -310,7 +310,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Backend write authorization — general public write mutations now require
   Convex auth identity and derive actors server-side; `/collect` remains
   token-authorized.
-- [ ] Provider-backed login UI / production auth configuration for the live app.
+- [x] Auth-aware frontend write gates — admin routes now have Convex auth-state
+  context and protected controls open a shared auth-required modal instead of
+  firing anonymous writes.
+- [ ] Choose and wire the production auth provider
+  (`convex/auth.config.ts` + provider-specific React wrapper/JWT flow).
 
 **Next goal candidates**
 - [x] Choose the next active goal: Goal 39, component-owned compliance
@@ -320,8 +324,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] After Goal 42, choose component-owned wait/scheduler support.
 - [x] After Goal 43, choose component-owned collect reminder/escalation timers.
 - [x] After Goal 44, choose Datalog computed predicates.
-- [ ] After Goal 45, choose between provider-backed login UI / production auth,
-  live Cloudflare deployment/auth, or another parked Query/Rules item.
+- [ ] Choose between production provider wiring, live Cloudflare
+  deployment/auth, or another parked Query/Rules item.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -350,6 +354,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 67 shipped:** frontend admin routes now run inside Convex's
+  auth-aware provider shape with an explicit no-provider hook; `src/auth.tsx`
+  centralizes the auth-required modal and `useWriteGate`.
+- [x] **Protected write controls now fail before anonymous mutation calls.** The
+  global New Entity form, setup/bootstrap buttons, raw assert console, host
+  entity actions/flows/submissions/cancel, and component-owned actions/flows/
+  compliance writes all route through the shared write gate. `/collect` remains
+  token-authorized and intentionally unguarded.
 - [x] **Goal 66 shipped:** configured action registry reads now fold action
   definition facts from protocol-shaped `factEvents`: `loadActionDef`,
   `actionsForType`, `listActions`, `entityDetail.actions`, and `runAction`

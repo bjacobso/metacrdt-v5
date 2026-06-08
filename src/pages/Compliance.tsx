@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import EntityPicker from "../EntityPicker";
 import { Card, CardHeader, Button, Mono, shortId } from "../ui";
+import { useWriteGate } from "../auth";
 
 export default function Compliance() {
   const [worker, setWorker] = useState("worker:maria");
@@ -32,14 +33,19 @@ export default function Compliance() {
   const dryRun = useQuery(api.complianceConfect.dryRunWorkerCompliance, dryRunArgs);
   const setupStaffing = useMutation(api.appconfig.setupStaffing);
   const submitForm = useMutation(api.compliance.submitForm);
+  const { guardWrite } = useWriteGate();
 
   async function bootstrap() {
     setBusy(true);
     try {
-      await setupStaffing({});
+      await guardWrite("Seed staffing blueprint", () => setupStaffing({}));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function submitRequirement(form: string, scope: string) {
+    await guardWrite(`Submit ${form}`, () => submitForm({ worker, form, scope }));
   }
 
   return (
@@ -183,7 +189,7 @@ export default function Compliance() {
                   <Button
                     variant="collect"
                     className="ml-auto"
-                    onClick={() => submitForm({ worker, form: o.form, scope: o.scope })}
+                    onClick={() => submitRequirement(o.form, o.scope)}
                   >
                     Submit {o.form}
                   </Button>
