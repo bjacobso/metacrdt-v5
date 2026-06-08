@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 82 (Confect Config-History Sidecar) has
+**Current goal:** Goal 83 (`@metacrdt/schema` First Slice) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -57,7 +57,10 @@ with manifest-change summaries and event-kind counts, then rendering expandable
 event details and per-action last-change provenance in the Data model page. Goal
 82 adds a typed Confect/Effect sidecar query for the same read-only config audit
 domain, computing manifest diffs from protocol-shaped `factEvents` through the
-shared core fold without moving config writes behind Confect. The next
+shared core fold without moving config writes behind Confect. Goal 83 extracts
+the first pure `@metacrdt/schema` package slice from the Convex-local meta helper:
+schema carrier ids, builtin bootstrap cardinalities, value/cardinality guards,
+and meta-attribute definitions. The next
 active goal should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
@@ -128,6 +131,13 @@ arguments.
   - bitemporal visibility quadrants
 - Convex read path delegates visibility to core via
   [`convex/lib/visibility.ts`](./convex/lib/visibility.ts).
+- `@metacrdt/schema` exists in [`packages/schema`](./packages/schema) as a pure
+  schema-as-facts convention package:
+  - `attr:` / `type:` carrier ids
+  - builtin bootstrap cardinalities
+  - value-type and cardinality guards
+  - self-describing meta-attribute definitions
+  - Convex compatibility re-export through `convex/lib/meta.ts`
 - New Convex writes stamp protocol metadata on `factEvents`:
   `eventId`, HLC, `replicaId`, `targetEventId`, and `causalRefs` where
   applicable.
@@ -7779,6 +7789,57 @@ expressed as typed Effect Schema returns and computed from protocol-shaped
   `chatty-hare-94`.
 - A live `metacrdtConfect:configHistory` query returned `added`, `removed`,
   `changedKinds`, `totalManifestChanges`, and `eventCounts`.
+- `git diff --check` passed.
+
+---
+
+## Goal 83 — `@metacrdt/schema` First Slice
+
+**Status:** shipped as the first pure schema package boundary.
+
+**Objective:** start peeling off the planned feature packages by extracting the
+stable, target-neutral schema-as-facts conventions from the Convex reference
+runtime into `@metacrdt/schema`.
+
+### Semantics
+
+- `packages/schema` publishes `@metacrdt/schema`.
+- The package owns:
+  - `META` carrier prefixes and schema type names;
+  - `attrId`, `typeId`, `isAttrId`, `isTypeId`, `attrNameOf`, `typeNameOf`;
+  - `Cardinality`, `ValueType`, `MetaAttribute` types;
+  - `BUILTIN_CARDINALITY`, `builtinCardinality`, and `cardinalityOrMany`;
+  - `isCardinality` / `isValueType` guards;
+  - `META_ATTRIBUTES` bootstrap definitions.
+- `convex/lib/meta.ts` becomes a compatibility adapter that re-exports the pure
+  package, so existing Convex imports keep working while the package boundary
+  settles.
+- README, architecture, package-consolidation, PLAN, and TODO now describe
+  `@metacrdt/schema` as shipped for this first pure slice.
+
+### Non-Goals
+
+- Do not move `convex/attributes.ts` query/mutation logic in this slice.
+- Do not extract Datalog/query, forms, workflow, views, or agent packages.
+- Do not change any schema-as-facts write/read semantics in the Convex reference
+  runtime.
+- Do not wire production auth or live Cloudflare deployment in this slice.
+
+### Verification
+
+- `npm install` passed and registered the new workspace.
+- `npm run test:schema` passed (4 package tests).
+- `npx tsc --noEmit -p packages/schema/tsconfig.json` passed.
+- `npm run test:core` passed (46 core tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94`.
+- A live `attributes:typeSchemaAsOf` query returned schema columns through the
+  package-backed Convex adapter path.
 - `git diff --check` passed.
 
 ---

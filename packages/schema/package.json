@@ -1,0 +1,24 @@
+{
+  "name": "@metacrdt/schema",
+  "version": "0.1.0",
+  "description": "MetaCRDT schema-as-facts helpers: canonical schema entity ids, builtin cardinalities, value types, and bootstrap meta-attribute definitions.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}

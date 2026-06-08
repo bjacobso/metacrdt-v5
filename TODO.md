@@ -113,8 +113,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `flows.issueAllOpen`) now derive enabled `require.*` / `task.*` rule output
   from protocol-shaped `factEvents` instead of reading materialized
   `derivedFacts`. Remaining: derived rows are still stored in `derivedFacts`.
-- [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
-  `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
+- [x] **`@metacrdt/schema` first slice extracted** — `packages/schema` owns pure
+  schema-as-facts conventions (`attr:` / `type:` carrier ids, builtin
+  cardinalities, value/cardinality guards, and meta-attribute bootstrap
+  definitions). `convex/lib/meta.ts` re-exports the package for compatibility.
+- [ ] Then peel off, as they stabilize: richer `@metacrdt/schema` lowering from
+  `convex/attributes.ts`, then `@metacrdt/query`, `@metacrdt/workflow`,
+  `@metacrdt/forms`, and `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
   (`language-ts`, selected `language-host` / docs / tests). Forma owns the Lisp
   authoring language; runtime lowering stays out until the IR boundary proves it.
@@ -381,6 +386,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 83 shipped:** first `@metacrdt/schema` slice. Added
+  `packages/schema` with pure schema carrier ids, builtin bootstrap
+  cardinalities, value/cardinality guards, and meta-attribute definitions;
+  `convex/lib/meta.ts` now re-exports those conventions so the Convex reference
+  runtime consumes the package without changing schema write/read behavior.
 - [x] **Goal 81 shipped:** action/config diff-history polish. `api.configHistory.history`
   now returns `changedKinds`, `totalManifestChanges`, and `eventCounts`; Data
   model config history rows expand into direct event details, and the Action

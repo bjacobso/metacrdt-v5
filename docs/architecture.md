@@ -93,12 +93,13 @@ not invented:
 | This repo (`convex-triples`) | Package |
 | --- | --- |
 | `packages/core` (`@metacrdt/core`) | pure protocol kernel: events, order, G-Set merge, fold |
+| `packages/schema` (`@metacrdt/schema`) | pure schema-as-facts conventions: carrier ids, bootstrap cardinalities, value/cardinality guards, meta-attributes |
 | `packages/convex` (`@metacrdt/convex`) | Convex/core adapters, validators, Confect sidecar warning, component-owned protocol log, current projections, and cardinality-one reconciliation |
 | `packages/forma` (`@metacrdt/forma`) | Lisp authoring language: reader, formatter, evaluator, VM, type inference |
 | `packages/runtime` (`@metacrdt/runtime`) | runtime service contracts + memory harness + localStorage target seed + BroadcastChannel and p2p DataChannel transports proving target-neutral convergence, restart durability, same-origin anti-entropy, and peer-to-peer gossip |
 | `packages/cloudflare` (`@metacrdt/cloudflare`) | Durable Object storage-backed runtime services, structural WebSocket relay shell, and Worker/DO example shell |
 | `packages/local` (`@metacrdt/local`) | browser/local-first target package composing runtime localStorage services + BroadcastChannel transport, plus async local runtime services, IndexedDB-compatible persistence, and SQLite-compatible persistence |
-| `convex/attributes.ts`, `convex/lib/meta.ts` | `@metacrdt/schema` |
+| `convex/attributes.ts`, `convex/lib/meta.ts` | Convex schema runtime over `@metacrdt/schema` constants |
 | `convex/datalog.ts`, `convex/lib/engine.ts` | `@metacrdt/query` |
 | `convex/flows.ts` | `@metacrdt/workflow` |
 | `convex/forms.ts` | `@metacrdt/forms` |
@@ -115,13 +116,15 @@ not invented:
    premature-coupling trap. **`@metacrdt/core` is published first** — it exists now
    at `packages/core`: pure, dependency-free, and tested (SPEC §4–5; the events,
    `≺` order, G-Set merge, and deterministic bitemporal fold). It's the determinism
-   guarantee and the most reusable. **`@metacrdt/convex`, `@metacrdt/forma`,
-   `@metacrdt/runtime`, `@metacrdt/cloudflare`, and `@metacrdt/local` now exist
-   too**: Convex has adapters plus the first component-owned protocol log,
-   current projections, and opt-in cardinality-one reconciliation; Forma is the
-   runtime-neutral language package; runtime is harness-first (service contracts,
-   memory target, localStorage target seed, BroadcastChannel transport seed, and
-   p2p DataChannel transport);
+   guarantee and the most reusable. **`@metacrdt/schema`, `@metacrdt/convex`,
+   `@metacrdt/forma`, `@metacrdt/runtime`, `@metacrdt/cloudflare`, and
+   `@metacrdt/local` now exist too**: schema owns the pure carrier-id,
+   bootstrap-cardinality, and meta-attribute conventions; Convex has adapters
+   plus the first component-owned protocol log, current projections, and opt-in
+   cardinality-one reconciliation; Forma is the runtime-neutral language
+   package; runtime is harness-first (service contracts, memory target,
+   localStorage target seed, BroadcastChannel transport seed, and p2p DataChannel
+   transport);
    Cloudflare is a storage-service target plus WebSocket relay and Worker/DO
    example shell, not a live deployed service yet; local is the browser-facing
    composition over localStorage + BroadcastChannel plus IndexedDB-compatible and

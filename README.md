@@ -105,6 +105,10 @@ Current packages:
 - **`@metacrdt/core`** (`packages/core`) — pure, dependency-free convergence
   kernel: SHA-256, base32, canonical values, HLC, events, `≺`, G-Set merge, and
   the bitemporal fold.
+- **`@metacrdt/schema`** (`packages/schema`) — pure schema-as-facts conventions:
+  canonical `attr:` / `type:` carrier ids, builtin bootstrap cardinalities,
+  value/cardinality guards, and self-describing meta-attribute definitions. The
+  Convex reference runtime consumes it through `convex/lib/meta.ts`.
 - **`@metacrdt/convex`** (`packages/convex`) — Convex target adapters:
   protocol metadata validators, Convex/core event construction, row
   reconstruction/verification, projected-row visibility, cardinality-one
@@ -143,7 +147,7 @@ Planned package graph:
 ```text
 @metacrdt/core        protocol kernel: events, ids, order, fold
 @metacrdt/forma       Lisp authoring language
-@metacrdt/schema      schema-as-facts, types, attributes
+@metacrdt/schema      schema-as-facts, types, attributes (first pure slice shipped)
 @metacrdt/query       Datalog, rules, derivation
 @metacrdt/workflow    processes, flows, obligations
 @metacrdt/forms       forms, collection, prompt-response

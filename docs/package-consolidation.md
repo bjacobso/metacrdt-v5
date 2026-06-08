@@ -60,7 +60,7 @@ proven.
 packages/
 ├── core/              @metacrdt/core       # done: SPEC §4-5 kernel
 ├── forma/            @metacrdt/forma      # Lisp reader/evaluator/types/tooling
-├── schema/           @metacrdt/schema     # schema-as-facts, attributes, type defs
+├── schema/           @metacrdt/schema     # done first slice: ids, cardinality, meta attrs
 ├── query/            @metacrdt/query      # Datalog, rules, derived coherence
 ├── workflow/         @metacrdt/workflow   # durable steps, processes, obligations
 ├── forms/            @metacrdt/forms      # forms, collection, prompt-response
@@ -192,7 +192,9 @@ are one representation of facts inside a convergent event log.
 
 - `@metacrdt/core` — already real.
 - `@metacrdt/forma` — the formal Lisp/expression language.
-- `@metacrdt/schema` — schema-as-facts and type contracts.
+- `@metacrdt/schema` — schema-as-facts and type contracts. First slice shipped:
+  carrier ids, bootstrap cardinality rules, value/cardinality guards, and
+  meta-attribute definitions.
 - `@metacrdt/query` — Datalog/rules/derivation.
 - `@metacrdt/workflow` — processes, flows, obligations.
 - `@metacrdt/forms` — collection surfaces and prompt-response forms.
@@ -302,7 +304,9 @@ Deliverables:
 Extract only when each package has a concrete use in the current reference app:
 
 1. `@metacrdt/schema` from current `convex/lib/meta.ts`, `convex/attributes.ts`,
-   and Open Ontology entity/type specs.
+   and Open Ontology entity/type specs. The first pure slice from
+   `convex/lib/meta.ts` has shipped; richer type-definition/read-model lowering
+   in `convex/attributes.ts` remains in the reference runtime.
 2. `@metacrdt/query` from current Datalog engine plus Open Ontology `logic-ast`
    and database query material.
 3. `@metacrdt/forms` from current `convex/forms.ts` and `/collect`.
