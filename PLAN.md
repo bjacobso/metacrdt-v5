@@ -1,9 +1,10 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 33 (backend write authorization) has shipped. The next
-active goal should be chosen from the remaining TODO candidates: provider-backed
-login UI, live Cloudflare deployment/auth, or migrating more of the reference
-runtime onto component-owned state.
+**Current goal:** Goal 34 (component-owned actions can open collection forms) has
+shipped. The next active goal should be chosen from the remaining TODO
+candidates: provider-backed login UI / production auth, live Cloudflare
+deployment/auth, component-owned collection submission/forms/flows/compliance, or
+another parked Query/Rules item.
 
 This plan is the operational goal file. Read it with:
 
@@ -258,6 +259,13 @@ arguments.
   - component-owned write wrappers require the same authenticated principal
     before passing actor context across the component boundary
   - `/collect` submission remains token-authorized rather than login-authorized
+- Component-owned configured actions can open forms:
+  - `runOwnedAction` no longer rejects `opensForm` definitions
+  - it resolves `opensForm.form` / `opensForm.scope` with the same action arg
+    semantics as host-owned actions
+  - it issues or reuses the host collection-token run for the component-owned
+    entity id, returning the `/collect` URL to the component detail page
+  - collection submission remains host-owned for now
 
 ### Not Yet True
 
@@ -272,6 +280,9 @@ arguments.
   and event-log rebuild for component-owned writes. The reference app still owns
   its production write path and has not migrated its existing business logic/rules
   onto component-owned state.
+- Component-owned actions can issue collection tokens, but `/collect` submission
+  still writes collected evidence into the host `facts` projection for that
+  subject id. Component-owned forms/flows/compliance remain future work.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime.
 - Multi-replica sync is specified and now implemented as in-memory
@@ -2807,9 +2818,9 @@ src/pages/ComponentEntity.tsx
 
 ### Non-Goals
 
-- Do not support component-owned collection/form actions yet. Actions with
-  `opensForm` are visible but rejected by `runOwnedAction` until component-owned
-  collection state exists.
+- Do not support component-owned collection/form submission yet. Goal 34 adds a
+  host collection-run bridge for `opensForm`, but `/collect` submission still
+  writes host facts.
 - Do not migrate host-owned compliance/rules onto component-owned state yet.
 - Do not remove the narrower `setOwnedWorkerStatus` wrapper yet; it remains a
   simple direct mutation path from Goal 30.
@@ -2986,6 +2997,90 @@ Explicit non-scope:
 - `npx @convex-dev/static-hosting upload` uploaded the rebuilt static app.
 - Live smoke: `npx convex run facts:assertFact ...` fails with
   `Not authenticated` at `requireWritePrincipal`.
+
+---
+
+## Goal 34 — Component-Owned Actions Open Collection Forms
+
+**Status:** shipped as a host collection bridge for component-owned actions.
+
+**Objective:** move one more real business workflow onto component-owned entity
+state. Configured actions already run their assert semantics through
+`@metacrdt/convex` component-owned facts; actions that declare `opensForm` should
+now be usable on component-owned entities too, returning the same `/collect`
+token link that host-owned actions return.
+
+### Scope
+
+Backend:
+
+```text
+convex/lib/collectRuns.ts       shared action collect-run issuer/reuser
+convex/actions.ts               host action path uses the shared helper
+convex/metacrdtComponent.ts     component-owned runOwnedAction supports opensForm
+```
+
+Frontend:
+
+```text
+src/pages/ComponentEntity.tsx   renders collection links returned by component actions
+```
+
+Tests:
+
+```text
+convex/metacrdtComponent.test.ts
+```
+
+### Semantics
+
+- `runOwnedAction` still validates the target entity from component-owned current
+  state and enforces `appliesTo` against component-owned `type` facts.
+- Action `asserts` still write into component-owned `factEvents` / projections.
+- If `opensForm` is present, `form` and `scope` are resolved with the same
+  `$entity` / `$arg.<name>` semantics as host `runAction`.
+- The collection run is issued or reused in the host `flowRuns` table and returns
+  `{ token, collectUrl, reused }`.
+- This is intentionally a bridge: `/collect` submission still writes host facts
+  for the subject id. Component-owned collection submission is a later slice.
+
+### Non-Goals
+
+- Do not migrate `flowRuns` into the component package in this slice.
+- Do not change `/collect` submission storage to component-owned facts yet.
+- Do not migrate compliance obligations/rules to component-owned state yet.
+- Do not choose a provider or add login UI.
+
+### Acceptance Criteria
+
+- A component-owned action with `opensForm` no longer throws.
+- It issues a collection token for the component-owned entity id.
+- Re-running the action reuses an existing live token for the same
+  subject/form/scope.
+- The component detail page displays the returned collection link.
+- Submitting the token still succeeds through the existing `/collect` path and
+  records host facts for that subject id.
+- Component-owned current state remains unchanged by the host collection
+  submission until component-owned collection storage exists.
+- Component wrapper tests, backend tests, package tests, typechecks, build,
+  backend deploy, static upload, and live smoke pass.
+
+### Verification
+
+- `npx vitest run convex/metacrdtComponent.test.ts` passed (13 tests).
+- `npm test` passed (17 backend test files, 108 tests).
+- `npm run test:core` passed (46 tests).
+- `npm run test:convex-package` passed (31 tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex dev --once` deployed backend functions to `chatty-hare-94`.
+- `npx @convex-dev/static-hosting upload` deployed the frontend to
+  `https://chatty-hare-94.convex.site`.
+- Live smoke:
+  - `curl -I https://chatty-hare-94.convex.site` returned HTTP 200.
+  - `npx convex run metacrdtComponent:listOwnedCurrentEntities ...` returned
+    deployed component-owned Worker rows.
 
 ---
 

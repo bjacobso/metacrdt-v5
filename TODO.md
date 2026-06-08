@@ -109,6 +109,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   now render configured host actions by type and run their assert semantics
   through `api.metacrdtComponent.runOwnedAction`, with host schema cardinality
   adapted into component-owned writes.
+- [x] **Component-owned actions can open host collection forms** — `runOwnedAction`
+  supports `opensForm`, resolves `$entity` / `$arg.*` placeholders, issues or
+  reuses the host collection token for the component-owned entity id, and the
+  component detail page renders the returned `/collect` link. Submission still
+  writes host facts until component-owned collection storage ships.
 - [x] **Datalog disjunction** — Datalog `where` bodies now support bounded
   `{ or: [[...clauses], ...] }` branches. Branches run from the current binding,
   union/dedupe their bindings with provenance merged, and continue into later
@@ -147,7 +152,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   structural WebRTC/DataChannel-compatible transport with JSON wire messages,
   hello/delta catch-up, directed deltas, lifecycle cleanup, and multi-hop gossip.
 - [ ] Targets: live Cloudflare deployment/auth and migrating more reference
-  runtime business logic onto `@metacrdt/convex` component-owned state.
+  runtime business logic onto `@metacrdt/convex` component-owned state
+  (component-owned collection submission / forms / flows / compliance remain).
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -209,7 +215,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 **Next goal candidates**
 - [ ] Choose the next active goal: provider-backed login UI / production auth,
   live Cloudflare deployment/auth, or migrating more reference runtime business
-  logic onto `@metacrdt/convex` component-owned state.
+  logic onto `@metacrdt/convex` component-owned state (next likely seam:
+  component-owned collection submission / forms / flows / compliance).
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -234,6 +241,21 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — component-owned actions open collection forms
+- [x] **Goal 34 shipped:** `api.metacrdtComponent.runOwnedAction` now supports
+  configured actions with `opensForm`. It still validates `appliesTo` from
+  component-owned current `type` facts and writes action assertions into the
+  component-owned protocol log, but it can also resolve `$entity` / `$arg.*`
+  form/scope placeholders and issue or reuse the host collection-token run.
+- [x] **Shared action collection bridge:** `convex/lib/collectRuns.ts` now owns
+  the lightweight action collect-run issuer/reuser used by both host
+  `actions.runAction` and component-owned `runOwnedAction`.
+- [x] **UI support:** `/component/e/:id` displays returned `/collect` links,
+  including reused-token status, matching the host entity detail behavior.
+- [x] **Boundary remains explicit:** `/collect` submission still writes host facts
+  for the subject id; component-owned collection storage is the next migration
+  seam.
 
 ### 2026-06-07 — backend write authorization
 - [x] **General public writes require Convex auth identity.** Added

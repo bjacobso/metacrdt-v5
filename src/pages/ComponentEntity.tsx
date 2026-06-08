@@ -15,6 +15,9 @@ export default function ComponentEntity() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState<string | null>(null);
   const [actionArgs, setActionArgs] = useState<Record<string, Record<string, unknown>>>({});
+  const [actionResults, setActionResults] = useState<
+    Record<string, { collectUrl?: string; reused?: boolean }>
+  >({});
   const runOwnedAction = useMutation(api.metacrdtComponent.runOwnedAction);
   const entity = useQuery(api.metacrdtComponent.getOwnedCurrentEntity, {
     e: id,
@@ -46,11 +49,20 @@ export default function ComponentEntity() {
   async function runConfiguredAction(action: NonNullable<typeof actions>[number]) {
     setBusy(`action:${action.name}`);
     try {
-      await runOwnedAction({
+      const result = await runOwnedAction({
         action: action.name,
         entity: id,
         args: actionArgs[action.name] ?? {},
       });
+      if (result.collect) {
+        setActionResults((prev) => ({
+          ...prev,
+          [action.name]: {
+            collectUrl: result.collect!.collectUrl,
+            reused: result.collect!.reused,
+          },
+        }));
+      }
     } finally {
       setBusy(null);
     }
@@ -133,7 +145,7 @@ export default function ComponentEntity() {
                     {Object.entries(action.asserts)
                       .map(([k, v]) => `${k} = ${val(v)}`)
                       .join(", ")}
-                    {action.opensForm ? " · opens form in host runtime" : ""}
+                    {action.opensForm ? " · opens collection form" : ""}
                   </div>
                   {action.fields.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-2">
@@ -208,6 +220,18 @@ export default function ComponentEntity() {
                 >
                   Run
                 </Button>
+                {actionResults[action.name]?.collectUrl && (
+                  <div className="col-span-2 rounded-md bg-orange-soft px-3 py-2 text-[12px] text-orange-ink">
+                    collection link:{" "}
+                    <a
+                      className="font-medium underline"
+                      href={actionResults[action.name].collectUrl}
+                    >
+                      {actionResults[action.name].collectUrl!.slice(0, 24)}…
+                    </a>
+                    {actionResults[action.name].reused ? " (reused)" : ""}
+                  </div>
+                )}
               </div>
             ))}
           </div>

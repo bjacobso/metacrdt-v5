@@ -348,6 +348,80 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     ).rejects.toThrow(/applies to Worker/);
   });
 
+  test("component-owned actions can open host collection forms", async () => {
+    const t = mountedTest();
+
+    await t.mutation(api.forms.defineForm, {
+      form: "owned_i9",
+      title: "Owned I-9",
+      fields: [
+        {
+          name: "worker.legalName",
+          label: "Legal name",
+          type: "string",
+          required: true,
+        },
+      ],
+    });
+    await t.mutation(api.actions.defineAction, {
+      name: "owned_collect_i9",
+      label: "Collect owned I-9",
+      appliesTo: "Worker",
+      asserts: {},
+      opensForm: { form: "owned_i9", scope: "$entity" },
+    });
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-collect:worker",
+      type: "Worker",
+      name: "Collect Worker",
+    });
+
+    const first = await t.mutation(api.metacrdtComponent.runOwnedAction, {
+      action: "owned_collect_i9",
+      entity: "component-collect:worker",
+    });
+    expect(first.asserted).toHaveLength(0);
+    expect(first.collect?.collectUrl).toMatch(/^\/collect\?token=/);
+    expect(first.collect?.reused).toBe(false);
+
+    const token = first.collect!.token;
+    expect(await t.query(api.forms.collectionByToken, { token })).toMatchObject({
+      form: "owned_i9",
+      scope: "component-collect:worker",
+      subject: "component-collect:worker",
+    });
+
+    const second = await t.mutation(api.metacrdtComponent.runOwnedAction, {
+      action: "owned_collect_i9",
+      entity: "component-collect:worker",
+    });
+    expect(second.collect?.token).toBe(token);
+    expect(second.collect?.reused).toBe(true);
+
+    await t.mutation(api.forms.submitCollection, {
+      token,
+      values: { "worker.legalName": "Component Worker" },
+    });
+
+    const hostEntity = await t.query(api.facts.getEntity, {
+      e: "component-collect:worker",
+    });
+    expect(hostEntity.attributes["submitted.owned_i9"]).toEqual([
+      "component-collect:worker",
+    ]);
+    expect(hostEntity.attributes["owned_i9/worker.legalName"]).toEqual([
+      "Component Worker",
+    ]);
+
+    const componentEntity = await t.query(
+      api.metacrdtComponent.getOwnedCurrentEntity,
+      { e: "component-collect:worker" },
+    );
+    expect(
+      componentEntity?.attributes.find((attr) => attr.a === "worker.legalName"),
+    ).toBeUndefined();
+  });
+
   test("component-owned missing current entity returns null", async () => {
     const t = mountedTest();
 

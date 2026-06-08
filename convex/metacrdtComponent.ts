@@ -2,7 +2,12 @@ import { v } from "convex/values";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import { components } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { loadActionDef, resolveActionValue } from "./lib/actionDefs";
+import {
+  loadActionDef,
+  resolveActionString,
+  resolveActionValue,
+} from "./lib/actionDefs";
+import { issueActionCollectRun } from "./lib/collectRuns";
 import { attrId, BUILTIN_CARDINALITY } from "./lib/meta";
 import { requireWritePrincipal } from "./lib/writeAuth";
 
@@ -94,9 +99,17 @@ const createOwnedEntityResultValidator = v.object({
   asserted: v.array(appendOwnedResultValidator),
 });
 
+const collectResultValidator = v.object({
+  runId: v.string(),
+  token: v.string(),
+  collectUrl: v.string(),
+  reused: v.boolean(),
+});
+
 const runOwnedActionResultValidator = v.object({
   action: v.string(),
   asserted: v.array(appendOwnedResultValidator),
+  collect: v.optional(collectResultValidator),
 });
 
 const ownedCurrentFactValidator = v.object({
@@ -370,11 +383,6 @@ export const runOwnedAction = mutation({
   handler: async (ctx, args) => {
     const def = await loadActionDef(ctx, args.action);
     if (!def) throw new Error(`unknown action: ${args.action}`);
-    if (def.opensForm !== undefined) {
-      throw new Error(
-        `component-owned action ${args.action} opens a form; component collection is not supported yet`,
-      );
-    }
 
     const entity = await ctx.runQuery(components.metacrdt.log.getCurrentEntity, {
       e: args.entity,
@@ -413,7 +421,28 @@ export const runOwnedAction = mutation({
       );
     }
 
-    return { action: args.action, asserted };
+    const collect =
+      def.opensForm !== undefined
+        ? await issueActionCollectRun(ctx, {
+            subject: args.entity,
+            form: resolveActionString(
+              "form",
+              def.opensForm.form,
+              args.entity,
+              def.fields,
+              actionArgs,
+            ),
+            scope: resolveActionString(
+              "scope",
+              def.opensForm.scope,
+              args.entity,
+              def.fields,
+              actionArgs,
+            ),
+          })
+        : undefined;
+
+    return withoutUndefined({ action: args.action, asserted, collect });
   },
 });
 
