@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@metacrdt/core": "0.1.0",
+    "@metacrdt/query": "0.1.0",
     "effect": "^3.21.3"
   },
   "devDependencies": {

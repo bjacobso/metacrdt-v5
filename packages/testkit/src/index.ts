@@ -9,33 +9,15 @@ import {
   valueOf,
   verifyId,
   type Event,
-  type Log,
   type Value,
 } from "@metacrdt/core";
 import {
-  advanceBoundVars,
-  aggregateBindings,
-  applyComputeStates,
-  dedupeProvenancedBindings,
-  derivedRowsFromBindings,
-  extendPatternCandidatesWithinLimit,
-  filterCompareStates,
-  initialSolverFrame,
-  paginateRows,
-  parseClauses,
-  passesNegationCandidates,
-  patternInputForBinding,
-  project,
-  selectNextClause,
   valueKey,
-  type AnyClause,
-  type Binding,
-  type PatternClause,
-  type ProvenancedBinding,
-  type QueryTriple,
 } from "@metacrdt/query";
 import {
+  DatalogQueryService,
   applyOperationEffect,
+  datalogQueryLayer,
   mergeFromEffect,
   projectionRowsFromLog,
   runtimeServicesLayer,
@@ -50,7 +32,6 @@ import {
   type RuntimeError,
   type RuntimeServices,
   type ScheduledOperation,
-  type EventStoreEffect,
   type ProjectionRow,
 } from "@metacrdt/runtime";
 import { Effect, Layer } from "effect";
@@ -85,6 +66,10 @@ export type RuntimeConformanceLayer = Layer.Layer<
 export type RuntimeProjectionStoreConformanceServices =
   | RuntimeConformanceServices
   | ProjectionStoreService;
+
+export type RuntimeQueryConformanceServices =
+  | RuntimeConformanceServices
+  | DatalogQueryService;
 
 export type RuntimeProjectionStoreConformanceLayer = Layer.Layer<
   RuntimeProjectionStoreConformanceServices,
@@ -240,6 +225,20 @@ async function runWithTargetLayer<A>(
   }
 }
 
+async function runWithQueryTargetLayer<A>(
+  target: AnyRuntimeConformanceTarget,
+  options: RuntimeFactoryOptions,
+  program: Effect.Effect<A, RuntimeError, RuntimeQueryConformanceServices>,
+): Promise<A> {
+  const session = await layerSession(target, options);
+  const layer = Layer.provideMerge(session.layer)(datalogQueryLayer());
+  try {
+    return await Effect.runPromise(Effect.provide(program, layer));
+  } finally {
+    await session.dispose();
+  }
+}
+
 type TargetLayerSession = {
   readonly layer: RuntimeConformanceLayer;
   dispose(): Promise<void>;
@@ -314,18 +313,6 @@ function sampleAssert(replicaId: string, n: number): Event {
   });
 }
 
-type QueryCoord = { readonly txTime: number; readonly validTime: number };
-type QueryState = ProvenancedBinding<string, string>;
-type QueryResult = {
-  readonly states: readonly QueryState[];
-  readonly rows: readonly Record<string, unknown>[];
-  readonly eventSourceIds: readonly string[];
-};
-
-function uniqueSorted(ids: Iterable<string>): string[] {
-  return [...new Set(ids)].sort((a, b) => a.localeCompare(b));
-}
-
 function rowKey(row: Record<string, unknown>): string {
   return JSON.stringify(
     Object.entries(row)
@@ -345,177 +332,6 @@ function sameRows(
   expected: readonly Record<string, unknown>[],
 ): boolean {
   return JSON.stringify(sortRows(actual)) === JSON.stringify(sortRows(expected));
-}
-
-function scanFilterForPattern(
-  clause: PatternClause,
-  binding: Binding,
-): { e?: string; a?: string } | null {
-  const input = patternInputForBinding(clause, binding);
-  if (input.eConst !== undefined && typeof input.eConst !== "string") return null;
-  if (input.aConst !== undefined && typeof input.aConst !== "string") return null;
-  return {
-    ...(input.eConst === undefined ? {} : { e: input.eConst }),
-    ...(input.aConst === undefined ? {} : { a: input.aConst }),
-  };
-}
-
-function visibleAssertCandidates(
-  clause: PatternClause,
-  binding: Binding,
-  scanned: readonly Event[],
-  fullLog: Log,
-  coord: QueryCoord,
-): QueryTriple<string, string>[] {
-  const input = patternInputForBinding(clause, binding);
-  return scanned
-    .filter((event) => {
-      if (
-        event.kind !== "assert" ||
-        event.e === undefined ||
-        event.a === undefined ||
-        event.v === undefined
-      ) {
-        return false;
-      }
-      if (!visible(event, coord, fullLog)) return false;
-      if (input.eConst !== undefined && input.eConst !== event.e) return false;
-      if (input.aConst !== undefined && input.aConst !== event.a) return false;
-      if (input.vIsConst && valueKey(input.vConst) !== valueKey(event.v)) {
-        return false;
-      }
-      return true;
-    })
-    .map((event) => ({
-      e: event.e!,
-      a: event.a!,
-      v: event.v!,
-      prov: [event.id],
-      eventProv: [event.id],
-    }))
-    .sort((a, b) => a.prov[0]!.localeCompare(b.prov[0]!));
-}
-
-function fetchPatternCandidates(
-  store: EventStoreEffect,
-  clause: PatternClause,
-  binding: Binding,
-  fullLog: Log,
-  coord: QueryCoord,
-): Effect.Effect<QueryTriple<string, string>[], RuntimeError> {
-  const filter = scanFilterForPattern(clause, binding);
-  if (filter === null) return Effect.succeed([]);
-  return Effect.map(store.scan(filter), (events) =>
-    visibleAssertCandidates(clause, binding, events, fullLog, coord),
-  );
-}
-
-function solveParsedQuery(
-  store: EventStoreEffect,
-  clauses: AnyClause[],
-  seed: QueryState,
-  fullLog: Log,
-  coord: QueryCoord,
-): Effect.Effect<QueryState[], RuntimeError> {
-  return Effect.gen(function* () {
-    let frame = initialSolverFrame<string, string>(
-      clauses,
-      seed.binding,
-      seed.sources,
-      seed.eventSources ?? [],
-    );
-
-    while (frame.remaining.length > 0) {
-      const selected = selectNextClause(clauses, frame.remaining, frame.bound);
-      let nextStates: QueryState[] = [];
-
-      if (selected.clause.kind === "pattern") {
-        for (const state of frame.states) {
-          const candidates = yield* fetchPatternCandidates(
-            store,
-            selected.clause,
-            state.binding,
-            fullLog,
-            coord,
-          );
-          nextStates.push(
-            ...extendPatternCandidatesWithinLimit(
-              selected.clause,
-              state,
-              candidates,
-              nextStates.length,
-            ),
-          );
-        }
-      } else if (selected.clause.kind === "compare") {
-        nextStates = filterCompareStates(selected.clause, frame.states);
-      } else if (selected.clause.kind === "compute") {
-        nextStates = applyComputeStates(selected.clause, frame.states);
-      } else if (selected.clause.kind === "not") {
-        for (const state of frame.states) {
-          const candidates = yield* fetchPatternCandidates(
-            store,
-            selected.clause.pattern,
-            state.binding,
-            fullLog,
-            coord,
-          );
-          if (passesNegationCandidates(selected.clause, state.binding, candidates)) {
-            nextStates.push(state);
-          }
-        }
-      } else {
-        for (const state of frame.states) {
-          for (const branch of selected.clause.branches) {
-            nextStates.push(
-              ...(yield* solveParsedQuery(store, branch, state, fullLog, coord)),
-            );
-          }
-        }
-      }
-
-      frame = {
-        remaining: selected.remaining,
-        bound: advanceBoundVars(frame.bound, selected.clause),
-        states: dedupeProvenancedBindings(nextStates),
-      };
-    }
-
-    return frame.states;
-  });
-}
-
-function queryEventStore(
-  store: EventStoreEffect,
-  args: {
-    readonly where: readonly unknown[];
-    readonly select: readonly string[];
-    readonly coord: QueryCoord;
-  },
-): Effect.Effect<QueryResult, RuntimeError> {
-  return Effect.gen(function* () {
-    const clauses = parseClauses([...args.where]);
-    const allEvents = yield* store.scan();
-    const fullLog = fromEvents(allEvents);
-    const states = yield* solveParsedQuery(
-      store,
-      clauses,
-      { binding: {}, sources: [], eventSources: [] },
-      fullLog,
-      args.coord,
-    );
-    const rows = project(
-      states.map((state) => state.binding),
-      [...args.select],
-    );
-    return {
-      states,
-      rows,
-      eventSourceIds: uniqueSorted(
-        states.flatMap((state) => state.eventSources ?? []),
-      ),
-    };
-  });
 }
 
 export async function runEventStoreConformance(
@@ -1067,11 +883,12 @@ export async function runRuntimeQueryConformance(
   target: AnyRuntimeConformanceTarget,
 ): Promise<ConformanceReport> {
   const checks: string[] = [];
-  return await runWithTargetLayer(
+  return await runWithQueryTargetLayer(
     target,
     { replicaId: "testkit:query", wall: () => 20_000 },
     Effect.gen(function* () {
       const store = yield* EventStoreService;
+      const datalog = yield* DatalogQueryService;
       const coord = { txTime: 10_000, validTime: 100 };
       const ev = (pt: number, e: string, a: string, v: Value) =>
         assertEvent({
@@ -1158,7 +975,7 @@ export async function runRuntimeQueryConformance(
         yield* store.append(event);
       }
 
-      const openAssignable = yield* queryEventStore(store, {
+      const openAssignable = yield* datalog.query({
         coord,
         where: [
           ["?w", "type", "Worker"],
@@ -1186,7 +1003,7 @@ export async function runRuntimeQueryConformance(
       );
       checks.push("query-join-or-negation-provenance");
 
-      const scored = yield* queryEventStore(store, {
+      const scored = yield* datalog.query({
         coord,
         where: [
           ["?w", "type", "Worker"],
@@ -1206,7 +1023,7 @@ export async function runRuntimeQueryConformance(
       );
       checks.push("query-compare-compute-project");
 
-      const deduped = yield* queryEventStore(store, {
+      const deduped = yield* datalog.query({
         coord,
         where: [
           { or: [[["?w", "worker.status", "active"]], [["?w", "worker.score", 12]]] },
@@ -1222,10 +1039,29 @@ export async function runRuntimeQueryConformance(
       );
       checks.push("query-or-dedupe");
 
-      const page = paginateRows(sortRows(openAssignable.rows), { numItems: 1 });
-      const nextPage = paginateRows(sortRows(openAssignable.rows), {
-        numItems: 1,
-        cursor: page.continueCursor,
+      const page = yield* datalog.page({
+        coord,
+        where: [
+          ["?w", "type", "Worker"],
+          { or: [[["?w", "worker.status", "active"]], [["?w", "worker.status", "pending"]]] },
+          { not: ["?w", "worker.status", "terminated"] },
+          ["?p", "placement.worker", "?w"],
+          ["?p", "placement.status", "open"],
+        ],
+        select: ["?w", "?p"],
+        paginationOpts: { numItems: 1 },
+      });
+      const nextPage = yield* datalog.page({
+        coord,
+        where: [
+          ["?w", "type", "Worker"],
+          { or: [[["?w", "worker.status", "active"]], [["?w", "worker.status", "pending"]]] },
+          { not: ["?w", "worker.status", "terminated"] },
+          ["?p", "placement.worker", "?w"],
+          ["?p", "placement.status", "open"],
+        ],
+        select: ["?w", "?p"],
+        paginationOpts: { numItems: 1, cursor: page.continueCursor },
       });
       expect(
         target,
@@ -1237,14 +1073,21 @@ export async function runRuntimeQueryConformance(
         "query pagination should split stable projected rows",
       );
 
-      const aggregates = aggregateBindings(
-        openAssignable.states.map((state) => state.binding),
-        [],
-        [
+      const aggregates = yield* datalog.aggregate({
+        coord,
+        where: [
+          ["?w", "type", "Worker"],
+          { or: [[["?w", "worker.status", "active"]], [["?w", "worker.status", "pending"]]] },
+          { not: ["?w", "worker.status", "terminated"] },
+          ["?p", "placement.worker", "?w"],
+          ["?p", "placement.status", "open"],
+        ],
+        groupBy: [],
+        aggregates: [
           { op: "count", as: "openAssignments" },
           { op: "countDistinct", var: "?w", as: "workers" },
         ],
-      );
+      });
       expect(
         target,
         sameRows(aggregates, [{ openAssignments: 2, workers: 2 }]),
@@ -1252,10 +1095,17 @@ export async function runRuntimeQueryConformance(
       );
       checks.push("query-pagination-aggregation");
 
-      const derived = derivedRowsFromBindings(
-        openAssignable.states.map((state) => state.binding),
-        { e: "?w", a: "worker.hasOpenPlacement", v: true },
-      );
+      const derived = yield* datalog.derivedRows({
+        coord,
+        where: [
+          ["?w", "type", "Worker"],
+          { or: [[["?w", "worker.status", "active"]], [["?w", "worker.status", "pending"]]] },
+          { not: ["?w", "worker.status", "terminated"] },
+          ["?p", "placement.worker", "?w"],
+          ["?p", "placement.status", "open"],
+        ],
+        emit: { e: "?w", a: "worker.hasOpenPlacement", v: true },
+      });
       expect(
         target,
         sameRows(derived, [

@@ -85,6 +85,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   EventStore-backed Datalog/query semantics over target-returned logs through the
   pure `@metacrdt/query` helpers: joins, `or`, `not`, compare/compute,
   provenance, pagination, aggregation, and derived-row shaping.
+- [x] **Goal 111 production query-service contract** —
+  `@metacrdt/runtime` now exposes `DatalogQueryService` as an Effect service
+  backed by `EventStoreService`, with Schema-validated query/page/aggregate/
+  derived-row APIs, tagged runtime errors, stable pagination, and testkit
+  conformance routed through the service.
 - [x] **Goal 111 materialized projection-store boundary started** —
   `@metacrdt/runtime` now defines `ProjectionStoreService`, `ProjectionRow`,
   `ProjectionStore`, and `projectionRowsFromLog`; memory/localStorage, Node
@@ -94,8 +99,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   a component `projectionRows` table and `replace`/`scan`/`clear` component
   functions; `createConvexComponentRuntimeLayer` provides
   `ProjectionStoreService` and passes shared projection-store conformance.
-- [ ] **Goal 111 next: production query-service contract** — add a Datalog/query
-  service API contract as second implementations expose those capabilities.
+- [ ] **Goal 111 next: optimized/materialized query providers** — when a target
+  exposes a query implementation beyond the shared EventStore-backed
+  `DatalogQueryService` Layer, add provider-specific conformance proving it
+  matches the production service contract.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
@@ -560,6 +567,22 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `clearMaterializedProjection`; `createConvexComponentRuntimeLayer` wires those
   refs into `ProjectionStoreService` and passes the shared projection-store suite.
 
+### 2026-06-08 — Goal 111 production Datalog query service
+- [x] **Added `DatalogQueryService` to `@metacrdt/runtime`.** The service is an
+  Effect v3 `Context.Tag` with an EventStore-backed Layer provider:
+  `query`, `page`, `aggregate`, and `derivedRows` all validate args with
+  `effect/Schema`, return tagged `RuntimeOperationError` /
+  `RuntimeServiceError` values in the Effect error channel, and reuse the pure
+  `@metacrdt/query` planner/row helpers over target-returned protocol events.
+- [x] **Made pagination stable by contract.** The service sorts projected rows by
+  canonical value keys before `paginateRows`, matching the previous conformance
+  helper but moving the determinism into the production API boundary.
+- [x] **Routed testkit through the service.** `runRuntimeQueryConformance` now
+  provides `datalogQueryLayer()` over each target's Layer and exercises the
+  production service API instead of a private testkit-only adapter.
+- [x] Verification: focused runtime/testkit typechecks and tests pass; full gates
+  are run before committing this slice.
+
 ### 2026-06-08 — Goal 111 EventStore-backed query conformance
 - [x] **Added `runRuntimeQueryConformance` to `@metacrdt/testkit`.** The suite
   builds a small target-owned protocol log through `EventStoreService`, then runs
@@ -569,9 +592,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **Included query checks in `runRuntimeConformance`.** Memory/testkit,
   `@metacrdt/local`, `@metacrdt/cloudflare`, and `@metacrdt/convex` now prove the
   same EventStore-backed query semantics over their Layer-provided logs.
-- [x] **Scope remains honest.** This is not yet a production query-service API
-  contract and not a materialized projection-store conformance suite; it proves
-  target logs can feed the shared pure query planner and row semantics.
+- [x] **Historical scope.** This slice was the precursor to the production
+  `DatalogQueryService`: it proved target logs could feed the shared pure query
+  planner and row semantics before the service boundary moved into
+  `@metacrdt/runtime`.
 
 ### 2026-06-08 — Goal 111 EventStore projection conformance
 - [x] **Added `runRuntimeProjectionConformance`.** The shared runtime suite now

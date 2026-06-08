@@ -72,7 +72,7 @@ On open hosts the adapter is a selectable dependency.
 - `@metacrdt/runtime`'s in-memory target/Layer — the reference harness.
 - `@metacrdt/testkit` — Effect Layer-backed conformance helpers for EventStore,
   anti-entropy, deterministic fold convergence, EventStore-backed projection,
-  EventStore-backed Datalog/query semantics, opt-in materialized projection-store
+  the runtime `DatalogQueryService` contract, opt-in materialized projection-store
   semantics, and restart-persistence semantics (log/HLC/seq), plus scheduler
   service-boundary, transport publish-boundary, and first network
   delivery/catch-up semantics. Log/sync/projection/query conformance is proven
@@ -240,13 +240,13 @@ a sibling target.
    service-boundary / transport publish-boundary conformance has started for
    observable services. Network delivery/catch-up conformance has started for
    BroadcastChannel, p2p DataChannel, and Cloudflare relay harnesses. EventStore
-   projection and EventStore-backed Datalog/query conformance are included in the
+   projection and `DatalogQueryService` conformance are included in the
    shared runtime suite. Materialized projection-store conformance is an opt-in
    suite over `ProjectionStoreService`, now wired through runtime memory/local,
    Node memory/SQLite/Postgres, local-first localStorage, and Cloudflare Durable
    Object storage, plus the Convex component-owned `projectionRows` read model;
-   add production query-service conformance whenever the relevant target
-   capabilities are exposed. This is what *proves* the
+   add optimized/materialized query-provider conformance whenever a target
+   exposes a query engine beyond the shared EventStore-backed service. This is what *proves* the
    "guaranteed to converge" claim across targets.
 3. **Cloudflare Phase B/C** — extract the shared fold into core, then the DO +
    SQLite triple store ([cloudflare-target.md](./cloudflare-target.md)).

@@ -183,7 +183,8 @@ Current packages:
 - **`@metacrdt/testkit`** (`packages/testkit`) — target conformance helpers:
   Effect Layer-backed checks for EventStore idempotency/filtering/content-id
   verification, version-vector anti-entropy, deterministic fold convergence, and
-  EventStore-backed projection and Datalog/query semantics. It also includes
+  EventStore-backed projection plus the production `DatalogQueryService`
+  contract. It also includes
   opt-in materialized projection-store conformance for targets that provide
   `ProjectionStoreService` (runtime memory/localStorage, Node
   memory/SQLite/Postgres, local-first localStorage, Cloudflare Durable Object,
@@ -696,7 +697,8 @@ Frontier:
 - HLC + version-vector sync across replicas
 - Durable Object + SQLite triple-store parity
 - production database lifecycle/migrations beyond the current Node SQL DDL plan
-- production Datalog/query-service conformance
+- optimized/materialized Datalog/query providers beyond the shared
+  EventStore-backed `DatalogQueryService`
 
 See [TODO.md](./TODO.md) for the running pulse.
 

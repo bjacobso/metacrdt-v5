@@ -39,6 +39,29 @@ export {
 } from "./projection.js";
 
 export {
+  AggSpecSchema,
+  DatalogAggregateArgs,
+  DatalogDerivedRowsArgs,
+  DatalogQueryArgs,
+  DatalogQueryCoord,
+  DatalogQueryPageArgs,
+  DatalogQueryService,
+  EmitSpecSchema,
+  PaginationOpts,
+  datalogQueryLayer,
+  datalogQueryService,
+  type DatalogAggregateArgs as DatalogAggregateArgsType,
+  type DatalogDerivedRowsArgs as DatalogDerivedRowsArgsType,
+  type DatalogQueryArgs as DatalogQueryArgsType,
+  type DatalogQueryCoord as DatalogQueryCoordType,
+  type DatalogQueryEffect,
+  type DatalogQueryPageArgs as DatalogQueryPageArgsType,
+  type DatalogQueryResult,
+  type PaginationOpts as PaginationOptsType,
+  type QueryState,
+} from "./query.js";
+
+export {
   LocalClock,
   LocalEventStore,
   LocalProjectionStore,

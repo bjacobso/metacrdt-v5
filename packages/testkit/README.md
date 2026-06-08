@@ -45,8 +45,8 @@ verified to behave identically at the boundaries that matter.
   - `projection-filtered-source-query` — projection works over a target-filtered
     event source such as `scan({ e })`. This proves the shared projection over
     events returned by the target, not a full Datalog/query service.
-- **`runRuntimeQueryConformance`** — that target-loaded event logs can feed the
-  shared pure `@metacrdt/query` planner and row helpers:
+- **`runRuntimeQueryConformance`** — that a target's Layer can provide the
+  runtime `DatalogQueryService` production API over target-loaded event logs:
   - `query-join-or-negation-provenance` — joins visible triples, branches over
     status with `or`, filters terminated workers with `not`, and preserves
     contributing event ids.
@@ -57,8 +57,9 @@ verified to behave identically at the boundaries that matter.
   - `query-pagination-aggregation` — stable projected rows paginate, and
     aggregate rows summarize the provenanced bindings.
   - `query-derived-rows` — query bindings deterministically shape derived rows.
-  This proves EventStore-backed Datalog/query semantics over target-returned
-  logs; it is intentionally **not** a production query-service API contract.
+  This proves the production query-service contract for the shared
+  EventStore-backed runtime Layer. Target-optimized/materialized query providers
+  should add provider-specific conformance proving they match this contract.
 - **`runRuntimeProjectionStoreConformance`** — that a target-provided
   `ProjectionStoreService` can persist and replace materialized current rows
   built from the shared core fold:
@@ -134,7 +135,7 @@ deterministic fold, §6 deterministic query/derivation helpers, and §8
 version-vector anti-entropy. If a target passes `runRuntimeConformance`, it
 satisfies the log/sync convergence contract those sections define, can project
 target-returned event logs through the shared core fold, and can feed those logs
-through the shared query planner and row helpers. If a durable target also passes
+  through the runtime `DatalogQueryService`. If a durable target also passes
 `runRuntimePersistenceConformance`, its log/HLC/seq state survives runtime
 re-creation over the same backing store.
 `runRuntimeSchedulerConformance` proves the Effect scheduler service boundary
@@ -179,18 +180,19 @@ materialized `ProjectionStoreService` can add
 
 ## Scope Today, and What's Next
 
-The suite covers the **log + sync + projection + EventStore-backed query plane**,
+The suite covers the **log + sync + projection + DatalogQueryService query plane**,
 the first opt-in **materialized projection-store** boundary, durable restart
 semantics, scheduler submission, the basic transport publish boundary, and the
 first network-delivery checks: event-store semantics, anti-entropy, the in-log
 fold, projection from target-returned event sources, querying those
-target-returned logs through `@metacrdt/query`, persistence of the event
+target-returned logs through `DatalogQueryService`, persistence of the event
 log/HLC/seq across re-creation, payload-preserving scheduler submission,
 event-batch preserving transport publication, and peer delivery/catch-up for the
 BroadcastChannel, p2p DataChannel, and Cloudflare Durable Object WebSocket relay
 harnesses. It does **not yet** cover live relay deployment auth/retry/durability,
-a production Datalog/query service API contract, or live deployment semantics.
-Those checks should be added when the relevant target capabilities are shared
-beyond the Convex reference app (see
+target-optimized/materialized Datalog/query providers beyond the shared
+EventStore-backed service Layer, or live deployment semantics. Those checks
+should be added when the relevant target capabilities are shared beyond the
+Convex reference app (see
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md) and
 [docs/targets.md](../../docs/targets.md)).

@@ -9412,6 +9412,12 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   pure `@metacrdt/query` planner and row helpers for joins, `or`, `not`,
   compare/compute, provenance, pagination, aggregation, and derived-row shaping.
   It is included in `runRuntimeConformance` for current Layer targets.
+- **Datalog query service boundary shipped:** `@metacrdt/runtime` now defines
+  `DatalogQueryService` as the production Effect API contract for query/page/
+  aggregate/derived-row reads over a target's `EventStoreService`, with
+  `effect/Schema`-validated args, tagged errors in the Effect channel, stable
+  pagination, and an EventStore-backed Layer implementation. `@metacrdt/testkit`
+  routes query conformance through this service instead of a private helper.
 - **Materialized projection-store boundary started:** `@metacrdt/runtime` now
   defines `ProjectionStoreService`, `ProjectionRow`, `ProjectionStore`, and
   `projectionRowsFromLog`; memory/localStorage, Node memory/SQLite/Postgres,
@@ -9420,8 +9426,10 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   `@metacrdt/testkit` has opt-in
   `runRuntimeProjectionStoreConformance`, proving replace-from-fold, indexed
   scans, rebuild-style replacement, and clear over those Layers.
-- **Remaining keystone work:** conformance still does not cover a production
-  Datalog/query service API contract.
+- **Remaining keystone work:** query conformance now covers the production
+  EventStore-backed `DatalogQueryService` contract. It does not yet cover a
+  second, target-optimized/materialized query implementation; that should wait
+  until a target has a query engine beyond the shared EventStore-backed Layer.
 - **Zero Effect today (by current design):** `core`, `schema`, `query`, and the
   root Convex reference app stay pure/plain where appropriate. `runtime`,
   `testkit`, and Convex/Node/local/Cloudflare target packages now use Effect v3

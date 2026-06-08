@@ -9,10 +9,10 @@ transport exists.
 ## What Runtime Owns
 
 - **Effect service contracts** — `EventStoreService`, `RuntimeClockService`,
-  `ProjectionStoreService`, `RuntimeSequencerService`, `SchedulerService`,
-  `TransportService`, and `RuntimeProfileService` as `Context.Tag`s, with
-  `Layer` helpers for adapting target-provided
-  stores/projections/clocks/sequencers/schedulers/transports. This is the
+  `ProjectionStoreService`, `DatalogQueryService`, `RuntimeSequencerService`,
+  `SchedulerService`, `TransportService`, and `RuntimeProfileService` as
+  `Context.Tag`s, with `Layer` helpers for adapting target-provided
+  stores/projections/query engines/clocks/sequencers/schedulers/transports. This is the
   canonical runtime boundary (SPEC §1.2).
 - **Compatibility service shapes** — `EventStore`, `RuntimeClock`,
   `ProjectionStore`, `RuntimeSequencer`, `Scheduler`, `Transport`,
@@ -26,6 +26,11 @@ transport exists.
   into deterministic current projection rows using `@metacrdt/core` visibility
   and cardinality semantics. Targets own storage and indexing; runtime owns the
   shared row contract.
+- **Datalog query service** — `DatalogQueryService` exposes
+  Effect/Schema-validated `query`, `page`, `aggregate`, and `derivedRows`
+  operations over a target's `EventStoreService`, using the pure
+  `@metacrdt/query` planner and row helpers. The default Layer is
+  EventStore-backed; target-optimized providers should preserve this contract.
 - **Operation helpers** — Effect-native `applyOperationEffect`,
   `mergeFromEffect`, and `requireCapabilityEffect` over the service tags, plus
   compatibility `applyOperation`, `mergeFrom`, `requireCapability` wrappers over
@@ -59,6 +64,7 @@ transport exists.
 ## Dependencies
 
 - `@metacrdt/core`
+- `@metacrdt/query`
 - `effect` v3 (`^3.21.3`). Effect v4 is intentionally held until Confect ships a
   v4-compatible release.
 
@@ -70,6 +76,10 @@ exchange convergence and version-vector anti-entropy without committing to any
 durable storage or network. `ProjectionStoreService` starts the materialized
 read-model boundary: projection rows are still deterministic folds of the log,
 but target adapters can persist and index them behind a shared service.
+`DatalogQueryService` is the runtime query boundary for SPEC §6-style
+deterministic query/derivation helpers: target adapters provide event access,
+runtime owns the service contract, and `@metacrdt/query` owns pure planning and
+row semantics.
 
 ## Usage
 
@@ -101,13 +111,41 @@ const result = await Effect.runPromise(
 );
 ```
 
+```ts
+import { Effect, Layer } from "effect";
+import {
+  DatalogQueryService,
+  createMemoryRuntimeLayer,
+  datalogQueryLayer,
+} from "@metacrdt/runtime";
+
+const queryProgram = Effect.gen(function* () {
+  const datalog = yield* DatalogQueryService;
+  return yield* datalog.query({
+    where: [["?e", "worker.status", "active"]],
+    select: ["?e"],
+    coord: { txTime: 10_000, validTime: 10_000 },
+  });
+});
+
+const queryResult = await Effect.runPromise(
+  Effect.provide(
+    queryProgram,
+    Layer.provideMerge(
+      createMemoryRuntimeLayer({ replicaId: "node:example" }),
+    )(datalogQueryLayer()),
+  ),
+);
+```
+
 ## Status
 
 The Effect service/tag boundary plus memory and localStorage Layers are shipped.
-The memory and localStorage Layers now provide `ProjectionStoreService`.
-BroadcastChannel and p2p DataChannel compatibility paths are also shipped. Node,
-local, and Cloudflare target packages expose their own runtime Layers and
-projection stores, and the Convex component target exposes a component-owned
-`projectionRows` read model through `ProjectionStoreService`. `@metacrdt/testkit`
-conformance runs over layer-provided targets while compatibility
-`RuntimeServices` facades remain for older callers.
+The memory and localStorage Layers now provide `ProjectionStoreService`, and
+`datalogQueryLayer()` provides the default EventStore-backed
+`DatalogQueryService`. BroadcastChannel and p2p DataChannel compatibility paths
+are also shipped. Node, local, and Cloudflare target packages expose their own
+runtime Layers and projection stores, and the Convex component target exposes a
+component-owned `projectionRows` read model through `ProjectionStoreService`.
+`@metacrdt/testkit` conformance runs over Layer-provided targets while
+compatibility `RuntimeServices` facades remain for older callers.
