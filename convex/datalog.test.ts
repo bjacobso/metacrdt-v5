@@ -151,6 +151,78 @@ describe("computed predicates", () => {
   });
 });
 
+describe("result pagination", () => {
+  test("datalogPage pages deterministic projected rows with engine cursors", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    for (let i = 0; i < 5; i++) {
+      await assert(t, `paged:${i}`, "type", "PagedWorker");
+      await assert(t, `paged:${i}`, "rank", i);
+    }
+
+    const first = await t.query(api.datalog.datalogPage, {
+      where: [["?e", "type", "PagedWorker"]],
+      select: ["?e"],
+      paginationOpts: { numItems: 2, cursor: null },
+    });
+    expect(first.page).toHaveLength(2);
+    expect(first.isDone).toBe(false);
+    expect(first.continueCursor).toBe("2");
+
+    const second = await t.query(api.datalog.datalogPage, {
+      where: [["?e", "type", "PagedWorker"]],
+      select: ["?e"],
+      paginationOpts: { numItems: 2, cursor: first.continueCursor },
+    });
+    expect(second.page).toHaveLength(2);
+    expect(second.isDone).toBe(false);
+    expect(second.continueCursor).toBe("4");
+
+    const third = await t.query(api.datalog.datalogPage, {
+      where: [["?e", "type", "PagedWorker"]],
+      select: ["?e"],
+      paginationOpts: { numItems: 2, cursor: second.continueCursor },
+    });
+    expect(third.page).toHaveLength(1);
+    expect(third.isDone).toBe(true);
+    expect(third.continueCursor).toBeNull();
+
+    const all = [...first.page, ...second.page, ...third.page]
+      .map((row) => row.e)
+      .sort();
+    expect(all).toEqual([
+      "paged:0",
+      "paged:1",
+      "paged:2",
+      "paged:3",
+      "paged:4",
+    ]);
+  });
+
+  test("datalogPage validates cursors and caps page size", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    for (let i = 0; i < 150; i++) {
+      await assert(t, `cap:${i}`, "type", "CapWorker");
+    }
+
+    const page = await t.query(api.datalog.datalogPage, {
+      where: [["?e", "type", "CapWorker"]],
+      select: ["?e"],
+      paginationOpts: { numItems: 500, cursor: null },
+    });
+    expect(page.page).toHaveLength(100);
+    expect(page.isDone).toBe(false);
+    expect(page.continueCursor).toBe("100");
+
+    await expect(
+      t.query(api.datalog.datalogPage, {
+        where: [["?e", "type", "CapWorker"]],
+        select: ["?e"],
+        paginationOpts: { numItems: 10, cursor: "not-a-cursor" },
+      }),
+    ).rejects.toThrow(/invalid pagination cursor/);
+  });
+});
+
 describe("negation", () => {
   test("not-clause excludes bindings with a matching fact", async () => {
     const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });

@@ -8,6 +8,7 @@ export const LIMITS = {
   maxOrBranches: 8,
   maxIntermediateRows: 5_000,
   maxResultRows: 1_000,
+  maxPageSize: 100,
   maxClauseScan: 2_000,
   allowRecursion: false,
 } as const;
@@ -840,6 +841,43 @@ export function project(
     out.push(row);
   }
   return out;
+}
+
+export type ResultPage<T> = {
+  page: T[];
+  isDone: boolean;
+  continueCursor: string | null;
+};
+
+export function paginateRows<T>(
+  rows: T[],
+  opts: { numItems: number; cursor?: string | null },
+): ResultPage<T> {
+  if (!Number.isFinite(opts.numItems) || opts.numItems <= 0) {
+    throw new Error("paginationOpts.numItems must be a positive finite number");
+  }
+
+  const cursor =
+    opts.cursor === undefined || opts.cursor === null ? "" : String(opts.cursor);
+  const start = cursor === "" ? 0 : Number.parseInt(cursor, 10);
+  if (
+    !Number.isInteger(start) ||
+    start < 0 ||
+    (cursor !== "" && String(start) !== cursor)
+  ) {
+    throw new Error("invalid pagination cursor");
+  }
+
+  const size = Math.max(
+    1,
+    Math.min(Math.floor(opts.numItems), LIMITS.maxPageSize),
+  );
+  const end = Math.min(start + size, rows.length);
+  return {
+    page: rows.slice(start, end),
+    isDone: end >= rows.length,
+    continueCursor: end >= rows.length ? null : String(end),
+  };
 }
 
 // --- aggregation ------------------------------------------------------------

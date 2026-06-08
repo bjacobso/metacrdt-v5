@@ -166,6 +166,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   folds over already-bound variables. Arithmetic clauses can bind/check computed
   numbers; string clauses can normalize/measure text and run boolean predicates.
   Computed clauses preserve existing provenance and add no fact sources.
+- [x] **Datalog / aggregate result pagination** — `datalogPage` and
+  `aggregatePage` expose Convex-style `{ page, isDone, continueCursor }` results
+  over deterministic projected Datalog rows and aggregate group rows. Cursors are
+  engine offsets, not database cursors; `LIMITS.maxPageSize` caps oversized page
+  requests.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
@@ -294,6 +299,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — Datalog / aggregate result pagination
+- [x] **Goal 46 shipped:** `datalogPage` and `aggregatePage` return
+  Convex-style page objects over deterministic projected Datalog rows and
+  aggregate group rows.
+- [x] **Engine cursor semantics.** Cursors are decimal offsets over the solved
+  result array (`null` / `undefined` / `""` start at page one); invalid cursors
+  are rejected and page size is capped at `LIMITS.maxPageSize` (`100`).
+- [x] **Tests.** Focused Datalog/aggregate tests cover multi-page reads,
+  aggregate-group paging, invalid cursor rejection, and oversized page capping.
+  The APIs preserve the existing bounded solver, provenance, computed predicate,
+  disjunction, aggregation, and read-auth semantics.
 
 ### 2026-06-07 — Datalog computed arithmetic/string predicates
 - [x] **Goal 45 shipped:** Datalog clauses can now compute values from

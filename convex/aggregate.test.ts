@@ -90,4 +90,42 @@ describe("aggregation", () => {
     });
     expect(rows).toEqual([{ d: "eng", n: 2 }]);
   });
+
+  test("aggregatePage pages deterministic aggregate group rows", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await person(t, "p:1", "eng", 100);
+    await person(t, "p:2", "sales", 200);
+    await person(t, "p:3", "ops", 50);
+
+    const first = await t.query(api.datalog.aggregatePage, {
+      where: [
+        ["?e", "type", "Person"],
+        ["?e", "dept", "?d"],
+        ["?e", "salary", "?s"],
+      ],
+      groupBy: ["?d"],
+      aggregates: [{ op: "sum", var: "?s", as: "payroll" }],
+      paginationOpts: { numItems: 2, cursor: null },
+    });
+    expect(first.page).toHaveLength(2);
+    expect(first.isDone).toBe(false);
+
+    const second = await t.query(api.datalog.aggregatePage, {
+      where: [
+        ["?e", "type", "Person"],
+        ["?e", "dept", "?d"],
+        ["?e", "salary", "?s"],
+      ],
+      groupBy: ["?d"],
+      aggregates: [{ op: "sum", var: "?s", as: "payroll" }],
+      paginationOpts: { numItems: 2, cursor: first.continueCursor },
+    });
+    expect(second.page).toHaveLength(1);
+    expect(second.isDone).toBe(true);
+
+    const byDept = Object.fromEntries(
+      [...first.page, ...second.page].map((row) => [row.d, row.payroll]),
+    );
+    expect(byDept).toEqual({ eng: 100, sales: 200, ops: 50 });
+  });
 });

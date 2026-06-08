@@ -1,9 +1,11 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import {
   LIMITS,
   aggregateBindings,
   describeClauses,
+  paginateRows,
   project,
   runWhere,
 } from "./lib/engine";
@@ -67,6 +69,32 @@ export const datalog = query({
 });
 
 /**
+ * Paginated Datalog over projected result rows. This uses the same where/select
+ * semantics as `datalog`, but returns a Convex-style page object over the
+ * deterministic projected rows instead of requiring the whole result set in one
+ * response. The cursor is an engine cursor, not a database cursor.
+ */
+export const datalogPage = query({
+  args: {
+    where: whereValidator,
+    select: v.array(v.string()),
+    paginationOpts: paginationOptsValidator,
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const bindings = await runWhere(ctx, args.where, coord, {}, {
+      enforceReadAuth: true,
+    });
+    return paginateRows(project(bindings, args.select), args.paginationOpts);
+  },
+});
+
+/**
  * Aggregation over a Datalog body: solve the `where`, group by `groupBy`
  * variables, and compute aggregates per group.
  *
@@ -119,13 +147,51 @@ export const aggregate = query({
   },
 });
 
+/** Paginated variant of `aggregate` over the deterministic group rows. */
+export const aggregatePage = query({
+  args: {
+    where: whereValidator,
+    groupBy: v.optional(v.array(v.string())),
+    aggregates: v.array(
+      v.object({
+        op: v.union(
+          v.literal("count"),
+          v.literal("countDistinct"),
+          v.literal("sum"),
+          v.literal("avg"),
+          v.literal("min"),
+          v.literal("max"),
+        ),
+        var: v.optional(v.string()),
+        as: v.string(),
+      }),
+    ),
+    paginationOpts: paginationOptsValidator,
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const bindings = await runWhere(ctx, args.where, coord, {}, {
+      enforceReadAuth: true,
+    });
+    return paginateRows(
+      aggregateBindings(bindings, args.groupBy ?? [], args.aggregates),
+      args.paginationOpts,
+    );
+  },
+});
+
 /** Classify a query's clauses without running it. Join order is dynamic. */
 export const explainDatalog = query({
   args: { where: whereValidator },
   handler: async (ctx, args) => {
     return {
       limits: LIMITS,
-      note: "Pattern join order is chosen dynamically by selectivity at run time; filters/projections (compare/compute/not) run as soon as their input variables are bound.",
+      note: "Pattern join order is chosen dynamically by selectivity at run time; filters/projections (compare/compute/not) run as soon as their input variables are bound. datalogPage/aggregatePage page deterministic projected rows with engine cursors.",
       clauses: describeClauses(args.where),
     };
   },

@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 45 (Datalog computed arithmetic/string predicates)
+**Current goal:** Goal 46 (Datalog / aggregate result pagination)
 has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth, or
@@ -79,7 +79,7 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 122 tests at last verification.
+- Convex backend tests are green: 125 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -243,6 +243,15 @@ arguments.
     earlier bindings
   - `explainDatalog`, README examples, and the Data model Datalog console show
     the syntax
+- Datalog and aggregate result pagination exists:
+  - `datalogPage` returns a Convex-style page over deterministic projected
+    Datalog rows
+  - `aggregatePage` returns the same shape over deterministic aggregate group
+    rows
+  - both use `paginationOptsValidator`, engine cursors, and the shared
+    `LIMITS.maxPageSize` cap
+  - this is result pagination over the fully solved bounded query, not a
+    database cursor or incremental solver stream
 - Config history/diff exists:
   - `configHistory.currentManifest` reconstructs the current owned-artifact
     manifest from `config:default`
@@ -4492,6 +4501,102 @@ convex/datalog.test.ts
 
 ---
 
+## Goal 46 — Datalog / Aggregate Result Pagination
+
+**Status:** shipped in the Convex Datalog API.
+
+**Objective:** close the Query/Rules pagination backlog item by exposing
+Convex-style page APIs over deterministic Datalog result rows and aggregate group
+rows. This keeps large but bounded reads out of single-response paths while
+preserving the existing solver semantics.
+
+### Scope
+
+Engine:
+
+```text
+convex/lib/engine.ts
+  LIMITS.maxPageSize
+  paginateRows
+```
+
+API:
+
+```text
+convex/datalog.ts
+  datalogPage
+  aggregatePage
+```
+
+Tests:
+
+```text
+convex/datalog.test.ts
+convex/aggregate.test.ts
+```
+
+### Semantics
+
+- `datalogPage` runs the same bounded `where` solver as `datalog`, projects the
+  same `select` rows, then returns:
+  - `page`
+  - `isDone`
+  - `continueCursor`
+- `aggregatePage` runs the same bounded `where` solver as `aggregate`, computes
+  the same deterministic group rows, then returns the same page shape.
+- The cursor is an engine cursor over the projected result array, encoded as a
+  decimal offset string.
+- `null`, `undefined`, and `""` mean the first page.
+- Invalid cursors throw `invalid pagination cursor`.
+- `numItems` must be positive and finite.
+- Page size is capped by `LIMITS.maxPageSize` (`100`) regardless of caller input.
+- The original non-paginated `datalog` and `aggregate` APIs remain and still
+  enforce `LIMITS.maxResultRows`.
+
+### Non-Goals
+
+- Do not add recursive Datalog.
+- Do not add an incremental query solver.
+- Do not claim these cursors are stable across data changes; they are for a
+  deterministic projected row array at query time.
+- Do not replace database pagination for plain table/index reads.
+
+### Acceptance Criteria
+
+- Projected Datalog rows can be fetched across multiple pages.
+- Aggregate group rows can be fetched across multiple pages.
+- Continuation cursors are deterministic offsets.
+- Invalid cursors are rejected.
+- Oversized `numItems` requests are capped at `LIMITS.maxPageSize`.
+- Existing Datalog, aggregate, computed predicate, disjunction, provenance, and
+  read-auth behavior remain unchanged.
+
+### Verification
+
+- `npx vitest run convex/datalog.test.ts convex/aggregate.test.ts` passed
+  (24 focused tests).
+- Full gate passed:
+  - `npm run test:core` passed (46 tests).
+  - `npm run test:convex-package` passed.
+  - `npm test` passed (17 backend test files, 125 tests).
+  - `npm run test:runtime` passed.
+  - `npm run test:local` passed.
+  - `npm run test:cloudflare` passed.
+  - `npm run test:forma` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+- Deployed with `npx convex dev --once` and
+  `npx @convex-dev/static-hosting upload`.
+- Live smoke passed:
+  - `curl -I https://chatty-hare-94.convex.site` returned `HTTP/2 200`.
+  - `npx convex run datalog:datalogPage ...` returned a first page over Worker
+    rows.
+  - `npx convex run datalog:aggregatePage ...` returned an aggregate page.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -4547,7 +4652,8 @@ These remain valuable, but they should not interrupt the current goal.
 
 ### Query / Rules
 
-- [ ] Engine-level result pagination / streaming.
+- [x] Engine-level result pagination / streaming (cursor page APIs shipped;
+  no separate incremental solver stream yet).
 - [x] Computed predicates: arithmetic, string ops.
 - [x] Disjunction.
 - [ ] Cross-entity rule incremental recompute.
