@@ -1,5 +1,5 @@
 import { query } from "./_generated/server";
-import { Doc } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { fromEvents, visibleAsserts, type Event } from "@metacrdt/core";
@@ -141,6 +141,78 @@ const eventLogTripleSource: TripleSource = async (
   return out;
 };
 
+async function derivedTriplesForInput(
+  ctx: Parameters<TripleSource>[0],
+  input: PatternInput,
+): Promise<Doc<"derivedFacts">[]> {
+  const { eConst, aConst, vConst, vIsConst } = input;
+  const n = LIMITS.maxClauseScan;
+  if (eConst !== undefined && aConst !== undefined) {
+    return await ctx.db
+      .query("derivedFacts")
+      .withIndex("by_e_a", (q) =>
+        q.eq("e", String(eConst)).eq("a", String(aConst)),
+      )
+      .take(n);
+  }
+  if (aConst !== undefined && vIsConst) {
+    return await ctx.db
+      .query("derivedFacts")
+      .withIndex("by_a_v", (q) => q.eq("a", String(aConst)).eq("v", vConst))
+      .take(n);
+  }
+  if (aConst !== undefined) {
+    return await ctx.db
+      .query("derivedFacts")
+      .withIndex("by_a", (q) => q.eq("a", String(aConst)))
+      .take(n);
+  }
+  if (eConst !== undefined) {
+    return await ctx.db
+      .query("derivedFacts")
+      .withIndex("by_e", (q) => q.eq("e", String(eConst)))
+      .take(n);
+  }
+  throw new Error(
+    "unbounded clause: each pattern must resolve its entity or attribute to a constant (directly or via an earlier join)",
+  );
+}
+
+const eventLogBaseWithDerivedTripleSource: TripleSource = async (
+  ctx,
+  input,
+  coord,
+  readFilter,
+) => {
+  const base = await eventLogTripleSource(ctx, input, coord, readFilter);
+  const derivedRows = await derivedTriplesForInput(ctx, input);
+  const derived: Triple[] = [];
+  for (const row of derivedRows) {
+    if (row.stale === true) continue;
+    if (row.validFrom > coord.validTime) continue;
+    if (row.validTo !== undefined && row.validTo <= coord.validTime) continue;
+    if (
+      input.vIsConst &&
+      valueKey(row.v) !== valueKey(input.vConst)
+    ) {
+      continue;
+    }
+    if (
+      readFilter !== null &&
+      !(await canReadAttribute(ctx, readFilter.principal, row.e, row.a))
+    ) {
+      continue;
+    }
+    derived.push({
+      e: row.e,
+      a: row.a,
+      v: row.v,
+      prov: row.sourceFactIds as Id<"facts">[],
+    });
+  }
+  return [...base, ...derived];
+};
+
 /**
  * Bounded, non-recursive Datalog over facts ∪ materialized derived facts.
  * Supports fact patterns, comparison predicates (>, <, >=, <=, ==, !=),
@@ -215,6 +287,39 @@ export const datalogFromEventLog = query({
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
       source: eventLogTripleSource,
+    });
+    const rows = project(bindings, args.select);
+    if (rows.length > LIMITS.maxResultRows) {
+      throw new Error(
+        `query produced ${rows.length} rows, exceeding maxResultRows=${LIMITS.maxResultRows}`,
+      );
+    }
+    return rows;
+  },
+});
+
+/**
+ * Bounded Datalog over base facts folded from protocol `factEvents` plus the
+ * existing materialized `derivedFacts` projection. This is the next proof step
+ * after `datalogFromEventLog`: base facts no longer read the `facts` projection,
+ * while derived facts remain projection-backed until rule/materialization folds
+ * move over.
+ */
+export const datalogFromEventLogWithDerived = query({
+  args: {
+    where: whereValidator,
+    select: v.array(v.string()),
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const bindings = await runWhere(ctx, args.where, coord, {}, {
+      enforceReadAuth: true,
+      source: eventLogBaseWithDerivedTripleSource,
     });
     const rows = project(bindings, args.select);
     if (rows.length > LIMITS.maxResultRows) {

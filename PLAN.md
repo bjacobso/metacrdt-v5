@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 53 (event-log Datalog page/aggregate proof APIs)
+**Current goal:** Goal 54 (event-log base + derived Datalog proof query)
 has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth, or
@@ -94,7 +94,11 @@ arguments.
 - `api.datalog.datalogPageFromEventLog`, `aggregateFromEventLog`, and
   `aggregatePageFromEventLog` extend the same event-log triple source to paged
   projected rows and aggregate group rows for base facts.
-- Convex backend tests are green: 137 tests at last verification.
+- `api.datalog.datalogFromEventLogWithDerived` joins base facts folded from
+  protocol-shaped `factEvents` with the existing materialized `derivedFacts`
+  projection, proving production-style base+derived Datalog can drop the base
+  `facts` projection first.
+- Convex backend tests are green: 139 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -380,6 +384,8 @@ arguments.
 - `datalogFromEventLog` is bounded and base-fact-only in this slice; production
   Datalog/rules still include materialized `derivedFacts` through the projection
   path.
+- `datalogFromEventLogWithDerived` still depends on materialized `derivedFacts`;
+  rule/materialization output has not become a direct event-log fold.
 - `@metacrdt/convex` now has adapter helpers, stateless protocol helpers, a
   component-owned protocol transaction/event log, and component-owned
   `facts`/`currentFacts` projections with opt-in cardinality-one reconciliation
@@ -5223,6 +5229,81 @@ TODO.md
   - `npm test` passed (17 backend test files, 137 tests).
   - `npm run test:convex-package` passed (33 tests).
   - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+
+---
+
+## Goal 54 — Event-Log Base + Derived Datalog Proof Query
+
+**Status:** shipped as a bounded proof/read-model query in the Convex reference
+runtime.
+
+**Objective:** move the event-log Datalog proof surface closer to production
+Datalog by joining source-log base facts with the existing materialized
+`derivedFacts` projection. This proves production-style base+derived Datalog can
+stop reading the base `facts` projection before rules/materialization themselves
+are rewritten.
+
+### Scope
+
+Backend:
+
+- `convex/datalog.ts`
+  - `datalogFromEventLogWithDerived`
+
+Tests:
+
+- `convex/datalog.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+
+### Semantics
+
+- `datalogFromEventLogWithDerived` reuses the normal Datalog solver through the
+  injected `TripleSource`.
+- Base facts come from protocol-shaped `factEvents`, reconstructed through
+  `@metacrdt/convex` and folded with `@metacrdt/core.visibleAsserts`.
+- Derived facts come from existing `derivedFacts`, filtered for stale/valid-time
+  and read authorization.
+- It is bounded by existing `LIMITS.maxClauseScan` / `maxResultRows`.
+- It intentionally composes source-log base facts with projection-backed derived
+  facts; it does not make rule materialization itself projection-free.
+
+### Non-Goals
+
+- Do not replace production `datalog`.
+- Do not move rule materialization to direct event-log folds yet.
+- Do not include event-log-derived provenance rewrites for `derivedFacts`;
+  existing `sourceFactIds` remain fact-row ids.
+- Do not add page/aggregate variants for this mixed source in this slice.
+
+### Acceptance Criteria
+
+- For normal rule materialization, production `datalog` and
+  `datalogFromEventLogWithDerived` agree for a query joining base and derived
+  facts.
+- If the base `facts` projection is corrupted, production `datalog` fails to join
+  while `datalogFromEventLogWithDerived` still joins base facts from `factEvents`
+  with materialized derived facts.
+- Base-only `datalogFromEventLog` still excludes `derivedFacts`.
+- Convex typecheck and focused Datalog tests pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/datalog.test.ts` passed (29 tests).
+- Broader gate passed:
+  - `npm test` passed (17 backend test files, 139 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
   - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
   - `npx tsc --noEmit -p tsconfig.json` passed.
   - `npm run build` passed.

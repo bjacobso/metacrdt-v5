@@ -94,6 +94,84 @@ describe("comparison predicates", () => {
     ]);
   });
 
+  test("event-log base plus derived Datalog matches production Datalog", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await t.mutation(api.rules.defineRule, {
+        name: "event_log_derived_ready",
+        where: [
+          ["?e", "type", "EventLogDerivedWorker"],
+          ["?e", "status", "active"],
+        ],
+        emit: { e: "?e", a: "derived.ready", v: true },
+        dependsOnAttributes: ["type", "status"],
+      });
+      await assert(t, "el:derived:1", "type", "EventLogDerivedWorker");
+      await assert(t, "el:derived:1", "status", "active");
+      await flush(t);
+
+      const args = {
+        where: [
+          ["?e", "type", "EventLogDerivedWorker"],
+          ["?e", "derived.ready", true],
+        ],
+        select: ["?e"],
+      };
+
+      expect(await t.query(api.datalog.datalog, args)).toEqual([
+        { e: "el:derived:1" },
+      ]);
+      expect(await t.query(api.datalog.datalogFromEventLogWithDerived, args))
+        .toEqual([{ e: "el:derived:1" }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("event-log base plus derived Datalog survives corrupted base facts", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await t.mutation(api.rules.defineRule, {
+        name: "event_log_derived_flag",
+        where: [
+          ["?e", "type", "EventLogDerivedOnly"],
+          ["?e", "status", "active"],
+        ],
+        emit: { e: "?e", a: "derived.flag", v: "ok" },
+        dependsOnAttributes: ["type", "status"],
+      });
+      await assert(t, "el:derived-only", "type", "EventLogDerivedOnly");
+      await assert(t, "el:derived-only", "status", "active");
+      await flush(t);
+
+      await t.run(async (ctx) => {
+        const rows = await ctx.db
+          .query("facts")
+          .withIndex("by_e", (q) => q.eq("e", "el:derived-only"))
+          .collect();
+        for (const row of rows) await ctx.db.patch(row._id, { retractedAt: Date.now() });
+      });
+
+      const args = {
+        where: [
+          ["?e", "type", "EventLogDerivedOnly"],
+          ["?e", "derived.flag", "ok"],
+        ],
+        select: ["?e"],
+      };
+
+      expect(await t.query(api.datalog.datalog, args)).toEqual([]);
+      expect(await t.query(api.datalog.datalogFromEventLogWithDerived, args))
+        .toEqual([{ e: "el:derived-only" }]);
+      // Base-only event-log Datalog intentionally excludes derivedFacts.
+      expect(await t.query(api.datalog.datalogFromEventLog, args)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("== and != operate on values", async () => {
     const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await assert(t, "p:1", "role", "admin");

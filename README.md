@@ -183,8 +183,9 @@ Built today:
   projections
 - event-log-backed Datalog proof queries (`api.datalog.datalogFromEventLog`,
   `datalogPageFromEventLog`, `aggregateFromEventLog`,
-  `aggregatePageFromEventLog`) via an injected triple source over
-  protocol-shaped `factEvents`
+  `aggregatePageFromEventLog`, `datalogFromEventLogWithDerived`) via injected
+  triple sources over protocol-shaped `factEvents`, including a mixed proof source
+  that joins event-log base facts with materialized `derivedFacts`
 - Datalog query engine with joins, comparisons, computed arithmetic/string
   predicates, negation, aggregation, cursor-paged result APIs, and materialized
   transitive closure

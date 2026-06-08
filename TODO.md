@@ -62,9 +62,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `api.facts.queryFactsFromEventLog` answers bounded bitemporal point queries
   directly from protocol-shaped `factEvents`. `api.datalog.datalogFromEventLog`
   now reuses the Datalog solver with an injected event-log source for base facts,
-  and the event-log proof surface includes paged Datalog and aggregate variants.
+  the event-log proof surface includes paged Datalog and aggregate variants, and
+  `api.datalog.datalogFromEventLogWithDerived` now joins event-log base facts with
+  materialized `derivedFacts`.
   Remaining: continue toward retiring the hand-maintained `facts` projection for
-  rules/materialization and derived Datalog reads.
+  rule/materialization output and derived provenance.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -322,6 +324,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 54 shipped:** `api.datalog.datalogFromEventLogWithDerived` composes
+  the event-log base fact source with projected `derivedFacts`, so proof Datalog
+  can join source-log base facts with materialized rule output.
+- [x] **Boundary stays honest.** Derived facts are still projection-backed and keep
+  `sourceFactIds`; this does not move rule materialization itself onto direct
+  event-log folds.
+- [x] **Mixed-source corruption proof.** Tests prove production Datalog and
+  mixed-source Datalog agree normally, then corrupt base `facts` and show only the
+  mixed event-log+derived source still joins.
 - [x] **Goal 53 shipped:** `api.datalog.datalogPageFromEventLog`,
   `aggregateFromEventLog`, and `aggregatePageFromEventLog` extend the Goal 52
   event-log Datalog source to cursor-paged result rows and aggregate group rows.
