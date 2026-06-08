@@ -1,9 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 26 (`@metacrdt/convex` component-owned projection rebuild)
-has shipped. The next active goal should be chosen from the remaining TODO
-candidates: full app write authorization, live Cloudflare deployment/auth, or
-migrating more of the reference runtime onto component-owned state.
+**Current goal:** Goal 27 (`@metacrdt/convex` component-owned entity read
+surface) has shipped. The next active goal should be chosen from the remaining
+TODO candidates: full app write authorization, live Cloudflare deployment/auth,
+or migrating more of the reference runtime onto component-owned state.
 
 This plan is the operational goal file. Read it with:
 
@@ -78,7 +78,7 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 91 tests at last verification.
+- Convex backend tests are green: 93 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -104,17 +104,20 @@ arguments.
     using the shared `≺` order and protocol retract events for losers
   - component-owned projection rebuild via `log.rebuildProjections`, replaying
     component-owned `factEvents` into disposable `facts` / `currentFacts`
+  - component-owned entity current-state reads via `log.getCurrentEntity`,
+    grouping current facts by attribute over the component projection
   - a reference-app wrapper, `api.metacrdtComponent.verifyEvents`, that mounts
     the component as `components.metacrdt` while keeping table ownership and
     public API naming in the host app
   - reference-app wrappers for app-auth-derived writes into the component-owned
-    protocol log, current projection reads, and rebuild
+    protocol log, current projection/entity reads, and rebuild
   - an explicit Confect sidecar warning/helper documenting the manual-mount
     lesson from Goal 2
   - package-local tests for deterministic event reconstruction, legacy fallback
     behavior, registered component functions, component-owned log writes,
-    component-owned current projection lifecycle, and component-owned
-    cardinality-one reconciliation, plus event-log projection rebuild
+    component-owned current projection lifecycle, component-owned entity reads,
+    and component-owned cardinality-one reconciliation, plus event-log projection
+    rebuild
 - `@metacrdt/forma` exists in [`packages/forma`](./packages/forma):
   - runtime-neutral Lisp / S-expression authoring language
   - parser, formatter, evaluator, VM, type inference, and language-owned
@@ -2418,6 +2421,63 @@ convex/metacrdtComponent.ts
 
 ---
 
+## Goal 27 — `@metacrdt/convex` Component-Owned Entity Read Surface
+
+**Status:** shipped as the first object-level component read API.
+
+**Objective:** make component-owned state useful as application state, not only
+as event/current-row plumbing. The component already owns `currentFacts`; this
+goal adds a bounded object-level read that groups an entity's current component
+facts by attribute and exposes it through the host app wrapper.
+
+### Scope
+
+Package changes:
+
+```text
+packages/convex/src/component/log.ts
+  getCurrentEntity({ e, limit? })
+```
+
+Reference app changes:
+
+```text
+convex/metacrdtComponent.ts
+  getOwnedCurrentEntity({ e, limit? })
+```
+
+### Acceptance Criteria
+
+- `log.getCurrentEntity`:
+  - reads component-owned `currentFacts` by `e` using the existing `by_e` index;
+  - returns `null` when no current component state exists for the entity;
+  - resolves each current row to its underlying `facts` projection summary;
+  - groups facts by attribute in deterministic attribute-name order;
+  - keeps the raw current fact summaries available for audit/detail views.
+- The app wrapper exposes this as `api.metacrdtComponent.getOwnedCurrentEntity`
+  instead of exposing the component function directly.
+- Tests prove:
+  - grouped attributes include current values from multiple component-owned facts;
+  - retracted facts are absent from the current entity;
+  - a missing component-owned entity returns `null`;
+  - the mounted app wrapper can read the grouped entity state.
+
+### Non-Goals
+
+- Do not migrate the production reference app entity UI to component-owned state
+  yet.
+- Do not add component-owned Datalog/rule/materialized projections in this slice.
+- Do not add broad unbounded entity scans. This is an indexed single-entity read.
+
+### Verification
+
+- `npm run test:convex-package` passed (30 tests).
+- `npx vitest run convex/metacrdtComponent.test.ts` passed (7 tests).
+- Convex package typecheck passed.
+- App Convex typecheck passed.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -2448,6 +2508,7 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] First projection-owning `@metacrdt/convex` component slice.
 - [x] Opt-in component-owned cardinality-one projection semantics.
 - [x] Component-owned projection rebuild from the component protocol log.
+- [x] Component-owned entity current-state read surface.
 - [ ] Migrate more reference runtime business logic onto component-owned state.
 
 ### Auth / Privacy

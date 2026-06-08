@@ -119,6 +119,44 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     ]);
   });
 
+  test("reads component-owned current entity through app wrapper", async () => {
+    const t = convexTest(schema, modules);
+    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+
+    await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
+      e: "component-entity:worker",
+      a: "worker.status",
+      value: "active",
+    });
+    await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
+      e: "component-entity:worker",
+      a: "worker.role",
+      value: "driver",
+    });
+
+    const entity = await t.query(api.metacrdtComponent.getOwnedCurrentEntity, {
+      e: "component-entity:worker",
+    });
+    expect(entity).toMatchObject({
+      e: "component-entity:worker",
+      attributes: [
+        expect.objectContaining({ a: "worker.role", values: ["driver"] }),
+        expect.objectContaining({ a: "worker.status", values: ["active"] }),
+      ],
+    });
+  });
+
+  test("component-owned missing current entity returns null", async () => {
+    const t = convexTest(schema, modules);
+    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+
+    expect(
+      await t.query(api.metacrdtComponent.getOwnedCurrentEntity, {
+        e: "component-entity:missing",
+      }),
+    ).toBeNull();
+  });
+
   test("passes component-owned cardinality-one writes through app wrapper", async () => {
     const t = convexTest(schema, modules);
     t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);

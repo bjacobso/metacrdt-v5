@@ -89,6 +89,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   replays the component-owned append-only `factEvents` log into fresh projections.
   Lifecycle linkage is by protocol `targetEventId`; event-row `factId` remains
   projection convenience and is not rewritten during rebuild.
+- [x] **`@metacrdt/convex` component-owned entity reads** —
+  `log.getCurrentEntity` and `api.metacrdtComponent.getOwnedCurrentEntity` group
+  component-owned current facts by attribute for a single entity. This is the
+  first object-level read API over component-owned state.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
@@ -268,6 +272,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Tests prove cardinality-one and tombstone/untombstone/retract lifecycle
   state survive rebuild; mounted app wrapper test proves the host can rebuild and
   still read the current winner.
+
+### 2026-06-07 — @metacrdt/convex component-owned entity reads
+- [x] **Added the first object-level read over component-owned state.**
+  `log.getCurrentEntity({ e })` reads `currentFacts` by indexed entity, resolves
+  projection summaries, and groups them into deterministic attribute buckets.
+- [x] **Host wrapper shipped.** `api.metacrdtComponent.getOwnedCurrentEntity`
+  exposes the grouped entity read through the reference app boundary.
+- [x] Tests prove grouped multi-attribute reads, retracted-current exclusion,
+  missing-entity `null`, and mounted app wrapper behavior.
 
 ### 2026-06-07 — @metacrdt/runtime p2p DataChannel transport
 - [x] **Added structural p2p transport.** `packages/runtime/src/p2p.ts` defines

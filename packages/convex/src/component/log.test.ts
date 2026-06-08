@@ -10,6 +10,7 @@ const componentInternal = internal as unknown as {
     getEvent: any;
     listEvents: any;
     listCurrent: any;
+    getCurrentEntity: any;
     rebuildProjections: any;
   };
 };
@@ -175,6 +176,62 @@ describe("@metacrdt/convex component-owned protocol log", () => {
         a: "worker.status",
       }),
     ).toEqual([]);
+  });
+
+  test("reads a component-owned current entity grouped by attribute", async () => {
+    const t = initComponentTest();
+    await t.mutation(componentInternal.log.appendAssert, {
+      ...actor,
+      e: "worker:entity",
+      a: "worker.status",
+      v: "active",
+      validFrom: 9_000,
+    });
+    await t.mutation(componentInternal.log.appendAssert, {
+      ...actor,
+      e: "worker:entity",
+      a: "worker.role",
+      v: "driver",
+      validFrom: 9_000,
+    });
+    const stale = await t.mutation(componentInternal.log.appendAssert, {
+      ...actor,
+      e: "worker:entity",
+      a: "worker.region",
+      v: "west",
+      validFrom: 9_000,
+    });
+    await t.mutation(componentInternal.log.appendLifecycle, {
+      ...actor,
+      txTime: 11_000,
+      kind: "retract",
+      targetEventId: stale.eventId,
+      e: "worker:entity",
+      a: "worker.region",
+      v: "west",
+      reason: "not current",
+    });
+
+    const entity = await t.query(componentInternal.log.getCurrentEntity, {
+      e: "worker:entity",
+    });
+    expect(entity).toMatchObject({
+      e: "worker:entity",
+      facts: expect.arrayContaining([
+        expect.objectContaining({ a: "worker.status", v: "active" }),
+        expect.objectContaining({ a: "worker.role", v: "driver" }),
+      ]),
+      attributes: [
+        expect.objectContaining({ a: "worker.role", values: ["driver"] }),
+        expect.objectContaining({ a: "worker.status", values: ["active"] }),
+      ],
+    });
+    expect(
+      entity?.facts.some(
+        (fact: { a: string; v: unknown }) =>
+          fact.a === "worker.region" && fact.v === "west",
+      ),
+    ).toBe(false);
   });
 
   test("cardinality-one assertions reconcile current state by protocol order", async () => {

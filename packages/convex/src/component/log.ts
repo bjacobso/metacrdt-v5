@@ -1,5 +1,10 @@
 import { v } from "convex/values";
-import { mutation, query, type MutationCtx } from "./_generated/server.js";
+import {
+  mutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server.js";
 import type { Doc, Id } from "./_generated/dataModel.js";
 import {
   buildAssertFactEvent,
@@ -79,6 +84,18 @@ const currentFactValidator = v.object({
   txTime: v.number(),
   updatedAt: v.number(),
   assertEventId: v.string(),
+});
+
+const currentAttributeValidator = v.object({
+  a: v.string(),
+  values: v.array(v.any()),
+  facts: v.array(currentFactValidator),
+});
+
+const currentEntityValidator = v.object({
+  e: v.string(),
+  facts: v.array(currentFactValidator),
+  attributes: v.array(currentAttributeValidator),
 });
 
 const rebuildResultValidator = v.object({
@@ -312,6 +329,38 @@ function currentFactSummary(
     assertEventId: fact.assertEventId,
     ...(fact.validTo === undefined ? {} : { validTo: fact.validTo }),
   };
+}
+
+async function summarizeCurrentRows(
+  ctx: MutationCtx | QueryCtx,
+  rows: Doc<"currentFacts">[],
+): Promise<(typeof currentFactValidator.type)[]> {
+  const out = [];
+  for (const row of rows) {
+    const fact = await ctx.db.get(row.factId);
+    if (fact !== null) out.push(currentFactSummary(row, fact));
+  }
+  return out;
+}
+
+function groupCurrentEntity(
+  e: string,
+  facts: (typeof currentFactValidator.type)[],
+): typeof currentEntityValidator.type {
+  const byAttr = new Map<string, (typeof currentFactValidator.type)[]>();
+  for (const fact of facts) {
+    const attrFacts = byAttr.get(fact.a) ?? [];
+    attrFacts.push(fact);
+    byAttr.set(fact.a, attrFacts);
+  }
+  const attributes = [...byAttr.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([a, attrFacts]) => ({
+      a,
+      values: attrFacts.map((fact) => fact.v),
+      facts: attrFacts,
+    }));
+  return { e, facts, attributes };
 }
 
 async function createTransaction(
@@ -689,5 +738,25 @@ export const listCurrent = query({
       if (fact !== null) out.push(currentFactSummary(row, fact));
     }
     return out;
+  },
+});
+
+export const getCurrentEntity = query({
+  args: {
+    e: v.string(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.union(currentEntityValidator, v.null()),
+  handler: async (ctx, args) => {
+    const take = Math.max(1, Math.min(args.limit ?? 200, 500));
+    const rows = await ctx.db
+      .query("currentFacts")
+      .withIndex("by_e", (q) => q.eq("e", args.e))
+      .order("asc")
+      .take(take);
+    if (rows.length === 0) return null;
+    const facts = await summarizeCurrentRows(ctx, rows);
+    if (facts.length === 0) return null;
+    return groupCurrentEntity(args.e, facts);
   },
 });

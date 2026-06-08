@@ -98,6 +98,18 @@ const ownedCurrentFactValidator = v.object({
   assertEventId: v.string(),
 });
 
+const ownedCurrentAttributeValidator = v.object({
+  a: v.string(),
+  values: v.array(v.any()),
+  facts: v.array(ownedCurrentFactValidator),
+});
+
+const ownedCurrentEntityValidator = v.object({
+  e: v.string(),
+  facts: v.array(ownedCurrentFactValidator),
+  attributes: v.array(ownedCurrentAttributeValidator),
+});
+
 const rebuildOwnedResultValidator = v.object({
   events: v.number(),
   facts: v.number(),
@@ -302,6 +314,19 @@ export const listOwnedCurrent = query({
   handler: async (ctx, args) =>
     await ctx.runQuery(
       components.metacrdt.log.listCurrent,
+      withoutUndefined(args),
+    ),
+});
+
+export const getOwnedCurrentEntity = query({
+  args: {
+    e: v.string(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.union(ownedCurrentEntityValidator, v.null()),
+  handler: async (ctx, args) =>
+    await ctx.runQuery(
+      components.metacrdt.log.getCurrentEntity,
       withoutUndefined(args),
     ),
 });

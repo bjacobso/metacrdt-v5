@@ -72,6 +72,43 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         { eventId: string; factId?: string; rowId: string; txId: string },
         Name
       >;
+      getCurrentEntity: FunctionReference<
+        "query",
+        "internal",
+        { e: string; limit?: number },
+        {
+          attributes: Array<{
+            a: string;
+            facts: Array<{
+              a: string;
+              assertEventId: string;
+              assertedAt: number;
+              e: string;
+              factId: string;
+              txTime: number;
+              updatedAt: number;
+              v: any;
+              validFrom: number;
+              validTo?: number;
+            }>;
+            values: Array<any>;
+          }>;
+          e: string;
+          facts: Array<{
+            a: string;
+            assertEventId: string;
+            assertedAt: number;
+            e: string;
+            factId: string;
+            txTime: number;
+            updatedAt: number;
+            v: any;
+            validFrom: number;
+            validTo?: number;
+          }>;
+        } | null,
+        Name
+      >;
       getEvent: FunctionReference<
         "query",
         "internal",
