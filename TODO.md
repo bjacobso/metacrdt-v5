@@ -102,6 +102,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   host `flowRuns`. Materialized derived rows now carry protocol
   `sourceEventIds` alongside compatibility `sourceFactIds`, and
   `explainDerived` resolves event ids first for protocol-backed explanations.
+  The Confect `metacrdt` sidecar now also exposes
+  `api.metacrdtConfect.explainDerived` as a typed protocol-inspection wrapper
+  over those event-backed derived explanations.
   User-facing compliance obligation reads (`workerCompliance`,
   `entityDetail.obligations`, Overview required/open counts, and
   `flows.issueAllOpen`) now derive enabled `require.*` / `task.*` rule output
@@ -368,6 +371,16 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 77 shipped:** Confect sidecar now wraps derived provenance.
+  `confect/tables/DerivedFacts.ts` adds the sidecar table shape;
+  `confect/metacrdt.spec.ts` adds `metacrdt.explainDerived` with typed
+  `DerivedExplanation` returns and `UnknownDerivedFact` /
+  `InvalidProtocolEvent` errors; `confect/metacrdt.impl.ts` resolves
+  `sourceEventIds` through `factEvents.by_eventId`.
+- [x] **Confect provenance tests.** `convex/confect.test.ts` proves
+  `api.metacrdtConfect.explainDerived` returns event-id-backed "because" rows and
+  surfaces typed missing-derived errors. This keeps Confect in the
+  read/planning/protocol-inspection lane, not the write path.
 - [x] **Goal 76 shipped:** `api.rules.explainDerived` now resolves
   `derivedFacts.sourceEventIds` through `factEvents.by_eventId` before falling
   back to compatibility `sourceFactIds` for legacy rows. The public "because"

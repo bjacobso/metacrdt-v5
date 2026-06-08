@@ -5,3 +5,4 @@ import registeredFunctions from "../confect/_generated/registeredFunctions";
 // `convex/` tree. This one export proves the generated Effect/Confect function
 // can deploy beside the existing plain Convex backend.
 export const verifyEvents = registeredFunctions.metacrdt.verifyEvents;
+export const explainDerived = registeredFunctions.metacrdt.explainDerived;

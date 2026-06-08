@@ -179,6 +179,38 @@ What became clearer:
 
 ---
 
+## Goal 77 result — Confect as a derived-provenance sidecar
+
+Implemented:
+
+- `confect/tables/DerivedFacts.ts` adds the materialized derived-row table shape
+  to the sidecar schema, including optional `sourceEventIds`.
+- `confect/metacrdt.spec.ts` extends the existing `metacrdt` group with
+  `explainDerived`, a typed public query returning `DerivedExplanation[]` and
+  typed errors `UnknownDerivedFact` / `InvalidProtocolEvent`.
+- `confect/metacrdt.impl.ts` implements the query as an Effect program over
+  generated `DatabaseReader` services:
+  - read current non-stale `derivedFacts` rows for an entity / optional
+    attribute;
+  - require protocol `sourceEventIds`;
+  - resolve each source event through `factEvents.by_eventId`;
+  - join transaction actor/reason/time for the "because" list;
+  - fail typed if the row lacks event provenance or a source event is missing.
+- `convex/metacrdtConfect.ts` manually mounts
+  `registeredFunctions.metacrdt.explainDerived` beside `verifyEvents`.
+- `convex/confect.test.ts` proves the happy path and `UnknownDerivedFact` error.
+
+Decision:
+
+- This reinforces the same narrow adoption line: Confect is useful for
+  protocol-inspection/read-planning surfaces with shaped returns and typed
+  errors.
+- It still should **not** own protocol writes or the whole `convex/` tree.
+- Exact optional fields remain a real gotcha: Effect Schema requires optional
+  fields to be omitted, not returned as `undefined`.
+
+---
+
 ## The thesis
 
 Confect's premise is that Effect can run in the Convex V8 isolate. If true, three

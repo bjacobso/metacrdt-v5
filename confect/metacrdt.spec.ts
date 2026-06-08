@@ -16,6 +16,14 @@ export class InvalidProtocolEvent extends Schema.TaggedError<InvalidProtocolEven
   },
 ) {}
 
+export class UnknownDerivedFact extends Schema.TaggedError<UnknownDerivedFact>()(
+  "UnknownDerivedFact",
+  {
+    e: Schema.String,
+    a: Schema.optionalWith(Schema.String, { exact: true }),
+  },
+) {}
+
 export const ProtocolEventSummary = Schema.Struct({
   eventId: Schema.optionalWith(Schema.String, { exact: true }),
   kind: FactEventKind,
@@ -36,16 +44,48 @@ export const ProtocolEventSummary = Schema.Struct({
   reason: Schema.optionalWith(Schema.String, { exact: true }),
 });
 
-export const metacrdt = GroupSpec.make("metacrdt").addFunction(
-  FunctionSpec.publicQuery({
-    name: "verifyEvents",
-    args: Schema.Struct({
-      e: Schema.String,
-      a: Schema.optionalWith(Schema.String, { exact: true }),
-      limit: Schema.optionalWith(Schema.Number, { exact: true }),
-      requireValid: Schema.optionalWith(Schema.Boolean, { exact: true }),
+export const DerivedBecause = Schema.Struct({
+  eventId: Schema.optionalWith(Schema.String, { exact: true }),
+  factId: Schema.optionalWith(Schema.String, { exact: true }),
+  e: Schema.String,
+  a: Schema.String,
+  v: Schema.Any,
+  assertedAt: Schema.Number,
+  actor: Schema.optionalWith(Schema.String, { exact: true }),
+  reason: Schema.optionalWith(Schema.String, { exact: true }),
+  txTime: Schema.optionalWith(Schema.Number, { exact: true }),
+});
+
+export const DerivedExplanation = Schema.Struct({
+  e: Schema.String,
+  a: Schema.String,
+  v: Schema.Any,
+  derivedAt: Schema.Number,
+  because: Schema.Array(DerivedBecause),
+});
+
+export const metacrdt = GroupSpec.make("metacrdt")
+  .addFunction(
+    FunctionSpec.publicQuery({
+      name: "verifyEvents",
+      args: Schema.Struct({
+        e: Schema.String,
+        a: Schema.optionalWith(Schema.String, { exact: true }),
+        limit: Schema.optionalWith(Schema.Number, { exact: true }),
+        requireValid: Schema.optionalWith(Schema.Boolean, { exact: true }),
+      }),
+      returns: Schema.Array(ProtocolEventSummary),
+      error: Schema.Union(UnknownEntity, InvalidProtocolEvent),
     }),
-    returns: Schema.Array(ProtocolEventSummary),
-    error: Schema.Union(UnknownEntity, InvalidProtocolEvent),
-  }),
-);
+  )
+  .addFunction(
+    FunctionSpec.publicQuery({
+      name: "explainDerived",
+      args: Schema.Struct({
+        e: Schema.String,
+        a: Schema.optionalWith(Schema.String, { exact: true }),
+      }),
+      returns: Schema.Array(DerivedExplanation),
+      error: Schema.Union(UnknownDerivedFact, InvalidProtocolEvent),
+    }),
+  );

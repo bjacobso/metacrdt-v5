@@ -291,9 +291,10 @@ Built today:
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility
 - `@metacrdt/runtime` harness groundwork: target-neutral services plus an
   in-memory convergence test target
-- Confect/Effect sidecar for typed compliance planning: a read-only dry-run
-  planner answers collect-vs-reuse for hypothetical placements without moving
-  protocol writes behind Effect
+- Confect/Effect sidecars for typed read/planning/protocol inspection:
+  `metacrdt.verifyEvents`, `metacrdt.explainDerived`, and a read-only compliance
+  dry-run planner run beside the hand-written Convex API without moving protocol
+  writes behind Effect
 
 The demo elaboration is **datarooms**: compliance/onboarding as a mergeable fact
 log. That product surface is intentionally just one physics over the substrate,

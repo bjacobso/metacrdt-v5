@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 76 (derived explanations resolve source event ids) has
+**Current goal:** Goal 77 (Confect derived-provenance sidecar) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -39,7 +39,11 @@ routes `workerCompliance`, `entityDetail.obligations`, Overview obligation
 counts, and `flows.issueAllOpen` through read-only rule output solved against
 protocol-shaped `factEvents` instead of materialized `derivedFacts`. Goal 76
 moves `rules.explainDerived` to resolve `derivedFacts.sourceEventIds` first,
-falling back to compatibility `sourceFactIds` only for legacy derived rows. The next
+falling back to compatibility `sourceFactIds` only for legacy derived rows. Goal
+77 extends the narrow Confect sidecar with `metacrdt.explainDerived`, a typed
+Effect Schema query that reads derived rows, resolves protocol source event ids,
+and surfaces typed provenance errors without moving protocol writes behind
+Effect. The next
 active goal should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
@@ -203,7 +207,11 @@ arguments.
   falls back to compatibility `sourceFactIds` only for legacy derived rows,
   preserving the existing "because" shape while returning `eventId`s for
   protocol-backed explanations.
-- Convex backend tests are green: 152 tests at last verification.
+- `api.metacrdtConfect.explainDerived` exposes the protocol-backed derived
+  explanation path as a typed Confect/Effect sidecar query with shaped
+  `DerivedExplanation` returns and `UnknownDerivedFact` /
+  `InvalidProtocolEvent` tagged errors.
+- Convex backend tests are green: 154 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -551,6 +559,8 @@ arguments.
     function beside the existing hand-written Convex backend.
   - `api.metacrdtConfect.verifyEvents` verifies protocol-shaped `factEvents`
     with `@metacrdt/core`.
+  - `api.metacrdtConfect.explainDerived` resolves materialized derived-row
+    `sourceEventIds` into a typed protocol provenance explanation.
   - The spike result is recorded in [docs/confect.md](./docs/confect.md).
 
 ---
@@ -7366,6 +7376,91 @@ Docs:
 - `npx convex codegen` passed and uploaded the backend functions.
 - Full gate passed:
   - `npm test` passed (17 backend test files, 152 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+  - `git diff --check` passed.
+
+---
+
+## Goal 77 — Confect Derived-Provenance Sidecar
+
+**Status:** shipped for a typed protocol-inspection sidecar.
+
+**Objective:** expand Confect narrowly in the direction PLAN already endorses:
+read/planning/protocol-inspection surfaces with shaped returns and typed errors.
+This wraps the protocol-backed derived explanation path from Goal 76 in a
+Confect/Effect Schema function without moving protocol writes, materialization,
+or `@metacrdt/core` behind Effect.
+
+### Scope
+
+Confect sidecar:
+
+- `confect/tables/DerivedFacts.ts`
+- `confect/schema.ts`
+- `confect/metacrdt.spec.ts`
+- `confect/metacrdt.impl.ts`
+- generated `confect/_generated/*`
+
+Convex mount:
+
+- `convex/metacrdtConfect.ts`
+
+Tests:
+
+- `convex/confect.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+- `docs/confect.md`
+
+### Semantics
+
+- `metacrdt.explainDerived` is a public Confect query mounted as
+  `api.metacrdtConfect.explainDerived`.
+- It reads non-stale `derivedFacts` rows by entity and optional attribute.
+- It requires protocol `sourceEventIds` and resolves each source id through
+  `factEvents.by_eventId`.
+- It returns typed `DerivedExplanation[]` with each `because` source carrying
+  `eventId`, optional `factId`, source `e/a/v`, assertion time, and transaction
+  actor/reason/time.
+- It surfaces typed errors:
+  - `UnknownDerivedFact`
+  - `InvalidProtocolEvent`
+- Exact optional fields are omitted rather than returned as `undefined`, matching
+  Effect Schema / Confect strict optional semantics.
+
+### Non-Goals
+
+- Do not convert `convex/facts.ts`, `convex/materialize.ts`, or protocol writes
+  to Confect.
+- Do not make `@metacrdt/core` depend on Effect.
+- Do not let raw `confect codegen` own this repo's hand-written `convex/` tree;
+  continue using the safe sidecar wrapper.
+- Do not replace the existing plain Convex `api.rules.explainDerived`.
+
+### Acceptance Criteria
+
+- `npm run confect:codegen` succeeds.
+- `api.metacrdtConfect.explainDerived` returns a typed explanation with event ids
+  for a materialized derived row.
+- Missing derived rows surface an `UnknownDerivedFact` tagged error.
+- Focused Confect tests and full verification gate pass.
+
+### Verification
+
+- `npm run confect:codegen` passed.
+- `npx convex codegen` passed and uploaded the backend functions.
+- `npm run test:confect` passed (4 tests).
+- Full gate passed:
+  - `npm test` passed (17 backend test files, 154 tests).
   - `npm run test:convex-package` passed (33 tests).
   - `npm run test:core` passed (46 tests).
   - `npx tsc --noEmit -p convex/tsconfig.json` passed.
