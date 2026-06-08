@@ -1,4 +1,5 @@
 import { mutation, query, QueryCtx } from "./_generated/server";
+import { components } from "./_generated/api";
 import { v } from "convex/values";
 import { assertInTx, createTransaction, retractInTx } from "./facts";
 import { requireWritePrincipal } from "./lib/writeAuth";
@@ -158,26 +159,51 @@ export const submitCollection = mutation({
     }
     if (invalid) return { ok: false as const, reason: "already submitted" };
 
-    const txId = await createTransaction(ctx, {
-      actorId: run.subject,
-      reason: `submit ${run.form}`,
-      now,
-    });
-
     const values = (args.values ?? {}) as Record<string, unknown>;
-    for (const [field, value] of Object.entries(values)) {
+    if (run.collectionTarget === "component") {
+      for (const [field, value] of Object.entries(values)) {
+        await ctx.runMutation(components.metacrdt.log.appendAssert, {
+          actorId: run.subject,
+          actorType: "user",
+          txTime: now,
+          reason: `submit ${run.form}`,
+          source: "forms.submitCollection",
+          e: run.subject,
+          a: `${run.form}/${field}`,
+          v: value,
+        });
+      }
+      await ctx.runMutation(components.metacrdt.log.appendAssert, {
+        actorId: run.subject,
+        actorType: "user",
+        txTime: now,
+        reason: `submit ${run.form}`,
+        source: "forms.submitCollection",
+        e: run.subject,
+        a: `submitted.${run.form}`,
+        v: run.scope,
+      });
+    } else {
+      const txId = await createTransaction(ctx, {
+        actorId: run.subject,
+        reason: `submit ${run.form}`,
+        now,
+      });
+
+      for (const [field, value] of Object.entries(values)) {
+        await assertInTx(ctx, txId, now, {
+          e: run.subject,
+          a: `${run.form}/${field}`,
+          value,
+        });
+      }
+      // The marker that satisfies the obligation and resumes the flow.
       await assertInTx(ctx, txId, now, {
         e: run.subject,
-        a: `${run.form}/${field}`,
-        value,
+        a: `submitted.${run.form}`,
+        value: run.scope,
       });
     }
-    // The marker that satisfies the obligation and resumes the flow.
-    await assertInTx(ctx, txId, now, {
-      e: run.subject,
-      a: `submitted.${run.form}`,
-      value: run.scope,
-    });
 
     await ctx.db.patch("flowRuns", run._id, {
       context: values,

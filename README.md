@@ -116,8 +116,9 @@ Current packages:
   now has a component-backed New Entity path that writes through the host wrapper
   and an Entities-page component-owned browser/detail/action path that reads the
   component projection/event log and can run configured host actions into
-  component-owned state, including actions that open host collection-token forms
-  for the component-owned entity id. Includes Confect sidecar guidance.
+  component-owned state, including actions that open collection-token forms whose
+  submissions fold back into component-owned current state. Includes Confect
+  sidecar guidance.
 - **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
   authoring language extracted from Open Ontology: reader, formatter, evaluator,
   VM, type inference, and language-owned elaboration utilities.

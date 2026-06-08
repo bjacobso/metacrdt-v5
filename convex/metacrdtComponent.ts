@@ -425,6 +425,7 @@ export const runOwnedAction = mutation({
       def.opensForm !== undefined
         ? await issueActionCollectRun(ctx, {
             subject: args.entity,
+            collectionTarget: "component",
             form: resolveActionString(
               "form",
               def.opensForm.form,

@@ -112,8 +112,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **Component-owned actions can open host collection forms** — `runOwnedAction`
   supports `opensForm`, resolves `$entity` / `$arg.*` placeholders, issues or
   reuses the host collection token for the component-owned entity id, and the
-  component detail page renders the returned `/collect` link. Submission still
-  writes host facts until component-owned collection storage ships.
+  component detail page renders the returned `/collect` link.
+- [x] **Component-owned collection submission** — action-issued tokens are marked
+  `collectionTarget: "component"`, and `/collect` submission writes submitted
+  field facts plus `submitted.<form>` into component-owned current state while
+  legacy/host tokens continue to write host facts.
 - [x] **Datalog disjunction** — Datalog `where` bodies now support bounded
   `{ or: [[...clauses], ...] }` branches. Branches run from the current binding,
   union/dedupe their bindings with provenance merged, and continue into later
@@ -153,7 +156,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   hello/delta catch-up, directed deltas, lifecycle cleanup, and multi-hop gossip.
 - [ ] Targets: live Cloudflare deployment/auth and migrating more reference
   runtime business logic onto `@metacrdt/convex` component-owned state
-  (component-owned collection submission / forms / flows / compliance remain).
+  (component-owned forms / flows / compliance remain).
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -216,7 +219,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [ ] Choose the next active goal: provider-backed login UI / production auth,
   live Cloudflare deployment/auth, or migrating more reference runtime business
   logic onto `@metacrdt/convex` component-owned state (next likely seam:
-  component-owned collection submission / forms / flows / compliance).
+  component-owned forms / flows / compliance).
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -242,6 +245,21 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ## Log
 
+### 2026-06-07 — component-owned collection submission
+- [x] **Goal 35 shipped:** `flowRuns` now has an optional
+  `collectionTarget` marker. Missing/`host` keeps legacy behavior; component
+  action tokens set `collectionTarget: "component"`.
+- [x] **`/collect` routes writes by target.** Host tokens still assert submitted
+  values through `assertInTx`; component tokens append submitted field facts and
+  the `submitted.<form>` marker through `components.metacrdt.log.appendAssert`,
+  so evidence folds into component-owned current state.
+- [x] **Reuse is target-aware.** The shared action collection helper only reuses
+  live tokens with the same subject/form/scope *and* collection target, preventing
+  host/component token cross-contamination.
+- [x] **Focused tests cover the migration boundary:** component action tokens
+  submit into component-owned state and do not write host facts; existing host
+  action collection and ordinary form collection behavior remain green.
+
 ### 2026-06-07 — component-owned actions open collection forms
 - [x] **Goal 34 shipped:** `api.metacrdtComponent.runOwnedAction` now supports
   configured actions with `opensForm`. It still validates `appliesTo` from
@@ -253,9 +271,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `actions.runAction` and component-owned `runOwnedAction`.
 - [x] **UI support:** `/component/e/:id` displays returned `/collect` links,
   including reused-token status, matching the host entity detail behavior.
-- [x] **Boundary remains explicit:** `/collect` submission still writes host facts
-  for the subject id; component-owned collection storage is the next migration
-  seam.
+- [x] **Boundary remains explicit:** Goal 34 only issued/reused the token; Goal 35
+  moved token submission into component-owned state for component-target tokens.
 
 ### 2026-06-07 — backend write authorization
 - [x] **General public writes require Convex auth identity.** Added

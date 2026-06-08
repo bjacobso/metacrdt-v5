@@ -1,10 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 34 (component-owned actions can open collection forms) has
-shipped. The next active goal should be chosen from the remaining TODO
-candidates: provider-backed login UI / production auth, live Cloudflare
-deployment/auth, component-owned collection submission/forms/flows/compliance, or
-another parked Query/Rules item.
+**Current goal:** Goal 35 (component-owned collection submission) has shipped.
+The next active goal should be chosen from the remaining TODO candidates:
+provider-backed login UI / production auth, live Cloudflare deployment/auth,
+component-owned forms/flows/compliance, or another parked Query/Rules item.
 
 This plan is the operational goal file. Read it with:
 
@@ -265,7 +264,11 @@ arguments.
     semantics as host-owned actions
   - it issues or reuses the host collection-token run for the component-owned
     entity id, returning the `/collect` URL to the component detail page
-  - collection submission remains host-owned for now
+- Component-owned collection submission exists:
+  - action-issued `flowRuns` can be marked `collectionTarget: "component"`
+  - `/collect` submission for those tokens appends submitted field facts and the
+    `submitted.<form>` marker into the installed `@metacrdt/convex` component log
+  - legacy/host tokens with no target still write host facts
 
 ### Not Yet True
 
@@ -280,9 +283,10 @@ arguments.
   and event-log rebuild for component-owned writes. The reference app still owns
   its production write path and has not migrated its existing business logic/rules
   onto component-owned state.
-- Component-owned actions can issue collection tokens, but `/collect` submission
-  still writes collected evidence into the host `facts` projection for that
-  subject id. Component-owned forms/flows/compliance remain future work.
+- Component-owned collection now writes submitted evidence into component-owned
+  state for component-target tokens, but the collection run/token row itself
+  still lives in the host `flowRuns` table. Component-owned forms/flows/compliance
+  remain future work.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime.
 - Multi-replica sync is specified and now implemented as in-memory
@@ -3084,6 +3088,87 @@ convex/metacrdtComponent.test.ts
 
 ---
 
+## Goal 35 — Component-Owned Collection Submission
+
+**Status:** shipped as target-routed collection submission.
+
+**Objective:** finish the Goal 34 bridge. Component-owned configured actions can
+issue collection links; now those submitted field values should fold into
+component-owned state rather than leaking into host-owned `facts`.
+
+### Scope
+
+Backend:
+
+```text
+convex/schema.ts              flowRuns.collectionTarget
+convex/lib/collectRuns.ts     collection-target-aware issue/reuse helper
+convex/metacrdtComponent.ts   component actions issue component-target tokens
+convex/forms.ts              submitCollection dispatches host vs component writes
+```
+
+Tests:
+
+```text
+convex/metacrdtComponent.test.ts
+convex/appconfig.test.ts
+convex/forms.test.ts
+```
+
+### Semantics
+
+- Missing `flowRuns.collectionTarget` means legacy/host-owned.
+- Host-owned actions and flow collection continue to write submitted values to
+  host `facts` through `assertInTx`.
+- Component-owned action tokens set `collectionTarget: "component"`.
+- `submitCollection` for component-target tokens appends submitted field facts
+  and the `submitted.<form>` marker via `components.metacrdt.log.appendAssert`.
+- Component-target submissions still consume the same host token and keep the
+  collected payload in `flowRuns.context`.
+- Component-owned collection submission does not require login; the token remains
+  the capability, matching the hardened host collection path.
+
+### Non-Goals
+
+- Do not move `flowRuns` into the component package in this slice.
+- Do not move form definitions into the component package yet.
+- Do not implement component-owned compliance/rule materialization yet.
+- Do not add provider-backed login UI.
+
+### Acceptance Criteria
+
+- Component-owned action collection tokens are marked as component-targeted.
+- Reusing live tokens distinguishes host vs component target, so a host token is
+  never reused for a component-owned action with the same subject/form/scope.
+- Submitting a component-targeted token writes collected fields and
+  `submitted.<form>` into component-owned current state.
+- Submitting a component-targeted token does not write those values into host
+  `facts`.
+- Existing host action collection and ordinary form collection behavior stay
+  unchanged.
+- Focused tests, backend tests, package tests, typechecks, build, backend deploy,
+  static upload, and live smoke pass.
+
+### Verification
+
+- `npx vitest run convex/metacrdtComponent.test.ts convex/appconfig.test.ts convex/forms.test.ts`
+  passed (28 tests).
+- `npm test` passed (17 backend test files, 108 tests).
+- `npm run test:core` passed (46 tests).
+- `npm run test:convex-package` passed (31 tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex dev --once` deployed backend functions to `chatty-hare-94`.
+- `npx @convex-dev/static-hosting upload` deployed the frontend to
+  `https://chatty-hare-94.convex.site`.
+- Live smoke:
+  - `curl -I https://chatty-hare-94.convex.site` returned HTTP 200.
+  - `npx convex run metacrdtComponent:listOwnedCurrentEntities ...` returned
+    deployed component-owned Worker rows.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -3120,6 +3205,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Component-owned typed entity browser/list surface.
 - [x] Component-owned Worker status mutation/action path.
 - [x] Component-owned configured action runner.
+- [x] Component-owned actions that open collection forms.
+- [x] Component-owned collection submission into component state.
 - [ ] Migrate more reference runtime business logic onto component-owned state.
 
 ### Auth / Privacy

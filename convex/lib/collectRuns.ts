@@ -9,14 +9,17 @@ function hasLiveToken(
     token?: string;
     tokenConsumedAt?: number;
     tokenExpiresAt?: number;
+    collectionTarget?: "host" | "component";
   },
   now: number,
+  collectionTarget: "host" | "component",
 ): boolean {
   return (
     run.status === "waiting" &&
     run.token !== undefined &&
     run.tokenConsumedAt === undefined &&
-    (run.tokenExpiresAt === undefined || run.tokenExpiresAt > now)
+    (run.tokenExpiresAt === undefined || run.tokenExpiresAt > now) &&
+    (run.collectionTarget ?? "host") === collectionTarget
   );
 }
 
@@ -26,7 +29,7 @@ function hasLiveToken(
  * This deliberately does not schedule reminder/escalation ticks; the full flow
  * runner in `flows.ts` owns those. Actions need the lightweight "give me a
  * token for this subject/form/scope" behavior, and component-owned action
- * wrappers reuse the same bridge while collection submission remains host-owned.
+ * wrappers reuse the same bridge while selecting where submission folds.
  */
 export async function issueActionCollectRun(
   ctx: MutationCtx,
@@ -34,6 +37,7 @@ export async function issueActionCollectRun(
     subject: string;
     form: string;
     scope: string;
+    collectionTarget?: "host" | "component";
   },
 ): Promise<{
   runId: Id<"flowRuns">;
@@ -41,6 +45,7 @@ export async function issueActionCollectRun(
   collectUrl: string;
   reused: boolean;
 }> {
+  const collectionTarget = args.collectionTarget ?? "host";
   const existing = await ctx.db
     .query("flowRuns")
     .withIndex("by_target", (q) =>
@@ -48,7 +53,7 @@ export async function issueActionCollectRun(
     )
     .collect();
   const now = Date.now();
-  const live = existing.find((r) => hasLiveToken(r, now));
+  const live = existing.find((r) => hasLiveToken(r, now, collectionTarget));
   if (live) {
     return {
       runId: live._id,
@@ -70,6 +75,7 @@ export async function issueActionCollectRun(
     updatedAt: now,
     token,
     tokenExpiresAt: now + DEFAULT_TOKEN_TTL_MS,
+    collectionTarget,
   });
   await ctx.db.insert("flowEvents", {
     runId,

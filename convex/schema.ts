@@ -219,6 +219,13 @@ export default defineSchema({
     token: v.optional(v.string()),
     tokenExpiresAt: v.optional(v.number()),
     tokenConsumedAt: v.optional(v.number()),
+    // Where submitCollection should write the collected facts. Missing means
+    // legacy/host-owned. Component-owned collection runs are still issued from
+    // this host table, but their submitted values fold into the installed
+    // @metacrdt/convex component log.
+    collectionTarget: v.optional(
+      v.union(v.literal("host"), v.literal("component")),
+    ),
     // Collected field values / flow variables.
     context: v.optional(v.any()),
     // Phase 2 (general DAG): which flow definition + current step.
