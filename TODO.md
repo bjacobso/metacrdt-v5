@@ -124,7 +124,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   co-signing / agent swarms as three blueprints over one substrate.
 
 **Polish / loose threads**
-- [ ] Wire the decorative bits from the mockup: ⌘K search, "New entity",
+- [x] ⌘K search / command menu — header search opens a real command palette with
+  page, entity, type, and flow commands.
+- [ ] Wire the remaining decorative bits from the mockup: "New entity",
   "Describe an account".
 - [ ] Action/config diff-history polish.
 - [ ] Root-cause the `staticHosting:getCurrentDeployment` error over the WS path
@@ -140,6 +142,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — command menu polish
+- [x] **Header search is real.** `Cmd/Ctrl+K` or the header search control opens a
+  modal command palette backed by live queries for entities, configured types, and
+  flow definitions, plus static page navigation commands.
+- [x] **Keyboard route smoke verified.** Search `maria` → `/e/worker%3Amaria`;
+  search `flows` → `/flows`; Escape/overlay close and arrow/Enter navigation are
+  handled inside the palette.
 
 ### 2026-06-07 — Goal 13 @metacrdt/runtime harness groundwork
 - [x] **Version-vector anti-entropy shape implemented in memory.** Runtime

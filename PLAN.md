@@ -1599,7 +1599,7 @@ These remain valuable, but they should not interrupt the current goal.
 
 ### UX
 
-- [ ] Search / command menu.
+- [x] Search / command menu.
 - [ ] Guided demo tour.
 - [ ] "New entity" flow.
 

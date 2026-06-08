@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
@@ -15,6 +15,7 @@ import {
   CircleDot,
   Server,
 } from "lucide-react";
+import CommandMenu from "./CommandMenu";
 
 type Item = {
   to: string;
@@ -86,6 +87,7 @@ const ICON = "h-[18px] w-[18px]";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
+  const [commandOpen, setCommandOpen] = useState(false);
   const compliance = useQuery(api.compliance.workerCompliance, {
     worker: "worker:maria",
   });
@@ -123,6 +125,17 @@ export default function Layout({ children }: { children: ReactNode }) {
     { to: "/integrations", label: "Integrations", icon: <Plug className={ICON} />, soon: true },
   ];
 
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCommandOpen((v) => !v);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <div className="flex h-full">
       {/* Sidebar */}
@@ -158,13 +171,16 @@ export default function Layout({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-surface px-6">
           <h1 className="text-[15px] font-semibold text-ink">{title}</h1>
-          <div className="mx-auto flex w-full max-w-md items-center gap-2 rounded-md border border-line bg-canvas px-3 py-1.5 text-[13px] text-faint">
+          <button
+            onClick={() => setCommandOpen(true)}
+            className="mx-auto flex w-full max-w-md items-center gap-2 rounded-md border border-line bg-canvas px-3 py-1.5 text-left text-[13px] text-faint transition-colors hover:border-faint hover:bg-line-soft"
+          >
             <Search className="h-4 w-4" />
             <span className="flex-1">Search facts, entities, flows…</span>
             <kbd className="rounded border border-line bg-surface px-1 text-[11px] text-muted">
               ⌘K
             </kbd>
-          </div>
+          </button>
           <div className="flex items-center gap-3">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-[12px] font-medium text-ink">
               <CircleDot className="h-3.5 w-3.5 text-green" />
@@ -178,6 +194,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           <div className="mx-auto max-w-6xl">{children}</div>
         </main>
       </div>
+      <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} />
     </div>
   );
 }
