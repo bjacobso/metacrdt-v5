@@ -432,6 +432,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   vs transport and write the Cloudflare parity plan.
 - [x] Choose the next target-runtime slice: first `@metacrdt/testkit`
   conformance package.
+- [x] Wire the shared `@metacrdt/testkit` suite into existing Cloudflare and
+  local runtime targets.
 - [ ] Choose between production provider wiring, `@metacrdt/node`, Cloudflare
   DO+SQLite parity, or another parked Query/Rules item.
 
@@ -531,6 +533,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Verification: `npm test --workspace @metacrdt/testkit`,
   package-local typecheck, `npm run test:packages`, `npm run build:packages`,
   and `npm run typecheck` all passed with Turbo picking up the new workspace.
+
+### 2026-06-08 — shared conformance on existing targets
+- [x] **Goal 103 shipped:** `@metacrdt/cloudflare` and `@metacrdt/local` now
+  consume `@metacrdt/testkit` directly. Added conformance tests for the
+  Cloudflare Durable Object runtime over fake DO storage and the local async
+  runtime over async memory storage.
+- [x] Shared conformance now covers three targets: memory (`@metacrdt/runtime`),
+  Cloudflare DO runtime services, and local async runtime services. It proves the
+  same EventStore idempotency/filtering/content-id checks, version-vector
+  anti-entropy, deterministic fold equality, and idempotent second sync.
+- [x] Verification: focused Cloudflare/local package tests, `npm run
+  test:packages`, `npm run build:packages`, and `npm run typecheck` all passed.
 
 ### 2026-06-08 — host event-log entity fold
 - [x] **Goal 98 shipped:** `@metacrdt/query` guarded positive-pattern extension.

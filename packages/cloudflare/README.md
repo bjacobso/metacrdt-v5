@@ -53,6 +53,8 @@ import { createDurableObjectRuntime, relayWorker } from "@metacrdt/cloudflare";
 This package today implements the **sync plane** — a convergent event log over
 Durable Object storage, plus the relay and Worker shells. It is storage-backed
 and protocol-correct, but not yet a queryable triple store or a live deployment.
+Its Durable Object runtime services pass the shared `@metacrdt/testkit`
+EventStore / anti-entropy / deterministic-fold conformance suite.
 
 The plan to grow it to parity with `@metacrdt/convex` — an indexed, bitemporal
 triple store over Durable Object **SQLite** storage, with projections,

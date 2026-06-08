@@ -141,7 +141,10 @@ Cloudflare parity means growing the existing sync-plane shell into a Durable
 Object + SQLite triple store without reimplementing core fold/reconcile
 semantics. Goal 102 adds the first `@metacrdt/testkit` package: reusable
 framework-neutral conformance helpers for EventStore and runtime convergence,
-proved against the in-memory runtime. The next active goal
+proved against the in-memory runtime. Goal 103 wires that shared conformance
+suite into the existing Cloudflare Durable Object target and local async target,
+so three targets now prove the same EventStore, anti-entropy, and deterministic
+fold contract. The next active goal
 should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow,
 `@metacrdt/node`, Cloudflare DO+SQLite parity, another carefully scoped
@@ -8946,6 +8949,45 @@ runtime.
 - `npx tsc --noEmit -p packages/testkit/tsconfig.json` passes.
 - `npm run test:packages`, `npm run build:packages`, and `npm run typecheck`
   include the new workspace package and pass.
+
+---
+
+## Goal 103 — Shared Conformance on Cloudflare and Local Targets
+
+**Status:** shipped.
+
+**Objective:** stop treating `@metacrdt/testkit` as only self-tested. Existing
+runtime targets should consume the shared conformance helpers immediately, so
+future target regressions are caught by one suite rather than bespoke tests.
+
+### What Shipped
+
+- Added `packages/cloudflare/src/conformance.test.ts`.
+- Added `packages/local/src/conformance.test.ts`.
+- Added `@metacrdt/testkit` as a package-local dev dependency of
+  `@metacrdt/cloudflare` and `@metacrdt/local`.
+- The Cloudflare Durable Object target now passes `runRuntimeConformance` over a
+  fake Durable Object storage.
+- The local async target now passes `runRuntimeConformance` over an async
+  in-memory storage.
+- Together with testkit's own in-memory target proof, the shared suite now covers:
+  - `@metacrdt/runtime` memory target
+  - `@metacrdt/cloudflare` Durable Object runtime services
+  - `@metacrdt/local` async local runtime services
+
+### Non-Goals
+
+- Do not replace the target-specific persistence/relay tests; those still cover
+  behavior outside the first shared suite.
+- Do not claim Cloudflare SQL projection parity yet. This proves the sync-plane
+  runtime contract, not the future DO + SQLite triple store.
+
+### Verification
+
+- `npm test --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/local` passes.
+- `npm run test:packages`, `npm run build:packages`, and `npm run typecheck`
+  pass with the shared conformance tests included.
 
 ---
 

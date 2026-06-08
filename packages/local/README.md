@@ -48,6 +48,8 @@ A local-first replica is a full SPEC participant: it keeps a durable event log,
 ticks an HLC, stamps per-replica `seq`, and runs SPEC §8 version-vector
 anti-entropy with same-origin peers over BroadcastChannel — converging to the
 same projections as server targets, and surviving restart.
+The async local runtime passes the shared `@metacrdt/testkit` EventStore /
+anti-entropy / deterministic-fold conformance suite.
 
 ## Usage
 

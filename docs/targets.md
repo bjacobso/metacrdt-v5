@@ -65,7 +65,8 @@ On open hosts the adapter is a selectable dependency.
 - `@metacrdt/runtime`'s in-memory target — the reference harness.
 - `@metacrdt/testkit` — framework-neutral conformance helpers for EventStore,
   anti-entropy, and deterministic fold convergence (currently proven against
-  the in-memory runtime).
+  the in-memory runtime, Cloudflare Durable Object runtime services, and the
+  async local runtime).
 
 ### Should exist next
 
