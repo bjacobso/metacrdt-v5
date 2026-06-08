@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 87 (`@metacrdt/query` Clause Planner) has
+**Current goal:** Goal 88 (`@metacrdt/query` Provenanced Binding Dedupe) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -80,7 +80,12 @@ the pure Datalog clause-pick planner into `@metacrdt/query`:
 `chooseNextClausePosition` chooses runnable filter/compute/negation/disjunction
 clauses before the most selective pattern, preserving the existing unsafe-query
 error while leaving Convex in charge of async execution, triple fetching, read
-authorization, and provenance. The next active goal should be chosen from the
+authorization, and provenance. Goal 88 extracts provenance-preserving solved
+binding dedupe into `@metacrdt/query`: generic source-list merging,
+typed-value binding keys, and `dedupeProvenancedBindings` now handle duplicate
+bindings from disjunction branches while preserving fact/event provenance. Convex
+still owns branch recursion, source fetching, read authorization, and provenance
+interpretation. The next active goal should be chosen from the
 remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
@@ -172,6 +177,7 @@ arguments.
   - rule emit-term resolution and deterministic derived-row shaping for
     read-only rule previews
   - pure clause-pick planning for the Datalog scheduler
+  - provenance-preserving solved-binding dedupe and source-list merging
   - Convex compatibility re-export through `convex/lib/engine.ts`
 - New Convex writes stamp protocol metadata on `factEvents`:
   `eventId`, HLC, `replicaId`, `targetEventId`, and `causalRefs` where
@@ -8101,6 +8107,57 @@ fetching, read authorization, provenance, or the database-backed join loop.
   `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
 - A live `datalog:datalog` query returned rows through the deployed
   package-backed planner.
+
+---
+
+## Goal 88 — `@metacrdt/query` Provenanced Binding Dedupe
+
+**Status:** shipped as another solver-adjacent pure query boundary.
+
+**Objective:** move deterministic solved-binding dedupe and source-list merging
+from the Convex Datalog solver into `@metacrdt/query`, while keeping Convex's
+branch recursion, source fetching, read authorization, provenance semantics, and
+async execution in the reference runtime.
+
+### Semantics
+
+- `packages/query` now owns `ProvenancedBinding`, `bindingKey`,
+  `mergeUniqueSources`, and `dedupeProvenancedBindings`.
+- `bindingKey` sorts binding keys and uses typed `valueKey` values, preserving
+  the existing distinction between values such as `"1"` and `1`.
+- `mergeUniqueSources` preserves first-seen source order and removes duplicates.
+- `dedupeProvenancedBindings` preserves the existing disjunction-branch merge
+  behavior:
+  - rows with the same typed binding key collapse to the first binding shape;
+  - fact source ids are merged without duplicates;
+  - event source ids are merged without duplicates;
+  - distinct bindings remain distinct.
+- `convex/lib/engine.ts` imports the helper for `or` branch dedupe and imports
+  `mergeUniqueSources` for pattern provenance extension.
+
+### Non-Goals
+
+- Do not move `SolvedBinding`, `Triple`, `TripleSource`, `solveWhere`,
+  `solveParsedWhere`, or recursive branch execution into the package.
+- Do not change source-id meaning, read authorization, provenance explanation,
+  result shapes, or query behavior.
+- Do not require `@metacrdt/query` to know about Convex `Id<"facts">` branding.
+
+### Verification
+
+- `npm run test:query` passed (12 package tests).
+- `npx tsc --noEmit -p packages/query/tsconfig.json` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npm run test:core` passed (46 core tests).
+- `npm run test:schema` passed (8 schema tests).
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
+- A live `datalog:datalog` disjunction query returned rows through the deployed
+  package-backed provenanced binding dedupe path.
 
 ---
 

@@ -2,7 +2,9 @@ import { describe, expect, test } from "vitest";
 import {
   aggregateBindings,
   applyCompute,
+  bindingKey,
   chooseNextClausePosition,
+  dedupeProvenancedBindings,
   derivedRowsFromBindings,
   describeClauses,
   dynamicSelectivity,
@@ -146,6 +148,40 @@ describe("@metacrdt/query rows", () => {
         ["?e"],
       ),
     ).toEqual([{ e: "w:1" }, { e: "w:2" }]);
+  });
+
+  test("dedupes provenanced bindings and merges source ids", () => {
+    expect(bindingKey({ b: 2, a: "1" })).toBe(bindingKey({ a: "1", b: 2 }));
+    expect(bindingKey({ a: "1" })).not.toBe(bindingKey({ a: 1 }));
+
+    expect(
+      dedupeProvenancedBindings([
+        {
+          binding: { e: "w:1", status: "active" },
+          sources: ["fact:1"],
+          eventSources: ["event:1"],
+        },
+        {
+          binding: { status: "active", e: "w:1" },
+          sources: ["fact:2", "fact:1"],
+          eventSources: ["event:2"],
+        },
+        {
+          binding: { e: "w:1", status: "pending" },
+          sources: ["fact:3"],
+        },
+      ]),
+    ).toEqual([
+      {
+        binding: { e: "w:1", status: "active" },
+        sources: ["fact:1", "fact:2"],
+        eventSources: ["event:1", "event:2"],
+      },
+      {
+        binding: { e: "w:1", status: "pending" },
+        sources: ["fact:3"],
+      },
+    ]);
   });
 
   test("paginates deterministic rows with bounded page size", () => {

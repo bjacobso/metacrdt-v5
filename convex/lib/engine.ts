@@ -5,6 +5,8 @@ import {
   applyCompute,
   chooseNextClausePosition,
   clauseBoundVars,
+  dedupeProvenancedBindings,
+  mergeUniqueSources,
   parseClauses,
   patternVars,
   project,
@@ -27,6 +29,7 @@ export {
   LIMITS,
   aggregateBindings,
   chooseNextClausePosition,
+  dedupeProvenancedBindings,
   derivedRowsFromBindings,
   describeClauses,
   entityVarOf,
@@ -323,8 +326,11 @@ async function solveParsedWhere(
           if (extended) {
             next.push({
               binding: extended,
-              sources: mergeSources(st.sources, t.prov),
-              eventSources: mergeStringSources(st.eventSources ?? [], t.eventProv ?? []),
+              sources: mergeUniqueSources(st.sources, t.prov),
+              eventSources: mergeUniqueSources(
+                st.eventSources ?? [],
+                t.eventProv ?? [],
+              ),
             });
           }
         }
@@ -391,7 +397,7 @@ async function solveParsedWhere(
           );
         }
       }
-      states = dedupeSolved(next);
+      states = dedupeProvenancedBindings(next);
       for (const vn of clauseBoundVars(clause)) bound.add(vn);
     }
 
@@ -399,48 +405,6 @@ async function solveParsedWhere(
   }
 
   return states;
-}
-
-function dedupeSolved(states: SolvedBinding[]): SolvedBinding[] {
-  const byBinding = new Map<string, SolvedBinding>();
-  for (const st of states) {
-    const key = JSON.stringify(
-      Object.entries(st.binding)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([k, v]) => [k, valueKey(v)]),
-    );
-    const existing = byBinding.get(key);
-    if (existing === undefined) {
-      byBinding.set(key, st);
-    } else {
-      byBinding.set(key, {
-        binding: existing.binding,
-        sources: mergeSources(existing.sources, st.sources),
-        eventSources: mergeStringSources(
-          existing.eventSources ?? [],
-          st.eventSources ?? [],
-        ),
-      });
-    }
-  }
-  return [...byBinding.values()];
-}
-
-function mergeStringSources(a: string[], b: string[]): string[] {
-  if (b.length === 0) return a;
-  const set = new Set(a);
-  for (const id of b) set.add(id);
-  return [...set];
-}
-
-function mergeSources(
-  a: Id<"facts">[],
-  b: Id<"facts">[],
-): Id<"facts">[] {
-  if (b.length === 0) return a;
-  const set = new Set<string>(a as unknown as string[]);
-  for (const id of b) set.add(id as unknown as string);
-  return [...set] as unknown as Id<"facts">[];
 }
 
 /**

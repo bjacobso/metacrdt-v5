@@ -61,7 +61,7 @@ packages/
 ├── core/              @metacrdt/core       # done: SPEC §4-5 kernel
 ├── forma/            @metacrdt/forma      # Lisp reader/evaluator/types/tooling
 ├── schema/           @metacrdt/schema     # done: ids, cardinality, meta attrs, definition lowering
-├── query/            @metacrdt/query      # done slices: parser, operators, rows, aggregation, emit shaping, planner
+├── query/            @metacrdt/query      # done slices: parser, operators, rows, aggregation, emit shaping, planner, dedupe
 ├── workflow/         @metacrdt/workflow   # durable steps, processes, obligations
 ├── forms/            @metacrdt/forms      # forms, collection, prompt-response
 ├── views/            @metacrdt/views      # ViewSpec / response surfaces
@@ -200,7 +200,7 @@ are one representation of facts inside a convergent event log.
   clause/term types, parser, operators, compute/comparison helpers, projection,
   pagination, aggregation, explain descriptions, rule-locality analysis, and
   read-only rule emit shaping. Clause-pick planning for the Datalog scheduler
-  has also shipped.
+  and provenanced binding dedupe/source merging have also shipped.
 - `@metacrdt/workflow` — processes, flows, obligations.
 - `@metacrdt/forms` — collection surfaces and prompt-response forms.
 - `@metacrdt/views` — ViewSpec and generated response surfaces.
@@ -320,9 +320,10 @@ Extract only when each package has a concrete use in the current reference app:
    descriptions, locality). Read-only rule emit shaping has also shipped:
    `EmitSpec`, `DerivedRow`, emit-term resolution, deterministic dedupe, and
    stable derived-row sorting. The pure clause-pick planner
-   (`chooseNextClausePosition`) has shipped as well. Convex-specific triple
-   fetching, read authorization, provenance, solving, async join execution, and
-   branch recursion remain in the reference runtime.
+   (`chooseNextClausePosition`) and provenanced solved-binding dedupe/source
+   merging (`dedupeProvenancedBindings`) have shipped as well. Convex-specific
+   triple fetching, read authorization, provenance interpretation, solving,
+   async join execution, and branch recursion remain in the reference runtime.
 3. `@metacrdt/forms` from current `convex/forms.ts` and `/collect`.
 4. `@metacrdt/workflow` from current `convex/flows.ts`.
 5. `@metacrdt/views` from Open Ontology `view-protocol` only after schema-driven

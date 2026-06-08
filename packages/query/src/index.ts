@@ -45,6 +45,14 @@ export const COMPUTE_OPS = new Set([
 export type Binding = Record<string, unknown>;
 export type EmitSpec = { e: string; a: string; v: unknown };
 export type DerivedRow = { e: string; a: string; v: unknown };
+export type ProvenancedBinding<
+  SourceId extends string = string,
+  EventSourceId extends string = string,
+> = {
+  binding: Binding;
+  sources: SourceId[];
+  eventSources?: EventSourceId[];
+};
 
 export type Term =
   | { kind: "var"; name: string }
@@ -548,6 +556,50 @@ export function project(
     out.push(row);
   }
   return out;
+}
+
+export function mergeUniqueSources<SourceId extends string>(
+  a: SourceId[],
+  b: SourceId[],
+): SourceId[] {
+  if (b.length === 0) return a;
+  const set = new Set<SourceId>(a);
+  for (const id of b) set.add(id);
+  return [...set];
+}
+
+export function bindingKey(binding: Binding): string {
+  return JSON.stringify(
+    Object.entries(binding)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => [k, valueKey(v)]),
+  );
+}
+
+export function dedupeProvenancedBindings<
+  SourceId extends string,
+  EventSourceId extends string = string,
+>(
+  states: ProvenancedBinding<SourceId, EventSourceId>[],
+): ProvenancedBinding<SourceId, EventSourceId>[] {
+  const byBinding = new Map<string, ProvenancedBinding<SourceId, EventSourceId>>();
+  for (const st of states) {
+    const key = bindingKey(st.binding);
+    const existing = byBinding.get(key);
+    if (existing === undefined) {
+      byBinding.set(key, st);
+    } else {
+      byBinding.set(key, {
+        binding: existing.binding,
+        sources: mergeUniqueSources(existing.sources, st.sources),
+        eventSources: mergeUniqueSources(
+          existing.eventSources ?? [],
+          st.eventSources ?? [],
+        ),
+      });
+    }
+  }
+  return [...byBinding.values()];
 }
 
 export type ResultPage<T> = {

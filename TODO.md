@@ -140,6 +140,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   selective pattern, with the same unsafe-query error when no clause can advance.
   Convex still owns async execution, triple fetching, read auth, provenance, and
   branch recursion.
+- [x] **`@metacrdt/query` provenanced binding dedupe extracted** — the package now
+  owns typed binding keys, generic source-list merging, and
+  `dedupeProvenancedBindings` for disjunction branch output. Duplicate bindings
+  collapse while preserving fact/event provenance; Convex still owns branch
+  recursion, source fetching, read auth, and provenance interpretation.
 - [ ] Then peel off, as they stabilize: more `@metacrdt/query` solver/rule AST
   seams, then `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/views`, and
   `@metacrdt/agent`.
@@ -409,6 +414,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 88 shipped:** `@metacrdt/query` provenanced binding dedupe. Added
+  `ProvenancedBinding`, `bindingKey`, `mergeUniqueSources`, and
+  `dedupeProvenancedBindings`; Convex now uses them for pattern provenance
+  extension and `or` branch dedupe. This preserves typed binding-key semantics
+  and merges fact/event source ids without importing Convex `Id` types into the
+  package.
 - [x] **Goal 87 shipped:** `@metacrdt/query` clause planner. Added
   `chooseNextClausePosition`, the pure scheduler choice from the Convex Datalog
   loop: pick runnable compare/compute/negation/disjunction clauses as soon as
