@@ -184,6 +184,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   returns the selected clause/index, and returns a cloned remaining work list
   without mutating caller state. Convex still owns clause execution, source IO,
   read auth, row-limit placement, and branch recursion.
+- [x] **`@metacrdt/query` guarded pattern extension extracted** — the package now
+  owns `extendPatternCandidatesWithinLimit`, extending one solved state across
+  already-fetched positive-pattern candidates and checking the accumulated
+  intermediate-row limit. Convex still owns candidate fetching, fetch order,
+  source IO, read auth, and recursion.
 - [ ] Then peel off, as they stabilize: more `@metacrdt/query` solver/rule AST
   seams, then `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/views`, and
   `@metacrdt/agent`.
@@ -453,6 +458,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 98 shipped:** `@metacrdt/query` guarded positive-pattern extension.
+  Added `extendPatternCandidatesWithinLimit`; Convex now asks the package to
+  extend already-fetched candidates and enforce the accumulated row guard while
+  retaining candidate fetch order, source/auth IO, and recursion.
 - [x] **Goal 97 shipped:** `@metacrdt/query` solver work-list selection. Added
   `SelectedClause` / `selectNextClause`; Convex now asks the package to choose
   and remove the next runnable parsed clause while retaining all execution,

@@ -119,11 +119,12 @@ Current packages:
   derived-row shaping for read-only rule previews and the pure clause-pick
   planner used by the Datalog scheduler, plus provenance-preserving solved-binding
   dedupe/source merging, pattern-input construction for target triple sources,
-  provenanced pattern extension and candidate expansion for positive joins,
-  negation candidate checking over fetched triples, plus compare/compute state
-  transitions over solved bindings, and the shared intermediate-row limit guard.
-  It also owns bound-variable advancement, initial solver-frame construction, and
-  solver work-list clause selection/removal for scheduler state. The Convex
+  provenanced pattern extension, candidate expansion, and guarded accumulated
+  row-limit checking for positive joins, negation candidate checking over fetched
+  triples, plus compare/compute state transitions over solved bindings, and the
+  shared intermediate-row limit guard. It also owns bound-variable advancement,
+  initial solver-frame construction, and solver work-list clause
+  selection/removal for scheduler state. The Convex
   engine consumes and re-exports it while keeping triple fetching, read
   authorization, provenance, and async join execution in `convex/lib/engine.ts`.
 - **`@metacrdt/convex`** (`packages/convex`) — Convex target adapters:

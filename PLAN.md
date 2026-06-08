@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 97 (`@metacrdt/query` Solver Work-List Selection) has
+**Current goal:** Goal 98 (`@metacrdt/query` Guarded Pattern Extension) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -122,7 +122,11 @@ solver work-list selection into `@metacrdt/query`: `selectNextClause` chooses
 the next runnable clause, returns the selected parsed clause and index, and
 returns a cloned remaining-clause work list, while Convex still owns executing
 the returned clause, source/auth setup, async IO, row-limit placement, and
-recursion. The next active goal
+recursion. Goal 98 extracts guarded positive-pattern extension into
+`@metacrdt/query`: `extendPatternCandidatesWithinLimit` extends one solved state
+across already-fetched candidate triples and applies the accumulated
+intermediate-row guard in package code, while Convex still owns candidate
+fetching, fetch order, async IO, read authorization, and scheduler recursion. The next active goal
 should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
@@ -224,6 +228,7 @@ arguments.
   - bound-variable advancement for scheduler state
   - solver-frame initialization
   - scheduler work-list clause selection/removal
+  - guarded positive-pattern extension with accumulated row-limit checking
   - Convex compatibility re-export through `convex/lib/engine.ts`
 - New Convex writes stamp protocol metadata on `factEvents`:
   `eventId`, HLC, `replicaId`, `targetEventId`, and `causalRefs` where
@@ -8646,6 +8651,55 @@ and all async IO in Convex.
   warnings only).
 - A live `datalog:datalog` query returned rows through the deployed solver path
   that now selects/removes work-list clauses through `@metacrdt/query`.
+
+---
+
+## Goal 98 — `@metacrdt/query` Guarded Pattern Extension
+
+**Status:** shipped as the pure positive-pattern extension guard boundary.
+
+**Objective:** move target-neutral positive-pattern candidate extension plus the
+accumulated intermediate-row guard from the Convex solver into
+`@metacrdt/query`, while keeping candidate fetching, fetch order, read auth,
+async IO, scheduler recursion, and branch execution in Convex.
+
+### Semantics
+
+- `packages/query` now owns `extendPatternCandidatesWithinLimit`.
+- The helper accepts one parsed pattern, one solved/provenanced state, one batch
+  of already-fetched candidate triples, the current accumulated row count, and an
+  optional row limit.
+- It extends the state across unifying candidate triples using the existing
+  `extendPatternCandidates` helper.
+- It applies the shared `assertIntermediateRowsWithinLimit` check against
+  `currentCount + extended.length`, preserving the Convex solver's previous
+  per-state row-limit timing without moving candidate fetching into the package.
+- `convex/lib/engine.ts` now calls the helper inside the positive-pattern branch
+  after fetching candidates for each state.
+
+### Non-Goals
+
+- Do not move `fetchPattern`, `TripleSource`, read authorization, source lookup,
+  negation IO, disjunction recursion, or branch execution into the package.
+- Do not change fetch order, limit text, provenance shape, candidate semantics,
+  result shapes, or scheduler recursion.
+
+### Verification
+
+- `npm run test:query` passed (23 package tests).
+- `npx tsc --noEmit -p packages/query/tsconfig.json` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npm run test:core` passed (46 core tests).
+- `npm run test:schema` passed (8 schema tests).
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94` (with the existing env-var and generated-AI-file freshness
+  warnings only).
+- A live `datalog:datalog` query returned rows through the deployed solver path
+  that now applies guarded positive-pattern extension through `@metacrdt/query`.
 
 ---
 

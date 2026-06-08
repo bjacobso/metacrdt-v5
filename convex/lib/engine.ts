@@ -6,7 +6,7 @@ import {
   applyComputeStates,
   assertIntermediateRowsWithinLimit,
   dedupeProvenancedBindings,
-  extendPatternCandidates,
+  extendPatternCandidatesWithinLimit,
   filterCompareStates,
   initialSolverFrame,
   parseClauses,
@@ -39,6 +39,7 @@ export {
   describeClauses,
   entityVarOf,
   extendPatternCandidates,
+  extendPatternCandidatesWithinLimit,
   extendProvenancedBinding,
   filterCompareStates,
   initialSolverFrame,
@@ -310,8 +311,14 @@ async function solveParsedWhere(
           readFilter,
           source,
         );
-        next.push(...extendPatternCandidates(clause, st, candidates));
-        assertIntermediateRowsWithinLimit(next.length);
+        next.push(
+          ...extendPatternCandidatesWithinLimit(
+            clause,
+            st,
+            candidates,
+            next.length,
+          ),
+        );
       }
       bound = advanceBoundVars(bound, clause);
       states = next;

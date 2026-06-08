@@ -12,6 +12,7 @@ import {
   describeClauses,
   dynamicSelectivity,
   extendPatternCandidates,
+  extendPatternCandidatesWithinLimit,
   extendProvenancedBinding,
   filterCompareStates,
   isEntityLocalRule,
@@ -386,6 +387,53 @@ describe("@metacrdt/query rows", () => {
         eventSources: ["event:seed", "event:pending"],
       },
     ]);
+  });
+
+  test("extends pattern candidates with the accumulated row limit", () => {
+    const pattern = parseClause(["?e", "worker.status", "?status"]);
+    expect(pattern.kind).toBe("pattern");
+    if (pattern.kind !== "pattern") return;
+
+    const state = {
+      binding: { e: "worker:maria" },
+      sources: ["fact:seed"],
+      eventSources: ["event:seed"],
+    };
+    const candidates = [
+      {
+        e: "worker:maria",
+        a: "worker.status",
+        v: "active",
+        prov: ["fact:active"],
+        eventProv: ["event:active"],
+      },
+      {
+        e: "worker:maria",
+        a: "worker.status",
+        v: "pending",
+        prov: ["fact:pending"],
+        eventProv: ["event:pending"],
+      },
+    ];
+
+    expect(
+      extendPatternCandidatesWithinLimit(pattern, state, candidates, 1, 3),
+    ).toEqual([
+      {
+        binding: { e: "worker:maria", status: "active" },
+        sources: ["fact:seed", "fact:active"],
+        eventSources: ["event:seed", "event:active"],
+      },
+      {
+        binding: { e: "worker:maria", status: "pending" },
+        sources: ["fact:seed", "fact:pending"],
+        eventSources: ["event:seed", "event:pending"],
+      },
+    ]);
+
+    expect(() =>
+      extendPatternCandidatesWithinLimit(pattern, state, candidates, 2, 3),
+    ).toThrow("query exceeded maxIntermediateRows=3");
   });
 
   test("checks negation against fetched candidates with typed unification", () => {

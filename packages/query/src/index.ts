@@ -744,6 +744,21 @@ export function extendPatternCandidates<
   return out;
 }
 
+export function extendPatternCandidatesWithinLimit<
+  SourceId extends string,
+  EventSourceId extends string = string,
+>(
+  clause: PatternClause,
+  state: ProvenancedBinding<SourceId, EventSourceId>,
+  candidates: QueryTriple<SourceId, EventSourceId>[],
+  currentCount: number,
+  limit: number = LIMITS.maxIntermediateRows,
+): ProvenancedBinding<SourceId, EventSourceId>[] {
+  const extended = extendPatternCandidates(clause, state, candidates);
+  assertIntermediateRowsWithinLimit(currentCount + extended.length, limit);
+  return extended;
+}
+
 export function passesNegationCandidates<
   SourceId extends string,
   EventSourceId extends string = string,

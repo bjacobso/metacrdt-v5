@@ -202,9 +202,10 @@ are one representation of facts inside a convergent event log.
   read-only rule emit shaping. Clause-pick planning for the Datalog scheduler
   and provenanced binding dedupe/source merging have also shipped, as has
   pattern-input construction for target triple sources, provenanced pattern
-  extension/candidate expansion for positive joins, negation candidate checking
-  over already-fetched triples, and compare/compute state transitions over
-  provenanced solved bindings, plus the shared intermediate-row limit guard.
+  extension/candidate expansion for positive joins, accumulated row-limit
+  checking for already-fetched positive-pattern candidates, negation candidate
+  checking over already-fetched triples, and compare/compute state transitions
+  over provenanced solved bindings, plus the shared intermediate-row limit guard.
   Bound-variable advancement, solver-frame initialization, and solver work-list
   clause selection/removal for scheduler state have shipped too.
 - `@metacrdt/workflow` — processes, flows, obligations.
@@ -334,9 +335,10 @@ Extract only when each package has a concrete use in the current reference app:
    checking (`passesNegationCandidates`) and local compare/compute state
    transitions (`filterCompareStates`, `applyComputeStates`) have shipped as pure
    helpers. The shared intermediate-row limit guard
-   (`assertIntermediateRowsWithinLimit`) and scheduler bound-var advancement
-   (`advanceBoundVars`) have shipped too. Initial solver-frame construction
-   (`initialSolverFrame`) and solver work-list clause selection/removal
+   (`assertIntermediateRowsWithinLimit`) and guarded positive-pattern extension
+   (`extendPatternCandidatesWithinLimit`) have shipped too. Scheduler bound-var
+   advancement (`advanceBoundVars`), initial solver-frame construction
+   (`initialSolverFrame`), and solver work-list clause selection/removal
    (`selectNextClause`) have shipped too.
    Convex-specific triple fetching, read authorization, provenance
    interpretation, solving, async join execution, negation IO, and branch
