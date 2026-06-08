@@ -48,6 +48,7 @@ type EventRow = {
   id: string;
   e: string | null;
   a: string | null;
+  target: string | null;
   event_json: string;
 };
 
@@ -95,7 +96,7 @@ class FakeSqliteDatabase implements NodeSqliteDatabaseLike {
           return;
         }
         if (normalized.startsWith("insert into") && normalized.includes("event_json")) {
-          const [id, e, a, eventJson] = params;
+          const [id, e, a, target, eventJson] = params;
           if (typeof id !== "string" || typeof eventJson !== "string") {
             throw new Error("bad event insert params");
           }
@@ -104,6 +105,7 @@ class FakeSqliteDatabase implements NodeSqliteDatabaseLike {
               id,
               e: typeof e === "string" ? e : null,
               a: typeof a === "string" ? a : null,
+              target: typeof target === "string" ? target : null,
               event_json: eventJson,
             });
           }
@@ -158,15 +160,29 @@ class FakeSqliteDatabase implements NodeSqliteDatabaseLike {
           return rows.sort((a, b) => a.id.localeCompare(b.id));
         }
         let rows = [...this.events.values()];
-        if (normalized.includes("where e = ? and a = ?")) {
+        if (normalized.includes("where e = ? and a = ? and target = ?")) {
+          const [e, a, target] = params;
+          rows = rows.filter(
+            (row) => row.e === e && row.a === a && row.target === target,
+          );
+        } else if (normalized.includes("where e = ? and a = ?")) {
           const [e, a] = params;
           rows = rows.filter((row) => row.e === e && row.a === a);
+        } else if (normalized.includes("where e = ? and target = ?")) {
+          const [e, target] = params;
+          rows = rows.filter((row) => row.e === e && row.target === target);
+        } else if (normalized.includes("where a = ? and target = ?")) {
+          const [a, target] = params;
+          rows = rows.filter((row) => row.a === a && row.target === target);
         } else if (normalized.includes("where e = ?")) {
           const [e] = params;
           rows = rows.filter((row) => row.e === e);
         } else if (normalized.includes("where a = ?")) {
           const [a] = params;
           rows = rows.filter((row) => row.a === a);
+        } else if (normalized.includes("where target = ?")) {
+          const [target] = params;
+          rows = rows.filter((row) => row.target === target);
         }
         return rows.sort((a, b) => a.id.localeCompare(b.id));
       },
@@ -213,7 +229,7 @@ class FakePostgresClient implements NodePostgresClientLike {
     }
 
     if (normalized.startsWith("insert into") && normalized.includes("event_json")) {
-      const [id, e, a, eventJson] = params;
+      const [id, e, a, target, eventJson] = params;
       if (typeof id !== "string" || typeof eventJson !== "string") {
         throw new Error("bad event insert params");
       }
@@ -223,6 +239,7 @@ class FakePostgresClient implements NodePostgresClientLike {
           id,
           e: typeof e === "string" ? e : null,
           a: typeof a === "string" ? a : null,
+          target: typeof target === "string" ? target : null,
           event_json: eventJson,
         });
       }
@@ -246,15 +263,29 @@ class FakePostgresClient implements NodePostgresClientLike {
       if (normalized.includes("where id = $1")) {
         const [id] = params;
         rows = typeof id === "string" ? rows.filter((row) => row.id === id) : [];
+      } else if (normalized.includes("where e = $1 and a = $2 and target = $3")) {
+        const [e, a, target] = params;
+        rows = rows.filter(
+          (row) => row.e === e && row.a === a && row.target === target,
+        );
       } else if (normalized.includes("where e = $1 and a = $2")) {
         const [e, a] = params;
         rows = rows.filter((row) => row.e === e && row.a === a);
+      } else if (normalized.includes("where e = $1 and target = $2")) {
+        const [e, target] = params;
+        rows = rows.filter((row) => row.e === e && row.target === target);
+      } else if (normalized.includes("where a = $1 and target = $2")) {
+        const [a, target] = params;
+        rows = rows.filter((row) => row.a === a && row.target === target);
       } else if (normalized.includes("where e = $1")) {
         const [e] = params;
         rows = rows.filter((row) => row.e === e);
       } else if (normalized.includes("where a = $1")) {
         const [a] = params;
         rows = rows.filter((row) => row.a === a);
+      } else if (normalized.includes("where target = $1")) {
+        const [target] = params;
+        rows = rows.filter((row) => row.target === target);
       }
       return {
         rows: rows.sort((a, b) => a.id.localeCompare(b.id)),
@@ -528,15 +559,17 @@ describe("@metacrdt/node target", () => {
     expect(sqlite.indexes).toEqual({
       eventsByEntity: '"tenant_a_events_by_e"',
       eventsByAttribute: '"tenant_a_events_by_a"',
+      eventsByTarget: '"tenant_a_events_by_target"',
       projectionByEntity: '"tenant_a_projection_by_e"',
       projectionByAttribute: '"tenant_a_projection_by_a"',
       projectionByEventId: '"tenant_a_projection_by_event_id"',
     });
     expect(sqlite.initializeStatements).toEqual(postgres.initializeStatements);
     expect(sqlite.initializeStatements).toEqual([
-      'CREATE TABLE IF NOT EXISTS "tenant_a_events" (id TEXT PRIMARY KEY NOT NULL, e TEXT, a TEXT, event_json TEXT NOT NULL)',
+      'CREATE TABLE IF NOT EXISTS "tenant_a_events" (id TEXT PRIMARY KEY NOT NULL, e TEXT, a TEXT, target TEXT, event_json TEXT NOT NULL)',
       'CREATE INDEX IF NOT EXISTS "tenant_a_events_by_e" ON "tenant_a_events" (e)',
       'CREATE INDEX IF NOT EXISTS "tenant_a_events_by_a" ON "tenant_a_events" (a)',
+      'CREATE INDEX IF NOT EXISTS "tenant_a_events_by_target" ON "tenant_a_events" (target)',
       'CREATE TABLE IF NOT EXISTS "tenant_a_projection" (id TEXT PRIMARY KEY NOT NULL, e TEXT NOT NULL, a TEXT NOT NULL, event_id TEXT NOT NULL, row_json TEXT NOT NULL)',
       'CREATE INDEX IF NOT EXISTS "tenant_a_projection_by_e" ON "tenant_a_projection" (e)',
       'CREATE INDEX IF NOT EXISTS "tenant_a_projection_by_a" ON "tenant_a_projection" (a)',

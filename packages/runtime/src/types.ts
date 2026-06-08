@@ -35,6 +35,7 @@ export type EventFilter = {
   e?: string;
   a?: string;
   ids?: readonly EventId[];
+  target?: EventId;
 };
 
 export interface EventStore {

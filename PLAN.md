@@ -208,13 +208,16 @@ current facade report deterministic projection invalidation summaries: rebuild
 and append/lifecycle results now include touched `(e, a)` coordinates with
 before/after event ids. Goal 121 makes append/lifecycle current projection
 maintenance coordinate-scoped through `ProjectionStoreService.replaceMatching`;
-explicit `rebuildCurrent` remains the full recovery path. The next active goal
+explicit `rebuildCurrent` remains the full recovery path. Goal 122 adds
+target-indexed lifecycle lookup to the runtime `EventStore` contract and
+Cloudflare/Node SQL event tables, then uses it so Cloudflare DO SQLite append /
+lifecycle current-coordinate reconcile folds only the touched coordinate's
+asserts plus lifecycle events that target those asserts. The next active goal
 should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite historical SQL-indexed-query/operational parity
-(target-event-indexed incremental fold optimization, collection/flow, alarms,
-live fanout),
+(collection/flow, alarms, live fanout),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9429,6 +9432,71 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 122 — Cloudflare DO SQLite Target-Indexed Coordinate Fold
+
+**Status:** shipped.
+
+**Objective:** make the Cloudflare DO SQLite append/lifecycle current-coordinate
+reconcile fold only the events relevant to the touched coordinate: assertions for
+that `(e, a)` plus lifecycle events that target those assertions. This keeps the
+Goal 121 projection replacement scoped while removing the remaining full-event
+scan inside the coordinate fold.
+
+### What Shipped
+
+- Extended `@metacrdt/runtime`'s `EventFilter` with `target?: EventId`.
+- Implemented `scan({ target })` across runtime targets:
+  - memory;
+  - localStorage;
+  - async local persistence;
+  - Cloudflare Durable Object KV;
+  - Cloudflare Durable Object SQLite;
+  - Node SQLite/Postgres;
+  - Convex component raw log bridge.
+- Added SQL lifecycle support for target lookup:
+  - Cloudflare DO SQLite `events` rows now store nullable `target`;
+  - Cloudflare DO SQLite creates `events_by_target`;
+  - Node SQLite/Postgres lifecycle plans add the same nullable `target` column
+    and target index.
+- Updated Cloudflare DO SQLite current-coordinate reconcile:
+  - assertion writes fold matching `(e, a)` assert events plus lifecycle events
+    found via `store.scan({ target: assertEventId })`;
+  - lifecycle writes resolve the touched coordinate from the targeted assert,
+    then fold the same bounded event set;
+  - explicit `rebuildCurrent` remains the full-log truncate/replay recovery
+    path.
+- Strengthened `@metacrdt/testkit` EventStore conformance so every target must
+  prove `scan({ target })`.
+- Cloudflare fake SQLite tests now distinguish target-index scans from full event
+  scans and prove lifecycle current-coordinate reconcile exercises the target
+  path without falling back to a full event scan.
+
+### Non-Goals
+
+- Do not claim a full historical SQL-indexed Datalog query provider yet. The
+  default historical query surface still uses the shared EventStore-backed
+  provider.
+- Do not add the collection/flow operational surface.
+- Do not add DO alarm multiplexing.
+- Do not add live-query WebSocket fanout/plumbing or a live Cloudflare
+  deployment.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/runtime`
+- `npm run typecheck --workspace @metacrdt/testkit`
+- `npm run typecheck --workspace @metacrdt/node`
+- `npm run typecheck --workspace @metacrdt/cloudflare`
+- `npm test --workspace @metacrdt/testkit`
+- `npm test --workspace @metacrdt/cloudflare`
+- `npm test --workspace @metacrdt/node`
+- `npm test --workspace @metacrdt/convex`
+- Cloudflare tests prove scoped append reports relevant event counts for the
+  coordinate and lifecycle reconcile increments target-index scans without
+  incrementing full event scans.
 
 ---
 

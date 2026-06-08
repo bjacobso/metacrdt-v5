@@ -44,6 +44,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   append/lifecycle helpers replace only the touched current projection coordinate
   through `ProjectionStoreService.replaceMatching`; explicit `rebuildCurrent`
   remains the full recovery path.
+- [x] Cloudflare Durable Object SQLite target-indexed coordinate fold —
+  `EventFilter.target` is now part of the runtime contract, SQL event stores
+  persist/index lifecycle targets, shared conformance proves `scan({ target })`,
+  and Cloudflare append/lifecycle reconcile folds only the touched coordinate's
+  assertions plus lifecycle events targeting those assertions.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -53,9 +58,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — historical
-  SQL-indexed query-provider optimization, lifecycle target-event indexing /
-  incremental fold optimization, operational collection/flow surface, DO alarm
-  multiplexing, and live-query WebSocket fanout/plumbing (see
+  SQL-indexed query-provider optimization, operational collection/flow surface,
+  DO alarm multiplexing, and live-query WebSocket fanout/plumbing (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
@@ -586,6 +590,22 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ## Log
 
+### 2026-06-08 — Cloudflare DO SQLite target-indexed coordinate fold
+- [x] **Runtime target lookup is now contractual.** `EventFilter.target` lets
+  targets scan lifecycle events by the assertion event they affect; memory,
+  localStorage, async local persistence, Cloudflare KV/SQLite, Node
+  SQLite/Postgres, and the Convex component raw-log bridge implement it.
+- [x] **SQL stores persist and index lifecycle targets.** Cloudflare DO SQLite
+  and Node SQLite/Postgres event tables now include nullable `target` plus a
+  target index, and the shared Node SQL lifecycle plan exposes that DDL.
+- [x] **Cloudflare scoped reconcile no longer folds the full log.**
+  Append/lifecycle current-coordinate reconcile folds matching `(e, a)` asserts
+  plus `scan({ target })` lifecycle rows for those asserts; explicit
+  `rebuildCurrent` remains the full-log recovery path.
+- [x] **Tests prove the path.** `@metacrdt/testkit` EventStore conformance now
+  requires `scan({ target })`; Cloudflare fake SQLite counts target scans versus
+  full scans and lifecycle reconcile exercises the target-index path.
+
 ### 2026-06-08 — Cloudflare DO SQLite scoped current reconcile
 - [x] **Added `ProjectionStoreService.replaceMatching`.** Runtime now has an
   Effect-native scoped projection replacement contract, with a compatibility
@@ -602,8 +622,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **Tests prove scoped writes.** Testkit projection-store conformance now
   verifies replacing one coordinate preserves unrelated rows; Cloudflare tests
   prove append/lifecycle paths do not full-clear the projection while explicit
-  `rebuildCurrent` still does. This is projection-write-side incremental; event
-  log scanning remains until target-event indexing / SQL fold optimization.
+  `rebuildCurrent` still does. This was projection-write-side incremental; the
+  following target-indexed coordinate-fold slice removed the remaining full-log
+  scan from append/lifecycle reconcile.
 
 ### 2026-06-08 — Cloudflare DO SQLite projection invalidation summaries
 - [x] **Made the current projection report what changed.**

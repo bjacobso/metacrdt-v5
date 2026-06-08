@@ -168,7 +168,8 @@ Current packages:
   target helpers: KV-backed and SQLite-backed event log/projection/HLC/seq
   services, Effect Layer providers, the first SQLite-backed current-state surface
   (append with scoped current-coordinate projection reconcile through
-  `ProjectionStoreService.replaceMatching`, protocol event reads,
+  `ProjectionStoreService.replaceMatching` and target-indexed lifecycle lookup,
+  protocol event reads,
   EventStore-backed bitemporal Datalog reads, projection-backed current Datalog
   reads, full-recovery rebuild, current rows/entities, projection invalidation
   summaries as `changed` `(e, a)` before/after event ids), WebSocket relay shell,
@@ -196,7 +197,8 @@ Current packages:
   `node:http`. Memory, SQLite, and Postgres runtimes expose Effect Layer
   providers and pass `@metacrdt/testkit`.
 - **`@metacrdt/testkit`** (`packages/testkit`) — target conformance helpers:
-  Effect Layer-backed checks for EventStore idempotency/filtering/content-id
+  Effect Layer-backed checks for EventStore idempotency/filtering (including
+  lifecycle `target` lookup)/content-id
   verification, version-vector anti-entropy, deterministic fold convergence, and
   EventStore-backed projection plus the production `DatalogQueryService`
   contract. It also includes

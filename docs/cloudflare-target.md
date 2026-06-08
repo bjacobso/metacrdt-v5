@@ -6,7 +6,7 @@ adapter over `ctx.storage.sql.exec(...)`, with EventStore / ProjectionStore /
 HLC / seq services, Layer-backed conformance, and the first
 component-equivalent log/current/query surface (`appendAssert` /
 `appendLifecycle` helpers with scoped current-coordinate projection reconcile,
-`getEvent`, `listEvents`,
+target-indexed lifecycle lookup, `getEvent`, `listEvents`,
 EventStore-backed `query` / `page` / `aggregate` / `derivedRows`,
 projection-backed `queryCurrent` / `pageCurrent` / `aggregateCurrent` /
 `derivedRowsCurrent`, `rebuildCurrent`, `listCurrent`, `getCurrentEntity`,
@@ -42,10 +42,10 @@ reads (`queryCurrent`, `pageCurrent`, `aggregateCurrent`,
 `derivedRowsCurrent`), `rebuildCurrent`, and current entity/list reads backed by
 SQLite projection rows, with rebuild results reporting changed current
 projection coordinates and before/after event ids; append/lifecycle writes now
-replace only the touched current projection coordinate. It still has no
-historical SQL-optimized indexed triple queries, no target-event-indexed
-incremental fold optimization, no live invalidation fanout, and none of the
-operational (collection/flow) surface.
+replace only the touched current projection coordinate and fold only matching
+assertions plus lifecycle events found by target id. It still has no historical
+SQL-optimized indexed triple queries, no live invalidation fanout, and none of
+the operational (collection/flow) surface.
 
 This doc defines what it takes to bring Cloudflare to parity, in what order, and
 which decisions must be settled first — and it makes **live frontend queries an
@@ -104,7 +104,7 @@ function surface — backed by Durable Object SQLite instead of the Convex DB.
 | `DurableObjectEventStore` | KV-blob event log: one `event:<id>` entry per event + an `events:index` id array |
 | `DurableObjectProjectionStore` | KV-blob materialized projection-store seed for shared `ProjectionStoreService` conformance |
 | `DurableObjectClock` / `DurableObjectSequencer` | persisted HLC + per-replica `seq` |
-| `DurableObjectSqliteEventStore` | SQLite-backed event table over `ctx.storage.sql.exec(...)`; indexed by entity and attribute |
+| `DurableObjectSqliteEventStore` | SQLite-backed event table over `ctx.storage.sql.exec(...)`; indexed by entity, attribute, and lifecycle target |
 | `DurableObjectSqliteProjectionStore` | SQLite-backed materialized projection table; indexed by entity, attribute, and source event |
 | `DurableObjectSqliteClock` / `DurableObjectSqliteSequencer` | SQLite-backed HLC + per-replica `seq` metadata |
 | `createDurableObjectSqliteCurrentSurface` | First component-equivalent log/current/query facade: append helpers with scoped current-coordinate projection reconcile, get/list events, EventStore-backed bitemporal Datalog reads, projection-backed current Datalog reads, rebuild with changed `(e, a)` summaries, list current rows, read current entity, and list typed current entities |
@@ -113,7 +113,8 @@ function surface — backed by Durable Object SQLite instead of the Convex DB.
 
 This is now the sync plane plus a SQL storage substrate. The KV store still
 linearly loads ids and filters in memory; the SQLite store adds targeted event
-and projection indexes, plus a first current-state read facade. It is not yet a
+and projection indexes, including lifecycle `target` lookup, plus a first
+current-state read facade. It is not yet a
 full queryable component-equivalent bitemporal triple store.
 
 ---
@@ -143,8 +144,8 @@ unchanged. Define a SQL schema mirroring `component/schema.ts`.
 `DurableObjectSqliteSequencer` over structural `sql.exec`, exported through
 `createDurableObjectSqliteRuntime` / `createDurableObjectSqliteRuntimeLayer`.
 The seed owns `events`, `projection`, and `meta` tables with entity/attribute
-indexes and passes shared runtime, projection-store, and restart-persistence
-conformance.
+and lifecycle-target indexes and passes shared runtime, projection-store, and
+restart-persistence conformance.
 
 **Still ahead for parity:** SQL schema mirroring the component-owned surface:
 `transactions`, `fact_events`, `facts`, `current_facts`, plus indexes replacing
@@ -193,13 +194,13 @@ Datalog reads through runtime's projection-backed query provider over those
 SQLite projection rows. `rebuildCurrent` returns a deterministic `changed`
 summary of touched `(e, a)` coordinates with before/after event ids; append and
 lifecycle helpers surface the same change result from their scoped coordinate
-reconcile. Explicit `rebuildCurrent` remains the full truncate/replay recovery
-path.
+reconcile. The scoped reconcile folds only matching `(e, a)` assertions plus
+lifecycle events discovered through the SQLite `target` index. Explicit
+`rebuildCurrent` remains the full truncate/replay recovery path.
 
 **Still ahead for parity:** richer append function surface, SQL-indexed query
 provider optimization/conformance for historical bitemporal queries,
-target-event-indexed incremental fold optimization, live invalidation fanout, and the
-collection/flow surface.
+live invalidation fanout, and the collection/flow surface.
 
 ### Phase D — Operational surface + alarms
 

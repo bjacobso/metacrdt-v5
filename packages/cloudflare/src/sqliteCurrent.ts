@@ -25,6 +25,7 @@ import {
   type DatalogQueryArgsType,
   type DatalogQueryPageArgsType,
   type DatalogQueryResult,
+  type EventStoreEffect,
   type Operation,
   type ProjectionRow,
   type RuntimeError,
@@ -60,6 +61,7 @@ export const DurableObjectSqliteEventFilterSchema = Schema.Struct({
   e: Schema.optionalWith(Schema.String, { exact: true }),
   a: Schema.optionalWith(Schema.String, { exact: true }),
   ids: Schema.optionalWith(Schema.Array(Schema.String), { exact: true }),
+  target: Schema.optionalWith(Schema.String, { exact: true }),
   limit: Schema.optionalWith(Schema.Number, { exact: true }),
 });
 
@@ -338,6 +340,24 @@ function rowsForCoord(
   return rows.filter((row) => row.e === coord.e && row.a === coord.a);
 }
 
+function uniqueEvents(events: Iterable<Event>): Event[] {
+  return [...new Map([...events].map((event) => [event.id, event])).values()];
+}
+
+function eventsForCoord(
+  store: EventStoreEffect,
+  coord: ProjectionCoord,
+): Effect.Effect<Event[], RuntimeError> {
+  return Effect.gen(function* () {
+    const asserts = yield* store.scan(coord);
+    const lifecycleGroups = yield* Effect.all(
+      asserts.map((event) => store.scan({ target: event.id })),
+      { concurrency: "unbounded" },
+    );
+    return uniqueEvents([...asserts, ...lifecycleGroups.flat()]);
+  });
+}
+
 export function rebuildDurableObjectSqliteCurrentEffect(
   args: DurableObjectSqliteRebuildCurrentArgs,
   cardinalityOf: CardinalityOf,
@@ -381,22 +401,26 @@ export function reconcileDurableObjectSqliteCurrentEventEffect(
   return Effect.gen(function* () {
     const store = yield* EventStoreService;
     const projection = yield* ProjectionStoreService;
-    const target = event.target === undefined
-      ? undefined
-      : yield* store.get(event.target);
+    const targetEvents = event.target === undefined
+      ? []
+      : yield* store.scan({ ids: [event.target] });
+    const target = targetEvents[0];
     const touched = assertCoord(event) ?? (target ? assertCoord(target) : undefined);
-    const events = yield* store.scan();
     if (touched === undefined) {
       const rows = yield* projection.scan();
-      return { events: events.length, rows: rows.length, changed: [] };
+      return { events: 0, rows: rows.length, changed: [] };
     }
 
     const beforeRows = yield* projection.scan(touched);
-    const allRows = yield* Effect.try({
-      try: () => projectionRowsFromLog(fromEvents(events), coord, cardinalityOf),
+    const events = yield* eventsForCoord(store, touched);
+    const afterRows = yield* Effect.try({
+      try: () =>
+        rowsForCoord(
+          projectionRowsFromLog(fromEvents(events), coord, cardinalityOf),
+          touched,
+        ),
       catch: (cause) => surfaceError("reconcileCurrent", cause),
     });
-    const afterRows = rowsForCoord(allRows, touched);
     yield* projection.replaceMatching(touched, afterRows);
     const currentRows = yield* projection.scan();
     return {
@@ -443,6 +467,7 @@ export function listDurableObjectSqliteEventsEffect(
       ...(decoded.e === undefined ? {} : { e: decoded.e }),
       ...(decoded.a === undefined ? {} : { a: decoded.a }),
       ...(decoded.ids === undefined ? {} : { ids: decoded.ids }),
+      ...(decoded.target === undefined ? {} : { target: decoded.target }),
     });
     return sortEvents(events).slice(0, limit(decoded.limit, 100, 1000));
   });

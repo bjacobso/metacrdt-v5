@@ -95,6 +95,7 @@ export type NodeSqlLifecyclePlan = {
   indexes: {
     eventsByEntity: string;
     eventsByAttribute: string;
+    eventsByTarget: string;
     projectionByEntity: string;
     projectionByAttribute: string;
     projectionByEventId: string;
@@ -102,6 +103,7 @@ export type NodeSqlLifecyclePlan = {
   createEventsTable: string;
   createEventsByEntityIndex: string;
   createEventsByAttributeIndex: string;
+  createEventsByTargetIndex: string;
   createMetaTable: string;
   createProjectionTable: string;
   createProjectionByEntityIndex: string;
@@ -375,6 +377,7 @@ export function createNodeSqlLifecyclePlan(
   const indexes = {
     eventsByEntity: identifier(`${tablePrefix}_events_by_e`),
     eventsByAttribute: identifier(`${tablePrefix}_events_by_a`),
+    eventsByTarget: identifier(`${tablePrefix}_events_by_target`),
     projectionByEntity: identifier(`${tablePrefix}_projection_by_e`),
     projectionByAttribute: identifier(`${tablePrefix}_projection_by_a`),
     projectionByEventId: identifier(`${tablePrefix}_projection_by_event_id`),
@@ -384,6 +387,7 @@ export function createNodeSqlLifecyclePlan(
     "id TEXT PRIMARY KEY NOT NULL, " +
     "e TEXT, " +
     "a TEXT, " +
+    "target TEXT, " +
     "event_json TEXT NOT NULL" +
     ")";
   const createEventsByEntityIndex =
@@ -392,6 +396,9 @@ export function createNodeSqlLifecyclePlan(
   const createEventsByAttributeIndex =
     `CREATE INDEX IF NOT EXISTS ${indexes.eventsByAttribute} ` +
     `ON ${tables.events} (a)`;
+  const createEventsByTargetIndex =
+    `CREATE INDEX IF NOT EXISTS ${indexes.eventsByTarget} ` +
+    `ON ${tables.events} (target)`;
   const createMetaTable =
     `CREATE TABLE IF NOT EXISTS ${tables.meta} (` +
     "key TEXT PRIMARY KEY NOT NULL, " +
@@ -422,6 +429,7 @@ export function createNodeSqlLifecyclePlan(
     createEventsTable,
     createEventsByEntityIndex,
     createEventsByAttributeIndex,
+    createEventsByTargetIndex,
     createMetaTable,
     createProjectionTable,
     createProjectionByEntityIndex,
@@ -431,6 +439,7 @@ export function createNodeSqlLifecyclePlan(
       createEventsTable,
       createEventsByEntityIndex,
       createEventsByAttributeIndex,
+      createEventsByTargetIndex,
       createProjectionTable,
       createProjectionByEntityIndex,
       createProjectionByAttributeIndex,
@@ -1130,6 +1139,7 @@ export class NodeSqliteEventStore implements EventStore {
     await this.exec(this.plan.createEventsTable);
     await this.exec(this.plan.createEventsByEntityIndex);
     await this.exec(this.plan.createEventsByAttributeIndex);
+    await this.exec(this.plan.createEventsByTargetIndex);
   }
 
   private async exec(sql: string): Promise<void> {
@@ -1149,10 +1159,16 @@ export class NodeSqliteEventStore implements EventStore {
     if (inserted) {
       const stmt = await prepare(
         this.db,
-        `INSERT INTO ${this.plan.tables.events} (id, e, a, event_json) VALUES (?, ?, ?, ?)`,
+        `INSERT INTO ${this.plan.tables.events} (id, e, a, target, event_json) VALUES (?, ?, ?, ?, ?)`,
       );
       if (!stmt.run) throw new Error("SQLite statement does not support run()");
-      await stmt.run(event.id, event.e ?? null, event.a ?? null, eventJson(event));
+      await stmt.run(
+        event.id,
+        event.e ?? null,
+        event.a ?? null,
+        event.target ?? null,
+        eventJson(event),
+      );
     } else if (existing.seq === undefined && event.seq !== undefined) {
       const stmt = await prepare(
         this.db,
@@ -1181,6 +1197,7 @@ export class NodeSqliteEventStore implements EventStore {
         if (!event) continue;
         if (filter.e !== undefined && event.e !== filter.e) continue;
         if (filter.a !== undefined && event.a !== filter.a) continue;
+        if (filter.target !== undefined && event.target !== filter.target) continue;
         out.push(event);
       }
       return out.sort((a, b) => a.id.localeCompare(b.id));
@@ -1195,6 +1212,10 @@ export class NodeSqliteEventStore implements EventStore {
     if (filter.a !== undefined) {
       clauses.push("a = ?");
       params.push(filter.a);
+    }
+    if (filter.target !== undefined) {
+      clauses.push("target = ?");
+      params.push(filter.target);
     }
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
     const stmt = await prepare(
@@ -1458,6 +1479,7 @@ export class NodePostgresEventStore implements EventStore {
     await queryPostgres(this.client, this.plan.createEventsTable);
     await queryPostgres(this.client, this.plan.createEventsByEntityIndex);
     await queryPostgres(this.client, this.plan.createEventsByAttributeIndex);
+    await queryPostgres(this.client, this.plan.createEventsByTargetIndex);
   }
 
   async append(event: Event): Promise<AppendResult> {
@@ -1467,9 +1489,15 @@ export class NodePostgresEventStore implements EventStore {
     if (existing === undefined) {
       const result = await queryPostgres(
         this.client,
-        `INSERT INTO ${this.plan.tables.events} (id, e, a, event_json) VALUES ($1, $2, $3, $4) ` +
+        `INSERT INTO ${this.plan.tables.events} (id, e, a, target, event_json) VALUES ($1, $2, $3, $4, $5) ` +
           "ON CONFLICT (id) DO NOTHING",
-        [event.id, event.e ?? null, event.a ?? null, eventJson(event)],
+        [
+          event.id,
+          event.e ?? null,
+          event.a ?? null,
+          event.target ?? null,
+          eventJson(event),
+        ],
       );
       inserted = result.rowCount === undefined || result.rowCount === null
         ? true
@@ -1501,6 +1529,7 @@ export class NodePostgresEventStore implements EventStore {
         if (!event) continue;
         if (filter.e !== undefined && event.e !== filter.e) continue;
         if (filter.a !== undefined && event.a !== filter.a) continue;
+        if (filter.target !== undefined && event.target !== filter.target) continue;
         out.push(event);
       }
       return out.sort((a, b) => a.id.localeCompare(b.id));
@@ -1515,6 +1544,10 @@ export class NodePostgresEventStore implements EventStore {
     if (filter.a !== undefined) {
       params.push(filter.a);
       clauses.push(`a = $${params.length}`);
+    }
+    if (filter.target !== undefined) {
+      params.push(filter.target);
+      clauses.push(`target = $${params.length}`);
     }
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
     const result = await queryPostgres(

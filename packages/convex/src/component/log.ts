@@ -1055,6 +1055,7 @@ export const listRawEvents = query({
     e: v.optional(v.string()),
     a: v.optional(v.string()),
     ids: v.optional(v.array(v.string())),
+    target: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
   returns: v.array(coreEventValidator),
@@ -1064,7 +1065,11 @@ export const listRawEvents = query({
       const out: CoreEventValue[] = [];
       for (const id of args.ids.slice(0, take)) {
         const ev = await rawEventByEventId(ctx, id);
-        if (ev !== null) out.push(ev);
+        if (ev === null) continue;
+        if (args.e !== undefined && ev.e !== args.e) continue;
+        if (args.a !== undefined && ev.a !== args.a) continue;
+        if (args.target !== undefined && ev.target !== args.target) continue;
+        out.push(ev);
       }
       return out;
     }
@@ -1089,7 +1094,10 @@ export const listRawEvents = query({
     const out: CoreEventValue[] = [];
     for (const row of rows) {
       const tx = await ctx.db.get(row.txId);
-      if (tx !== null) out.push(rawEventFromRows(row, tx));
+      if (tx === null) continue;
+      const ev = rawEventFromRows(row, tx);
+      if (args.target !== undefined && ev.target !== args.target) continue;
+      out.push(ev);
     }
     return out;
   },

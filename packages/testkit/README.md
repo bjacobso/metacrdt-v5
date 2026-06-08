@@ -16,8 +16,8 @@ verified to behave identically at the boundaries that matter.
 - **`runEventStoreConformance`** — that a target's `EventStore` is a correct
   grow-only-set log:
   - `append-idempotent` — re-appending the same event does not duplicate it.
-  - `scan-filters` — `scan({ e })` / `scan({ a })` / `scan({ ids })` filter as
-    specified.
+  - `scan-filters` — `scan({ e })` / `scan({ a })` / `scan({ ids })` /
+    `scan({ target })` filter as specified.
   - `gset-merge-idempotent` — merging already-seen events inserts nothing.
   - `content-id-verification` — the store **rejects** events whose id does not
     match their content hash.

@@ -259,7 +259,7 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
     expect(sql.projectionDeleteMatchingCount).toBeGreaterThan(0);
 
     expect(winner.projection).toMatchObject({
-      events: 4,
+      events: 2,
       rows: 3,
     });
     expect(winner.projection.changed).toEqual([
@@ -468,6 +468,8 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
     });
     expect(await surface.listCurrent({ e: "worker:closed" })).toHaveLength(1);
 
+    const targetScansBefore = sql.eventTargetScanCount;
+    const fullScansBefore = sql.eventFullScanCount;
     const retracted = await surface.appendLifecycle({
       kind: "retract",
       target: asserted.event.id,
@@ -487,6 +489,11 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
         },
       ],
     });
+    expect(sql.eventTargetScanCount).toBeGreaterThan(targetScansBefore);
+    expect(sql.eventFullScanCount).toBe(fullScansBefore);
+    await expect(surface.listEvents({ target: asserted.event.id })).resolves.toEqual([
+      retracted.event,
+    ]);
     await expect(surface.listCurrent({ e: "worker:closed" })).resolves.toEqual([]);
     await expect(
       surface.getCurrentEntity({ e: "worker:closed" }),

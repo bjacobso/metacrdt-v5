@@ -9,6 +9,7 @@ type StoredEvent = {
   id: string;
   e: string | null;
   a: string | null;
+  target: string | null;
   event_json: string;
 };
 
@@ -56,6 +57,8 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
   readonly meta = new Map<string, string>();
   projectionDeleteAllCount = 0;
   projectionDeleteMatchingCount = 0;
+  eventFullScanCount = 0;
+  eventTargetScanCount = 0;
 
   exec(query: string, ...bindings: readonly unknown[]): DurableObjectSqlCursorLike {
     const sql = normalize(query);
@@ -75,6 +78,7 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
       id: event.id,
       e: event.e ?? null,
       a: event.a ?? null,
+      target: event.target ?? null,
       event_json: JSON.stringify(event),
     });
   }
@@ -94,12 +98,13 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
     bindings: readonly unknown[],
   ): DurableObjectSqlCursorLike {
     if (sql.startsWith("insert into")) {
-      const [idRaw, eRaw, aRaw, jsonRaw] = bindings;
+      const [idRaw, eRaw, aRaw, targetRaw, jsonRaw] = bindings;
       const id = stringBinding(idRaw, "event id");
       this.events.set(id, {
         id,
         e: nullableStringBinding(eRaw, "event e"),
         a: nullableStringBinding(aRaw, "event a"),
+        target: nullableStringBinding(targetRaw, "event target"),
         event_json: stringBinding(jsonRaw, "event_json"),
       });
       return cursor();
@@ -124,16 +129,38 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
     }
 
     let rows = [...this.events.values()];
-    if (sql.includes("where e = ? and a = ?")) {
+    if (sql.includes("where e = ? and a = ? and target = ?")) {
+      this.eventTargetScanCount += 1;
+      const e = stringBinding(bindings[0], "event e");
+      const a = stringBinding(bindings[1], "event a");
+      const target = stringBinding(bindings[2], "event target");
+      rows = rows.filter((row) => row.e === e && row.a === a && row.target === target);
+    } else if (sql.includes("where e = ? and a = ?")) {
       const e = stringBinding(bindings[0], "event e");
       const a = stringBinding(bindings[1], "event a");
       rows = rows.filter((row) => row.e === e && row.a === a);
+    } else if (sql.includes("where e = ? and target = ?")) {
+      this.eventTargetScanCount += 1;
+      const e = stringBinding(bindings[0], "event e");
+      const target = stringBinding(bindings[1], "event target");
+      rows = rows.filter((row) => row.e === e && row.target === target);
+    } else if (sql.includes("where a = ? and target = ?")) {
+      this.eventTargetScanCount += 1;
+      const a = stringBinding(bindings[0], "event a");
+      const target = stringBinding(bindings[1], "event target");
+      rows = rows.filter((row) => row.a === a && row.target === target);
     } else if (sql.includes("where e = ?")) {
       const e = stringBinding(bindings[0], "event e");
       rows = rows.filter((row) => row.e === e);
     } else if (sql.includes("where a = ?")) {
       const a = stringBinding(bindings[0], "event a");
       rows = rows.filter((row) => row.a === a);
+    } else if (sql.includes("where target = ?")) {
+      this.eventTargetScanCount += 1;
+      const target = stringBinding(bindings[0], "event target");
+      rows = rows.filter((row) => row.target === target);
+    } else {
+      this.eventFullScanCount += 1;
     }
     return cursor(
       rows

@@ -145,6 +145,7 @@ export class DurableObjectEventStore implements EventStore {
       if (!event) continue;
       if (filter.e !== undefined && event.e !== filter.e) continue;
       if (filter.a !== undefined && event.a !== filter.a) continue;
+      if (filter.target !== undefined && event.target !== filter.target) continue;
       out.push(event);
     }
     return out;

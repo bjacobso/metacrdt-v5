@@ -70,6 +70,7 @@ type SqlPlan = {
   indexes: {
     eventsByEntity: string;
     eventsByAttribute: string;
+    eventsByTarget: string;
     projectionByEntity: string;
     projectionByAttribute: string;
     projectionByEventId: string;
@@ -94,6 +95,7 @@ function plan(prefix = "metacrdt"): SqlPlan {
     indexes: {
       eventsByEntity: identifier(`${prefix}_events_by_e`),
       eventsByAttribute: identifier(`${prefix}_events_by_a`),
+      eventsByTarget: identifier(`${prefix}_events_by_target`),
       projectionByEntity: identifier(`${prefix}_projection_by_e`),
       projectionByAttribute: identifier(`${prefix}_projection_by_a`),
       projectionByEventId: identifier(`${prefix}_projection_by_event_id`),
@@ -176,6 +178,7 @@ export class DurableObjectSqliteEventStore implements EventStore {
         "id TEXT PRIMARY KEY NOT NULL, " +
         "e TEXT, " +
         "a TEXT, " +
+        "target TEXT, " +
         "event_json TEXT NOT NULL" +
         ")",
     );
@@ -187,6 +190,10 @@ export class DurableObjectSqliteEventStore implements EventStore {
       `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.eventsByAttribute} ` +
         `ON ${this.plan.tables.events} (a)`,
     );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.eventsByTarget} ` +
+        `ON ${this.plan.tables.events} (target)`,
+    );
   }
 
   async append(event: Event): Promise<AppendResult> {
@@ -195,10 +202,11 @@ export class DurableObjectSqliteEventStore implements EventStore {
     const inserted = existing === undefined;
     if (inserted) {
       this.sql.exec(
-        `INSERT INTO ${this.plan.tables.events} (id, e, a, event_json) VALUES (?, ?, ?, ?)`,
+        `INSERT INTO ${this.plan.tables.events} (id, e, a, target, event_json) VALUES (?, ?, ?, ?, ?)`,
         event.id,
         event.e ?? null,
         event.a ?? null,
+        event.target ?? null,
         eventJson(event),
       );
     } else if (existing.seq === undefined && event.seq !== undefined) {
@@ -230,6 +238,7 @@ export class DurableObjectSqliteEventStore implements EventStore {
         if (!event) continue;
         if (filter.e !== undefined && event.e !== filter.e) continue;
         if (filter.a !== undefined && event.a !== filter.a) continue;
+        if (filter.target !== undefined && event.target !== filter.target) continue;
         out.push(event);
       }
       return out.sort((a, b) => a.id.localeCompare(b.id));
@@ -244,6 +253,10 @@ export class DurableObjectSqliteEventStore implements EventStore {
     if (filter.a !== undefined) {
       clauses.push("a = ?");
       bindings.push(filter.a);
+    }
+    if (filter.target !== undefined) {
+      clauses.push("target = ?");
+      bindings.push(filter.target);
     }
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
     return rows(

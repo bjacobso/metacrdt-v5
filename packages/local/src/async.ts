@@ -129,6 +129,7 @@ export class AsyncLocalEventStore implements EventStore {
       if (ids && !ids.has(event.id)) return false;
       if (filter.e !== undefined && event.e !== filter.e) return false;
       if (filter.a !== undefined && event.a !== filter.a) return false;
+      if (filter.target !== undefined && event.target !== filter.target) return false;
       return true;
     });
   }

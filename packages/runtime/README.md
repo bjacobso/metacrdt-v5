@@ -22,6 +22,9 @@ transport exists.
   `VersionVector`, `Actor`, `EventFilter`, `ProjectionRow`,
   `ProjectionFilter`). These keep already-shipped targets green while they
   migrate to Layer providers.
+  `EventFilter` includes entity/attribute/id filters plus `target`, so lifecycle
+  events can be found by the assertion event they modify without scanning a
+  whole durable log.
 - **Materialized projection rows** — `projectionRowsFromLog` folds a protocol log
   into deterministic current projection rows using `@metacrdt/core` visibility
   and cardinality semantics. Targets own storage and indexing; runtime owns the

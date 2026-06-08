@@ -127,6 +127,7 @@ export class ConvexComponentEventStore implements EventStore {
           e: filter.e,
           a: filter.a,
           ids: filter.ids,
+          target: filter.target,
           limit: 1000,
         }),
       );

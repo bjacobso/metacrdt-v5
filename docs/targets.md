@@ -201,8 +201,10 @@ The Cloudflare DO SQLite facade now reports the first version of this key:
 `rebuildCurrent` and append/lifecycle facade results include deterministic
 `changed` `(e, a)` coordinates with before/after event ids. Append/lifecycle
 helpers also use `ProjectionStoreService.replaceMatching` to replace only the
-touched current coordinate; actual WebSocket subscription fanout remains
-transport work.
+touched current coordinate, and the replacement fold is bounded by
+`EventStoreService.scan({ e, a })` plus lifecycle rows discovered through
+`EventStoreService.scan({ target })`. Actual WebSocket subscription fanout
+remains transport work.
 
 ---
 
@@ -275,9 +277,10 @@ a sibling target.
 3. **Cloudflare Phase B/C** — the DO SQLite runtime-service substrate and first
    log/current/query surface have started, including projection-backed current
    Datalog reads, current-projection change summaries, and scoped
-   current-coordinate projection replacement; next is the optimized historical
-   SQL-indexed query provider plus target-event indexing / incremental fold
-   optimization, collection/flow, alarm, and live-query surface over SQLite
+   current-coordinate projection replacement. Target-event lookup is now part of
+   the EventStore contract and DO SQLite uses it for bounded coordinate folds;
+   next is the optimized historical SQL-indexed query provider plus
+   collection/flow, alarm, and live-query surface over SQLite
    ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal
    enough repeated DDL/query-generation logic beyond the current Node lifecycle

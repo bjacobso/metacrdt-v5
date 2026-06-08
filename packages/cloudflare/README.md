@@ -131,7 +131,8 @@ SQLite storage substrate**. The original KV-shaped Durable Object runtime remain
 for relay/storage-shell tests; the SQLite runtime is the forward path for the
 full target. Both expose Effect Layers. The SQLite adapter persists the event log,
 materialized projection rows, HLC, and per-replica sequence through the structural
-Cloudflare SQLite API, and it passes the shared `@metacrdt/testkit` runtime,
+Cloudflare SQLite API. Its event table indexes entity, attribute, and lifecycle
+target ids, and it passes the shared `@metacrdt/testkit` runtime,
 projection-store, and restart-persistence conformance suites.
 
 It is still not a fully optimized bitemporal triple store or a live deployment.
@@ -141,8 +142,7 @@ runtime, and the same facade now exposes protocol event reads (`getEvent` /
 `aggregate`, `derivedRows`) plus projection-backed current Datalog reads
 (`queryCurrent`, `pageCurrent`, `aggregateCurrent`, `derivedRowsCurrent`) and
 deterministic `changed` summaries for current-projection rebuilds. The remaining
-parity plan — full historical SQL-indexed query optimization, incremental
-fold optimization / target-event indexing, live invalidation fanout,
+parity plan — full historical SQL-indexed query optimization, live invalidation fanout,
 collection/flow surface, alarm multiplexing, and live frontend queries over DO
 WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).

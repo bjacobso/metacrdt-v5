@@ -403,6 +403,19 @@ export async function runEventStoreConformance(
           second.id,
         "scan({ids}) failed",
       );
+      const firstRetracted = retractEvent({
+        target: first.id,
+        actor: "testkit",
+        actorType: "system",
+        hlc: { pt: 3, l: 0, r: profile.replicaId },
+      });
+      yield* store.append(firstRetracted);
+      expect(
+        target,
+        (yield* store.scan({ target: first.id })).map((e) => e.id).join(",") ===
+          firstRetracted.id,
+        "scan({target}) failed",
+      );
       checks.push("scan-filters");
 
       const merge = yield* store.merge([first, second]);
