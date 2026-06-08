@@ -1,7 +1,8 @@
 import { query, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
-import { isVisible } from "./lib/visibility";
+import { eventLogTripleSource } from "./lib/eventLogTripleSource";
+import { project, runWhere } from "./lib/engine";
 
 type ConfigKind =
   | "attribute"
@@ -46,16 +47,24 @@ function sorted(items: Iterable<ConfigItem>): ConfigItem[] {
 
 async function manifestSnapshot(
   ctx: QueryCtx,
-  facts: Doc<"facts">[],
   txTime: number,
 ): Promise<Set<string>> {
   const coord = { txTime, validTime: txTime };
+  const rows = project(
+    await runWhere(
+      ctx,
+      [[CONFIG_ENTITY, "?a", "?v"]],
+      coord,
+      {},
+      { source: eventLogTripleSource },
+    ),
+    ["?a", "?v"],
+  );
   const out = new Set<string>();
-  for (const f of facts) {
-    const kind = ATTR_KIND.get(f.a);
+  for (const row of rows) {
+    const kind = ATTR_KIND.get(String(row.a));
     if (!kind) continue;
-    if (!isVisible(f, coord)) continue;
-    out.add(itemKey({ kind, value: String(f.v) }));
+    out.add(itemKey({ kind, value: String(row.v) }));
   }
   return out;
 }
@@ -106,19 +115,11 @@ export const history = query({
       .withIndex("by_actor", (q) => q.eq("actorId", "config"))
       .order("desc")
       .take(limit);
-    const manifestFacts = await ctx.db
-      .query("facts")
-      .withIndex("by_e", (q) => q.eq("e", CONFIG_ENTITY))
-      .take(5000);
 
     const out = [];
     for (const tx of txs) {
-      const before = await manifestSnapshot(
-        ctx,
-        manifestFacts,
-        tx.txTime - 0.001,
-      );
-      const after = await manifestSnapshot(ctx, manifestFacts, tx.txTime);
+      const before = await manifestSnapshot(ctx, tx.txTime - 0.001);
+      const after = await manifestSnapshot(ctx, tx.txTime);
       const added = [...after]
         .filter((key) => !before.has(key))
         .map(fromKey);
@@ -144,11 +145,7 @@ export const history = query({
 export const currentManifest = query({
   args: {},
   handler: async (ctx) => {
-    const facts = await ctx.db
-      .query("facts")
-      .withIndex("by_e", (q) => q.eq("e", CONFIG_ENTITY))
-      .take(5000);
-    const snap = await manifestSnapshot(ctx, facts, Date.now());
+    const snap = await manifestSnapshot(ctx, Date.now());
     const grouped: Record<ConfigKind, string[]> = {
       attribute: [],
       entityType: [],

@@ -200,6 +200,9 @@ Built today:
 - Overview dashboard base-fact summary counts now fold current type/submission/
   placement-scope facts from protocol-shaped `factEvents` instead of reading
   `currentFacts`
+- config history/diff reads now fold `config:default` ownership manifest
+  snapshots from protocol-shaped `factEvents` instead of reading the `facts`
+  projection
 - production fact point queries (`api.facts.queryFacts`) now fold base facts
   directly from protocol-shaped `factEvents` while preserving the old array
   return shape and read-authorization behavior; `queryFactsFromEventLog` remains

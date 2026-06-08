@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 68 (overview summary reads from the event log) has
+**Current goal:** Goal 69 (config history reads from the event log) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -21,11 +21,14 @@ loading, and `entityDetail.actions`) to protocol-shaped `factEvents`. Goal 67
 added a provider-neutral frontend auth boundary and routed protected write
 controls through a shared auth-required UX instead of raw mutation failures.
 Goal 68 moved the Overview dashboard's base-fact summary counts to
-protocol-shaped `factEvents` instead of `currentFacts`. The next active goal
+protocol-shaped `factEvents` instead of `currentFacts`. Goal 69 moved config
+manifest/history snapshots to protocol-shaped `factEvents` instead of `facts`.
+The next active goal
 should be chosen from the remaining TODO candidates: choosing/wiring the real
 auth provider and `convex/auth.config.ts`, live Cloudflare deployment/auth,
 another carefully scoped Confect/domain wrapper, or the next projection
-dependency (`configHistory`, read-grant lookup, or closure/derived provenance).
+dependency (read-grant lookup, closure/derived provenance, or system/process
+counts).
 
 This plan is the operational goal file. Read it with:
 
@@ -457,9 +460,8 @@ arguments.
   `entityFromEventLog`; production `entityAsOf` and `entityFactsAsOf` also fold
   from protocol-shaped `factEvents`.
 - Some non-primary/support read paths still use disposable projections, for
-  example config-history scans over `facts`, read-grant / schema PII lookup uses
-  `currentFacts`, and some system/process counts still summarize materialized
-  `derivedFacts` / `flowRuns`.
+  example read-grant / schema PII lookup uses `currentFacts`, and some
+  system/process counts still summarize materialized `derivedFacts` / `flowRuns`.
 - `entityFromEventLog` remains intentionally bounded and proof/read-model
   oriented, returning coordinate/skipped-legacy counts that production
   `getEntity` does not expose.
@@ -6703,6 +6705,86 @@ Docs:
   - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
   - `npx tsc --noEmit -p tsconfig.json` passed.
   - `npm run build` passed.
+
+---
+
+## Goal 69 — Config History Reads from the Event Log
+
+**Status:** shipped for config ownership manifest snapshots and recent config
+diffs.
+
+**Objective:** remove the config history/diff read model's dependency on the
+disposable `facts` projection. The current configured-artifact manifest and
+before/after snapshots for config-authored transactions should be reconstructed
+from protocol-shaped `factEvents`, the same source now used by the primary entity
+and dashboard reads.
+
+### Scope
+
+Backend:
+
+- `convex/configHistory.ts`
+  - `currentManifest`
+  - `history`
+
+Tests:
+
+- `convex/appconfig.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+
+### Semantics
+
+- The manifest snapshot is still the visible set of `config:default`
+  ownership facts:
+  - `owns.attribute`
+  - `owns.entityType`
+  - `owns.form`
+  - `owns.flow`
+  - `owns.requirement`
+  - `owns.action`
+- `currentManifest` folds `config:default` through
+  `runWhere(..., { source: eventLogTripleSource })` at the current bitemporal
+  coordinate.
+- `history` computes each config transaction's `before` / `after` diff by
+  folding the same event log at `tx.txTime - 0.001` and `tx.txTime`.
+- Direct transaction event listings still read `factEvents.by_tx`; they already
+  reflect the append-only log.
+
+### Non-Goals
+
+- Do not change `applyConfig` reconcile semantics.
+- Do not remove or stop maintaining the `facts` projection.
+- Do not backfill legacy `factEvents` without protocol metadata.
+- Do not rewrite read-grant / PII schema lookup in this slice.
+
+### Acceptance Criteria
+
+- `configHistory.currentManifest` does not query `facts` or `currentFacts`.
+- `configHistory.history` does not query `facts` or `currentFacts` for manifest
+  snapshots.
+- Wiping `facts` after config changes does not change `currentManifest` or the
+  latest config diff.
+- Focused appconfig tests and Convex typecheck pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/appconfig.test.ts` passed (16 tests).
+- Full gate passed:
+  - `npm test` passed (17 backend test files, 150 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+  - `git diff --check` passed.
 
 ---
 

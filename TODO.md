@@ -90,8 +90,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   (`actionsForType`, `listActions`, `entityDetail.actions`, and `runAction`
   definition loading) now read action definition facts from `factEvents`.
   Overview dashboard base-fact summary counts now read current facts from
-  `factEvents` too. Remaining: support reads such as config-history scans over
-  `facts`, read-grant / schema PII lookup over `currentFacts`, closure semi-naive
+  `factEvents` too. Config history/diff now folds config ownership snapshots
+  from `factEvents` instead of the `facts` projection. Remaining: support reads
+  such as read-grant / schema PII lookup over `currentFacts`, closure semi-naive
   add still receives the changed projection `factId`, and derived rows are still
   stored in `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
@@ -355,6 +356,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 69 shipped:** `configHistory.currentManifest` and
+  `configHistory.history` now reconstruct the `config:default` ownership
+  manifest through `runWhere(..., { source: eventLogTripleSource })` at the
+  relevant bitemporal coordinate, instead of scanning the `facts` projection.
+  Direct per-transaction event listings remain sourced from `factEvents.by_tx`.
+- [x] **Config-history projection-corruption proof.** The appconfig suite now
+  deletes all `facts` rows after config changes and asserts both
+  `currentManifest` and the latest history diff remain unchanged.
 - [x] **Goal 68 shipped:** `overview.summary` now reconstructs current
   type/submission/placement-scope facts through the event-log triple source
   instead of scanning `currentFacts`; obligation counts still summarize

@@ -585,6 +585,20 @@ describe("config-as-code + origin + entity detail", () => {
       history = await t.query(api.configHistory.history, { limit: 1 });
       expect(history[0].added).toEqual([]);
       expect(history[0].removed).toEqual([]);
+
+      const manifestBeforeWipe = manifest;
+      const historyBeforeWipe = history;
+      await t.run(async (ctx) => {
+        const rows = await ctx.db.query("facts").collect();
+        for (const row of rows) await ctx.db.delete(row._id);
+      });
+
+      expect(await t.query(api.configHistory.currentManifest, {})).toEqual(
+        manifestBeforeWipe,
+      );
+      expect(await t.query(api.configHistory.history, { limit: 1 })).toEqual(
+        historyBeforeWipe,
+      );
     } finally {
       vi.useRealTimers();
     }
