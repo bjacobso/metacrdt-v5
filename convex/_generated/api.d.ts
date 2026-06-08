@@ -28,6 +28,7 @@ import type * as lib_engine from "../lib/engine.js";
 import type * as lib_eventLogCurrent from "../lib/eventLogCurrent.js";
 import type * as lib_eventLogTripleSource from "../lib/eventLogTripleSource.js";
 import type * as lib_meta from "../lib/meta.js";
+import type * as lib_obligations from "../lib/obligations.js";
 import type * as lib_origin from "../lib/origin.js";
 import type * as lib_readAuth from "../lib/readAuth.js";
 import type * as lib_visibility from "../lib/visibility.js";
@@ -68,6 +69,7 @@ declare const fullApi: ApiFromModules<{
   "lib/eventLogCurrent": typeof lib_eventLogCurrent;
   "lib/eventLogTripleSource": typeof lib_eventLogTripleSource;
   "lib/meta": typeof lib_meta;
+  "lib/obligations": typeof lib_obligations;
   "lib/origin": typeof lib_origin;
   "lib/readAuth": typeof lib_readAuth;
   "lib/visibility": typeof lib_visibility;

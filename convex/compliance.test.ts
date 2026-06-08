@@ -16,6 +16,15 @@ async function bootstrap(t: ReturnType<ReturnType<typeof convexTest>["withIdenti
   await flush(t);
 }
 
+async function wipeDerivedFacts(
+  t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>,
+) {
+  await t.run(async (ctx) => {
+    const rows = await ctx.db.query("derivedFacts").collect();
+    for (const row of rows) await ctx.db.delete(row._id);
+  });
+}
+
 function keys(rows: { form: string; scope: string }[]) {
   return rows.map((r) => `${r.form}@${r.scope}`).sort();
 }
@@ -42,6 +51,31 @@ describe("compliance engine", () => {
       ]);
       // Nothing submitted yet → every requirement is an open task.
       expect(keys(c.open)).toEqual(keys(c.required));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("workerCompliance derives obligations without the derivedFacts projection", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await bootstrap(t);
+      await wipeDerivedFacts(t);
+
+      const c = await t.query(api.compliance.workerCompliance, {
+        worker: "worker:maria",
+      });
+      expect(keys(c.required)).toEqual([
+        "forklift@job:forklift1",
+        "handbook@client:globex",
+        "handbook@client:initech",
+        "i9@employer:acme",
+        "venue_disclosure@venue:stadium7",
+      ]);
+      expect(keys(c.open)).toEqual(keys(c.required));
+      const forklift = c.open.find((o) => o.form === "forklift");
+      expect(forklift?.because.some((b) => b.a === "job")).toBe(true);
     } finally {
       vi.useRealTimers();
     }

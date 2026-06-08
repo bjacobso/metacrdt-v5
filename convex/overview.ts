@@ -4,6 +4,7 @@ import { typeOrigin } from "./lib/origin";
 import { typeNameOf } from "./lib/meta";
 import { project, runWhere } from "./lib/engine";
 import { eventLogTripleSource } from "./lib/eventLogTripleSource";
+import { obligationsFromEventLog } from "./lib/obligations";
 
 const TYPE_ATTR = "type";
 const SAMPLE = 1000;
@@ -79,15 +80,14 @@ export const summary = query({
     }
     const reusedScopes = [...scopeUse.values()].filter((n) => n > 1).length;
 
-    // Obligation satisfaction for the demo subject.
-    const derived = (
-      await ctx.db
-        .query("derivedFacts")
-        .withIndex("by_e", (q) => q.eq("e", "worker:maria"))
-        .take(SAMPLE)
-    ).filter((d) => !d.stale);
-    const required = derived.filter((d) => d.a.startsWith("requires.")).length;
-    const open = derived.filter((d) => d.a.startsWith("task.")).length;
+    // Obligation satisfaction for the demo subject, derived directly from rules
+    // over protocol-shaped factEvents.
+    const obligations = await obligationsFromEventLog(ctx, {
+      worker: "worker:maria",
+      limit: SAMPLE,
+    });
+    const required = obligations.filter((o) => !o.open).length;
+    const open = obligations.filter((o) => o.open).length;
 
     return {
       configuredTypes,

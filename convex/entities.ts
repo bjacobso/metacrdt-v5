@@ -8,6 +8,7 @@ import {
 } from "./lib/eventLogTripleSource";
 import { listActionDefs } from "./lib/actionDefs";
 import { META, typeNameOf } from "./lib/meta";
+import { obligationsFromEventLog } from "./lib/obligations";
 import { Origin, entityOrigin, isSystemEntity, typeOrigin } from "./lib/origin";
 import { redactAttributeMap, type DeniedAttribute } from "./lib/readAuth";
 
@@ -234,20 +235,14 @@ export const entityDetail = query({
       updatedAt: r.updatedAt,
     }));
 
-    // Open obligations (derived requires./task. facts).
-    const derived = (
-      await ctx.db
-        .query("derivedFacts")
-        .withIndex("by_e", (q) => q.eq("e", e))
-        .take(500)
-    ).filter((d) => !d.stale);
-    const obligations = derived
-      .filter((d) => d.a.startsWith("requires.") || d.a.startsWith("task."))
-      .map((d) => ({
-        form: d.a.replace(/^(requires|task)\./, ""),
-        scope: String(d.v),
-        open: d.a.startsWith("task."),
-      }));
+    // Open obligations (requires./task. rule outputs derived from factEvents).
+    const obligations = (
+      await obligationsFromEventLog(ctx, { worker: e, limit: 500 })
+    ).map((o) => ({
+      form: o.form,
+      scope: o.scope,
+      open: o.open,
+    }));
 
     return {
       id: e,

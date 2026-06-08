@@ -118,6 +118,15 @@ describe("config-as-code + origin + entity detail", () => {
       expect(d.obligations.some((o) => o.form === "i9" && o.open)).toBe(true);
       // Terminate/reactivate actions apply to Worker.
       expect(d.actions.some((a) => a.name === "terminate")).toBe(true);
+
+      await t.run(async (ctx) => {
+        const rows = await ctx.db.query("derivedFacts").collect();
+        for (const row of rows) await ctx.db.delete(row._id);
+      });
+      const afterWipe = await t.query(api.entities.entityDetail, { e: "worker:maria" });
+      expect(afterWipe.obligations.some((o) => o.form === "i9" && o.open)).toBe(
+        true,
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -438,7 +447,7 @@ describe("config-as-code + origin + entity detail", () => {
     }
   });
 
-  test("overview summary survives a wiped currentFacts projection", async () => {
+  test("overview summary survives wiped currentFacts and derivedFacts projections", async () => {
     vi.useFakeTimers();
     try {
       const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
@@ -449,8 +458,10 @@ describe("config-as-code + origin + entity detail", () => {
       expect(before.placements).toBeGreaterThan(0);
 
       await t.run(async (ctx) => {
-        const rows = await ctx.db.query("currentFacts").collect();
-        for (const row of rows) await ctx.db.delete(row._id);
+        const current = await ctx.db.query("currentFacts").collect();
+        for (const row of current) await ctx.db.delete(row._id);
+        const derived = await ctx.db.query("derivedFacts").collect();
+        for (const row of derived) await ctx.db.delete(row._id);
       });
 
       const after = await t.query(api.overview.summary, {});

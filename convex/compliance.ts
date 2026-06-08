@@ -3,6 +3,7 @@ import { internal, api } from "./_generated/api";
 import { v } from "convex/values";
 import { assertInTx, createTransaction } from "./facts";
 import { requireWritePrincipal } from "./lib/writeAuth";
+import { obligationsFromEventLog } from "./lib/obligations";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -198,27 +199,23 @@ export const recomputeNow = mutation({
 export const workerCompliance = query({
   args: { worker: v.string() },
   handler: async (ctx, args) => {
-    const derived = (
-      await ctx.db
-        .query("derivedFacts")
-        .withIndex("by_e", (q) => q.eq("e", args.worker))
-        .take(500)
-    ).filter((d) => !d.stale);
-
     const required = [];
     const open = [];
-    for (const d of derived) {
-      if (d.a.startsWith("requires.")) {
-        required.push({ form: d.a.slice("requires.".length), scope: String(d.v) });
-      } else if (d.a.startsWith("task.")) {
+    for (const obligation of await obligationsFromEventLog(ctx, {
+      worker: args.worker,
+      limit: 500,
+    })) {
+      if (!obligation.open) {
+        required.push({ form: obligation.form, scope: obligation.scope });
+      } else {
         const because = [];
-        for (const fid of d.sourceFactIds) {
+        for (const fid of obligation.sourceFactIds) {
           const f = await ctx.db.get("facts", fid);
           if (f) because.push({ e: f.e, a: f.a, v: f.v });
         }
         open.push({
-          form: d.a.slice("task.".length),
-          scope: String(d.v),
+          form: obligation.form,
+          scope: obligation.scope,
           because,
         });
       }

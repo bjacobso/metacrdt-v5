@@ -197,9 +197,9 @@ Built today:
 - configured action registry reads (`actionsForType`, `listActions`,
   `entityDetail.actions`, and `runAction` action-definition loading) now fold
   action definition facts from protocol-shaped `factEvents`
-- Overview dashboard base-fact summary counts now fold current type/submission/
-  placement-scope facts from protocol-shaped `factEvents` instead of reading
-  `currentFacts`
+- Overview dashboard counts now fold current type/submission/placement-scope
+  facts and compliance obligation rule output from protocol-shaped `factEvents`
+  instead of reading `currentFacts` or `derivedFacts`
 - config history/diff reads now fold `config:default` ownership manifest
   snapshots from protocol-shaped `factEvents` instead of reading the `facts`
   projection
@@ -209,6 +209,10 @@ Built today:
 - System process compliance-obligation counts now derive enabled requirement/
   task rule output from protocol-shaped `factEvents` instead of reading
   `derivedFacts`
+- user-facing compliance obligation reads (`workerCompliance`,
+  `entityDetail.obligations`, and `flows.issueAllOpen`) derive enabled
+  requirement/task rule output from protocol-shaped `factEvents` instead of
+  reading materialized `derivedFacts`
 - System process flow-resumer counts now read mirrored `flow.run.status` facts
   from protocol-shaped `factEvents` instead of scanning host `flowRuns`
 - production fact point queries (`api.facts.queryFacts`) now fold base facts

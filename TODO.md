@@ -100,8 +100,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   Host flow-run status transitions are now mirrored into `flow.run.status` facts,
   and System flow-resumer counts read waiting runs from `factEvents` instead of
   host `flowRuns`. Materialized derived rows now carry protocol
-  `sourceEventIds` alongside compatibility `sourceFactIds`. Remaining: derived
-  rows are still stored in `derivedFacts`.
+  `sourceEventIds` alongside compatibility `sourceFactIds`. User-facing
+  compliance obligation reads (`workerCompliance`, `entityDetail.obligations`,
+  Overview required/open counts, and `flows.issueAllOpen`) now derive enabled
+  `require.*` / `task.*` rule output from protocol-shaped `factEvents` instead
+  of reading materialized `derivedFacts`. Remaining: derived rows are still
+  stored in `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -363,6 +367,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 75 shipped:** user-facing compliance obligation reads now derive
+  enabled `require.*` / `task.*` output from protocol-shaped `factEvents`.
+  `convex/lib/obligations.ts` is the shared read-only resolver; it solves each
+  enabled compliance rule through `eventLogTripleSource`, resolves its `emit`
+  shape, dedupes, and preserves source `factId` / `eventId` provenance.
+- [x] **Obligation projection proofs.** `workerCompliance`,
+  `entityDetail.obligations`, Overview `required`/`open` counts, and
+  `flows.issueAllOpen` all keep behavior after tests delete every
+  `derivedFacts` row. The root Convex suite is now 151 tests.
 - [x] **Goal 74 shipped:** materialized `derivedFacts` rows now carry
   `sourceEventIds` in addition to compatibility `sourceFactIds`. The Datalog
   solver propagates event provenance through pattern joins, OR branches, and

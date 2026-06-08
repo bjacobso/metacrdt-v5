@@ -1,8 +1,11 @@
 import { query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
-import { LIMITS, runWhere, type Binding } from "./lib/engine";
+import { runWhere } from "./lib/engine";
 import { eventLogTripleSource } from "./lib/eventLogTripleSource";
-import { valueKey } from "./lib/visibility";
+import {
+  enabledComplianceRules,
+  obligationsFromEventLog,
+} from "./lib/obligations";
 
 // The intrinsic side of the product. These are the platform's own reactive
 // processes — not tenant-authored flows, but the autonomic machinery that keeps
@@ -10,39 +13,11 @@ import { valueKey } from "./lib/visibility";
 // event path), so we surface them read-only with whatever live state we can
 // cheaply derive, the way a SaaS shows "system jobs" you don't configure.
 
-function resolveEmitTerm(term: unknown, binding: Binding): unknown {
-  if (typeof term === "string" && term.startsWith("?")) {
-    return binding[term.slice(1)];
-  }
-  return term;
-}
-
 async function countComplianceObligationsFromEventLog(
-  ctx: Parameters<typeof runWhere>[0],
+  ctx: Parameters<typeof obligationsFromEventLog>[0],
   rules: Doc<"rules">[],
 ): Promise<number> {
-  const coord = { txTime: Date.now(), validTime: Date.now() };
-  const keys = new Set<string>();
-  for (const rule of rules) {
-    if (rule.emit === undefined) continue;
-    const bindings = await runWhere(
-      ctx,
-      (rule.where ?? []) as unknown[],
-      coord,
-      {},
-      { source: eventLogTripleSource },
-    );
-    for (const binding of bindings) {
-      const e = resolveEmitTerm(rule.emit.e, binding);
-      if (e === undefined || e === null) continue;
-      const v = resolveEmitTerm(rule.emit.v, binding);
-      const a = rule.emit.a;
-      if (!(a.startsWith("requires.") || a.startsWith("task."))) continue;
-      keys.add(`${String(e)}\u0000${a}\u0000${valueKey(v)}`);
-      if (keys.size > LIMITS.maxResultRows) return keys.size;
-    }
-  }
-  return keys.size;
+  return (await obligationsFromEventLog(ctx, { rules })).length;
 }
 
 async function countWaitingFlowRunsFromEventLog(
@@ -73,9 +48,7 @@ export const listSystemProcesses = query({
       .take(500);
     const datalogRules = enabledRules.filter((r) => r.kind !== "closure");
     const closureRules = enabledRules.filter((r) => r.kind === "closure");
-    const complianceRules = enabledRules.filter(
-      (r) => r.name.startsWith("require.") || r.name.startsWith("task."),
-    );
+    const complianceRules = await enabledComplianceRules(ctx);
 
     // Pending rule recomputations (unprocessed invalidations).
     const pendingInvalidations = (

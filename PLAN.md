@@ -1,6 +1,7 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 74 (derived rows carry protocol source event ids) has
+**Current goal:** Goal 75 (user-facing obligation reads from event-log rule
+output) has shipped.
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -33,8 +34,12 @@ through an event-log compatibility lookup. Goal 73 mirrors host `flowRuns`
 status transitions into ordinary `flow.run.status` facts and moves the System
 flow-resumer waiting-run count to that event-log fold. Goal 74 extends the
 solver/materializers so materialized `derivedFacts` keep protocol
-`sourceEventIds` alongside compatibility `sourceFactIds`. The next active goal
-should be chosen from the remaining TODO candidates:
+`sourceEventIds` alongside compatibility `sourceFactIds`. Goal 75 extracts the
+enabled compliance-obligation resolver into `convex/lib/obligations.ts` and
+routes `workerCompliance`, `entityDetail.obligations`, Overview obligation
+counts, and `flows.issueAllOpen` through read-only rule output solved against
+protocol-shaped `factEvents` instead of materialized `derivedFacts`. The next
+active goal should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
 the next projection dependency (closure/derived provenance or remaining
@@ -137,10 +142,14 @@ arguments.
   action-definition loading, and `entityDetail.actions`) read action definition
   facts from protocol-shaped `factEvents` instead of `currentFacts`, preserving
   action fields, form-opening metadata, and entity-detail contextual actions.
-- Overview dashboard base-fact summary counts (`configuredTypes`, `placements`,
-  `evidence`, `reusedScopes`) read current facts from protocol-shaped
-  `factEvents` instead of `currentFacts`; obligation counts still come from the
-  `derivedFacts` projection.
+- Overview dashboard summary counts read current base facts and demo-worker
+  obligation rule output from protocol-shaped `factEvents` instead of
+  `currentFacts` / `derivedFacts`.
+- User-facing compliance obligation reads (`api.compliance.workerCompliance`,
+  `entities.entityDetail.obligations`, and `api.flows.issueAllOpen`) derive
+  enabled `require.*` / `task.*` rule output directly from protocol-shaped
+  `factEvents`, preserving existing forms/scopes/provenance and collect-run
+  behavior without reading materialized `derivedFacts`.
 - `api.facts.entityFromEventLog` folds a host entity directly from
   protocol-shaped `factEvents` with `@metacrdt/core`, including schema
   cardinality facts from the same log, and redacts through the same read-auth
@@ -7184,6 +7193,100 @@ Docs:
   passed (40 tests).
 - Full gate passed:
   - `npm test` passed (17 backend test files, 150 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+- `git diff --check` passed.
+
+---
+
+## Goal 75 — User-Facing Obligations From Event-Log Rule Output
+
+**Status:** shipped for host compliance obligation reads.
+
+**Objective:** remove another production dependency on materialized
+`derivedFacts` by computing current compliance obligations read-only from
+enabled requirement/task rules over protocol-shaped `factEvents`.
+
+### Scope
+
+Backend:
+
+- `convex/lib/obligations.ts`
+  - shared read-only obligation resolver
+  - enabled compliance-rule lookup
+  - `emit` resolution and dedupe
+  - compatibility `sourceFactIds` + protocol `sourceEventIds` preservation
+- `convex/compliance.ts`
+  - `workerCompliance`
+- `convex/entities.ts`
+  - `entityDetail.obligations`
+- `convex/overview.ts`
+  - Overview `required` / `open` / `satisfiedPct`
+- `convex/flows.ts`
+  - `issueAllOpen`
+- `convex/system.ts`
+  - reuses the shared helper for the existing System obligation count
+
+Tests:
+
+- `convex/compliance.test.ts`
+- `convex/appconfig.test.ts`
+- `convex/flows.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+
+### Semantics
+
+- Each enabled `require.*` / `task.*` rule body is solved against
+  `eventLogTripleSource`.
+- The rule's `emit` shape is resolved in memory. No `derivedFacts` row is read or
+  written for these read paths.
+- Duplicate emitted obligations are deduped by worker, form, scope, and whether
+  the row is `requires` or `task`.
+- The existing UI/API shapes are preserved:
+  - `workerCompliance.required`
+  - `workerCompliance.open[].because`
+  - `entityDetail.obligations`
+  - Overview `required`, `open`, `satisfiedPct`
+  - `flows.issueAllOpen` collect-run issuance/reuse behavior
+- `sourceFactIds` remain available for existing "because" display; protocol
+  `sourceEventIds` are carried for future explanation paths.
+
+### Non-Goals
+
+- Do not remove or stop writing `derivedFacts`.
+- Do not rewrite general Datalog/aggregate reads that intentionally join
+  event-log base facts with materialized derived rows.
+- Do not remove `sourceFactIds` or change `rules.explainDerived`.
+- Do not change component-owned compliance materialization in this slice.
+
+### Acceptance Criteria
+
+- `workerCompliance` returns required/open obligations after every
+  `derivedFacts` row is deleted.
+- `entityDetail.obligations` returns current obligations after every
+  `derivedFacts` row is deleted.
+- Overview obligation counts survive deleted `currentFacts` and `derivedFacts`
+  projections.
+- `flows.issueAllOpen` still creates collect runs after every `derivedFacts` row
+  is deleted.
+- Focused tests and full verification gate pass.
+
+### Verification
+
+- `npx vitest run convex/compliance.test.ts convex/appconfig.test.ts convex/flows.test.ts`
+  passed (27 tests).
+- `npx convex codegen` passed and uploaded the backend functions.
+- Full gate passed:
+  - `npm test` passed (17 backend test files, 151 tests).
   - `npm run test:convex-package` passed (33 tests).
   - `npm run test:core` passed (46 tests).
   - `npx tsc --noEmit -p convex/tsconfig.json` passed.

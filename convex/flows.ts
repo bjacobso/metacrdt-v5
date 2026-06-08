@@ -10,6 +10,7 @@ import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { runWhere } from "./lib/engine";
 import { assertInTx, createTransaction, retractInTx } from "./facts";
+import { obligationsFromEventLog } from "./lib/obligations";
 import { requireWritePrincipal } from "./lib/writeAuth";
 
 // A minimal durable workflow runner for the compliance `collect` step:
@@ -152,18 +153,15 @@ export const issueAllOpen = mutation({
   args: { subject: v.string() },
   handler: async (ctx, args): Promise<{ issued: number }> => {
     await requireWritePrincipal(ctx);
-    const derived = (
-      await ctx.db
-        .query("derivedFacts")
-        .withIndex("by_e", (q) => q.eq("e", args.subject))
-        .take(500)
-    ).filter((d) => !d.stale && d.a.startsWith("task."));
+    const openTasks = (
+      await obligationsFromEventLog(ctx, { worker: args.subject, limit: 500 })
+    ).filter((o) => o.open);
 
     let issued = 0;
-    for (const d of derived) {
+    for (const task of openTasks) {
       const res: { reused: boolean } = await ctx.runMutation(
         internal.flows.startCollectInternal,
-        { subject: args.subject, form: d.a.slice("task.".length), scope: String(d.v) },
+        { subject: args.subject, form: task.form, scope: task.scope },
       );
       if (!res.reused) issued++;
     }

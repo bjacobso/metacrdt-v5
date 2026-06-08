@@ -123,6 +123,10 @@ describe("collect-step flow runner", () => {
       await t.mutation(api.compliance.setupComplianceRules, {});
       await t.mutation(api.compliance.seedStaffingDemo, {});
       await t.finishAllScheduledFunctions(vi.runAllTimers);
+      await t.run(async (ctx) => {
+        const rows = await ctx.db.query("derivedFacts").collect();
+        for (const row of rows) await ctx.db.delete(row._id);
+      });
 
       const { issued } = await t.mutation(api.flows.issueAllOpen, {
         subject: "worker:maria",
