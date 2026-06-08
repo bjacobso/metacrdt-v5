@@ -94,13 +94,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   no writes.
 - [x] Schema-driven forms / list views — render columns + collection fields from a
   type's declared attributes (`typeSchemaAsOf`), not ad-hoc.
+- [x] Config history/diff — current config ownership manifest + recent
+  config-authored manifest diffs surfaced under Data model.
 - [ ] Auth + write authorization — the live site takes public writes; the collect
   token is demo-grade (no single-use / expiry).
 
 **Next goal candidates**
 - [ ] Choose the next active goal: `@metacrdt/runtime` harness groundwork,
-  auth/write hardening, config diff/history, arg-taking actions, or the next
-  `@metacrdt/convex` function factory/component slice.
+  auth/write hardening, arg-taking actions, or the next `@metacrdt/convex`
+  function factory/component slice.
 
 **Docs**
 - [ ] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -124,6 +126,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — Goal 9 config history/diff
+- [x] **Config changes are now inspectable.** `convex/configHistory.ts` adds
+  `currentManifest` and `history`: the current config-owned artifact manifest and
+  recent config-authored transaction diffs computed by comparing
+  `config:default` ownership snapshots before/after each transaction.
+- [x] **Idempotence is visible.** Repeated identical applies report no manifest
+  diff, while requirement removal reports a removed requirement. The Data model
+  page now shows manifest counts and recent config diffs.
 
 ### 2026-06-07 — Goal 8 selected: Confect-first compliance planning
 - [x] **PLAN.md now answers the Confect-first question.** Decision: use Confect

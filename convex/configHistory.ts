@@ -1,0 +1,167 @@
+import { query, QueryCtx } from "./_generated/server";
+import { v } from "convex/values";
+import type { Doc } from "./_generated/dataModel";
+import { isVisible } from "./lib/visibility";
+
+type ConfigKind =
+  | "attribute"
+  | "entityType"
+  | "form"
+  | "flow"
+  | "requirement"
+  | "action";
+
+type ConfigItem = {
+  kind: ConfigKind;
+  value: string;
+};
+
+const CONFIG_ENTITY = "config:default";
+const OWN_ATTR: Record<ConfigKind, string> = {
+  attribute: "owns.attribute",
+  entityType: "owns.entityType",
+  form: "owns.form",
+  flow: "owns.flow",
+  requirement: "owns.requirement",
+  action: "owns.action",
+};
+const ATTR_KIND = new Map(
+  Object.entries(OWN_ATTR).map(([kind, attr]) => [attr, kind as ConfigKind]),
+);
+
+function itemKey(i: ConfigItem): string {
+  return `${i.kind}\u0000${i.value}`;
+}
+
+function fromKey(key: string): ConfigItem {
+  const [kind, value] = key.split("\u0000");
+  return { kind: kind as ConfigKind, value };
+}
+
+function sorted(items: Iterable<ConfigItem>): ConfigItem[] {
+  return [...items].sort((a, b) =>
+    `${a.kind}:${a.value}`.localeCompare(`${b.kind}:${b.value}`),
+  );
+}
+
+async function manifestSnapshot(
+  ctx: QueryCtx,
+  facts: Doc<"facts">[],
+  txTime: number,
+): Promise<Set<string>> {
+  const coord = { txTime, validTime: txTime };
+  const out = new Set<string>();
+  for (const f of facts) {
+    const kind = ATTR_KIND.get(f.a);
+    if (!kind) continue;
+    if (!isVisible(f, coord)) continue;
+    out.add(itemKey({ kind, value: String(f.v) }));
+  }
+  return out;
+}
+
+async function directEvents(ctx: QueryCtx, tx: Doc<"transactions">) {
+  const events = await ctx.db
+    .query("factEvents")
+    .withIndex("by_tx", (q) => q.eq("txId", tx._id))
+    .take(500);
+  return events
+    .map((ev) => ({
+      kind: ev.kind,
+      e: ev.e,
+      a: ev.a,
+      v: ev.v,
+      reason: ev.reason,
+    }))
+    .sort((a, b) => `${a.e}:${a.a}:${a.kind}`.localeCompare(`${b.e}:${b.a}:${b.kind}`));
+}
+
+function counts(keys: Set<string>): Record<ConfigKind, number> {
+  const out: Record<ConfigKind, number> = {
+    attribute: 0,
+    entityType: 0,
+    form: 0,
+    flow: 0,
+    requirement: 0,
+    action: 0,
+  };
+  for (const key of keys) out[fromKey(key).kind]++;
+  return out;
+}
+
+/**
+ * Config history/diff: every transaction authored by `actorId=config`, annotated
+ * with the owned-artifact manifest just before and just after that transaction.
+ *
+ * `applyConfig` lowers sections through existing mutations, then writes the
+ * stable ownership manifest on `config:default`. Diffing manifest snapshots
+ * avoids reporting idempotent re-assertions as additions.
+ */
+export const history = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const limit = Math.min(args.limit ?? 20, 100);
+    const txs = await ctx.db
+      .query("transactions")
+      .withIndex("by_actor", (q) => q.eq("actorId", "config"))
+      .order("desc")
+      .take(limit);
+    const manifestFacts = await ctx.db
+      .query("facts")
+      .withIndex("by_e", (q) => q.eq("e", CONFIG_ENTITY))
+      .take(5000);
+
+    const out = [];
+    for (const tx of txs) {
+      const before = await manifestSnapshot(
+        ctx,
+        manifestFacts,
+        tx.txTime - 0.001,
+      );
+      const after = await manifestSnapshot(ctx, manifestFacts, tx.txTime);
+      const added = [...after]
+        .filter((key) => !before.has(key))
+        .map(fromKey);
+      const removed = [...before]
+        .filter((key) => !after.has(key))
+        .map(fromKey);
+      out.push({
+        txId: tx._id,
+        txTime: tx.txTime,
+        actorId: tx.actorId,
+        reason: tx.reason,
+        added: sorted(added),
+        removed: sorted(removed),
+        afterCounts: counts(after),
+        events: await directEvents(ctx, tx),
+      });
+    }
+    return out;
+  },
+});
+
+/** Current configured-artifact manifest, grouped by kind. */
+export const currentManifest = query({
+  args: {},
+  handler: async (ctx) => {
+    const facts = await ctx.db
+      .query("facts")
+      .withIndex("by_e", (q) => q.eq("e", CONFIG_ENTITY))
+      .take(5000);
+    const snap = await manifestSnapshot(ctx, facts, Date.now());
+    const grouped: Record<ConfigKind, string[]> = {
+      attribute: [],
+      entityType: [],
+      form: [],
+      flow: [],
+      requirement: [],
+      action: [],
+    };
+    for (const key of snap) {
+      const item = fromKey(key);
+      grouped[item.kind].push(item.value);
+    }
+    for (const values of Object.values(grouped)) values.sort();
+    return grouped;
+  },
+});

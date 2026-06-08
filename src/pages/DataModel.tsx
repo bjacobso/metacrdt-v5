@@ -97,9 +97,74 @@ export default function DataModel() {
   const procs = useQuery(api.system.listSystemProcesses, {});
   const sysEntities = useQuery(api.entities.listEntities, { origin: "system" });
   const actions = useQuery(api.actions.listActions, {});
+  const configHistory = useQuery(api.configHistory.history, { limit: 8 });
+  const manifest = useQuery(api.configHistory.currentManifest, {});
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardHeader
+          title="Config history"
+          hint="applyConfig manifest diff"
+          right={
+            manifest ? (
+              <span className="text-xs text-muted">
+                {Object.values(manifest).reduce((n, values) => n + values.length, 0)} owned artifacts
+              </span>
+            ) : (
+              <span className="text-xs text-muted">…</span>
+            )
+          }
+        />
+        {manifest && (
+          <div className="flex flex-wrap gap-2 border-b border-line-soft px-5 py-3">
+            {Object.entries(manifest).map(([kind, values]) => (
+              <Chip key={kind} tone={values.length > 0 ? "configured" : "system"}>
+                {kind}: {values.length}
+              </Chip>
+            ))}
+          </div>
+        )}
+        {configHistory === undefined ? (
+          <p className="px-5 py-4 text-[13px] text-muted">Loading…</p>
+        ) : configHistory.length === 0 ? (
+          <p className="px-5 py-4 text-[13px] text-muted">
+            No config-authored transactions yet.
+          </p>
+        ) : (
+          <ul className="divide-y divide-line-soft">
+            {configHistory.map((tx) => (
+              <li key={tx.txId} className="px-5 py-3.5">
+                <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                  <span className="font-medium text-ink">
+                    {tx.reason ?? "config transaction"}
+                  </span>
+                  <Mono>{new Date(tx.txTime).toLocaleString()}</Mono>
+                  <span className="ml-auto text-[12px] text-muted">
+                    {tx.events.length} events
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {tx.added.map((item) => (
+                    <Chip key={`add:${item.kind}:${item.value}`} tone="configured">
+                      + {item.kind}:{item.value}
+                    </Chip>
+                  ))}
+                  {tx.removed.map((item) => (
+                    <Chip key={`rm:${item.kind}:${item.value}`} tone="system">
+                      - {item.kind}:{item.value}
+                    </Chip>
+                  ))}
+                  {tx.added.length === 0 && tx.removed.length === 0 && (
+                    <span className="text-[12px] text-muted">no manifest diff</span>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
       <Card>
         <CardHeader title="System processes" hint="intrinsic / autonomic" />
         <p className="px-5 pt-3 text-[13px] text-muted">

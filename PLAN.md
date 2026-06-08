@@ -1,10 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 8 (Confect-first compliance planning) has shipped. The
-next active goal should be chosen from the remaining TODO candidates:
-`@metacrdt/runtime` harness groundwork, auth/write hardening, config
-diff/history, arg-taking actions, or the next `@metacrdt/convex` function
-factory/component slice.
+**Current goal:** Goal 9 (config history/diff) has shipped. The next active goal
+should be chosen from the remaining TODO candidates: `@metacrdt/runtime`
+harness groundwork, auth/write hardening, arg-taking actions, or the next
+`@metacrdt/convex` function factory/component slice.
 
 This plan is the operational goal file. Read it with:
 
@@ -42,8 +41,8 @@ The immediate technical gap is now choosing the next runtime/product slice. The
 protocol kernel is extracted, the Convex write/read paths are core-shaped enough
 for the centralized reference runtime, the package graph has `core`, `convex`,
 and `forma`, config reconciliation works, PII read authorization is enforced, the
-entity UI is schema-driven, and Confect has now been adopted narrowly for a real
-read/planning domain.
+entity UI is schema-driven, Confect has now been adopted narrowly for a real
+read/planning domain, and config changes are inspectable as manifest diffs.
 
 ---
 
@@ -119,6 +118,12 @@ read/planning domain.
   - entity detail orders state by the primary type's declared schema, then appends
     extra runtime facts
   - collection forms were already rendered from form definitions
+- Config history/diff exists:
+  - `configHistory.currentManifest` reconstructs the current owned-artifact
+    manifest from `config:default`
+  - `configHistory.history` diffs the manifest before/after config-authored
+    transactions so idempotent re-applies report no manifest change
+  - the Data model page surfaces current manifest counts and recent config diffs
 
 ### Not Yet True
 
@@ -1258,13 +1263,55 @@ Likely next Confect candidates if Goal 8 succeeds:
 
 ---
 
+## Goal 9 — Config History / Diff Read Model
+
+**Status:** shipped in the Convex reference runtime.
+
+**Objective:** make config-as-code changes inspectable. `applyConfig` already
+lowers declarations into facts and rows; this goal adds a read model and UI
+surface that show the current configured ownership manifest and the manifest
+diff for recent config-authored transactions.
+
+### Implementation Notes
+
+- `convex/configHistory.ts` introduces:
+  - `currentManifest`: current owned artifacts grouped by
+    `attribute/entityType/form/flow/requirement/action`;
+  - `history`: recent `actorId="config"` transactions annotated with the
+    manifest before/after the transaction, `added`, `removed`, counts, and direct
+    fact events.
+- The diff is computed from `config:default` ownership facts, not from raw
+  `assert` events alone. This matters because idempotent re-applies reassert
+  desired ownership; the history must report no manifest diff when the owned set
+  is unchanged.
+- The Data model page now includes a "Config history" card with current manifest
+  counts and recent added/removed artifacts.
+
+### Acceptance Criteria
+
+- Current manifest query reconstructs owned config artifacts from facts.
+- History query shows additions on first setup.
+- Removing a requirement shows a removed requirement in the latest diff.
+- Reapplying the same desired config reports no manifest diff.
+- Runtime data is not confused with config ownership.
+- UI surfaces manifest counts and recent diffs under Data model.
+- Full tests/typechecks/build/deploy pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- Focused `npx vitest run appconfig` passed (10 tests).
+- Full gate for this slice is recorded in the commit that shipped it.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
 
 ### Product / Config
 
-- [ ] Config history/diff UI.
+- [x] Config history/diff UI.
 - [ ] Arg-taking actions / actions that open forms.
 - [x] Dry-run compliance: hypothetical worker + scope, no writes.
 

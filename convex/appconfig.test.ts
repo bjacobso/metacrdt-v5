@@ -255,4 +255,59 @@ describe("config-as-code + origin + entity detail", () => {
       vi.useRealTimers();
     }
   });
+
+  test("config history diffs owned artifacts across applyConfig runs", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      vi.setSystemTime(1_000);
+      await setup(t);
+
+      let manifest = await t.query(api.configHistory.currentManifest, {});
+      expect(manifest.requirement).toContain("forklift");
+      expect(manifest.action).toEqual(["reactivate", "terminate"]);
+
+      let history = await t.query(api.configHistory.history, { limit: 10 });
+      expect(
+        history.some((h) =>
+          h.added.some((i) => i.kind === "requirement" && i.value === "forklift"),
+        ),
+      ).toBe(true);
+
+      vi.setSystemTime(2_000);
+      await t.mutation(api.appconfig.applyConfig, {
+        config: {
+          requirements: STAFFING_BLUEPRINT.requirements.filter(
+            (r) => r.form !== "forklift",
+          ),
+        },
+      });
+      await flush(t);
+
+      manifest = await t.query(api.configHistory.currentManifest, {});
+      expect(manifest.requirement).not.toContain("forklift");
+
+      history = await t.query(api.configHistory.history, { limit: 5 });
+      expect(history[0].removed).toContainEqual({
+        kind: "requirement",
+        value: "forklift",
+      });
+
+      vi.setSystemTime(3_000);
+      await t.mutation(api.appconfig.applyConfig, {
+        config: {
+          requirements: STAFFING_BLUEPRINT.requirements.filter(
+            (r) => r.form !== "forklift",
+          ),
+        },
+      });
+      await flush(t);
+
+      history = await t.query(api.configHistory.history, { limit: 1 });
+      expect(history[0].added).toEqual([]);
+      expect(history[0].removed).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
