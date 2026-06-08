@@ -15,6 +15,7 @@ import {
   extendProvenancedBinding,
   filterCompareStates,
   isEntityLocalRule,
+  initialSolverFrame,
   paginateRows,
   passesNegationCandidates,
   parseClause,
@@ -194,6 +195,35 @@ describe("@metacrdt/query term and filter helpers", () => {
       "status",
       "type",
     ]);
+  });
+
+  test("initializes a clone-safe solver frame", () => {
+    const clauses = parseClauses([
+      ["?e", "type", "Worker"],
+      ["?e", "worker.status", "?status"],
+    ]);
+    const seed = { e: "worker:maria" };
+    const sources = ["fact:seed"];
+    const eventSources = ["event:seed"];
+
+    const frame = initialSolverFrame(clauses, seed, sources, eventSources);
+
+    expect(frame.remaining).toEqual([0, 1]);
+    expect([...frame.bound]).toEqual(["e"]);
+    expect(frame.states).toEqual([
+      {
+        binding: { e: "worker:maria" },
+        sources: ["fact:seed"],
+        eventSources: ["event:seed"],
+      },
+    ]);
+
+    seed.e = "worker:ivan";
+    sources.push("fact:mutated");
+    eventSources.push("event:mutated");
+    expect(frame.states[0]?.binding).toEqual({ e: "worker:maria" });
+    expect(frame.states[0]?.sources).toEqual(["fact:seed"]);
+    expect(frame.states[0]?.eventSources).toEqual(["event:seed"]);
   });
 });
 

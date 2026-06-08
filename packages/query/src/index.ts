@@ -53,6 +53,14 @@ export type ProvenancedBinding<
   sources: SourceId[];
   eventSources?: EventSourceId[];
 };
+export type SolverFrame<
+  SourceId extends string = string,
+  EventSourceId extends string = string,
+> = {
+  remaining: number[];
+  bound: Set<string>;
+  states: ProvenancedBinding<SourceId, EventSourceId>[];
+};
 export type QueryTriple<
   SourceId extends string = string,
   EventSourceId extends string = string,
@@ -261,6 +269,28 @@ export function advanceBoundVars(
   const next = new Set(bound);
   for (const vn of clauseBoundVars(clause)) next.add(vn);
   return next;
+}
+
+export function initialSolverFrame<
+  SourceId extends string,
+  EventSourceId extends string = string,
+>(
+  clauses: AnyClause[],
+  seed: Binding = {},
+  seedSources: SourceId[] = [],
+  seedEventSources: EventSourceId[] = [],
+): SolverFrame<SourceId, EventSourceId> {
+  return {
+    remaining: clauses.map((_, i) => i),
+    bound: new Set(Object.keys(seed)),
+    states: [
+      {
+        binding: { ...seed },
+        sources: [...seedSources],
+        eventSources: [...seedEventSources],
+      },
+    ],
+  };
 }
 
 export function branchExternalRequiredVars(branch: AnyClause[]): string[] {

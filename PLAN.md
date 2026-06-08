@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 95 (`@metacrdt/query` Bound Variable Advancement) has
+**Current goal:** Goal 96 (`@metacrdt/query` Solver Frame Initialization) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -114,8 +114,11 @@ pattern and disjunction branches. Goal 95 extracts bound-variable advancement
 into `@metacrdt/query`: `advanceBoundVars` returns the next scheduler bound-var
 set after a pattern, compute, or disjunction clause, while Convex still owns the
 async solver loop, clause execution, source IO, read authorization, and branch
-recursion. The next active goal should be chosen from the remaining TODO
-candidates:
+recursion. Goal 96 extracts solver-frame initialization into `@metacrdt/query`:
+`initialSolverFrame` creates the initial remaining-clause index list, bound-var
+set, and cloned seeded provenanced state, while Convex still owns parsing,
+source/auth setup, the async solver loop, and recursion. The next active goal
+should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
 the next projection dependency (closure/derived provenance or remaining
@@ -214,6 +217,7 @@ arguments.
   - compare/compute state transitions over provenanced solved bindings
   - shared intermediate-row limit guard
   - bound-variable advancement for scheduler state
+  - solver-frame initialization
   - Convex compatibility re-export through `convex/lib/engine.ts`
 - New Convex writes stamp protocol metadata on `factEvents`:
   `eventId`, HLC, `replicaId`, `targetEventId`, and `causalRefs` where
@@ -8538,6 +8542,54 @@ authorization, branch recursion, and async scheduling in Convex.
 - A live `datalog:datalog` query with a disjunction followed by a pattern
   returned rows through the deployed package-backed bound-variable advancement
   path.
+
+---
+
+## Goal 96 — `@metacrdt/query` Solver Frame Initialization
+
+**Status:** shipped as the pure solver-frame setup boundary.
+
+**Objective:** move target-neutral initialization of a parsed Datalog solve frame
+from the Convex solver into `@metacrdt/query`, while keeping parsing, read-auth
+setup, source selection, the async solver loop, source fetching, and recursion in
+Convex.
+
+### Semantics
+
+- `packages/query` now owns `SolverFrame` and `initialSolverFrame`.
+- `initialSolverFrame` accepts parsed clauses, an optional seed binding, optional
+  seed fact sources, and optional seed event sources.
+- It returns:
+  - `remaining`: deterministic clause indexes `[0, 1, ...]`;
+  - `bound`: variables initially present in the seed binding;
+  - `states`: a single cloned seeded provenanced binding.
+- The helper clones the seed binding and source arrays so later caller mutation
+  cannot affect the initialized frame.
+- `convex/lib/engine.ts` now uses the helper at the start of `solveParsedWhere`.
+
+### Non-Goals
+
+- Do not move `parseClauses`, `solveWhere`, `solveParsedWhere`, read-auth setup,
+  source selection, source IO, recursion, or scheduling execution into the
+  package.
+- Do not change seed semantics, provenance shape, clause ordering, result shapes,
+  or unsafe-query behavior.
+
+### Verification
+
+- `npm run test:query` passed (21 package tests).
+- `npx tsc --noEmit -p packages/query/tsconfig.json` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npm run test:core` passed (46 core tests).
+- `npm run test:schema` passed (8 schema tests).
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
+- A live `datalog:datalog` query returned rows through the deployed solver path
+  that now initializes its frame through `@metacrdt/query`.
 
 ---
 

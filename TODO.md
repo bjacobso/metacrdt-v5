@@ -175,6 +175,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   owns `advanceBoundVars`, returning the next scheduler bound-var set after a
   pattern, compute, or disjunction clause. Convex still owns clause execution,
   source IO, read auth, and branch recursion.
+- [x] **`@metacrdt/query` solver-frame initialization extracted** — the package
+  now owns `initialSolverFrame`, creating the initial remaining-clause index list,
+  bound-var set, and cloned seeded provenanced state. Convex still owns parsing,
+  source/auth setup, async execution, and recursion.
 - [ ] Then peel off, as they stabilize: more `@metacrdt/query` solver/rule AST
   seams, then `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/views`, and
   `@metacrdt/agent`.
@@ -444,6 +448,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 96 shipped:** `@metacrdt/query` solver-frame initialization. Added
+  `SolverFrame` / `initialSolverFrame`; Convex now asks the package to create the
+  initial remaining indexes, bound set, and cloned seeded provenanced state before
+  running the async solver loop.
 - [x] **Goal 95 shipped:** `@metacrdt/query` bound-variable advancement. Added
   `advanceBoundVars`; Convex now asks the package to advance scheduler
   bound-vars after pattern, compute, and disjunction clauses while retaining the

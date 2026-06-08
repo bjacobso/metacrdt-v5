@@ -9,6 +9,7 @@ import {
   dedupeProvenancedBindings,
   extendPatternCandidates,
   filterCompareStates,
+  initialSolverFrame,
   parseClauses,
   passesNegationCandidates,
   patternInputForBinding,
@@ -40,6 +41,7 @@ export {
   extendPatternCandidates,
   extendProvenancedBinding,
   filterCompareStates,
+  initialSolverFrame,
   isEntityLocalRule,
   paginateRows,
   passesNegationCandidates,
@@ -287,11 +289,9 @@ async function solveParsedWhere(
   seedEventSources: string[],
   source: TripleSource,
 ): Promise<SolvedBinding[]> {
-  const remaining = clauses.map((_, i) => i);
-  let bound = new Set<string>(Object.keys(seed));
-  let states: SolvedBinding[] = [
-    { binding: { ...seed }, sources: seedSources, eventSources: seedEventSources },
-  ];
+  const frame = initialSolverFrame(clauses, seed, seedSources, seedEventSources);
+  const { remaining } = frame;
+  let { bound, states } = frame;
 
   while (remaining.length > 0) {
     const pickAt = chooseNextClausePosition(clauses, remaining, bound);
