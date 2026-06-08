@@ -84,6 +84,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   component-owned assert writes can opt into `cardinality: "one"`; current state
   reconciles by `≺`, losers are retracted through protocol events, and audit
   history keeps every assertion.
+- [x] **`@metacrdt/convex` component-owned projection rebuild** —
+  `log.rebuildProjections` deletes component-owned `facts` / `currentFacts` and
+  replays the component-owned append-only `factEvents` log into fresh projections.
+  Lifecycle linkage is by protocol `targetEventId`; event-row `factId` remains
+  projection convenience and is not rewritten during rebuild.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
@@ -249,6 +254,20 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Tests cover package-level cardinality behavior and mounted app wrapper
   behavior: two assertions produce two assert events plus one retract event, and
   current state points at the winner.
+
+### 2026-06-07 — @metacrdt/convex component-owned projection rebuild
+- [x] **Component projections are now disposable.** `log.rebuildProjections`
+  clears component-owned `facts` / `currentFacts`, replays component-owned
+  `factEvents` in transaction-time order, and returns event/fact/current counts.
+- [x] **Append-only events stay untouched.** Rebuild does not patch old
+  `factEvents`; lifecycle events target assertions through `targetEventId`, so
+  stale projection `factId` values in event rows are non-canonical convenience.
+- [x] **App wrapper shipped.** `api.metacrdtComponent.rebuildOwnedProjections`
+  exposes rebuild through the host app boundary rather than direct component
+  calls.
+- [x] Tests prove cardinality-one and tombstone/untombstone/retract lifecycle
+  state survive rebuild; mounted app wrapper test proves the host can rebuild and
+  still read the current winner.
 
 ### 2026-06-07 — @metacrdt/runtime p2p DataChannel transport
 - [x] **Added structural p2p transport.** `packages/runtime/src/p2p.ts` defines

@@ -144,6 +144,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         }>,
         Name
       >;
+      rebuildProjections: FunctionReference<
+        "mutation",
+        "internal",
+        {},
+        { currentFacts: number; events: number; facts: number },
+        Name
+      >;
     };
     protocol: {
       buildAssertRow: FunctionReference<

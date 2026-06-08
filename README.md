@@ -111,7 +111,8 @@ Current packages:
   reconcile selection by `≺`, protocol append/verification helper factories, a
   packaged component that can either summarize host-owned rows or own a durable
   protocol transaction/event log plus current-state projections with opt-in
-  cardinality-one reconciliation, and Confect sidecar guidance.
+  cardinality-one reconciliation and projection rebuild from the component log,
+  and Confect sidecar guidance.
 - **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
   authoring language extracted from Open Ontology: reader, formatter, evaluator,
   VM, type inference, and language-owned elaboration utilities.

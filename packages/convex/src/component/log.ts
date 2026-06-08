@@ -81,6 +81,12 @@ const currentFactValidator = v.object({
   assertEventId: v.string(),
 });
 
+const rebuildResultValidator = v.object({
+  events: v.number(),
+  facts: v.number(),
+  currentFacts: v.number(),
+});
+
 const txArgs = {
   actorId: v.string(),
   actorType,
@@ -90,6 +96,8 @@ const txArgs = {
   requestId: v.optional(v.string()),
   metadata: v.optional(v.any()),
 };
+
+const REBUILD_LIMIT = 5000;
 
 function withoutUndefined<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -335,6 +343,101 @@ async function createTransaction(
   return tx;
 }
 
+async function boundedRows<TableName extends "factEvents" | "facts" | "currentFacts">(
+  ctx: MutationCtx,
+  tableName: TableName,
+) {
+  const rows = await ctx.db.query(tableName).take(REBUILD_LIMIT + 1);
+  if (rows.length > REBUILD_LIMIT) {
+    throw new Error(
+      `projection rebuild is limited to ${REBUILD_LIMIT} ${tableName} rows`,
+    );
+  }
+  return rows;
+}
+
+async function clearProjectionTables(ctx: MutationCtx) {
+  const currentRows = await boundedRows(ctx, "currentFacts");
+  const factRows = await boundedRows(ctx, "facts");
+  for (const row of currentRows) await ctx.db.delete(row._id);
+  for (const row of factRows) await ctx.db.delete(row._id);
+}
+
+async function replayAssert(
+  ctx: MutationCtx,
+  row: Doc<"factEvents">,
+  factsByAssertEventId: Map<string, Doc<"facts">>,
+) {
+  const factId = await ctx.db.insert(
+    "facts",
+    withoutUndefined({
+      e: row.e,
+      a: row.a,
+      v: row.v,
+      firstTxId: row.txId,
+      assertedAt: row.txTime,
+      validFrom: row.validFrom ?? row.txTime,
+      validTo: row.validTo,
+      assertEventId: row.eventId,
+      metadata: row.metadata,
+    }),
+  );
+  const fact = await ctx.db.get(factId);
+  if (fact === null) throw new Error(`inserted fact ${factId} not found`);
+  factsByAssertEventId.set(row.eventId, fact);
+  await insertCurrentIfNowVisible(ctx, fact, row.txTime);
+}
+
+async function replayLifecycle(
+  ctx: MutationCtx,
+  row: Doc<"factEvents">,
+  factsByAssertEventId: Map<string, Doc<"facts">>,
+) {
+  if (row.targetEventId === undefined) {
+    throw new Error(`lifecycle event ${row.eventId} is missing targetEventId`);
+  }
+  const targetEventId = row.targetEventId;
+  const existing =
+    factsByAssertEventId.get(targetEventId) ??
+    (await ctx.db
+      .query("facts")
+      .withIndex("by_assertEventId", (q) =>
+        q.eq("assertEventId", targetEventId),
+      )
+      .unique());
+  if (existing === null) {
+    throw new Error(`target assert event ${targetEventId} not found`);
+  }
+
+  if (row.kind === "retract") {
+    await ctx.db.patch(existing._id, {
+      retractedAt: row.txTime,
+      lastTxId: row.txId,
+    });
+    await deleteCurrentForFact(ctx, existing._id);
+  } else if (row.kind === "tombstone") {
+    await ctx.db.patch(existing._id, {
+      tombstonedAt: row.txTime,
+      tombstoneTxId: row.txId,
+      tombstoneReason: row.reason,
+      lastTxId: row.txId,
+    });
+    await deleteCurrentForFact(ctx, existing._id);
+  } else if (row.kind === "untombstone") {
+    await ctx.db.patch(existing._id, {
+      tombstonedAt: undefined,
+      tombstoneTxId: undefined,
+      tombstoneReason: undefined,
+      lastTxId: row.txId,
+    });
+    const patched = await ctx.db.get(existing._id);
+    if (patched !== null) {
+      factsByAssertEventId.set(targetEventId, patched);
+      await insertCurrentIfNowVisible(ctx, patched, row.txTime);
+    }
+  }
+}
+
 export const appendAssert = mutation({
   args: {
     ...txArgs,
@@ -456,6 +559,49 @@ export const appendLifecycle = mutation({
       if (patched !== null) await insertCurrentIfNowVisible(ctx, patched, tx.txTime);
     }
     return { txId: tx._id, rowId, eventId: built.event.id, factId: fact._id };
+  },
+});
+
+export const rebuildProjections = mutation({
+  args: {},
+  returns: rebuildResultValidator,
+  handler: async (ctx) => {
+    const events = await ctx.db
+      .query("factEvents")
+      .withIndex("by_txTime")
+      .order("asc")
+      .take(REBUILD_LIMIT + 1);
+    if (events.length > REBUILD_LIMIT) {
+      throw new Error(
+        `projection rebuild is limited to ${REBUILD_LIMIT} factEvents rows`,
+      );
+    }
+
+    await clearProjectionTables(ctx);
+
+    const factsByAssertEventId = new Map<string, Doc<"facts">>();
+    for (const row of events) {
+      if (row.kind === "assert") {
+        await replayAssert(ctx, row, factsByAssertEventId);
+      } else {
+        await replayLifecycle(ctx, row, factsByAssertEventId);
+      }
+    }
+
+    const currentFacts = await ctx.db
+      .query("currentFacts")
+      .take(REBUILD_LIMIT + 1);
+    if (currentFacts.length > REBUILD_LIMIT) {
+      throw new Error(
+        `projection rebuild produced more than ${REBUILD_LIMIT} currentFacts rows`,
+      );
+    }
+
+    return {
+      events: events.length,
+      facts: factsByAssertEventId.size,
+      currentFacts: currentFacts.length,
+    };
   },
 });
 

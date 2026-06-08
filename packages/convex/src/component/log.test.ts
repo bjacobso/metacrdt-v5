@@ -10,6 +10,7 @@ const componentInternal = internal as unknown as {
     getEvent: any;
     listEvents: any;
     listCurrent: any;
+    rebuildProjections: any;
   };
 };
 
@@ -226,6 +227,110 @@ describe("@metacrdt/convex component-owned protocol log", () => {
       reason: "superseded by ≺-max cardinality-one assertion",
       validEventId: true,
     });
+  });
+
+  test("rebuilds disposable projections from the component-owned event log", async () => {
+    const t = initComponentTest();
+    await t.mutation(componentInternal.log.appendAssert, {
+      ...actor,
+      txTime: 30_000,
+      e: "worker:rebuild",
+      a: "worker.status",
+      v: "active",
+      cardinality: "one",
+    });
+    const winner = await t.mutation(componentInternal.log.appendAssert, {
+      ...actor,
+      txTime: 31_000,
+      e: "worker:rebuild",
+      a: "worker.status",
+      v: "terminated",
+      cardinality: "one",
+    });
+
+    const rebuilt = await t.mutation(componentInternal.log.rebuildProjections, {});
+    expect(rebuilt).toEqual({
+      events: 3,
+      facts: 2,
+      currentFacts: 1,
+    });
+
+    const current = await t.query(componentInternal.log.listCurrent, {
+      e: "worker:rebuild",
+      a: "worker.status",
+    });
+    expect(current).toMatchObject([
+      {
+        e: "worker:rebuild",
+        a: "worker.status",
+        v: "terminated",
+        assertEventId: winner.eventId,
+      },
+    ]);
+
+    const events = await t.query(componentInternal.log.listEvents, {
+      e: "worker:rebuild",
+      a: "worker.status",
+      limit: 10,
+    });
+    expect(events.map((event: { kind: string }) => event.kind).sort()).toEqual([
+      "assert",
+      "assert",
+      "retract",
+    ]);
+  });
+
+  test("rebuild preserves lifecycle-derived empty current state", async () => {
+    const t = initComponentTest();
+    const asserted = await t.mutation(componentInternal.log.appendAssert, {
+      ...actor,
+      txTime: 40_000,
+      e: "worker:rebuild-lifecycle",
+      a: "worker.status",
+      v: "active",
+    });
+    await t.mutation(componentInternal.log.appendLifecycle, {
+      ...actor,
+      txTime: 41_000,
+      kind: "tombstone",
+      targetEventId: asserted.eventId,
+      e: "worker:rebuild-lifecycle",
+      a: "worker.status",
+      v: "active",
+      reason: "bad source",
+    });
+    await t.mutation(componentInternal.log.appendLifecycle, {
+      ...actor,
+      txTime: 42_000,
+      kind: "untombstone",
+      targetEventId: asserted.eventId,
+      e: "worker:rebuild-lifecycle",
+      a: "worker.status",
+      v: "active",
+      reason: "restored",
+    });
+    await t.mutation(componentInternal.log.appendLifecycle, {
+      ...actor,
+      txTime: 43_000,
+      kind: "retract",
+      targetEventId: asserted.eventId,
+      e: "worker:rebuild-lifecycle",
+      a: "worker.status",
+      v: "active",
+      reason: "closed",
+    });
+
+    expect(await t.mutation(componentInternal.log.rebuildProjections, {})).toEqual({
+      events: 4,
+      facts: 1,
+      currentFacts: 0,
+    });
+    expect(
+      await t.query(componentInternal.log.listCurrent, {
+        e: "worker:rebuild-lifecycle",
+        a: "worker.status",
+      }),
+    ).toEqual([]);
   });
 
   test("filters component-owned events by entity and attribute", async () => {

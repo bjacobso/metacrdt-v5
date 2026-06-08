@@ -1,10 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 25 (`@metacrdt/convex` component-owned cardinality-one
-projection semantics) has shipped. The next active goal should be chosen from
-the remaining TODO candidates: full app write authorization, live Cloudflare
-deployment/auth, or migrating more of the reference runtime onto component-owned
-state.
+**Current goal:** Goal 26 (`@metacrdt/convex` component-owned projection rebuild)
+has shipped. The next active goal should be chosen from the remaining TODO
+candidates: full app write authorization, live Cloudflare deployment/auth, or
+migrating more of the reference runtime onto component-owned state.
 
 This plan is the operational goal file. Read it with:
 
@@ -79,7 +78,7 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 87 tests at last verification.
+- Convex backend tests are green: 91 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -103,17 +102,19 @@ arguments.
     component append/lifecycle functions
   - opt-in component-owned cardinality-one reconciliation for component writes,
     using the shared `≺` order and protocol retract events for losers
+  - component-owned projection rebuild via `log.rebuildProjections`, replaying
+    component-owned `factEvents` into disposable `facts` / `currentFacts`
   - a reference-app wrapper, `api.metacrdtComponent.verifyEvents`, that mounts
     the component as `components.metacrdt` while keeping table ownership and
     public API naming in the host app
   - reference-app wrappers for app-auth-derived writes into the component-owned
-    protocol log
+    protocol log, current projection reads, and rebuild
   - an explicit Confect sidecar warning/helper documenting the manual-mount
     lesson from Goal 2
   - package-local tests for deterministic event reconstruction, legacy fallback
     behavior, registered component functions, component-owned log writes,
     component-owned current projection lifecycle, and component-owned
-    cardinality-one reconciliation
+    cardinality-one reconciliation, plus event-log projection rebuild
 - `@metacrdt/forma` exists in [`packages/forma`](./packages/forma):
   - runtime-neutral Lisp / S-expression authoring language
   - parser, formatter, evaluator, VM, type inference, and language-owned
@@ -219,9 +220,9 @@ arguments.
 - `@metacrdt/convex` now has adapter helpers, stateless protocol helpers, a
   component-owned protocol transaction/event log, and component-owned
   `facts`/`currentFacts` projections with opt-in cardinality-one reconciliation
-  for component-owned writes. The reference app still owns its production write
-  path and has not migrated its existing business logic/rules onto
-  component-owned state.
+  and event-log rebuild for component-owned writes. The reference app still owns
+  its production write path and has not migrated its existing business logic/rules
+  onto component-owned state.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime.
 - Multi-replica sync is specified and now implemented as in-memory
@@ -2349,6 +2350,74 @@ convex/metacrdtComponent.ts
 
 ---
 
+## Goal 26 — `@metacrdt/convex` Component-Owned Projection Rebuild
+
+**Status:** shipped as component-owned disposable projection recovery.
+
+**Objective:** prove the packaged component's `facts` and `currentFacts`
+tables are true read models of the component-owned protocol event log. Component
+writes already maintained those projections incrementally; this goal adds a
+bounded rebuild mutation that deletes the projections and replays the append-only
+`factEvents` log to reconstruct them.
+
+### Scope
+
+Package changes:
+
+```text
+packages/convex/src/component/log.ts
+  rebuildProjections()
+  replayAssert(...)
+  replayLifecycle(...)
+```
+
+Reference app changes:
+
+```text
+convex/metacrdtComponent.ts
+  rebuildOwnedProjections()
+```
+
+### Acceptance Criteria
+
+- `log.rebuildProjections`:
+  - reads component-owned `factEvents` in deterministic transaction-time order;
+  - clears component-owned `currentFacts` and `facts`;
+  - replays assert rows into new `facts` projection rows;
+  - replays retract/tombstone/untombstone rows through `targetEventId`;
+  - rebuilds `currentFacts` from replayed fact lifecycle state;
+  - returns explicit counts for events, facts, and current facts.
+- Rebuild does **not** mutate append-only `factEvents`.
+- Event-row `factId` remains projection convenience only. After rebuild, old
+  event rows may still point at deleted projection row ids; lifecycle linkage is
+  by protocol `targetEventId`.
+- The app wrapper exposes rebuild through the host app API instead of exposing
+  the component function directly to clients.
+- Tests prove:
+  - cardinality-one state survives rebuild (`assert`, `assert`, protocol
+    loser-`retract` → one current winner);
+  - tombstone/untombstone/retract lifecycle state survives rebuild;
+  - the app wrapper can trigger rebuild and still read the winning current fact.
+
+### Non-Goals
+
+- Do not migrate the reference app production write path into component-owned
+  tables.
+- Do not implement component-owned rule/materialized projections in this slice.
+- Do not patch old component event rows' `factId` fields during rebuild; that
+  would violate the append-only event-log discipline.
+- Do not add a self-continuing large-table rebuild yet. This first component
+  rebuild is bounded and meant to prove semantics before bulk operations.
+
+### Verification
+
+- `npm run test:convex-package` passed (29 tests).
+- `npx vitest run convex/metacrdtComponent.test.ts` passed (5 tests).
+- Convex package typecheck passed.
+- App Convex typecheck passed.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -2378,6 +2447,7 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] First state-owned `@metacrdt/convex` protocol-log component slice.
 - [x] First projection-owning `@metacrdt/convex` component slice.
 - [x] Opt-in component-owned cardinality-one projection semantics.
+- [x] Component-owned projection rebuild from the component protocol log.
 - [ ] Migrate more reference runtime business logic onto component-owned state.
 
 ### Auth / Privacy

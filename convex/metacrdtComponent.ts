@@ -98,6 +98,12 @@ const ownedCurrentFactValidator = v.object({
   assertEventId: v.string(),
 });
 
+const rebuildOwnedResultValidator = v.object({
+  events: v.number(),
+  facts: v.number(),
+  currentFacts: v.number(),
+});
+
 async function actorContext(ctx: MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   return {
@@ -298,4 +304,11 @@ export const listOwnedCurrent = query({
       components.metacrdt.log.listCurrent,
       withoutUndefined(args),
     ),
+});
+
+export const rebuildOwnedProjections = mutation({
+  args: {},
+  returns: rebuildOwnedResultValidator,
+  handler: async (ctx) =>
+    await ctx.runMutation(components.metacrdt.log.rebuildProjections, {}),
 });

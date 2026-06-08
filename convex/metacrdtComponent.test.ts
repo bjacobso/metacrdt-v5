@@ -159,4 +159,41 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       "retract",
     ]);
   });
+
+  test("rebuilds component-owned projections through app wrapper", async () => {
+    const t = convexTest(schema, modules);
+    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+
+    await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
+      e: "component-rebuild:worker",
+      a: "worker.status",
+      value: "active",
+      cardinality: "one",
+    });
+    const winner = await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
+      e: "component-rebuild:worker",
+      a: "worker.status",
+      value: "terminated",
+      cardinality: "one",
+    });
+
+    expect(
+      await t.mutation(api.metacrdtComponent.rebuildOwnedProjections, {}),
+    ).toEqual({
+      events: 3,
+      facts: 2,
+      currentFacts: 1,
+    });
+
+    const current = await t.query(api.metacrdtComponent.listOwnedCurrent, {
+      e: "component-rebuild:worker",
+      a: "worker.status",
+    });
+    expect(current).toMatchObject([
+      {
+        v: "terminated",
+        assertEventId: winner.eventId,
+      },
+    ]);
+  });
 });
