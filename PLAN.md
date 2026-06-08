@@ -1,9 +1,10 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 18 (`@metacrdt/cloudflare` Worker/DO example shell) has
+**Current goal:** Goal 19 (`@metacrdt/local` browser/local-first package) has
 shipped. The next active goal should be chosen from the remaining TODO
-candidates: full app write authorization, a full `@metacrdt/local` package, p2p
-transport, or a state-owning `@metacrdt/convex` component slice.
+candidates: full app write authorization, IndexedDB/SQLite local persistence,
+p2p transport, live Cloudflare deployment/auth, or a state-owning
+`@metacrdt/convex` component slice.
 
 This plan is the operational goal file. Read it with:
 
@@ -133,6 +134,15 @@ configured actions can now take small typed arguments.
   - package-local tests proving restart durability, G-Set convergence, version
     vectors, stored event verification, WebSocket publish/catch-up, and protocol
     filtering, Worker routing, and WebSocket upgrade wiring
+- `@metacrdt/local` exists in [`packages/local`](./packages/local):
+  - browser-facing local-first target package
+  - composes the `@metacrdt/runtime` localStorage-backed event/HLC/seq services
+    with the `BroadcastChannelTransport`
+  - exposes browser defaults (`browserStorage`, `browserBroadcastChannel`),
+    `createLocalFirstRuntime`, and `startLocalFirstRuntime`
+  - package-local tests prove peer convergence over a BroadcastChannel-compatible
+    bus, hello/delta catch-up for late replicas, restart durability, and
+    broadcast-disabled local persistence
 - `applyConfig` now behaves as a true section-scoped reconciler:
   - configured artifact ownership is tracked on `config:default`
   - explicitly supplied config sections compute desired sets
@@ -192,10 +202,11 @@ configured actions can now take small typed arguments.
 - Multi-replica sync is specified and now implemented as in-memory
   version-vector anti-entropy, and the localStorage target persists event/HLC/seq
   state. A BroadcastChannel transport now handles same-origin browser publish and
-  hello/delta catch-up. `@metacrdt/cloudflare` now provides Durable Object
+  hello/delta catch-up. `@metacrdt/local` now packages those browser defaults as a
+  local-first target. `@metacrdt/cloudflare` now provides Durable Object
   storage-backed runtime services, a structural WebSocket relay shell, and a
-  Worker-facing router/DO class example, but not a live deployed service, auth, or
-  p2p cross-device networking.
+  Worker-facing router/DO class example, but not a live deployed service, auth,
+  IndexedDB/SQLite local persistence, or p2p cross-device networking.
 - Full app login/write authorization is not configured; unauthenticated callers
   are treated as `anonymous`, so PII is denied by default but general public
   writes remain demo-grade.
@@ -1893,6 +1904,57 @@ packages/cloudflare/
 
 ---
 
+## Goal 19 — `@metacrdt/local` Browser Local-First Package
+
+**Status:** shipped as the browser-facing local target package.
+
+**Objective:** turn the proven localStorage and BroadcastChannel runtime seeds
+into a real `@metacrdt/local` package boundary without duplicating runtime
+internals. The package is the ergonomic browser/local-first target: it supplies
+browser defaults and lifecycle helpers over `@metacrdt/runtime`.
+
+### Scope
+
+Package additions:
+
+```text
+packages/local/
+  src/index.ts       # browser defaults + create/start local-first runtime
+  src/index.test.ts  # fake storage/channel convergence and lifecycle tests
+```
+
+### Acceptance Criteria
+
+- Add `@metacrdt/local` as an npm workspace package.
+- Export:
+  - `browserStorage()` for `globalThis.localStorage`;
+  - `browserBroadcastChannel(name)` for `globalThis.BroadcastChannel`;
+  - `createLocalFirstRuntime(options)`;
+  - `startLocalFirstRuntime(options)`;
+  - concrete runtime/transport types re-exported from `@metacrdt/runtime`.
+- `createLocalFirstRuntime`:
+  - creates a `createLocalRuntime` with storage, namespace, replica id, wall
+    clock, and capability options;
+  - attaches `BroadcastChannelTransport` by default;
+  - supports `broadcast: false` for purely local durable operation;
+  - exposes `start()` / `stop()` lifecycle methods.
+- Add tests proving:
+  - local operations publish to same-origin peers and converge through the G-Set
+    merge path;
+  - late-starting replicas catch up via hello/version-vector/delta exchange;
+  - storage restart preserves event log and local sequence;
+  - `broadcast:false` works without a channel;
+  - browser-global helpers fail clearly when a host lacks required APIs.
+- Do **not** introduce IndexedDB/SQLite or p2p networking in this slice.
+
+### Verification
+
+- `npm run test:local` passed (4 tests).
+- Local package typecheck passed.
+- Full gate for this slice is recorded in the commit that shipped it.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -1913,10 +1975,11 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] `@metacrdt/cloudflare` Durable Object runtime services.
 - [x] `@metacrdt/cloudflare` Durable Object WebSocket relay shell.
 - [x] Cloudflare Worker/DO example shell + Wrangler config.
+- [x] `@metacrdt/local` browser/local-first package over localStorage +
+  BroadcastChannel.
+- [ ] IndexedDB/SQLite local persistence adapters.
 - [ ] Live Cloudflare deployment / auth / p2p transport targets.
 - [ ] Full registered `@metacrdt/convex` component/function surface.
-- [ ] Full `@metacrdt/local` browser/local-first package (IndexedDB/SQLite and
-  browser transport still deferred).
 
 ### Auth / Privacy
 

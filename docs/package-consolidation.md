@@ -69,7 +69,7 @@ packages/
 ├── runtime/          @metacrdt/runtime    # done: services + memory/localStorage + BroadcastChannel
 ├── convex/           @metacrdt/convex     # Convex target / component / bindings
 ├── cloudflare/       @metacrdt/cloudflare # done: DO storage + WebSocket relay + Worker example
-├── local/            @metacrdt/local      # browser/local-first target
+├── local/            @metacrdt/local      # done: browser localStorage + BroadcastChannel target
 ├── node/             @metacrdt/node       # node target, tests, dev server
 ├── cli/              @metacrdt/cli
 ├── sdk/              @metacrdt/sdk
@@ -317,7 +317,8 @@ Only after two targets exist or are actively being built:
 - `@metacrdt/runtime` for IR + service interfaces.
 - `@metacrdt/convex` as the reference target/component.
 - `@metacrdt/cloudflare` as the Durable Object target.
-- `@metacrdt/local` as the browser/local-first target.
+- `@metacrdt/local` as the browser/local-first target (localStorage +
+  BroadcastChannel now; IndexedDB/SQLite later).
 
 This is where the Confect/Alchemy notes become executable architecture.
 

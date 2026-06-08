@@ -25,6 +25,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   relay for hello/delta sync and event fan-out in `@metacrdt/cloudflare`.
 - [x] Cloudflare Worker/DO example shell + Wrangler config — package-level
   Worker router, DO class shell, and `wrangler.example.toml`.
+- [x] Browser local-first package — `@metacrdt/local` composes the localStorage
+  runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [ ] Live Cloudflare deployment / auth and p2p transports (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
@@ -72,8 +74,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   anti-entropy. It does not yet own Convex or durable transport.
 - [x] **Browser/localStorage target seed** — `packages/runtime/src/local.ts`
   provides localStorage-compatible `LocalEventStore`, `LocalClock`, and
-  `LocalSequencer`, plus `createLocalRuntime`. This deliberately stays inside
-  `@metacrdt/runtime` until the full `@metacrdt/local` package boundary is earned.
+  `LocalSequencer`, plus `createLocalRuntime`. It remains the shared runtime
+  primitive that `@metacrdt/local` composes rather than duplicating.
 - [x] **BroadcastChannel transport seed** — `packages/runtime/src/broadcast.ts`
   adds `BroadcastChannelTransport` and `attachBroadcastTransport` for
   same-origin browser anti-entropy over any runtime target.
@@ -86,9 +88,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **Cloudflare Worker/DO example shell** — `packages/cloudflare/src/worker.ts`
   exposes `MetaCrdtRelayDurableObject`, `createRelayWorker`, and `relayWorker`;
   `wrangler.example.toml` documents the Durable Object binding/migration.
-- [ ] Targets: full `@metacrdt/local` (browser / IndexedDB or SQLite +
-  transport), live Cloudflare deployment/auth, p2p transport, and a state-owning
-  `@metacrdt/convex` component/function surface.
+- [x] **`@metacrdt/local` browser target package** — `packages/local` exposes
+  browser defaults and lifecycle helpers over the runtime localStorage +
+  BroadcastChannel seeds.
+- [ ] Targets: IndexedDB/SQLite local persistence, live Cloudflare
+  deployment/auth, p2p transport, and a state-owning `@metacrdt/convex`
+  component/function surface.
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -146,9 +151,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   outside the hardened collection-token path.
 
 **Next goal candidates**
-- [ ] Choose the next active goal: full app write authorization, full
-  `@metacrdt/local`, p2p transport, or a state-owning `@metacrdt/convex`
-  component slice.
+- [ ] Choose the next active goal: full app write authorization,
+  IndexedDB/SQLite local persistence, p2p transport, live Cloudflare
+  deployment/auth, or a state-owning `@metacrdt/convex` component slice.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -173,6 +178,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — @metacrdt/local browser local-first package
+- [x] **Added the browser-facing local target package.** `packages/local` exports
+  `browserStorage`, `browserBroadcastChannel`, `createLocalFirstRuntime`, and
+  `startLocalFirstRuntime`.
+- [x] **Package boundary is composition, not duplication.** Durable event log/HLC/
+  `seq` storage remains in `@metacrdt/runtime`'s local target seed; same-origin
+  anti-entropy remains in `BroadcastChannelTransport`. `@metacrdt/local` supplies
+  browser defaults, lifecycle methods, and the package-level target name.
+- [x] Tests cover BroadcastChannel peer convergence, late-replica hello/delta
+  catch-up, restart durability, `broadcast:false` local persistence, and host
+  helper behavior. Deferred: IndexedDB/SQLite adapters and p2p networking.
 
 ### 2026-06-07 — @metacrdt/cloudflare Worker/DO example shell
 - [x] **Added the deploy-facing Cloudflare shell.** `packages/cloudflare/src/worker.ts`

@@ -21,6 +21,7 @@
     "test:core": "npm test --workspace @metacrdt/core",
     "test:convex-package": "npm test --workspace @metacrdt/convex",
     "test:forma": "npm test --workspace @metacrdt/forma",
+    "test:local": "npm test --workspace @metacrdt/local",
     "test:runtime": "npm test --workspace @metacrdt/runtime",
     "test:confect": "vitest run convex/confect.test.ts"
   },

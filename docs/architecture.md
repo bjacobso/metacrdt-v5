@@ -38,7 +38,7 @@ MetaCRDT — the umbrella: the primitive, the thesis, the org
 ├─ TARGETS           (compile bindings — SPEC §8.3)
 │   @metacrdt/convex ......... Convex relay / system-of-record  (reference impl)
 │   @metacrdt/cloudflare ..... Durable-Object edge replica + WS sync
-│   @metacrdt/local .......... browser/SQLite local-first (the foldkit client)
+│   @metacrdt/local .......... browser/local-first target (the foldkit client)
 │
 ├─ TOOLING           @metacrdt/forma = Lisp authoring language → IR
 │                    Schematics = the IDE/authoring surface
@@ -97,6 +97,7 @@ not invented:
 | `packages/forma` (`@metacrdt/forma`) | Lisp authoring language: reader, formatter, evaluator, VM, type inference |
 | `packages/runtime` (`@metacrdt/runtime`) | runtime service contracts + memory harness + localStorage target seed + BroadcastChannel transport seed proving target-neutral convergence, restart durability, and same-origin anti-entropy |
 | `packages/cloudflare` (`@metacrdt/cloudflare`) | Durable Object storage-backed runtime services, structural WebSocket relay shell, and Worker/DO example shell |
+| `packages/local` (`@metacrdt/local`) | browser/local-first target package composing runtime localStorage services + BroadcastChannel transport with browser defaults and lifecycle helpers |
 | `convex/attributes.ts`, `convex/lib/meta.ts` | `@metacrdt/schema` |
 | `convex/datalog.ts`, `convex/lib/engine.ts` | `@metacrdt/query` |
 | `convex/flows.ts` | `@metacrdt/workflow` |
@@ -115,11 +116,13 @@ not invented:
    at `packages/core`: pure, dependency-free, and tested (SPEC §4–5; the events,
    `≺` order, G-Set merge, and deterministic bitemporal fold). It's the determinism
    guarantee and the most reusable. **`@metacrdt/convex`, `@metacrdt/forma`,
-   `@metacrdt/runtime`, and `@metacrdt/cloudflare` now exist too**: Convex is
-   adapter-first; Forma is the runtime-neutral language package; runtime is
-   harness-first (service contracts, memory target, localStorage target seed, and
-   BroadcastChannel transport seed); Cloudflare is a storage-service target plus
-   WebSocket relay and Worker/DO example shell, not a live deployed service yet.
+   `@metacrdt/runtime`, `@metacrdt/cloudflare`, and `@metacrdt/local` now exist
+   too**: Convex is adapter-first; Forma is the runtime-neutral language package;
+   runtime is harness-first (service contracts, memory target, localStorage target
+   seed, and BroadcastChannel transport seed); Cloudflare is a storage-service
+   target plus WebSocket relay and Worker/DO example shell, not a live deployed
+   service yet; local is the browser-facing composition over localStorage +
+   BroadcastChannel, with IndexedDB/SQLite and p2p still deferred.
    Everything else extracts as it stabilizes. (Tracked in [TODO.md](../TODO.md).)
 2. **The name is the thesis — so protect what makes it true.** *Databases store
    facts; CRDTs synchronize facts; MetaCRDT synchronizes facts, logic, workflows,

@@ -114,6 +114,12 @@ Current packages:
 - **`@metacrdt/runtime`** (`packages/runtime`) — target-neutral service contracts
   and memory harness: injected HLC clock, optional per-replica sequencer,
   operation helpers, version-vector delta calculation, and anti-entropy exchange.
+- **`@metacrdt/cloudflare`** (`packages/cloudflare`) — Durable Object / Worker
+  target helpers: storage-backed event log, HLC, per-replica sequencer,
+  WebSocket relay shell, Worker router, and example Wrangler config.
+- **`@metacrdt/local`** (`packages/local`) — browser/local-first target package:
+  localStorage-backed event/HLC/seq services composed with BroadcastChannel
+  anti-entropy, plus browser defaults and lifecycle helpers.
 
 Planned package graph:
 
