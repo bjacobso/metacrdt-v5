@@ -205,8 +205,8 @@ are one representation of facts inside a convergent event log.
   extension/candidate expansion for positive joins, negation candidate checking
   over already-fetched triples, and compare/compute state transitions over
   provenanced solved bindings, plus the shared intermediate-row limit guard.
-  Bound-variable advancement and solver-frame initialization for scheduler state
-  have shipped too.
+  Bound-variable advancement, solver-frame initialization, and solver work-list
+  clause selection/removal for scheduler state have shipped too.
 - `@metacrdt/workflow` — processes, flows, obligations.
 - `@metacrdt/forms` — collection surfaces and prompt-response forms.
 - `@metacrdt/views` — ViewSpec and generated response surfaces.
@@ -336,7 +336,8 @@ Extract only when each package has a concrete use in the current reference app:
    helpers. The shared intermediate-row limit guard
    (`assertIntermediateRowsWithinLimit`) and scheduler bound-var advancement
    (`advanceBoundVars`) have shipped too. Initial solver-frame construction
-   (`initialSolverFrame`) has shipped too.
+   (`initialSolverFrame`) and solver work-list clause selection/removal
+   (`selectNextClause`) have shipped too.
    Convex-specific triple fetching, read authorization, provenance
    interpretation, solving, async join execution, negation IO, and branch
    recursion remain in the reference runtime.

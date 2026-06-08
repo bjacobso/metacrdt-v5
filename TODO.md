@@ -179,6 +179,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   now owns `initialSolverFrame`, creating the initial remaining-clause index list,
   bound-var set, and cloned seeded provenanced state. Convex still owns parsing,
   source/auth setup, async execution, and recursion.
+- [x] **`@metacrdt/query` solver work-list selection extracted** — the package
+  now owns `selectNextClause`, which chooses the next runnable parsed clause,
+  returns the selected clause/index, and returns a cloned remaining work list
+  without mutating caller state. Convex still owns clause execution, source IO,
+  read auth, row-limit placement, and branch recursion.
 - [ ] Then peel off, as they stabilize: more `@metacrdt/query` solver/rule AST
   seams, then `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/views`, and
   `@metacrdt/agent`.
@@ -448,6 +453,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 97 shipped:** `@metacrdt/query` solver work-list selection. Added
+  `SelectedClause` / `selectNextClause`; Convex now asks the package to choose
+  and remove the next runnable parsed clause while retaining all execution,
+  source/auth, row-limit, and branch-recursion responsibilities.
 - [x] **Goal 96 shipped:** `@metacrdt/query` solver-frame initialization. Added
   `SolverFrame` / `initialSolverFrame`; Convex now asks the package to create the
   initial remaining indexes, bound set, and cloned seeded provenanced state before

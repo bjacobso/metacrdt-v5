@@ -5,7 +5,6 @@ import {
   advanceBoundVars,
   applyComputeStates,
   assertIntermediateRowsWithinLimit,
-  chooseNextClausePosition,
   dedupeProvenancedBindings,
   extendPatternCandidates,
   filterCompareStates,
@@ -14,6 +13,7 @@ import {
   passesNegationCandidates,
   patternInputForBinding,
   project,
+  selectNextClause,
   valueKey,
   type AnyClause,
   type Binding,
@@ -48,6 +48,7 @@ export {
   patternInputForBinding,
   patternVars,
   project,
+  selectNextClause,
   valueKey,
   type AggOp,
   type AggSpec,
@@ -290,14 +291,13 @@ async function solveParsedWhere(
   source: TripleSource,
 ): Promise<SolvedBinding[]> {
   const frame = initialSolverFrame(clauses, seed, seedSources, seedEventSources);
-  const { remaining } = frame;
+  let { remaining } = frame;
   let { bound, states } = frame;
 
   while (remaining.length > 0) {
-    const pickAt = chooseNextClausePosition(clauses, remaining, bound);
-
-    const idx = remaining.splice(pickAt, 1)[0];
-    const clause = clauses[idx];
+    const selected = selectNextClause(clauses, remaining, bound);
+    remaining = selected.remaining;
+    const { clause } = selected;
 
     if (clause.kind === "pattern") {
       const next: SolvedBinding[] = [];

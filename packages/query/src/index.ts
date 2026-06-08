@@ -61,6 +61,12 @@ export type SolverFrame<
   bound: Set<string>;
   states: ProvenancedBinding<SourceId, EventSourceId>[];
 };
+export type SelectedClause = {
+  clauseIndex: number;
+  clause: AnyClause;
+  pickPosition: number;
+  remaining: number[];
+};
 export type QueryTriple<
   SourceId extends string = string,
   EventSourceId extends string = string,
@@ -358,6 +364,36 @@ export function chooseNextClausePosition(
   throw new Error(
     "query is unsafe: a comparison, compute, negation, or disjunction clause has variables that no earlier clause can bind",
   );
+}
+
+/**
+ * Choose and remove the next clause from a solver work list. This is the pure
+ * scheduler-state transition around `chooseNextClausePosition`: target runtimes
+ * still execute the returned clause and own all source IO.
+ */
+export function selectNextClause(
+  clauses: AnyClause[],
+  remaining: number[],
+  bound: ReadonlySet<string>,
+): SelectedClause {
+  const pickPosition = chooseNextClausePosition(clauses, remaining, bound);
+  const clauseIndex = remaining[pickPosition];
+  if (clauseIndex === undefined) {
+    throw new Error("query planner selected a missing remaining clause");
+  }
+  const clause = clauses[clauseIndex];
+  if (clause === undefined) {
+    throw new Error(`query planner selected unknown clause index ${clauseIndex}`);
+  }
+  return {
+    clauseIndex,
+    clause,
+    pickPosition,
+    remaining: [
+      ...remaining.slice(0, pickPosition),
+      ...remaining.slice(pickPosition + 1),
+    ],
+  };
 }
 
 export function unifyPattern(

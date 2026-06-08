@@ -122,10 +122,10 @@ Current packages:
   provenanced pattern extension and candidate expansion for positive joins,
   negation candidate checking over fetched triples, plus compare/compute state
   transitions over solved bindings, and the shared intermediate-row limit guard.
-  It also owns bound-variable advancement and initial solver-frame construction
-  for scheduler state. The Convex engine consumes and re-exports it while keeping
-  triple fetching, read authorization, provenance, and async join execution in
-  `convex/lib/engine.ts`.
+  It also owns bound-variable advancement, initial solver-frame construction, and
+  solver work-list clause selection/removal for scheduler state. The Convex
+  engine consumes and re-exports it while keeping triple fetching, read
+  authorization, provenance, and async join execution in `convex/lib/engine.ts`.
 - **`@metacrdt/convex`** (`packages/convex`) — Convex target adapters:
   protocol metadata validators, Convex/core event construction, row
   reconstruction/verification, projected-row visibility, cardinality-one

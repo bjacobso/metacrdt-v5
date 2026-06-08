@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 96 (`@metacrdt/query` Solver Frame Initialization) has
+**Current goal:** Goal 97 (`@metacrdt/query` Solver Work-List Selection) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -117,7 +117,12 @@ async solver loop, clause execution, source IO, read authorization, and branch
 recursion. Goal 96 extracts solver-frame initialization into `@metacrdt/query`:
 `initialSolverFrame` creates the initial remaining-clause index list, bound-var
 set, and cloned seeded provenanced state, while Convex still owns parsing,
-source/auth setup, the async solver loop, and recursion. The next active goal
+source/auth setup, the async solver loop, and recursion. Goal 97 extracts
+solver work-list selection into `@metacrdt/query`: `selectNextClause` chooses
+the next runnable clause, returns the selected parsed clause and index, and
+returns a cloned remaining-clause work list, while Convex still owns executing
+the returned clause, source/auth setup, async IO, row-limit placement, and
+recursion. The next active goal
 should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
@@ -218,6 +223,7 @@ arguments.
   - shared intermediate-row limit guard
   - bound-variable advancement for scheduler state
   - solver-frame initialization
+  - scheduler work-list clause selection/removal
   - Convex compatibility re-export through `convex/lib/engine.ts`
 - New Convex writes stamp protocol metadata on `factEvents`:
   `eventId`, HLC, `replicaId`, `targetEventId`, and `causalRefs` where
@@ -8590,6 +8596,56 @@ Convex.
   `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
 - A live `datalog:datalog` query returned rows through the deployed solver path
   that now initializes its frame through `@metacrdt/query`.
+
+---
+
+## Goal 97 — `@metacrdt/query` Solver Work-List Selection
+
+**Status:** shipped as the pure scheduler work-list transition boundary.
+
+**Objective:** move target-neutral selection/removal of the next parsed Datalog
+clause from the Convex solver into `@metacrdt/query`, while keeping clause
+execution, read auth, source fetching, row-limit placement, branch recursion,
+and all async IO in Convex.
+
+### Semantics
+
+- `packages/query` now owns `SelectedClause` and `selectNextClause`.
+- `selectNextClause` delegates to the existing package planner
+  `chooseNextClausePosition`, then returns:
+  - `clauseIndex`: the selected original clause index;
+  - `clause`: the parsed clause to execute;
+  - `pickPosition`: the selected position in the incoming remaining list;
+  - `remaining`: a cloned remaining-clause work list with the selected position
+    removed.
+- The helper does not mutate the caller's `remaining` array.
+- `convex/lib/engine.ts` now asks the package to select the next clause in the
+  `solveParsedWhere` loop, then executes the returned clause locally.
+
+### Non-Goals
+
+- Do not move `solveWhere`, `solveParsedWhere`, source IO, read authorization,
+  negation candidate fetching, disjunction recursion, row-limit placement, or
+  branch execution into the package.
+- Do not change clause planning, unsafe-query behavior, result shapes, seed
+  semantics, or provenance shape.
+
+### Verification
+
+- `npm run test:query` passed (22 package tests).
+- `npx tsc --noEmit -p packages/query/tsconfig.json` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npm run test:core` passed (46 core tests).
+- `npm run test:schema` passed (8 schema tests).
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94` (with the existing env-var and generated-AI-file freshness
+  warnings only).
+- A live `datalog:datalog` query returned rows through the deployed solver path
+  that now selects/removes work-list clauses through `@metacrdt/query`.
 
 ---
 

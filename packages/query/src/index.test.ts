@@ -25,6 +25,7 @@ import {
   requiredVars,
   resolveEmitTerm,
   satisfiesCompare,
+  selectNextClause,
   unifyPattern,
   valueKey,
 } from "./index";
@@ -224,6 +225,26 @@ describe("@metacrdt/query term and filter helpers", () => {
     expect(frame.states[0]?.binding).toEqual({ e: "worker:maria" });
     expect(frame.states[0]?.sources).toEqual(["fact:seed"]);
     expect(frame.states[0]?.eventSources).toEqual(["event:seed"]);
+  });
+
+  test("selects the next clause and clones the remaining work list", () => {
+    const clauses = parseClauses([
+      ["?e", "type", "Worker"],
+      ["?e", "worker.score", "?score"],
+      ["?score", ">=", 10],
+      { compute: ["+", "?score", 1], as: "?next" },
+    ]);
+    const remaining = [1, 2, 3];
+
+    const selected = selectNextClause(clauses, remaining, new Set(["e", "score"]));
+
+    expect(selected).toMatchObject({
+      clauseIndex: 2,
+      pickPosition: 1,
+      remaining: [1, 3],
+    });
+    expect(selected.clause.kind).toBe("compare");
+    expect(remaining).toEqual([1, 2, 3]);
   });
 });
 
