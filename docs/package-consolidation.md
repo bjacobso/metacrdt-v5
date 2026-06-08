@@ -61,7 +61,7 @@ packages/
 ├── core/              @metacrdt/core       # done: SPEC §4-5 kernel
 ├── forma/            @metacrdt/forma      # Lisp reader/evaluator/types/tooling
 ├── schema/           @metacrdt/schema     # done: ids, cardinality, meta attrs, definition lowering
-├── query/            @metacrdt/query      # done slices: parser, operators, rows, aggregation, emit shaping, planner, dedupe, source inputs, join/negation/state helpers
+├── query/            @metacrdt/query      # done slices: parser, operators, rows, aggregation, emit shaping, planner, dedupe, source inputs, join expansion, negation/state helpers
 ├── workflow/         @metacrdt/workflow   # durable steps, processes, obligations
 ├── forms/            @metacrdt/forms      # forms, collection, prompt-response
 ├── views/            @metacrdt/views      # ViewSpec / response surfaces
@@ -202,9 +202,9 @@ are one representation of facts inside a convergent event log.
   read-only rule emit shaping. Clause-pick planning for the Datalog scheduler
   and provenanced binding dedupe/source merging have also shipped, as has
   pattern-input construction for target triple sources, provenanced pattern
-  extension for positive joins, negation candidate checking over already-fetched
-  triples, and compare/compute state transitions over provenanced solved
-  bindings.
+  extension/candidate expansion for positive joins, negation candidate checking
+  over already-fetched triples, and compare/compute state transitions over
+  provenanced solved bindings.
 - `@metacrdt/workflow` — processes, flows, obligations.
 - `@metacrdt/forms` — collection surfaces and prompt-response forms.
 - `@metacrdt/views` — ViewSpec and generated response surfaces.
@@ -327,10 +327,11 @@ Extract only when each package has a concrete use in the current reference app:
    (`chooseNextClausePosition`) and provenanced solved-binding dedupe/source
    merging (`dedupeProvenancedBindings`) have shipped as well. Pattern-input
    construction (`patternInputForBinding`) and provenanced positive-join
-   extension (`extendProvenancedBinding`) now live in the package too. Negation
-   candidate checking (`passesNegationCandidates`) and local compare/compute
-   state transitions (`filterCompareStates`, `applyComputeStates`) have shipped
-   as pure helpers.
+   extension/candidate expansion (`extendProvenancedBinding`,
+   `extendPatternCandidates`) now live in the package too. Negation candidate
+   checking (`passesNegationCandidates`) and local compare/compute state
+   transitions (`filterCompareStates`, `applyComputeStates`) have shipped as pure
+   helpers.
    Convex-specific triple fetching, read authorization, provenance
    interpretation, solving, async join execution, negation IO, and branch
    recursion remain in the reference runtime.

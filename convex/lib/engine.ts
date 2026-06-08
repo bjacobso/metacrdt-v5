@@ -6,7 +6,7 @@ import {
   chooseNextClausePosition,
   clauseBoundVars,
   dedupeProvenancedBindings,
-  extendProvenancedBinding,
+  extendPatternCandidates,
   filterCompareStates,
   parseClauses,
   passesNegationCandidates,
@@ -35,6 +35,7 @@ export {
   derivedRowsFromBindings,
   describeClauses,
   entityVarOf,
+  extendPatternCandidates,
   extendProvenancedBinding,
   filterCompareStates,
   isEntityLocalRule,
@@ -306,12 +307,7 @@ async function solveParsedWhere(
           readFilter,
           source,
         );
-        for (const t of candidates) {
-          const extended = extendProvenancedBinding(clause, st, t);
-          if (extended) {
-            next.push(extended);
-          }
-        }
+        next.push(...extendPatternCandidates(clause, st, candidates));
         if (next.length > LIMITS.maxIntermediateRows) {
           throw new Error(
             `query exceeded maxIntermediateRows=${LIMITS.maxIntermediateRows}`,

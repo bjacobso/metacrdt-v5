@@ -9,6 +9,7 @@ import {
   derivedRowsFromBindings,
   describeClauses,
   dynamicSelectivity,
+  extendPatternCandidates,
   extendProvenancedBinding,
   filterCompareStates,
   isEntityLocalRule,
@@ -253,6 +254,56 @@ describe("@metacrdt/query rows", () => {
         },
       ),
     ).toBeNull();
+  });
+
+  test("extends one solved state across fetched pattern candidates", () => {
+    const pattern = parseClause(["?e", "worker.status", "?status"]);
+    expect(pattern.kind).toBe("pattern");
+    if (pattern.kind !== "pattern") return;
+
+    expect(
+      extendPatternCandidates(
+        pattern,
+        {
+          binding: { e: "worker:maria" },
+          sources: ["fact:seed"],
+          eventSources: ["event:seed"],
+        },
+        [
+          {
+            e: "worker:maria",
+            a: "worker.status",
+            v: "active",
+            prov: ["fact:active"],
+            eventProv: ["event:active"],
+          },
+          {
+            e: "worker:maria",
+            a: "worker.status",
+            v: "pending",
+            prov: ["fact:pending"],
+            eventProv: ["event:pending"],
+          },
+          {
+            e: "worker:ivan",
+            a: "worker.status",
+            v: "active",
+            prov: ["fact:other"],
+          },
+        ],
+      ),
+    ).toEqual([
+      {
+        binding: { e: "worker:maria", status: "active" },
+        sources: ["fact:seed", "fact:active"],
+        eventSources: ["event:seed", "event:active"],
+      },
+      {
+        binding: { e: "worker:maria", status: "pending" },
+        sources: ["fact:seed", "fact:pending"],
+        eventSources: ["event:seed", "event:pending"],
+      },
+    ]);
   });
 
   test("checks negation against fetched candidates with typed unification", () => {

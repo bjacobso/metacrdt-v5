@@ -653,6 +653,22 @@ export function extendProvenancedBinding<
   };
 }
 
+export function extendPatternCandidates<
+  SourceId extends string,
+  EventSourceId extends string = string,
+>(
+  clause: PatternClause,
+  state: ProvenancedBinding<SourceId, EventSourceId>,
+  candidates: QueryTriple<SourceId, EventSourceId>[],
+): ProvenancedBinding<SourceId, EventSourceId>[] {
+  const out: ProvenancedBinding<SourceId, EventSourceId>[] = [];
+  for (const triple of candidates) {
+    const extended = extendProvenancedBinding(clause, state, triple);
+    if (extended !== null) out.push(extended);
+  }
+  return out;
+}
+
 export function passesNegationCandidates<
   SourceId extends string,
   EventSourceId extends string = string,

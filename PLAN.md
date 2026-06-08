@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 92 (`@metacrdt/query` Local State Transitions) has
+**Current goal:** Goal 93 (`@metacrdt/query` Pattern Candidate Expansion) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -101,8 +101,13 @@ extracts pure compare/compute state transitions into `@metacrdt/query`:
 `filterCompareStates` and `applyComputeStates` operate over provenanced solved
 bindings while preserving source/event provenance, while Convex still owns the
 async solver loop, candidate fetching, read authorization, negation IO,
-disjunction recursion, and source semantics. The next active goal should be
-chosen from the remaining TODO candidates:
+disjunction recursion, and source semantics. Goal 93 extracts pure positive
+pattern candidate expansion into `@metacrdt/query`: `extendPatternCandidates`
+expands one solved state across already-fetched candidate triples, rejects
+non-unifying candidates, and preserves merged fact/event provenance, while
+Convex still owns fetching candidate batches, read authorization, intermediate
+row limits, async scheduling, and source semantics. The next active goal should
+be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
 the next projection dependency (closure/derived provenance or remaining
@@ -196,6 +201,7 @@ arguments.
   - provenance-preserving solved-binding dedupe and source-list merging
   - pattern input construction for target triple sources
   - provenanced pattern extension for positive joins
+  - positive pattern candidate expansion for already-fetched triples
   - negation candidate checking over fetched triples
   - compare/compute state transitions over provenanced solved bindings
   - Convex compatibility re-export through `convex/lib/engine.ts`
@@ -8375,6 +8381,58 @@ disjunction recursion, and source semantics in Convex.
 - A live `datalog:datalog` query combining `compute length` and a numeric
   comparison returned rows through the deployed package-backed compare/compute
   state-transition path.
+
+---
+
+## Goal 93 — `@metacrdt/query` Pattern Candidate Expansion
+
+**Status:** shipped as the pure positive-pattern expansion boundary.
+
+**Objective:** move the target-neutral "given one solved state and already
+fetched candidate triples, which positive pattern joins survive and what
+provenance do they carry?" logic from the Convex solver into `@metacrdt/query`,
+while keeping candidate fetching, read authorization, intermediate-row limits,
+async scheduling, and source semantics in Convex.
+
+### Semantics
+
+- `packages/query` now owns `extendPatternCandidates`.
+- The helper accepts a parsed `PatternClause`, one provenanced solved state, and
+  already fetched candidate triples.
+- It preserves the existing positive-join behavior:
+  - run typed pattern unification for each candidate;
+  - drop candidates that do not unify with the current binding;
+  - return the extended solved states for candidates that match;
+  - merge fact/event provenance through the existing
+    `extendProvenancedBinding` semantics.
+- `convex/lib/engine.ts` still owns fetching candidates through the injected
+  `TripleSource`, appending each state's expanded results into the branch-local
+  `next` array, and enforcing `LIMITS.maxIntermediateRows` at the same point in
+  the loop as before.
+
+### Non-Goals
+
+- Do not move `fetchPattern`, `TripleSource`, `projectedTripleSource`, read auth,
+  source provenance interpretation, async scheduling, intermediate-row limit
+  policy, negation IO, or disjunction recursion into the package.
+- Do not change positive-join result shapes, query syntax, limit error messages,
+  or source filtering.
+
+### Verification
+
+- `npm run test:query` passed (18 package tests).
+- `npx tsc --noEmit -p packages/query/tsconfig.json` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npm run test:core` passed (46 core tests).
+- `npm run test:schema` passed (8 schema tests).
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
+- A live `datalog:datalog` query with two positive pattern clauses returned rows
+  through the deployed package-backed positive candidate expansion path.
 
 ---
 
