@@ -198,12 +198,13 @@ projection-store, and persistence conformance. Goal 116 starts Cloudflare Phase
 C by adding the first DO SQLite component-equivalent current-state surface:
 append-and-rebuild helpers plus `rebuildCurrent`, `listCurrent`,
 `getCurrentEntity`, and `listCurrentEntities` backed by the SQLite projection
-store. The next active goal should be chosen from the remaining
+store. Goal 117 adds protocol event reads (`getEvent` / `listEvents`) to the
+same DO SQLite facade. The next active goal should be chosen from the remaining
 TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
-remaining Cloudflare DO+SQLite event-listing/bitemporal-query/operational
-parity, another carefully scoped Confect/domain wrapper, or the next projection dependency
+remaining Cloudflare DO+SQLite bitemporal-query/operational parity, another
+carefully scoped Confect/domain wrapper, or the next projection dependency
 (closure/derived provenance or remaining operational process state).
 
 This plan is the operational goal file. Read it with:
@@ -523,8 +524,8 @@ arguments.
     `ctx.storage.sql.exec(...)`
   - first DO SQLite current-state surface:
     `createDurableObjectSqliteCurrentSurface` plus Effect-native
-    append-and-rebuild, rebuild, current-row, current-entity, and
-    typed-current-entity helpers backed by SQLite projection rows
+    append-and-rebuild, get/list events, rebuild, current-row, current-entity,
+    and typed-current-entity helpers backed by SQLite event/projection rows
   - structural Durable Object WebSocket relay shell for hello/delta sync and
     event fan-out
   - Worker-facing router + Durable Object class shell and example Wrangler config
@@ -532,7 +533,8 @@ arguments.
     vectors, stored event verification, WebSocket publish/catch-up, and protocol
     filtering, Worker routing, and WebSocket upgrade wiring; SQLite target tests
     additionally prove runtime, projection-store, restart-persistence
-    conformance, and the current-state surface append/rebuild/read behavior
+    conformance, and the log/current-state surface append/rebuild/event/current
+    read behavior
 - `@metacrdt/local` exists in [`packages/local`](./packages/local):
   - browser-facing local-first target package
   - composes the `@metacrdt/runtime` localStorage-backed event/HLC/seq services
@@ -9417,6 +9419,56 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
 
 ---
 
+## Goal 117 — @metacrdt/cloudflare DO SQLite Event Read Surface
+
+**Status:** shipped.
+
+**Objective:** extend the first Cloudflare Phase C facade with
+component-equivalent protocol event reads, without adding a second storage path
+or claiming bitemporal query parity. The surface should validate read arguments
+with `effect/Schema`, read through `EventStoreService`, return typed errors in
+the Effect channel, and expose Promise methods suitable for Durable Object RPC
+entrypoints.
+
+### What Shipped
+
+- Extended `packages/cloudflare/src/sqliteCurrent.ts` with:
+  - `DurableObjectSqliteEventArgsSchema`;
+  - `DurableObjectSqliteEventFilterSchema`;
+  - `getDurableObjectSqliteEventEffect`;
+  - `listDurableObjectSqliteEventsEffect`;
+  - Promise-facade methods `getEvent` and `listEvents` on
+    `createDurableObjectSqliteCurrentSurface`.
+- Event listing supports the existing runtime `EventStore` filter shape:
+  `e`, `a`, `ids`, plus a facade `limit`.
+- Exported the event-read schemas, types, and Effect helpers from
+  `@metacrdt/cloudflare`.
+- Extended Cloudflare package tests to prove:
+  - `getEvent({ id })` returns the written event;
+  - `listEvents({ e })`, `listEvents({ e, a })`, `listEvents({ ids })`, and
+    `listEvents({ limit })` read through the SQLite event table.
+- Updated package docs, root README, `docs/cloudflare-target.md`,
+  `docs/targets.md`, PLAN, and TODO so event get/list are no longer listed as
+  remaining Cloudflare parity work.
+
+### Non-Goals
+
+- Do not add a new SQL table/schema; the existing SQLite `EventStore` remains
+  the storage owner.
+- Do not implement bitemporal query/index APIs yet.
+- Do not implement collection/flow, alarm multiplexing, or live-query
+  WebSocket subscriptions yet.
+- Do not rename the existing current-surface facade in this slice; keep the
+  additive API and revisit naming only if the surface grows enough to warrant a
+  broader Cloudflare component facade.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 28 Cloudflare tests.
+
+---
+
 ## Goal 116 — @metacrdt/cloudflare DO SQLite Current-State Surface
 
 **Status:** shipped.
@@ -9461,9 +9513,9 @@ methods.
 ### Non-Goals
 
 - Do not add live Cloudflare Worker/DO dependencies to tests.
-- Do not claim full component parity yet: `getEvent` / `listEvents`,
-  bitemporal query/index APIs, operational collection/flow functions, alarm
-  multiplexing, and live frontend query subscriptions remain ahead.
+- Do not claim full component parity yet: bitemporal query/index APIs,
+  operational collection/flow functions, alarm multiplexing, and live frontend
+  query subscriptions remain ahead.
 - Do not extract `@metacrdt/sql` from this slice; the current surface still
   reuses the existing runtime projection service and fake-SQL test harness.
 - Do not optimize rebuilds yet. Append helpers intentionally rebuild the current
@@ -9805,7 +9857,7 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] `@metacrdt/cloudflare` Durable Object WebSocket relay shell.
 - [x] Cloudflare Worker/DO example shell + Wrangler config.
 - [x] Cloudflare Durable Object SQLite runtime-service substrate.
-- [x] Cloudflare Durable Object SQLite current-state surface.
+- [x] Cloudflare Durable Object SQLite log/current-state surface.
 - [x] `@metacrdt/local` browser/local-first package over localStorage +
   BroadcastChannel.
 - [x] IndexedDB-compatible async local persistence adapter.

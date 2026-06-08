@@ -43,6 +43,17 @@ export const DurableObjectSqliteCurrentFilterSchema = Schema.Struct({
   limit: Schema.optionalWith(Schema.Number, { exact: true }),
 });
 
+export const DurableObjectSqliteEventArgsSchema = Schema.Struct({
+  id: Schema.String,
+});
+
+export const DurableObjectSqliteEventFilterSchema = Schema.Struct({
+  e: Schema.optionalWith(Schema.String, { exact: true }),
+  a: Schema.optionalWith(Schema.String, { exact: true }),
+  ids: Schema.optionalWith(Schema.Array(Schema.String), { exact: true }),
+  limit: Schema.optionalWith(Schema.Number, { exact: true }),
+});
+
 export const DurableObjectSqliteCurrentEntityArgsSchema = Schema.Struct({
   e: Schema.String,
   limit: Schema.optionalWith(Schema.Number, { exact: true }),
@@ -88,6 +99,10 @@ export const DurableObjectSqliteAppendLifecycleArgsSchema = Schema.Struct({
 
 export type DurableObjectSqliteCurrentFilter =
   typeof DurableObjectSqliteCurrentFilterSchema.Type;
+export type DurableObjectSqliteEventArgs =
+  typeof DurableObjectSqliteEventArgsSchema.Type;
+export type DurableObjectSqliteEventFilter =
+  typeof DurableObjectSqliteEventFilterSchema.Type;
 export type DurableObjectSqliteCurrentEntityArgs =
   typeof DurableObjectSqliteCurrentEntityArgsSchema.Type;
 export type DurableObjectSqliteCurrentEntitiesArgs =
@@ -134,6 +149,8 @@ export type DurableObjectSqliteCurrentSurface = {
   appendLifecycle(
     args: DurableObjectSqliteAppendLifecycleArgs,
   ): Promise<DurableObjectSqliteAppendAndRebuildResult>;
+  getEvent(args: DurableObjectSqliteEventArgs): Promise<Event | undefined>;
+  listEvents(args?: DurableObjectSqliteEventFilter): Promise<Event[]>;
   rebuildCurrent(
     args?: DurableObjectSqliteRebuildCurrentArgs,
   ): Promise<DurableObjectSqliteRebuildCurrentResult>;
@@ -190,6 +207,10 @@ function sortRows(rows: readonly ProjectionRow[]): ProjectionRow[] {
   });
 }
 
+function sortEvents(events: readonly Event[]): Event[] {
+  return [...events].sort((a, b) => a.id.localeCompare(b.id));
+}
+
 function entityFromRows(
   e: string,
   rows: readonly ProjectionRow[],
@@ -238,6 +259,47 @@ export function rebuildDurableObjectSqliteCurrentEffect(
     });
     const replaced = yield* projection.replace(rows);
     return { events: events.length, rows: replaced.rows };
+  });
+}
+
+export function getDurableObjectSqliteEventEffect(
+  args: DurableObjectSqliteEventArgs,
+): Effect.Effect<
+  Event | undefined,
+  RuntimeError | DurableObjectSqliteCurrentSurfaceError,
+  EventStoreService
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "getEvent",
+      DurableObjectSqliteEventArgsSchema,
+      args,
+    );
+    const store = yield* EventStoreService;
+    return yield* store.get(decoded.id);
+  });
+}
+
+export function listDurableObjectSqliteEventsEffect(
+  args: DurableObjectSqliteEventFilter = {},
+): Effect.Effect<
+  Event[],
+  RuntimeError | DurableObjectSqliteCurrentSurfaceError,
+  EventStoreService
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "listEvents",
+      DurableObjectSqliteEventFilterSchema,
+      args,
+    );
+    const store = yield* EventStoreService;
+    const events = yield* store.scan({
+      ...(decoded.e === undefined ? {} : { e: decoded.e }),
+      ...(decoded.a === undefined ? {} : { a: decoded.a }),
+      ...(decoded.ids === undefined ? {} : { ids: decoded.ids }),
+    });
+    return sortEvents(events).slice(0, limit(decoded.limit, 100, 1000));
   });
 }
 
@@ -450,6 +512,8 @@ export function createDurableObjectSqliteCurrentSurface(
           coord(),
         ),
       ),
+    getEvent: (args) => run(getDurableObjectSqliteEventEffect(args)),
+    listEvents: (args = {}) => run(listDurableObjectSqliteEventsEffect(args)),
     rebuildCurrent: (args) =>
       run(
         rebuildDurableObjectSqliteCurrentEffect(

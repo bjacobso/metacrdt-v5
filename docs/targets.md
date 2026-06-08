@@ -62,9 +62,9 @@ On open hosts the adapter is a selectable dependency.
 - `@metacrdt/cloudflare` — sync-plane shell with Durable Object KV and SQLite
   Effect Layers; Worker/DO WebSocket relay with optional token auth; the SQLite
   runtime seed persists events, projection rows, HLC, and seq over
-  `ctx.storage.sql.exec(...)`; it now also exposes a first SQLite current-state
-  surface (append-and-rebuild, rebuild, current rows/entities). Growing to a full
-  DO + SQLite bitemporal triple store remains the active target plan
+  `ctx.storage.sql.exec(...)`; it now also exposes a first SQLite log/current
+  surface (append-and-rebuild, get/list events, rebuild, current rows/entities).
+  Growing to a full DO + SQLite bitemporal triple store remains the active target plan
   ([cloudflare-target.md](./cloudflare-target.md)).
 - `@metacrdt/local` — browser/local-first host with localStorage / IndexedDB /
   SQLite-compatible Effect Layers.
@@ -133,7 +133,7 @@ On open hosts the adapter is a selectable dependency.
 | SQLite-wasm | `local` | done |
 | SQLite (server) | `node` | done (structural driver API + shared lifecycle plan) |
 | Postgres | `node` | done (structural `query(sql, params)` adapter + shared lifecycle plan) |
-| DO SQLite | `cloudflare` | started (runtime-service substrate + projection/persistence conformance + first current-state surface; full triple-store parity planned in [cloudflare-target.md](./cloudflare-target.md)) |
+| DO SQLite | `cloudflare` | started (runtime-service substrate + projection/persistence conformance + first log/current-state surface; full triple-store parity planned in [cloudflare-target.md](./cloudflare-target.md)) |
 | Convex tables | `convex` | done (managed) |
 | FoundationDB | — | archive unless a real need appears |
 
@@ -261,9 +261,9 @@ a sibling target.
    exposes a query engine beyond the shared EventStore-backed service. This is what *proves* the
    "guaranteed to converge" claim across targets.
 3. **Cloudflare Phase B/C** — the DO SQLite runtime-service substrate and first
-   current-state surface have started; next is the remaining component-equivalent
-   event-listing, bitemporal query/index, collection/flow, alarm, and live-query
-   surface over SQLite ([cloudflare-target.md](./cloudflare-target.md)).
+   log/current-state surface have started; next is the remaining
+   component-equivalent bitemporal query/index, collection/flow, alarm, and
+   live-query surface over SQLite ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal
    enough repeated DDL/query-generation logic beyond the current Node lifecycle
    plan to justify a shared SQL package.

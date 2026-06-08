@@ -26,8 +26,9 @@ implements them on Cloudflare.
   Effect `Layer`.
 - **Durable Object SQLite current-state surface** —
   `createDurableObjectSqliteCurrentSurface` plus Effect-native helpers for
-  append-and-rebuild, `rebuildCurrent`, `listCurrent`, `getCurrentEntity`, and
-  `listCurrentEntities`. The surface rebuilds SQL projection rows from the
+  append-and-rebuild, `getEvent`, `listEvents`, `rebuildCurrent`, `listCurrent`,
+  `getCurrentEntity`, and `listCurrentEntities`. The surface reads protocol
+  events from the SQLite event table, rebuilds SQL projection rows from the
   protocol log with shared `@metacrdt/runtime` / `@metacrdt/core` fold semantics,
   then serves current reads from the SQLite projection table.
 - **WebSocket relay** — `DurableObjectWebSocketRelay` / `attachDurableObjectRelay`
@@ -122,9 +123,10 @@ projection-store, and restart-persistence conformance suites.
 
 It is still not a full queryable bitemporal triple store or a live deployment.
 The first component-equivalent current-state surface exists over the SQLite
-runtime, but the remaining parity plan — richer append/list event functions,
-full bitemporal query/index surface, collection/flow surface, alarm
-multiplexing, and live frontend queries over DO WebSockets — is
+runtime, and the same facade now exposes protocol event reads (`getEvent` /
+`listEvents`). The remaining parity plan — full bitemporal query/index surface,
+collection/flow surface, alarm multiplexing, and live frontend queries over DO
+WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth

@@ -272,6 +272,20 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       },
     ]);
 
+    await expect(surface.getEvent({ id: winner.event.id })).resolves.toEqual(
+      winner.event,
+    );
+    await expect(
+      surface.listEvents({ e: "worker:maria" }),
+    ).resolves.toHaveLength(6);
+    await expect(
+      surface.listEvents({ e: "worker:maria", a: "worker.status" }),
+    ).resolves.toHaveLength(2);
+    await expect(
+      surface.listEvents({ ids: [winner.event.id] }),
+    ).resolves.toEqual([winner.event]);
+    await expect(surface.listEvents({ limit: 2 })).resolves.toHaveLength(2);
+
     const entity = await surface.getCurrentEntity({ e: "worker:maria" });
     expect(entity).toMatchObject({
       e: "worker:maria",
