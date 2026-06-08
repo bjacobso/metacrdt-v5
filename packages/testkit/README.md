@@ -41,6 +41,15 @@ verified to behave identically at the boundaries that matter.
     wall time has not moved.
   - `post-restart-append-advances-vv` — a post-restart write advances the
     version vector.
+- **`runRuntimeSchedulerConformance`** — that a Layer target's `Scheduler`
+  service boundary accepts scheduled operations:
+  - `scheduler-accepts-operations` — calls through `SchedulerService.after` are
+    observed by the target scheduler.
+  - `scheduler-preserves-delay-order` — requested delays and submission order are
+    preserved at the boundary.
+  - `scheduler-preserves-payloads` — operation names and payloads are preserved.
+  This is intentionally **not** durable wakeup conformance; target-specific host
+  schedulers still need their own execution tests.
 
 ## What Testkit Does Not Own
 
@@ -64,7 +73,9 @@ deterministic fold, and §8 version-vector anti-entropy. If a target passes
 `runRuntimeConformance`, it satisfies the log/sync convergence contract those
 sections define. If a durable target also passes
 `runRuntimePersistenceConformance`, its log/HLC/seq state survives runtime
-re-creation over the same backing store.
+re-creation over the same backing store. `runRuntimeSchedulerConformance` proves
+the Effect scheduler service boundary for targets that expose an observable
+scheduler; it does not claim host wakeup durability.
 
 ## Usage
 
@@ -85,17 +96,20 @@ const report = await runRuntimeConformance({
 `@metacrdt/cloudflare`, `@metacrdt/local`, and `@metacrdt/node` run this suite
 through their Effect Layer providers in their own `conformance`/index tests.
 Durable targets that preserve storage across runtime re-creation also run
-`runRuntimePersistenceConformance`.
+`runRuntimePersistenceConformance`. Targets with observable schedulers can add
+`runRuntimeSchedulerConformance`.
 
 ## Scope Today, and What's Next
 
-The suite covers the **log + sync plane** and durable restart semantics:
-event-store semantics, anti-entropy, the in-log fold, and persistence of the
-event log/HLC/seq across re-creation. It does **not yet** cover **projection
-conformance** — proving that two targets fold the same events into the same
-*bitemporal projection* and resolve the same cardinality-one winner through the
-shared projection path. That check should be added once the fold/reconcile logic
-is shared out of `@metacrdt/convex` into `@metacrdt/core` (the keystone in
+The suite covers the **log + sync plane**, durable restart semantics, and the
+basic scheduler service boundary: event-store semantics, anti-entropy, the
+in-log fold, persistence of the event log/HLC/seq across re-creation, and
+payload-preserving scheduler submission. It does **not yet** cover **transport
+conformance** or **projection conformance** — proving that two targets fold the
+same events into the same *bitemporal projection* and resolve the same
+cardinality-one winner through the shared projection path. Projection checks
+should be added once the fold/reconcile logic is shared out of
+`@metacrdt/convex` into `@metacrdt/core` (the keystone in
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md) and
 [docs/targets.md](../../docs/targets.md)). Until then, the cross-target guarantee
 is proven for the log, not yet for the materialized triple store.

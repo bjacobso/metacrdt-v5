@@ -18,6 +18,7 @@ import {
   TransportService,
   type RuntimeError,
   type RuntimeServices,
+  type ScheduledOperation,
 } from "@metacrdt/runtime";
 import { Effect, Layer } from "effect";
 import * as Either from "effect/Either";
@@ -60,6 +61,21 @@ export interface RuntimePersistenceConformanceTarget
    * clear durable state from prior test runs.
    */
   resetPersistence?(): void | Promise<void>;
+}
+
+export interface ScheduledObservation {
+  readonly ms: number;
+  readonly op: ScheduledOperation;
+}
+
+export interface RuntimeSchedulerConformanceTarget
+  extends RuntimeLayerConformanceTarget {
+  /**
+   * Return the operations the target's scheduler has accepted so the conformance
+   * suite can verify boundary semantics without pretending to verify host wakeups.
+   */
+  readScheduled(): readonly ScheduledObservation[];
+  resetScheduler?(): void | Promise<void>;
 }
 
 export type AnyRuntimeConformanceTarget =
@@ -512,6 +528,58 @@ export async function runRuntimePersistenceConformance(
 
     return { target: target.name, checks };
   });
+}
+
+export async function runRuntimeSchedulerConformance(
+  target: RuntimeSchedulerConformanceTarget,
+): Promise<ConformanceReport> {
+  await target.resetScheduler?.();
+  const checks: string[] = [];
+  const first: ScheduledOperation = {
+    op: "flow.resume",
+    payload: { runId: "flow:1", step: "collect-i9" },
+  };
+  const second: ScheduledOperation = {
+    op: "materialize.rule",
+    payload: { rule: "requires.i9" },
+  };
+
+  await runWithTargetLayer(
+    target,
+    { replicaId: "testkit:scheduler", wall: () => 1_000 },
+    Effect.gen(function* () {
+      const profile = yield* RuntimeProfileService;
+      const scheduler = yield* SchedulerService;
+      expect(
+        target,
+        profile.replicaId === "testkit:scheduler",
+        "runtime profile replicaId mismatch",
+      );
+      yield* scheduler.after(250, first);
+      yield* scheduler.after(0, second);
+    }),
+  );
+
+  const scheduled = target.readScheduled();
+  expect(target, scheduled.length === 2, "scheduler should accept two operations");
+  checks.push("scheduler-accepts-operations");
+
+  expect(
+    target,
+    scheduled[0]?.ms === 250 && scheduled[1]?.ms === 0,
+    "scheduler should preserve requested delays and order",
+  );
+  checks.push("scheduler-preserves-delay-order");
+
+  expect(
+    target,
+    JSON.stringify(scheduled[0]?.op) === JSON.stringify(first) &&
+      JSON.stringify(scheduled[1]?.op) === JSON.stringify(second),
+    "scheduler should preserve operation payloads",
+  );
+  checks.push("scheduler-preserves-payloads");
+
+  return { target: target.name, checks };
 }
 
 async function eventsFor(

@@ -4,13 +4,16 @@ import {
   EventStoreService,
   applyOperation,
   applyOperationEffect,
+  runtimeServicesLayer,
   versionVector,
 } from "@metacrdt/runtime";
 import { Effect } from "effect";
 import {
   runRuntimePersistenceConformance,
+  runRuntimeSchedulerConformance,
   runRuntimeConformance,
   type RuntimePersistenceConformanceTarget,
+  type RuntimeSchedulerConformanceTarget,
   type RuntimeLayerConformanceTarget,
   type RuntimeFactoryOptions,
 } from "@metacrdt/testkit";
@@ -233,6 +236,26 @@ const memoryTarget: RuntimeLayerConformanceTarget = {
   },
 };
 
+const memorySchedulerTarget = (): RuntimeSchedulerConformanceTarget => {
+  let runtime: ReturnType<typeof createNodeMemoryRuntime> | undefined;
+  return {
+    name: "node-memory-scheduler",
+    resetScheduler() {
+      runtime = undefined;
+    },
+    createLayer(options: RuntimeFactoryOptions) {
+      runtime = createNodeMemoryRuntime({
+        replicaId: options.replicaId,
+        wall: options.wall,
+      });
+      return runtimeServicesLayer(runtime);
+    },
+    readScheduled() {
+      return runtime?.scheduler.scheduled ?? [];
+    },
+  };
+};
+
 const sqliteTarget: RuntimeLayerConformanceTarget = {
   name: "node-sqlite",
   createLayer(options: RuntimeFactoryOptions) {
@@ -365,6 +388,19 @@ describe("@metacrdt/node target", () => {
     expect(result.stored).toEqual(result.event);
     expect(result.event.seq).toBe(1);
     expect(versionVector(result.events)).toEqual({ "node:memory-layer": 1 });
+  });
+
+  test("node memory scheduler passes shared scheduler conformance", async () => {
+    await expect(
+      runRuntimeSchedulerConformance(memorySchedulerTarget()),
+    ).resolves.toEqual({
+      target: "node-memory-scheduler",
+      checks: [
+        "scheduler-accepts-operations",
+        "scheduler-preserves-delay-order",
+        "scheduler-preserves-payloads",
+      ],
+    });
   });
 
   test("node SQLite runtime passes shared conformance", async () => {

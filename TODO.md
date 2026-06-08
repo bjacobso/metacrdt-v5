@@ -59,9 +59,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `runRuntimePersistenceConformance`, proving event-log/HLC/seq continuity across
   Layer re-creation. It is wired into the runtime localStorage target, Node
   SQLite/Postgres, and local async.
-- [ ] **Goal 111 next: expanded suites** — expand conformance to scheduler,
-  transport, and query/projection capabilities as second implementations expose
-  them.
+- [x] **Goal 111 scheduler service conformance started** —
+  `@metacrdt/testkit` now has `runRuntimeSchedulerConformance`, proving
+  payload-preserving `SchedulerService.after` submission for observable
+  schedulers. Wired into testkit memory and Node memory targets. Durable host
+  wakeup execution remains target-specific for now.
+- [ ] **Goal 111 next: expanded suites** — expand conformance to transport and
+  query/projection capabilities as second implementations expose them.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
@@ -514,6 +518,16 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **Wired durable targets:** the runtime localStorage target self-test, Node
   SQLite/Postgres, and local async all run the shared restart-persistence suite.
   Existing target-specific persistence tests remain for storage-adapter details.
+
+### 2026-06-08 — Goal 111 scheduler service conformance
+- [x] **Expanded `@metacrdt/testkit` with
+  `runRuntimeSchedulerConformance`.** Observable scheduler targets now prove that
+  `SchedulerService.after` accepts operations and preserves requested delay,
+  submission order, and payload shape through the Effect service boundary.
+- [x] **Wired scheduler targets:** testkit's memory scheduler self-test and the
+  Node memory target run the shared suite. This intentionally proves scheduler
+  submission only; durable wakeup execution is still target-specific until a
+  second durable scheduler host exists.
 
 ### 2026-06-08 — Goal 111 Convex target Layer
 - [x] **`@metacrdt/convex` now exposes a runtime Layer.** Added component-owned

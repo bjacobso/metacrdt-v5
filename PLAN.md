@@ -9382,8 +9382,13 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   `runRuntimePersistenceConformance` for durable Layer targets, proving
   event-log/HLC/seq continuity across runtime re-creation. It is wired into the
   runtime localStorage target, Node SQLite/Postgres, and local async targets.
-- **Remaining keystone work:** conformance still does not cover scheduler,
-  transport, or query/projection behavior.
+- **Scheduler service conformance started:** `@metacrdt/testkit` also has
+  `runRuntimeSchedulerConformance`, proving payload-preserving
+  `SchedulerService.after` submission for observable schedulers. It is wired into
+  the runtime/testkit memory scheduler and Node memory target. This is boundary
+  conformance, not durable host wakeup execution.
+- **Remaining keystone work:** conformance still does not cover transport or
+  query/projection behavior.
 - **Zero Effect today (by current design):** `core`, `schema`, `query`, and the
   root Convex reference app stay pure/plain where appropriate. `runtime`,
   `testkit`, and Convex/Node/local/Cloudflare target packages now use Effect v3

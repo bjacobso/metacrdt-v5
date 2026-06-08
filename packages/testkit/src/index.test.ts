@@ -11,7 +11,9 @@ import {
   runRuntimeConformance,
   runRuntimeConvergenceConformance,
   runRuntimePersistenceConformance,
+  runRuntimeSchedulerConformance,
   type RuntimePersistenceConformanceTarget,
+  type RuntimeSchedulerConformanceTarget,
   type RuntimeLayerConformanceTarget,
   type RuntimeFactoryOptions,
 } from "./index.js";
@@ -86,6 +88,26 @@ const storageTarget = (): RuntimePersistenceConformanceTarget => {
   };
 };
 
+const schedulerTarget = (): RuntimeSchedulerConformanceTarget => {
+  let runtime: ReturnType<typeof createMemoryRuntime> | undefined;
+  return {
+    name: "memory-scheduler",
+    resetScheduler() {
+      runtime = undefined;
+    },
+    createLayer(options: RuntimeFactoryOptions) {
+      runtime = createMemoryRuntime({
+        replicaId: options.replicaId,
+        wall: options.wall,
+      });
+      return runtimeServicesLayer(runtime);
+    },
+    readScheduled() {
+      return runtime?.scheduler.scheduled ?? [];
+    },
+  };
+};
+
 describe("@metacrdt/testkit", () => {
   test("event-store conformance passes for the in-memory target", async () => {
     await expect(runEventStoreConformance(memoryTarget)).resolves.toEqual({
@@ -125,6 +147,17 @@ describe("@metacrdt/testkit", () => {
         "sequencer-survives-recreate",
         "hlc-survives-recreate",
         "post-restart-append-advances-vv",
+      ],
+    });
+  });
+
+  test("scheduler conformance passes for the memory scheduler target", async () => {
+    await expect(runRuntimeSchedulerConformance(schedulerTarget())).resolves.toEqual({
+      target: "memory-scheduler",
+      checks: [
+        "scheduler-accepts-operations",
+        "scheduler-preserves-delay-order",
+        "scheduler-preserves-payloads",
       ],
     });
   });

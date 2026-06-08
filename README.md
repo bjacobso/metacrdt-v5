@@ -180,7 +180,8 @@ Current packages:
   Effect Layer-backed checks for EventStore idempotency/filtering/content-id
   verification, version-vector anti-entropy, and deterministic fold convergence.
   It also includes restart-persistence conformance for durable targets, checking
-  event-log/HLC/seq continuity across runtime re-creation. The package proves
+  event-log/HLC/seq continuity across runtime re-creation, plus scheduler
+  service-boundary conformance for observable schedulers. The package proves
   itself against runtime Layers and is consumed by Convex/Node/local/Cloudflare
   target Layer tests.
 
