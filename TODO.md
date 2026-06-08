@@ -357,7 +357,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Guided demo tour — route-aware shell walkthrough across Overview,
   Entities, Compliance, Flows, Data model, and Transaction log with one-time
   localStorage dismissal and a restartable header button.
-- [ ] Wire the remaining decorative bit from the mockup: "Describe an account".
+- [x] Wire the remaining decorative bit from the mockup: "Describe account" now
+  opens a live account-summary modal in the app shell.
 - [ ] Action/config diff-history polish.
 - [x] Root-cause the `staticHosting:getCurrentDeployment` error over the WS path
   — the public query works, but the upstream `useDeploymentUpdates` helper wraps
@@ -377,6 +378,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 80 shipped:** the header's `Describe account` affordance now opens
+  a live Acme Staffing account-summary modal backed by existing Overview,
+  compliance, and recent-activity queries. It shows configured types, placements,
+  reused evidence scopes, obligation status, latest transaction, and a `View log`
+  jump to `/transactions`.
 - [x] **Goal 79 shipped:** static-hosting live-reload banner is non-throwing.
   `src/App.tsx` no longer imports `@convex-dev/static-hosting/react`; it uses
   Convex's object-form query hook with `throwOnError: false`, suppressing

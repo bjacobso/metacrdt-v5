@@ -18,6 +18,7 @@ import {
   X,
   HelpCircle,
   LogIn,
+  FileText,
 } from "lucide-react";
 import CommandMenu from "./CommandMenu";
 import GuidedTour, { tourDismissed } from "./GuidedTour";
@@ -112,12 +113,18 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [newStatus, setNewStatus] = useState("active");
   const [newRole, setNewRole] = useState("driver");
   const [creating, setCreating] = useState(false);
+  const [describeOpen, setDescribeOpen] = useState(false);
   const { isAuthenticated, openAuthDialog, guardWrite } = useWriteGate();
   const createOwnedEntity = useMutation(api.metacrdtComponent.createOwnedEntity);
+  const summary = useQuery(api.overview.summary, {});
   const compliance = useQuery(api.compliance.workerCompliance, {
     worker: "worker:maria",
   });
   const defs = useQuery(api.flows.listFlowDefs, {});
+  const activity = useQuery(
+    api.overview.recentActivity,
+    describeOpen ? { limit: 5 } : "skip",
+  );
 
   const title =
     TITLES[pathname] ??
@@ -224,6 +231,10 @@ export default function Layout({ children }: { children: ReactNode }) {
     { to: "/integrations", label: "Integrations", icon: <Plug className={ICON} />, soon: true },
   ];
 
+  const openObligations = compliance?.open.length ?? 0;
+  const totalRequirements = compliance?.required.length ?? 0;
+  const latestActivity = activity?.[0];
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -281,6 +292,10 @@ export default function Layout({ children }: { children: ReactNode }) {
             </kbd>
           </button>
           <div className="flex items-center gap-3">
+            <Button variant="ghost" onClick={() => setDescribeOpen(true)}>
+              <FileText className="h-3.5 w-3.5" />
+              Describe account
+            </Button>
             <Button variant="ghost" onClick={() => setTourOpen(true)}>
               <HelpCircle className="h-3.5 w-3.5" />
               Tour
@@ -304,6 +319,103 @@ export default function Layout({ children }: { children: ReactNode }) {
       </div>
       <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} />
       <GuidedTour open={tourOpen} onClose={() => setTourOpen(false)} />
+      {describeOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-brand/40 px-4">
+          <div className="w-full max-w-2xl rounded-ds border border-line bg-surface shadow-pop">
+            <div className="flex items-center justify-between border-b border-line-soft px-5 py-3.5">
+              <div>
+                <h2 className="text-[15px] font-semibold text-ink">
+                  Account description
+                </h2>
+                <p className="text-[12px] text-muted">Acme Staffing · datarooms</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDescribeOpen(false)}
+                className="rounded-md p-1 text-muted hover:bg-line-soft hover:text-ink"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-4 p-5">
+              <p className="text-[14px] leading-6 text-ink">
+                Acme Staffing is running a MetaCRDT dataroom for worker
+                onboarding and placement compliance. The account has{" "}
+                <strong>{summary?.configuredTypes ?? "—"}</strong> configured
+                types, <strong>{summary?.placements ?? "—"}</strong> active
+                placements, and <strong>{summary?.reusedScopes ?? "—"}</strong>{" "}
+                reused evidence scopes. For <strong>worker:maria</strong>,{" "}
+                <strong>{Math.max(totalRequirements - openObligations, 0)}</strong>{" "}
+                of <strong>{totalRequirements}</strong> required obligations are
+                satisfied, with <strong>{openObligations}</strong> still open.
+              </p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-md border border-line bg-canvas px-3 py-2">
+                  <div className="text-[11px] uppercase tracking-wide text-muted">
+                    Types
+                  </div>
+                  <div className="tnum mt-1 text-xl font-semibold text-ink">
+                    {summary?.configuredTypes ?? "—"}
+                  </div>
+                </div>
+                <div className="rounded-md border border-line bg-canvas px-3 py-2">
+                  <div className="text-[11px] uppercase tracking-wide text-muted">
+                    Placements
+                  </div>
+                  <div className="tnum mt-1 text-xl font-semibold text-ink">
+                    {summary?.placements ?? "—"}
+                  </div>
+                </div>
+                <div className="rounded-md border border-line bg-canvas px-3 py-2">
+                  <div className="text-[11px] uppercase tracking-wide text-muted">
+                    Reuse
+                  </div>
+                  <div className="tnum mt-1 text-xl font-semibold text-green">
+                    {summary?.reusedScopes ?? "—"}
+                  </div>
+                </div>
+                <div className="rounded-md border border-line bg-canvas px-3 py-2">
+                  <div className="text-[11px] uppercase tracking-wide text-muted">
+                    Open
+                  </div>
+                  <div className="tnum mt-1 text-xl font-semibold text-orange-ink">
+                    {openObligations}
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-md border border-line bg-canvas px-3 py-2 text-[13px] text-muted">
+                Latest change:{" "}
+                {activity === undefined ? (
+                  "loading"
+                ) : latestActivity === undefined ? (
+                  "none"
+                ) : (
+                  <>
+                    <span className="font-medium text-ink">
+                      {latestActivity.reason ?? latestActivity.kind}
+                    </span>{" "}
+                    on <span className="font-mono">{latestActivity.e}</span>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-line-soft px-5 py-3.5">
+              <Button variant="ghost" onClick={() => setDescribeOpen(false)}>
+                Close
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDescribeOpen(false);
+                  navigate("/transactions");
+                }}
+              >
+                View log
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {newOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-brand/40 px-4">
           <form

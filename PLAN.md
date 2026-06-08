@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 79 (non-throwing static-hosting live-reload banner) has
+**Current goal:** Goal 80 (Describe account shell affordance) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -49,7 +49,10 @@ folds worker, placement, guard, and submitted-form state from protocol-shaped
 `factEvents` and is projection-wipe tested. Goal 79 roots the
 `staticHosting:getCurrentDeployment` UI failure cause to the upstream
 `useDeploymentUpdates` helper's throwing `useQuery` wrapper and replaces it with
-a non-throwing object-form Convex query in the app banner. The next
+a non-throwing object-form Convex query in the app banner. Goal 80 wires the
+remaining mockup affordance, "Describe account", into the header as a live
+account-summary modal backed by existing Overview, compliance, and transaction
+queries. The next
 active goal should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
@@ -226,6 +229,9 @@ arguments.
   object-form `useQuery_experimental({ throwOnError: false })`, so transient
   component-proxy query errors hide the cosmetic banner instead of needing an
   app-level error boundary.
+- The header's "Describe account" affordance is now functional: it opens a modal
+  summarizing Acme Staffing from live projection data (configured types,
+  placements, reused scopes, open/satisfied obligations, and latest activity).
 - Convex backend tests are green: 155 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
@@ -7615,6 +7621,46 @@ banner.
   files to `chatty-hare-94`.
 - A post-upload fetch of `https://chatty-hare-94.convex.site` returned the rebuilt
   `index-DR5XDUL6.js` asset reference.
+- `git diff --check` passed.
+
+---
+
+## Goal 80 — Describe Account Shell Affordance
+
+**Status:** shipped for the frontend shell.
+
+**Objective:** wire the last decorative affordance from the Triple Store mockup
+into a real product control instead of leaving it as an unimplemented visual
+idea.
+
+### Semantics
+
+- `src/Layout.tsx` adds a header `Describe account` action.
+- The action opens an account-summary modal for the Acme Staffing dataroom.
+- The modal is backed by existing live queries:
+  - `api.overview.summary`
+  - `api.compliance.workerCompliance({ worker: "worker:maria" })`
+  - `api.overview.recentActivity({ limit: 5 })`
+- It summarizes configured types, active placements, reused evidence scopes,
+  satisfied/open obligations, and the latest transaction.
+- It includes a direct `View log` action to jump to `/transactions`.
+
+### Non-Goals
+
+- Do not add an LLM/API dependency for account summaries.
+- Do not add new backend queries; reuse the existing event-log-backed dashboard
+  and compliance projections.
+- Do not change auth/write behavior.
+
+### Verification
+
+- `npm test` passed (17 backend test files, 155 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx @convex-dev/static-hosting upload` passed and uploaded the rebuilt static
+  files to `chatty-hare-94`.
+- A post-upload fetch of `https://chatty-hare-94.convex.site` returned the rebuilt
+  `index-CooQpQkO.js` asset reference.
 - `git diff --check` passed.
 
 ---
