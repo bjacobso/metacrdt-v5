@@ -34,15 +34,15 @@ pure runtime (`src/index.ts`) plus a generated Schema IR.
 
 The mapping into MetaCRDT is exact:
 
-- `queries` bindings → folds over facts (where `@metacrdt/query` plugs in).
+- `queries` bindings → opaque data-dependency descriptors; the **edge** resolves
+  them to folds over facts (where `@metacrdt/query` plugs in — outside views).
 - `state` → view-local reactive state (still deterministic).
 - `actions` / `events` → intentions that emit facts (writes under the same
   provenance).
 - the whole spec → host-agnostic; one description, many renderers.
 
-So `@metacrdt/views` is a **pure feature package**: depends on `effect`
-(+ later `@metacrdt/query` for query bindings), never on a target, never on
-React.
+So `@metacrdt/views` is a **pure feature package**: depends on `effect` only,
+never on a target, never on React, never on the query engine.
 
 ## The Generation Flow (confirmed)
 
@@ -88,7 +88,7 @@ packages/views/
     generated/         # VENDORED output, committed — the Effect Schema IR
     index.ts           # runtime: normalize / validate / evaluate (ports OO index.ts)
   views.test.ts        # runtime tests + a DRIFT test
-  package.json         # runtime dep: effect (+ later @metacrdt/query)
+  package.json         # runtime dep: effect only
                        # devDep: @metacrdt/forma  ← build-time only
 ```
 
@@ -130,10 +130,48 @@ source, the in-package generate step, `normalizeViewSpec`,
 `validateViewSpecStructure`, `evaluateViewExpression`, `initializeViewState`,
 path helpers.
 
-`@metacrdt/views` **does not own:** the Forma→ViewSpec *authoring* lowering
-(view/board/nav/lens defs — lives in the OO compiler, a separate fold), the
-renderer (web/MCP — stays in the app), query execution (delegates to
-`@metacrdt/query`).
+`@metacrdt/views` **does not own:** the Forma→ViewSpec *authoring* lowering, the
+renderer (a separate target), and — importantly — **query execution or any
+knowledge of queries at all** (see below).
+
+## Layering — views is query-agnostic and render-agnostic
+
+The runtime already works the decoupled way: `evaluateViewExpression` resolves
+expressions (e.g. `$queries.rows`) against a **scope the host hands it**. It
+never executes anything. So views does **not** need to know about queries — it
+only needs a declarative slot ("I depend on a dataset named `rows`"), which the
+envelope's `queries` field provides as an **opaque descriptor**. Views must never
+import `@metacrdt/query` or interpret the binding payload. Resolution is an edge
+concern.
+
+That gives a clean long-term layering:
+
+```
+@metacrdt/views          Pure contract + runtime. Knows: ViewSpec, expressions,
+                         state, normalize/validate/evaluate. Deps: effect only.
+                         Does NOT know: React, query execution, ontology, Convex.
+                         Query bindings are opaque; the runtime evaluates against
+                         a host-provided scope.
+
+@metacrdt/views-react    A render *target*: ViewSpec node tree → React. Deps:
+(eventually a package)   views + react. A package boundary is the strongest
+                         guarantee React never leaks back into views. Prototyped
+                         inline in `src/` first; extracted when proven/stable.
+
+edge / binding layer     Resolves query bindings → @metacrdt/query clauses →
+(app, later a package)   Convex execution, and feeds resolved data into the
+                         runtime scope. This is where views meets queries — never
+                         inside views itself.
+
+ontology → view          Forma view/lens defs → ViewSpec lowering. Ontology-aware:
+authoring (Forma, later) turns entity-type definitions into default ViewSpecs.
+                         The producer of specs, distinct from the contract and the
+                         renderer.
+```
+
+**Key correction to the original plan:** views does **not** depend on
+`@metacrdt/query`. The earlier "bind queries to `@metacrdt/query`" step is
+reframed as an *edge binding layer* that lives outside views.
 
 ## The De-risking Spike — DONE ✅ (it round-trips)
 
@@ -180,20 +218,51 @@ Gates green: `npm run test:packages`, `npm run pack:packages`,
 `npm run typecheck`, `npm run build` (packages + vite app). Pure extraction, no
 behavior change.
 
-### Phase 2 — Wire one real view
+### Phase 2 — Raw-JSON model proof (headless) — SHIPPED ✅
 
-Re-express the Entities list (`convex/entities.ts` `queryEntities` + `src/pages/*`)
-as a ViewSpec evaluated against event-log facts, replacing bespoke
-`typeSchemaAsOf` column shaping for that one surface.
+Proved the contract carries a real surface with **no renderer, no React, no query
+execution, no ontology coupling**:
 
-### Phase 3 — Bind queries to `@metacrdt/query`
+- `test/fixtures/entities-view.json` — a real "Entities of type X" ViewSpec
+  authored as raw JSON: an `input`, a view-local `state` slot, an **opaque**
+  `entities` query binding (`queryRef` + params — views never interprets it), and
+  a `rows` layout containing a heading (expression-driven text) and a `table`
+  (bind, columns, empty-state, `onRowClick`).
+- `test/entities-view.proof.test.ts` (7 tests) — `normalizeViewSpec` +
+  `validateViewSpecStructure` (no errors), `initializeViewState`, evaluate the
+  heading text expression, resolve the table `bind` from host-provided
+  `ctx.query` data, and a column projection over the resolved rows. A key
+  assertion proves views **does not execute anything**: with nothing placed in
+  `ctx.query`, the bind resolves to null — data only ever comes from the scope
+  the edge provides.
 
-View `queries` bindings become real folds over facts.
+`@metacrdt/views` stays `effect`-only. 32 tests total in the package.
 
-### Phase 4 (later) — Authoring lowering + renderer
+### Phase 3 — Inline React renderer in `src/` (the renderer target, prototyped)
 
-Forma view/board/nav/lens → ViewSpec lowering (separate fold). A web/MCP
-renderer (stays in the app, not the package).
+Build a minimal ViewSpec → React renderer **inline in the app** (`src/`):
+a switch on `node.type` covering the nodes the Entities view needs (table, rows,
+text/heading), driven by a normalized ViewSpec and a host-provided scope. Render
+the Entities ViewSpec from Phase 2 in `src/pages/Entities.tsx`, fed by the
+existing `queryEntities` + `typeSchemaAsOf` data (the edge wires the scope; views
+stays query-agnostic). First *visible* proof.
+
+### Phase 4 (later) — Extract `@metacrdt/views-react`
+
+Once the inline renderer is real and stable, extract it to `@metacrdt/views-react`
+(deps: views + react) so the React boundary is hard-enforced. Extract-when-proven,
+not before.
+
+### Phase 5 (later) — Edge binding layer
+
+Resolve ViewSpec `queries` bindings → `@metacrdt/query` clauses → Convex
+execution, feeding resolved data into the runtime scope. Lives at the edge (app,
+later possibly a `views-convex` package). Views never imports `@metacrdt/query`.
+
+### Phase 6 (later) — Ontology → ViewSpec authoring lowering
+
+Forma view/board/nav/lens defs → ViewSpec. The ontology-aware producer of specs.
+Likely starts as Forma preludes / app code; becomes a package only when proven.
 
 ## Acceptance — Phase 1 — MET ✅
 
@@ -202,8 +271,8 @@ renderer (stays in the app, not the package).
 - [x] No import from `.context/open-ontology`.
 - [x] Runtime tests + drift test (`generated-sources.test.ts`) green; IR snapshot
   tests green (25 tests total).
-- [x] Runtime depends only on `effect` (+ later `@metacrdt/query`);
-  `@metacrdt/forma` is a build-time devDependency only.
+- [x] Runtime depends only on `effect`; `@metacrdt/forma` is a build-time
+  devDependency only.
 - [x] `npm run test:packages`, `npm run build:packages`, `npm run pack:packages`,
   `npm run typecheck`, `npm run build` pass.
 

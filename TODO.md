@@ -503,6 +503,19 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Verification: `npm run test:packages` (views: 25 tests, 8 files),
   `npm run pack:packages`, `npm run typecheck`, and `npm run build` (packages +
   vite app) all pass.
+- [x] **Phase 2 — raw-JSON model proof.** Authored a real Entities ViewSpec as
+  raw JSON (`test/fixtures/entities-view.json`) and proved the runtime carries it
+  headlessly (`test/entities-view.proof.test.ts`, 7 tests): normalize + validate,
+  initialize state, evaluate the heading expression, resolve the table `bind`
+  from host-provided `ctx.query`, and project the declared columns. Proves views
+  **does not execute queries** — with nothing in scope the bind resolves to null.
+  No React, no query engine, no ontology coupling; package stays `effect`-only
+  (32 tests total).
+- [x] **Layering decided** (see [plans/views.md](./plans/views.md)): views stays
+  query-agnostic and render-agnostic. Renderer is a target (inline in `src/`
+  first → `@metacrdt/views-react` when proven); query-binding resolution is an
+  edge concern (never inside views). Dropped the views→`@metacrdt/query`
+  dependency from the plan.
 
 ### 2026-06-08 — package build tooling
 - [x] **Goal 107 shipped:** centralized package build config. Added root
