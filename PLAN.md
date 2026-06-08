@@ -144,12 +144,14 @@ framework-neutral conformance helpers for EventStore and runtime convergence,
 proved against the in-memory runtime. Goal 103 wires that shared conformance
 suite into the existing Cloudflare Durable Object target and local async target,
 so three targets now prove the same EventStore, anti-entropy, and deterministic
-fold contract. The next active goal
+fold contract. Goal 104 adds the first `@metacrdt/node` package: an open
+server-process host with memory and structural server-SQLite runtime services,
+both passing shared conformance. The next active goal
 should be chosen from the remaining TODO candidates:
-choosing/wiring the provider-specific React wrapper/JWT flow,
-`@metacrdt/node`, Cloudflare DO+SQLite parity, another carefully scoped
-Confect/domain wrapper, or the next projection dependency (closure/derived
-provenance or remaining operational process state).
+choosing/wiring the provider-specific React wrapper/JWT flow, adding the next
+Node slice (Postgres / HTTP-SSE / dev server), Cloudflare DO+SQLite parity,
+another carefully scoped Confect/domain wrapper, or the next projection
+dependency (closure/derived provenance or remaining operational process state).
 
 This plan is the operational goal file. Read it with:
 
@@ -8988,6 +8990,53 @@ future target regressions are caught by one suite rather than bespoke tests.
 - `npm test --workspace @metacrdt/local` passes.
 - `npm run test:packages`, `npm run build:packages`, and `npm run typecheck`
   pass with the shared conformance tests included.
+
+---
+
+## Goal 104 — First @metacrdt/node Target Package
+
+**Status:** shipped.
+
+**Objective:** make the open server-process host real. The first Node target
+slice should not attempt a full SDK/dev server, but it should expose runtime
+services for memory and server-SQLite storage and pass the shared conformance
+suite.
+
+### What Shipped
+
+- Added `packages/node` as `@metacrdt/node`.
+- Exported `createNodeMemoryRuntime`, a server-named wrapper over the runtime
+  memory harness.
+- Exported `createNodeSqliteRuntime`, plus:
+  - `NodeSqliteEventStore`
+  - `NodeSqliteClock`
+  - `NodeSqliteSequencer`
+  - `NodeSqliteMetaStore`
+  - structural `NodeSqliteDatabaseLike` / `NodeSqliteStatementLike`
+- SQLite storage is dependency-free and driver-shaped:
+  - stores content-addressed events in a relational events table
+  - stores HLC and per-replica `seq` in a meta table
+  - verifies stored event ids on read
+  - supports EventStore filters by `id`, `e`, and `a`
+- Added package tests proving:
+  - Node memory runtime passes `@metacrdt/testkit`
+  - Node SQLite runtime passes `@metacrdt/testkit`
+  - SQLite runtime persists event log, HLC, and seq across runtime recreation
+
+### Non-Goals
+
+- Do not add a native SQLite dependency; consumers provide the driver.
+- Do not add Postgres, HTTP/SSE live query transport, SDK, or dev server in this
+  slice.
+- Do not extract `@metacrdt/sql` yet; that waits until a second relational
+  triple-store implementation creates real duplication.
+
+### Verification
+
+- `npm test --workspace @metacrdt/node` passes.
+- `npx tsc --noEmit -p packages/node/tsconfig.json` passes.
+- `npm run test:packages`, `npm run build:packages`, and `npm run typecheck`
+  include the new workspace package and pass.
 
 ---
 

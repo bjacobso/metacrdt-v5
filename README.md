@@ -159,6 +159,10 @@ Current packages:
   localStorage-backed event/HLC/seq services composed with BroadcastChannel
   anti-entropy, IndexedDB-compatible async persistence, SQLite-compatible local
   persistence, plus browser defaults and lifecycle helpers.
+- **`@metacrdt/node`** (`packages/node`) — open server-process target:
+  `createNodeMemoryRuntime` and structural server-SQLite runtime services
+  (`NodeSqliteEventStore`, HLC clock, sequencer) without a native SQLite
+  dependency. Both memory and SQLite runtimes pass `@metacrdt/testkit`.
 - **`@metacrdt/testkit`** (`packages/testkit`) — target conformance helpers:
   framework-neutral async checks for EventStore idempotency/filtering/content-id
   verification, version-vector anti-entropy, and deterministic fold convergence.
@@ -191,7 +195,7 @@ Planned package graph:
 @metacrdt/cloudflare  Durable Object / Worker target
 @metacrdt/local       browser/local-first target
 @metacrdt/testkit     target conformance checks
-@metacrdt/node        Node target
+@metacrdt/node        Node target (memory + structural SQLite shipped)
 ```
 
 Open Ontology is vendored as a context submodule at
@@ -649,7 +653,7 @@ Built:
 - bitemporal visibility via core in the read path
 - `@metacrdt/schema`, `@metacrdt/query`, `@metacrdt/convex`,
   `@metacrdt/forma`, `@metacrdt/runtime`, `@metacrdt/cloudflare`,
-  `@metacrdt/local`, and the first `@metacrdt/testkit`
+  `@metacrdt/local`, `@metacrdt/node`, and the first `@metacrdt/testkit`
 - docs/spec/architecture package plan
 
 Frontier:
@@ -657,7 +661,7 @@ Frontier:
 - commutative supersession in the write path
 - HLC + version-vector sync across replicas
 - Durable Object + SQLite triple-store parity
-- Node target and SQL storage adapters
+- Postgres and shared SQL storage adapters
 - expanded conformance suites for persistence, scheduler, transport, and queries
 
 See [TODO.md](./TODO.md) for the running pulse.

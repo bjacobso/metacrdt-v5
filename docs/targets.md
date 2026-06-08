@@ -62,20 +62,19 @@ On open hosts the adapter is a selectable dependency.
 - `@metacrdt/cloudflare` — sync-plane shell; growing to a DO + SQLite triple
   store ([cloudflare-target.md](./cloudflare-target.md)).
 - `@metacrdt/local` — browser/local-first host.
+- `@metacrdt/node` — open server-process host with memory and structural
+  server-SQLite runtime services. Postgres, HTTP/SSE, dev server, and SDK
+  integration remain future slices.
 - `@metacrdt/runtime`'s in-memory target — the reference harness.
 - `@metacrdt/testkit` — framework-neutral conformance helpers for EventStore,
   anti-entropy, and deterministic fold convergence (currently proven against
-  the in-memory runtime, Cloudflare Durable Object runtime services, and the
-  async local runtime).
+  the in-memory runtime, Cloudflare Durable Object runtime services, the async
+  local runtime, and Node memory/SQLite runtimes).
 
 ### Should exist next
 
-- **`@metacrdt/node`** — *highest value, build first.* The canonical
-  "own your own process" host: a long-lived server with a pluggable storage
-  adapter. It is also the natural home for the test harness, a dev server, CI,
-  and the SDK's default backend, and it is where the **Postgres** and
-  server-**SQLite** adapters live. One package unlocks self-hosting, tests, and
-  the SDK together.
+- **`@metacrdt/node` next slices** — add Postgres, HTTP/SSE transport, a dev
+  server, and SDK integration on top of the memory/SQLite host now in place.
 
 ### Defer until a real need justifies them
 
@@ -100,7 +99,7 @@ On open hosts the adapter is a selectable dependency.
 | localStorage | `local` (via `runtime`) | done |
 | IndexedDB | `local` | done |
 | SQLite-wasm | `local` | done |
-| SQLite (server) | `node` | planned |
+| SQLite (server) | `node` | done (structural driver API) |
 | Postgres | `node` | planned |
 | DO SQLite | `cloudflare` | planned ([cloudflare-target.md](./cloudflare-target.md)) |
 | Convex tables | `convex` | done (managed) |

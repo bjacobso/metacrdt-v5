@@ -434,8 +434,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   conformance package.
 - [x] Wire the shared `@metacrdt/testkit` suite into existing Cloudflare and
   local runtime targets.
-- [ ] Choose between production provider wiring, `@metacrdt/node`, Cloudflare
-  DO+SQLite parity, or another parked Query/Rules item.
+- [x] Choose the next target-runtime slice: first `@metacrdt/node` package.
+- [ ] Choose between production provider wiring, next Node slice (Postgres /
+  HTTP-SSE / dev server), Cloudflare DO+SQLite parity, or another parked
+  Query/Rules item.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -545,6 +547,20 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   anti-entropy, deterministic fold equality, and idempotent second sync.
 - [x] Verification: focused Cloudflare/local package tests, `npm run
   test:packages`, `npm run build:packages`, and `npm run typecheck` all passed.
+
+### 2026-06-08 — first @metacrdt/node target
+- [x] **Goal 104 shipped:** added `packages/node` / `@metacrdt/node`, the open
+  server-process host package.
+- [x] Exported `createNodeMemoryRuntime` and `createNodeSqliteRuntime` with
+  structural server-SQLite runtime services: `NodeSqliteEventStore`,
+  `NodeSqliteClock`, `NodeSqliteSequencer`, `NodeSqliteMetaStore`, and the
+  `NodeSqliteDatabaseLike` / `NodeSqliteStatementLike` driver shape.
+- [x] Node memory and Node SQLite both pass the shared `@metacrdt/testkit`
+  runtime conformance suite; SQLite also has a persistence test proving event
+  log, HLC, and `seq` survive runtime recreation.
+- [x] Verification: focused Node tests/typecheck, `npm run test:packages`, `npm
+  run build:packages`, and `npm run typecheck` passed with Turbo picking up the
+  new workspace.
 
 ### 2026-06-08 — host event-log entity fold
 - [x] **Goal 98 shipped:** `@metacrdt/query` guarded positive-pattern extension.
