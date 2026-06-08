@@ -359,8 +359,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   localStorage dismissal and a restartable header button.
 - [ ] Wire the remaining decorative bit from the mockup: "Describe an account".
 - [ ] Action/config diff-history polish.
-- [ ] Root-cause the `staticHosting:getCurrentDeployment` error over the WS path
-  (works over HTTP; currently isolated behind an error boundary).
+- [x] Root-cause the `staticHosting:getCurrentDeployment` error over the WS path
+  — the public query works, but the upstream `useDeploymentUpdates` helper wraps
+  it in throwing `useQuery`; the app banner now uses object-form
+  `useQuery_experimental({ throwOnError: false })` and no longer needs an error
+  boundary.
 
 ## Notes / gotchas
 
@@ -374,6 +377,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 79 shipped:** static-hosting live-reload banner is non-throwing.
+  `src/App.tsx` no longer imports `@convex-dev/static-hosting/react`; it uses
+  Convex's object-form query hook with `throwOnError: false`, suppressing
+  cosmetic deployment-query failures instead of catching them with an app-level
+  error boundary. Verified the public deployment query and live static site.
 - [x] **Goal 77 shipped:** Confect sidecar now wraps derived provenance.
   `confect/tables/DerivedFacts.ts` adds the sidecar table shape;
   `confect/metacrdt.spec.ts` adds `metacrdt.explainDerived` with typed
