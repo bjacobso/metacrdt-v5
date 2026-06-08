@@ -188,12 +188,15 @@ Effect-native facade (`effect/Schema` response validation and tagged
 113 adds the Node production assembly helper: a framework- and driver-neutral
 constructor that selects `memory | sqlite | postgres`, initializes the matching
 runtime, returns its Effect Layer, HTTP/SSE handler, native-style listener, SQL
-lifecycle metadata for durable stores, and optional sync client wiring. The next
-active goal should be chosen from the remaining TODO candidates:
-choosing/wiring the provider-specific React wrapper/JWT flow, adding concrete
-Node deployment recipes for real drivers/process managers, Cloudflare
-DO+SQLite parity, another carefully scoped Confect/domain wrapper, or the next
-projection dependency
+lifecycle metadata for durable stores, and optional sync client wiring. Goal
+114 adds concrete Node deployment recipes for native `node:http` + Postgres,
+native `node:http` + SQLite, framework adapters, explicit SQL lifecycle usage,
+and one-shot peer sync. The next active goal should be chosen from the remaining
+TODO candidates:
+choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
+production hardening around auth middleware/retry loops/observability,
+Cloudflare DO+SQLite parity, another carefully scoped Confect/domain wrapper,
+or the next projection dependency
 (closure/derived provenance or remaining operational process state).
 
 This plan is the operational goal file. Read it with:
@@ -9393,6 +9396,46 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 114 — @metacrdt/node Deployment Recipes
+
+**Status:** shipped.
+
+**Objective:** make the Node production assembly helper actionable for host
+applications without adding dependencies to `@metacrdt/node` or choosing a
+deployment provider. The package should show where real drivers, process hosts,
+auth policy, and sync scheduling plug in, while keeping those choices outside
+the target package.
+
+### What Shipped
+
+- Added `packages/node/DEPLOYMENT.md` with concrete recipes for:
+  - native `node:http` + Postgres (`pg`-style `query(sql, params)`);
+  - native `node:http` + SQLite (`better-sqlite3`-style
+    `prepare().get/all/run`);
+  - framework adapter shape over the structural `handleSync`;
+  - explicit SQL lifecycle/migration usage with `initialize: false`;
+  - one-shot peer sync through the optional bundled client;
+  - operational checklist for replica ids, durable storage, health checks, auth,
+    and dev-server boundaries.
+- Linked the guide from `packages/node/README.md`, top-level `README.md`, and
+  `docs/targets.md`.
+
+### Non-Goals
+
+- Do not add runtime dependencies on `pg`, `better-sqlite3`, Express/Fastify/Hono,
+  Docker, systemd, or any hosted provider SDK.
+- Do not implement auth middleware, retry/backoff loops, observability hooks, or
+  process supervision in this slice.
+- Do not change package runtime APIs.
+
+### Verification
+
+- `git diff --check` passes for the documentation slice.
+- The previous Goal 113 full gate remains valid for the code path the recipes
+  document.
 
 ---
 

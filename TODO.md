@@ -518,8 +518,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Choose the next Node slice: sync SDK client over the shipped HTTP/SSE
   surface.
 - [x] Choose the next Node slice: framework-neutral production assembly helper.
-- [ ] Choose between production provider wiring, concrete Node deployment
-  recipes over real drivers/process managers, Cloudflare DO+SQLite parity, or
+- [x] Choose the next Node slice: concrete deployment recipes over real
+  drivers/process managers.
+- [ ] Choose between production provider wiring, Node production hardening
+  (auth/retry/observability examples), Cloudflare DO+SQLite parity, or
   another parked Query/Rules item.
 
 **Docs**
@@ -554,6 +556,19 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — @metacrdt/node deployment recipes
+- [x] **Added concrete Node deployment recipes.**
+  `packages/node/DEPLOYMENT.md` shows native `node:http` + Postgres (`pg`
+  `query(sql, params)`), native `node:http` + SQLite (`better-sqlite3`-style
+  `prepare().get/all/run`), framework adapter shape over `handleSync`, explicit
+  SQL lifecycle usage with `initialize: false`, one-shot peer sync through the
+  optional client, and an operational checklist.
+- [x] **Kept package dependency-free.** The recipes name real drivers/process
+  hosts as host-app choices but do not add dependencies or change runtime APIs.
+  Remaining Node production work is hardening: auth middleware examples,
+  retry/backoff loops, observability hooks, and process-manager/provider
+  templates when actual deployments demand them.
 
 ### 2026-06-08 — @metacrdt/node production assembly helper
 - [x] **Added framework-neutral production assembly.** `@metacrdt/node` now

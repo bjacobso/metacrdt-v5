@@ -99,10 +99,10 @@ On open hosts the adapter is a selectable dependency.
 
 ### Should exist next
 
-- **`@metacrdt/node` next slices** — add concrete deployment recipes for real
-  drivers/process managers (for example pg + native `node:http`, better-sqlite3,
-  Docker/systemd/Fly/Render/Railway-style hosts) on top of the structural
-  production assembly helper now in place.
+- **`@metacrdt/node` next slices** — production hardening around the concrete
+  deployment recipes now documented in `packages/node/DEPLOYMENT.md`: auth
+  middleware examples, retry/backoff loops for peer sync, observability hooks,
+  and process-manager templates when real deployments demand them.
 
 ### Defer until a real need justifies them
 

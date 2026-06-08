@@ -238,6 +238,9 @@ Planned package graph:
 @metacrdt/node        Node target (memory + structural SQLite/Postgres + SQL lifecycle plan + HTTP/SSE + listener + sync client + production assembly + dev-server CLI shipped)
 ```
 
+The Node target's concrete production assembly recipes live in
+[packages/node/DEPLOYMENT.md](./packages/node/DEPLOYMENT.md).
+
 Open Ontology is vendored as a context submodule at
 [.context/open-ontology](./.context/open-ontology). The fold plan is documented
 in [docs/package-consolidation.md](./docs/package-consolidation.md):

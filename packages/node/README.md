@@ -4,6 +4,9 @@ The Node / server-process target for MetaCRDT. It is the open host: unlike
 managed targets such as Convex or Cloudflare Durable Objects, Node can mount
 different storage adapters behind the same runtime contracts.
 
+For concrete production assembly recipes with real Node drivers and process
+hosts, see [DEPLOYMENT.md](./DEPLOYMENT.md).
+
 ## What Node Owns
 
 - **Node memory runtime** — `createNodeMemoryRuntime` plus
