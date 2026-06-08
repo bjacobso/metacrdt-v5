@@ -1,9 +1,12 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 110 (Node Shared SQL Lifecycle Plan) has
-shipped. The repository now also carries a **standing objective — Goal 111,
-Effect-Native Substrate** (SPEC §1.2): every new or touched unit adopts Effect
-services/`Layer`s, `effect/Schema`, tagged errors, and `@effect/vitest`, while
+**Current goal:** Goal 111 (Effect-Native Substrate) step 1 has started: the
+`@metacrdt/runtime` capability boundary now has Effect v3 `Context.Tag` services,
+`Layer` helpers, tagged runtime errors, and an in-memory Layer provider while the
+existing Promise-shaped target facades remain as compatibility shims for already
+shipped targets. The standing objective remains SPEC §1.2: every new or touched
+unit adopts Effect services/`Layer`s, `effect/Schema`, tagged errors, and
+Effect-based tests where the current dependency graph allows it, while
 `@metacrdt/core` stays a Schema-only deterministic fold (no Effect monad). The
 **Effect v4** bump is held until Confect ships a v4-compatible release; the repo
 stays on `effect@3` meanwhile, with `.context/effect-v4` pinned as the forward
@@ -9351,13 +9354,19 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   Effect with `Layer`/`Context.Tag` and `Data.TaggedError`), and the root
   `confect/` sidecar (`Schema` args/returns, `Schema.TaggedError`, `Effect.gen`,
   `Layer.provide`).
-- **The keystone gap:** `@metacrdt/runtime`'s service contracts (`EventStore`,
-  `RuntimeClock`, `RuntimeSequencer`, `Scheduler`, `Transport`) are plain TS
-  interfaces returning `Promise`, wired by constructor injection — not
-  `Context.Tag`s + `Layer`s. This is the highest-leverage conversion: every
-  target (`convex`, `cloudflare`, `local`, `node`) and `testkit` implement these
-  contracts, so Effect-ifying them here propagates the services/Layer model
-  across the whole target axis.
+- **Runtime service boundary started:** `@metacrdt/runtime` now exports
+  `Context.Tag` services for `EventStore`, `RuntimeClock`, `RuntimeSequencer`,
+  `Scheduler`, `Transport`, and `RuntimeProfile`, plus `Layer` helpers that adapt
+  target-provided stores/clocks/sequencers/schedulers/transports into the Effect
+  environment. `applyOperationEffect`, `mergeFromEffect`, and
+  `requireCapabilityEffect` consume those tags and return tagged errors in the
+  Effect error channel. `createMemoryRuntimeLayer` proves the shape for the
+  in-memory target. Existing Promise-shaped interfaces and helpers remain as
+  compatibility facades until target packages expose Layers.
+- **Remaining keystone work:** `convex`, `cloudflare`, `local`, `node`, and
+  `testkit` still consume/provide the compatibility `RuntimeServices` object.
+  The next Effect-native migration is target Layer providers, then testkit
+  conformance over Layers.
 - **Zero Effect today (by current design):** `core`, `schema`, `query`,
   `convex` (package), `cloudflare`, `local`, `node`, `testkit`.
 
@@ -9365,7 +9374,9 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
 
 1. **Runtime as services.** Re-express the `@metacrdt/runtime` contracts as
    Effect services behind `Context.Tag`s with `Layer` providers; keep
-   determinism (clock/seq are injected services, never ambient).
+   determinism (clock/seq are injected services, never ambient). **Started:**
+   runtime tags, adapter layers, Effect-native operation helpers, tagged runtime
+   errors, and the memory Layer are shipped.
 2. **Targets provide Layers.** `convex` / `cloudflare` / `local` / `node` expose
    their stores/clocks/sequencers/transports as `Layer`s satisfying the runtime
    tags.
@@ -9375,6 +9386,10 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
    types while staying pure.
 4. **Effect tests.** Move suites — starting with `@metacrdt/testkit` — onto
    `@effect/vitest`, running conformance as Effect programs over provided Layers.
+   **Dependency note:** `@effect/vitest@0.29` supports Effect v3 but peers on
+   Vitest 3; `@effect/vitest@4` supports Vitest 4 but requires Effect v4. Until
+   the Confect-gated v4 bump, new Effect tests run as `Effect` programs under
+   the existing Vitest 4 runner rather than forcing an incompatible runner.
 5. **Confect breadth.** Widen Confect from the current sidecar toward the primary
    authoring style for the Convex target (continues Goal 2 / Goal 8).
 6. **Effect v4 bump (blocked — gated on Confect v4).** When `@confect/*` ships a
@@ -9391,7 +9406,9 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   providers; no new plain-`Promise` service interface is added.
 - New external boundaries use `effect/Schema`; new errors are tagged and travel
   in the Effect error channel.
-- New/edited test files run under `@effect/vitest`.
+- New/edited Effect tests run as Effect programs. Moving them under
+  `@effect/vitest` is blocked until either the repo downgrades Vitest to the v3
+  peer line or the Confect-gated Effect v4 bump allows `@effect/vitest@4`.
 - `@metacrdt/core` and folds remain deterministic: no ambient clock/random/I/O;
   the `@metacrdt/testkit` convergence checks still pass.
 - Effect v4 APIs are verified against `.context/effect-v4`.

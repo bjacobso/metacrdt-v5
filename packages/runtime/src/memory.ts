@@ -21,6 +21,7 @@ import {
   Scheduler,
   Transport,
 } from "./types.js";
+import { runtimeServicesLayer } from "./services.js";
 
 export class MemoryEventStore implements EventStore {
   #events = new Map<EventId, Event>();
@@ -152,4 +153,9 @@ export function createMemoryRuntime(
     scheduler: new MemoryScheduler(),
     transport: new MemoryTransport(),
   };
+}
+
+export function createMemoryRuntimeLayer(options: MemoryRuntimeOptions) {
+  const runtime = createMemoryRuntime(options);
+  return runtimeServicesLayer(runtime);
 }

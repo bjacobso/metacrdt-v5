@@ -1,8 +1,13 @@
 import { describe, expect, test } from "vitest";
 import { assert as assertEvent, fromEvents, valueOf } from "@metacrdt/core";
+import { Effect } from "effect";
 import {
+  EventStoreService,
+  RuntimeCapabilityError,
+  applyOperationEffect,
   applyOperation,
   createMemoryRuntime,
+  createMemoryRuntimeLayer,
   deltaSince,
   exchangeDeltas,
   mergeFrom,
@@ -15,6 +20,77 @@ const one = () => "one" as const;
 const coord = { txTime: 10_000, validTime: 10_000 };
 
 describe("@metacrdt/runtime memory harness", () => {
+  test("Effect services apply operations through a Layer-provided memory target", async () => {
+    let wall = 100;
+    const layer = createMemoryRuntimeLayer({
+      replicaId: "effect:r1",
+      wall: () => wall,
+    });
+
+    const program = Effect.gen(function* () {
+      const first = yield* applyOperationEffect({
+        op: "assert",
+        e: "worker:maria",
+        a: "worker.status",
+        v: "active",
+        actor: "user:1",
+      });
+      wall = 100;
+      const second = yield* applyOperationEffect({
+        op: "assert",
+        e: "worker:maria",
+        a: "worker.status",
+        v: "terminated",
+        actor: "user:1",
+      });
+      const store = yield* EventStoreService;
+      return { first, second, events: yield* store.scan() };
+    });
+
+    const result = await Effect.runPromise(Effect.provide(program, layer));
+    expect(result.first.hlc).toEqual({ pt: 100, l: 0, r: "effect:r1" });
+    expect(result.first.seq).toBe(1);
+    expect(result.second.hlc).toEqual({ pt: 100, l: 1, r: "effect:r1" });
+    expect(result.second.seq).toBe(2);
+
+    const log = fromEvents(result.events);
+    expect(valueOf("worker:maria", "worker.status", coord, log, one)).toBe(
+      "terminated",
+    );
+  });
+
+  test("Effect operation helpers fail with tagged errors", async () => {
+    const layer = createMemoryRuntimeLayer({
+      replicaId: "effect:no-cap",
+      capabilities: [],
+    });
+    const program = applyOperationEffect({
+      op: "assert",
+      e: "worker:maria",
+      a: "worker.status",
+      v: "active",
+      actor: "user:1",
+    });
+
+    const result = await Effect.runPromiseExit(Effect.provide(program, layer));
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      const failure = result.cause.toJSON() as { _tag?: string };
+      expect(JSON.stringify(failure)).toContain("RuntimeCapabilityError");
+    }
+
+    const recovered = await Effect.runPromise(
+      Effect.provide(
+        Effect.match(program, {
+          onFailure: (error) => error,
+          onSuccess: () => undefined,
+        }),
+        layer,
+      ),
+    );
+    expect(recovered).toBeInstanceOf(RuntimeCapabilityError);
+  });
+
   test("applies operations through injected clock/store/transport services", async () => {
     let wall = 100;
     const rt = createMemoryRuntime({ replicaId: "r1", wall: () => wall });

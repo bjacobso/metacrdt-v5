@@ -24,6 +24,7 @@ export {
   MemoryScheduler,
   MemorySequencer,
   MemoryTransport,
+  createMemoryRuntimeLayer,
   createMemoryRuntime,
   type MemoryRuntimeOptions,
 } from "./memory.js";
@@ -62,7 +63,14 @@ export {
   type PeerMessage,
 } from "./p2p.js";
 
-export { applyOperation, mergeFrom, requireCapability } from "./operations.js";
+export {
+  applyOperation,
+  applyOperationEffect,
+  mergeFrom,
+  mergeFromEffect,
+  requireCapability,
+  requireCapabilityEffect,
+} from "./operations.js";
 export {
   deltaSince,
   exchangeDeltas,
@@ -71,3 +79,34 @@ export {
   type SyncDelta,
   type SyncExchangeResult,
 } from "./sync.js";
+export {
+  EventStoreService,
+  RuntimeCapabilityError,
+  RuntimeClockService,
+  RuntimeOperationError,
+  RuntimeProfileService,
+  RuntimeSequencerService,
+  RuntimeServiceError,
+  SchedulerService,
+  TransportService,
+  eventStoreLayer,
+  eventStoreService,
+  noopSchedulerService,
+  noopTransportService,
+  runtimeClockLayer,
+  runtimeClockService,
+  runtimeProfileLayer,
+  runtimeSequencerLayer,
+  runtimeSequencerService,
+  runtimeServicesLayer,
+  schedulerLayer,
+  schedulerService,
+  transportLayer,
+  transportService,
+  type EventStoreEffect,
+  type RuntimeClockEffect,
+  type RuntimeError,
+  type RuntimeSequencerEffect,
+  type SchedulerEffect,
+  type TransportEffect,
+} from "./services.js";

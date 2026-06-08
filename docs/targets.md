@@ -16,13 +16,13 @@ Companion docs: [architecture.md](./architecture.md) (the layer/target map),
 
 It is tempting to list "node, bun, postgres, FoundationDB, …" as peer targets.
 That conflates three different axes a target spans, each of which implements a
-different `@metacrdt/runtime` contract:
+different `@metacrdt/runtime` Effect service contract:
 
 | Axis | Contract implemented | Examples |
 | --- | --- | --- |
-| **Execution host** | `Scheduler` + lifecycle | Convex functions, Durable Object + alarms, Node process, browser event loop |
-| **Storage adapter** | `EventStore` (+ projection store) | Convex tables, DO SQLite, IndexedDB, **SQLite**, **Postgres**, memory |
-| **Transport adapter** | `Transport` | Convex reactivity, DO WebSocket relay, BroadcastChannel, WebRTC p2p, HTTP/SSE |
+| **Execution host** | `SchedulerService` + lifecycle | Convex functions, Durable Object + alarms, Node process, browser event loop |
+| **Storage adapter** | `EventStoreService` (+ projection store) | Convex tables, DO SQLite, IndexedDB, **SQLite**, **Postgres**, memory |
+| **Transport adapter** | `TransportService` | Convex reactivity, DO WebSocket relay, BroadcastChannel, WebRTC p2p, HTTP/SSE |
 
 A **target** is an *execution host* that bundles a default choice across the
 other two axes. Consequences:
@@ -32,9 +32,9 @@ other two axes. Consequences:
 - **Node and Bun are execution hosts**, not storage backends. They can mount any
   server-grade storage adapter.
 
-This is the rule that decides where new code lands: ask *which contract does it
-implement* — host scheduler, event store, or transport — not *which technology is
-it named after*.
+This is the rule that decides where new code lands: ask *which Effect service
+contract does it provide* — host scheduler, event store, clock/sequencer, or
+transport — not *which technology is it named after*.
 
 ---
 
@@ -67,7 +67,7 @@ On open hosts the adapter is a selectable dependency.
   HTTP/SSE sync handler, native `node:http`-style request listener, and packaged
   in-memory dev-server CLI. It also exposes a shared SQL lifecycle plan for the
   SQLite/Postgres runtime tables. SDK integration remains a future slice.
-- `@metacrdt/runtime`'s in-memory target — the reference harness.
+- `@metacrdt/runtime`'s in-memory target/Layer — the reference harness.
 - `@metacrdt/testkit` — framework-neutral conformance helpers for EventStore,
   anti-entropy, and deterministic fold convergence (currently proven against
   the in-memory runtime, Cloudflare Durable Object runtime services, the async
@@ -99,7 +99,7 @@ On open hosts the adapter is a selectable dependency.
 
 | Adapter | Lives in / under | Status |
 | --- | --- | --- |
-| memory | `runtime` | done |
+| memory | `runtime` | done (compatibility target + Effect Layer) |
 | localStorage | `local` (via `runtime`) | done |
 | IndexedDB | `local` | done |
 | SQLite-wasm | `local` | done |
@@ -182,7 +182,7 @@ because `LISTEN/NOTIFY` gives reactivity for free.
                             │                            │
                    ┌────────▼─────────┐                  │
    HARNESS         │ @metacrdt/runtime│ ─────────────────┘   → core; defines
-                   │  contracts +     │                       EventStore / Clock /
+                   │  services +      │                       EventStore / Clock /
                    │  memory + sync   │                       Sequencer / Scheduler / Transport
                    └───┬────────┬─────┘
           ┌────────────┘        └────────────┐
@@ -218,10 +218,12 @@ a sibling target.
 1. **`@metacrdt/node`** + `memory` / `sqlite` / `postgres` adapters + shared SQL
    lifecycle plan + HTTP/SSE handler + packaged dev server — unlocks
    SDK/self-hosting work and another host for the testkit to exercise.
-2. **Expand `@metacrdt/testkit` as targets mature** — add persistence,
-   scheduler, transport, and query/projection suites whenever a second target
-   exposes the relevant capability. This is what *proves* the "guaranteed to
-   converge" claim across targets.
+2. **Goal 111 target Layers + testkit migration** — make Node/local/Cloudflare
+   expose `Layer`s for the runtime service tags, then move testkit conformance to
+   layer-provided targets. Add persistence, scheduler, transport, and
+   query/projection suites whenever a second target exposes the relevant
+   capability. This is what *proves* the "guaranteed to converge" claim across
+   targets.
 3. **Cloudflare Phase B/C** — extract the shared fold into core, then the DO +
    SQLite triple store ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal

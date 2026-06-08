@@ -148,10 +148,11 @@ Current packages:
 - **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
   authoring language extracted from Open Ontology: reader, formatter, evaluator,
   VM, type inference, and language-owned elaboration utilities.
-- **`@metacrdt/runtime`** (`packages/runtime`) — target-neutral service contracts
-  and memory harness: injected HLC clock, optional per-replica sequencer,
-  operation helpers, version-vector delta calculation, BroadcastChannel
-  anti-entropy, and p2p DataChannel anti-entropy.
+- **`@metacrdt/runtime`** (`packages/runtime`) — target-neutral Effect service
+  contracts and memory harness: `Context.Tag` + `Layer` runtime services,
+  injected HLC clock, per-replica sequencer, Effect-native operation helpers,
+  compatibility Promise facades, version-vector delta calculation,
+  BroadcastChannel anti-entropy, and p2p DataChannel anti-entropy.
 - **`@metacrdt/cloudflare`** (`packages/cloudflare`) — Durable Object / Worker
   target helpers: storage-backed event log, HLC, per-replica sequencer,
   WebSocket relay shell, Worker router, and example Wrangler config.
@@ -200,7 +201,7 @@ Planned package graph:
 @metacrdt/forms       forms, collection, prompt-response
 @metacrdt/views       ViewSpec / generated response surfaces
 @metacrdt/agent       agent actors, proposals, skills
-@metacrdt/runtime     IR + service interfaces
+@metacrdt/runtime     IR + Effect service interfaces/Layers
 @metacrdt/convex      Convex target / component / bindings
 @metacrdt/cloudflare  Durable Object / Worker target
 @metacrdt/local       browser/local-first target
@@ -344,8 +345,8 @@ Built today:
 - single-use, expiring collection tokens for the public `/collect` page
 - Tailwind + React Router research-preview UI
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility
-- `@metacrdt/runtime` harness groundwork: target-neutral services plus an
-  in-memory convergence test target
+- `@metacrdt/runtime` harness groundwork: target-neutral Effect services plus an
+  in-memory convergence test target / Layer
 - Confect/Effect sidecars for typed read/planning/protocol inspection:
   `metacrdt.verifyEvents`, `metacrdt.explainDerived`, and a read-only compliance
   dry-run planner. The dry-run planner is now event-log-backed and

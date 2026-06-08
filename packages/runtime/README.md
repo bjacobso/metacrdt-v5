@@ -8,16 +8,27 @@ transport exists.
 
 ## What Runtime Owns
 
-- **Service contracts** — `EventStore`, `RuntimeClock`, `RuntimeSequencer`,
-  `Scheduler`, `Transport`, `RuntimeServices`, plus capability/profile metadata
-  (`RuntimeCapability`, `RuntimeProfile`) and operation types (`Operation`,
-  `AssertOperation`, `TargetOperation`, `ScheduledOperation`, `AppendResult`,
-  `MergeResult`, `VersionVector`, `Actor`, `EventFilter`).
-- **Operation helpers** — `applyOperation`, `mergeFrom`, `requireCapability`.
+- **Effect service contracts** — `EventStoreService`, `RuntimeClockService`,
+  `RuntimeSequencerService`, `SchedulerService`, `TransportService`, and
+  `RuntimeProfileService` as `Context.Tag`s, with `Layer` helpers for adapting
+  target-provided stores/clocks/sequencers/schedulers/transports. This is the
+  canonical runtime boundary (SPEC §1.2).
+- **Compatibility service shapes** — `EventStore`, `RuntimeClock`,
+  `RuntimeSequencer`, `Scheduler`, `Transport`, `RuntimeServices`, plus
+  capability/profile metadata (`RuntimeCapability`, `RuntimeProfile`) and
+  operation types (`Operation`, `AssertOperation`, `TargetOperation`,
+  `ScheduledOperation`, `AppendResult`, `MergeResult`, `VersionVector`, `Actor`,
+  `EventFilter`). These keep already-shipped targets green while they migrate to
+  Layer providers.
+- **Operation helpers** — Effect-native `applyOperationEffect`,
+  `mergeFromEffect`, and `requireCapabilityEffect` over the service tags, plus
+  compatibility `applyOperation`, `mergeFrom`, `requireCapability` wrappers over
+  `RuntimeServices`.
 - **Anti-entropy / sync** — `versionVector`, `deltaSince`, `mergeVersionVectors`,
   `exchangeDeltas` (`SyncDelta`, `SyncExchangeResult`): version-vector exchange
   that converges idempotently (SPEC §8 shape).
-- **In-memory target** — `createMemoryRuntime` with `MemoryEventStore`,
+- **In-memory target** — `createMemoryRuntimeLayer` for the Effect service
+  boundary, plus compatibility `createMemoryRuntime` with `MemoryEventStore`,
   `MemoryClock`, `MemorySequencer`, `MemoryScheduler`, `MemoryTransport`: the
   reference harness for convergence tests.
 - **localStorage seed** — `createLocalRuntime` with `LocalEventStore`,
@@ -40,21 +51,49 @@ transport exists.
 ## Dependencies
 
 - `@metacrdt/core`
+- `effect` v3 (`^3.21.3`). Effect v4 is intentionally held until Confect ships a
+  v4-compatible release.
 
 ## Relation to SPEC
 
-Runtime is the harness for SPEC §8 (anti-entropy sync) and the service boundary
-targets implement. The memory target proves G-Set exchange convergence and
-version-vector anti-entropy without committing to any storage or network.
+Runtime is the harness for SPEC §8 (anti-entropy sync) and the Effect service
+boundary targets implement per SPEC §1.2. The memory target proves G-Set
+exchange convergence and version-vector anti-entropy without committing to any
+storage or network.
 
 ## Usage
 
 ```ts
-import { createMemoryRuntime, exchangeDeltas, versionVector } from "@metacrdt/runtime";
+import { Effect } from "effect";
+import {
+  EventStoreService,
+  applyOperationEffect,
+  createMemoryRuntimeLayer,
+} from "@metacrdt/runtime";
+
+const program = Effect.gen(function* () {
+  const event = yield* applyOperationEffect({
+    op: "assert",
+    e: "worker:maria",
+    a: "worker.status",
+    v: "active",
+    actor: "user:1",
+  });
+  const store = yield* EventStoreService;
+  return { event, events: yield* store.scan() };
+});
+
+const result = await Effect.runPromise(
+  Effect.provide(
+    program,
+    createMemoryRuntimeLayer({ replicaId: "node:example" }),
+  ),
+);
 ```
 
 ## Status
 
-In-memory, localStorage, BroadcastChannel, and p2p DataChannel paths are shipped.
-It does not yet own Convex bindings or durable network transport — those live in
-the target packages.
+The Effect service/tag boundary and the memory Layer are shipped. In-memory,
+localStorage, BroadcastChannel, and p2p DataChannel compatibility paths are also
+shipped. Target packages still need to expose their own Layers in the next Goal
+111 step; durable network transport lives in the target packages.

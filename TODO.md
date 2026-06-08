@@ -37,6 +37,17 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
 **Packaging / monorepo (map, not migration — see [docs/architecture.md](./docs/architecture.md))**
+- [x] **Goal 111 step 1 started: runtime Effect services** —
+  `@metacrdt/runtime` now exports Effect v3 `Context.Tag` services + `Layer`
+  helpers for `EventStore`, `RuntimeClock`, `RuntimeSequencer`, `Scheduler`,
+  `Transport`, and `RuntimeProfile`; Effect-native operation helpers return
+  tagged errors in the Effect channel; the memory target provides
+  `createMemoryRuntimeLayer`.
+- [ ] **Goal 111 next: targets provide Layers** — expose Layer providers from
+  `@metacrdt/cloudflare`, `@metacrdt/local`, `@metacrdt/node`, and eventually
+  `@metacrdt/convex`, then move `@metacrdt/testkit` conformance to layer-provided
+  targets. Keep compatibility `RuntimeServices` facades until every target has
+  moved.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
@@ -479,6 +490,26 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — Goal 111 runtime Effect service boundary
+- [x] **Started Goal 111 step 1:** `@metacrdt/runtime` now has an Effect-native
+  service boundary on Effect v3: `RuntimeProfileService`, `EventStoreService`,
+  `RuntimeClockService`, `RuntimeSequencerService`, `SchedulerService`, and
+  `TransportService` as `Context.Tag`s, with `Layer` helpers adapting existing
+  target-provided stores/clocks/sequencers/schedulers/transports.
+- [x] **Effect-native runtime operations:** added `applyOperationEffect`,
+  `mergeFromEffect`, and `requireCapabilityEffect`; new runtime errors are
+  `Data.TaggedError` values (`RuntimeServiceError`, `RuntimeCapabilityError`,
+  `RuntimeOperationError`) carried in the Effect error channel. Compatibility
+  Promise helpers remain for already-shipped targets.
+- [x] **Memory Layer provider:** `createMemoryRuntimeLayer` proves the new shape
+  without touching core or introducing ambient nondeterminism. Tests run Effect
+  programs through `Effect.provide(...)` and validate tagged capability errors.
+- [x] **Runner constraint documented:** `@effect/vitest@0.29` is the Effect v3
+  line but peers on Vitest 3; `@effect/vitest@4` supports Vitest 4 but requires
+  Effect v4. Because Confect holds the repo on Effect v3, this slice keeps Effect
+  tests under current Vitest 4 and leaves the dedicated runner migration for the
+  Confect/v4 gate.
 
 ### 2026-06-08 — package build tooling
 - [x] **Goal 107 shipped:** centralized package build config. Added root
