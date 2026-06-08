@@ -6,7 +6,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ## Now / up next
 
-### Cloudflare Phase D collection capability seed
+### Cloudflare Phase D operational surface
 
 - [x] **Goal 123 shipped: DO SQLite collection capability rows** —
   `@metacrdt/cloudflare` now has a `DurableObjectSqliteCollectionStore`, a
@@ -25,10 +25,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   current-surface methods to schedule, read, list, and fire collection reminder,
   escalation, and expiry ticks. Ticks update only operational collection rows and
   no-op/skips once the collection is submitted or expired.
-- [ ] **Remaining Cloudflare Phase D parity** — flow/DAG rows, DO alarm
-  multiplexing, live-query fanout, and historical SQL-indexed query-provider
-  optimization remain open; do not claim full parity until those are
-  implemented.
+- [x] **Goal 126 shipped: DAG run/timeline rows over DO SQLite** —
+  `@metacrdt/cloudflare` now has `flow_dag_runs` and `flow_dag_events`
+  tables/stores plus current-surface methods `recordDagRun`, `getDagRun`, and
+  `listDagRuns`. New run/event ids are caller-provided; no `Math.random()` or
+  EventStore `seq` is consumed for operational ids.
+- [ ] **Remaining Cloudflare Phase D parity** — flow execution/resume semantics,
+  DO alarm multiplexing, live-query fanout, and historical SQL-indexed
+  query-provider optimization remain open; do not claim full parity until those
+  are implemented.
 
 **Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
 - [x] Commutative supersession — centralized Convex writes now stamp
@@ -86,6 +91,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   escalation, and expiry phases; the current facade can schedule/list/fire them,
   and firing updates bounded operational collection timestamps or skips after
   submission/expiry.
+- [x] Cloudflare Durable Object SQLite DAG run/timeline rows —
+  `flow_dag_runs` and `flow_dag_events` rows persist bounded operational process
+  history; the current facade can record/reuse active runs and read/list runs
+  with their timeline events.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -95,8 +104,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — historical
-  SQL-indexed query-provider optimization, flow/DAG rows, DO alarm multiplexing,
-  and live-query WebSocket fanout/plumbing (see
+  SQL-indexed query-provider optimization, flow execution/resume semantics, DO
+  alarm multiplexing, and live-query WebSocket fanout/plumbing (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).

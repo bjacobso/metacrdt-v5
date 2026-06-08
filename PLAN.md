@@ -218,19 +218,24 @@ with caller-provided tokens and `issueCollection` / `collectionByToken` /
 `listCollections` / `submitCollection` on the current facade, persisting
 submitted payload/status while leaving field-to-fact lowering, collection ticks,
 flow/DAG rows, alarm multiplexing, live fanout, and historical SQL-indexed query
-optimization as remaining parity work. Goal 124 adds collection field-to-fact
-lowering: `submitCollection` can optionally append submitted assertions for the
+optimization as remaining parity work at that point. Goal 124 adds collection
+field-to-fact lowering: `submitCollection` can optionally append submitted
+assertions for the
 collection subject through the existing append/reconcile path and return
 event/projection summaries for those lowered assertions. Goal 125 adds
 collection timer rows: caller-identified collection reminder/escalation/expiry
 ticks can be scheduled, listed, and fired over DO SQLite; firing updates bounded
 operational collection timestamps, expires still-issued tokens, or skips after
-submission/expiry without claiming DO alarm multiplexing. The next active goal
-should be chosen from the remaining TODO candidates:
+submission/expiry without claiming DO alarm multiplexing. Goal 126 adds
+component-style DAG run/timeline rows: caller-identified `flow_dag_runs` and
+`flow_dag_events` persist operational process history over DO SQLite, and the
+current facade exposes `recordDagRun`, `getDagRun`, and `listDagRuns` without
+claiming flow execution/resume or alarm wakeups. The next active goal should be
+chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite historical SQL-indexed-query/operational parity
-(flow/DAG rows, alarms, live fanout),
+(flow execution/resume, alarms, live fanout),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9445,6 +9450,60 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 126 — Cloudflare DO SQLite DAG Run/Timeline Rows
+
+**Status:** shipped.
+
+**Objective:** add the first Cloudflare Phase D workflow-history seed: bounded
+component-style DAG run rows and child timeline events over Durable Object
+SQLite, matching the Convex component's `recordDagRun` / `getDagRun` /
+`listDagRuns` persistence surface without implementing flow execution or alarm
+wakeups yet.
+
+### What Shipped
+
+- Added DO SQLite `flow_dag_runs` and `flow_dag_events` tables/stores.
+- `flow_dag_runs` stores caller-provided run ids, `flowDefName`, `subject`,
+  status (`running` / `waiting` / `completed` / `unsupported`), current step,
+  start/update/completion timestamps, and optional context JSON.
+- `flow_dag_events` stores caller-provided event ids, `runId`, timestamp,
+  `stepId`, `type`, `kind`, and optional message as child rows so timeline
+  growth does not rewrite an unbounded run payload.
+- Extended `createDurableObjectSqliteCurrentSurface` with:
+  - `recordDagRun`
+  - `getDagRun`
+  - `listDagRuns`
+- `recordDagRun` creates a new run only when a caller-provided `runId` is
+  present. Without `runId`, it reuses the newest active (`waiting` / `running`)
+  run for the same `(subject, flowDefName)`, matching the useful Convex
+  component behavior without inventing target-local operational ids.
+- Exported the new store, types, Schemas, and Effect helpers from
+  `@metacrdt/cloudflare`.
+- Extended the Cloudflare structural SQLite fake/test support for the new DAG
+  table statement families.
+
+### Non-Goals
+
+- Do not implement a Cloudflare DAG interpreter, flow definitions, wait/resume
+  semantics, or action execution.
+- Do not call `setAlarm()` or claim DO alarm multiplexing.
+- Do not generate run/timeline ids with `Math.random()` or consume EventStore
+  `seq` for non-event operational ids.
+- Do not append protocol events from DAG timeline rows; this slice is
+  operational history only.
+- Do not add live-query fanout or historical SQL-indexed query-provider parity.
+- Do not touch root `convex/`.
+
+### Verification
+
+- `npm test --workspace @metacrdt/cloudflare` passes with coverage for
+  creating a DAG run, appending timeline events, active-run reuse without a
+  `runId`, `getDagRun`, filtered `listDagRuns`, and the intentional error when
+  a new run would require Cloudflare to invent an id.
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
 
 ---
 

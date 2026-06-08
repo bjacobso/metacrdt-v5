@@ -858,4 +858,123 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       surface.collectionByToken({ token: "collection:worker:done:onboard" }),
     ).resolves.not.toHaveProperty("remindedAt");
   });
+
+  test("current surface persists DAG run timelines over SQLite rows", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:dag",
+      wall: () => 900,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const first = await surface.recordDagRun({
+      runId: "dag:worker:flow:1",
+      flowDefName: "owned_flow",
+      subject: "worker:dag",
+      status: "waiting",
+      currentStepId: "collect",
+      context: { employer: "employer:acme" },
+      now: 50_000,
+      events: [
+        {
+          eventId: "dag:event:worker:flow:1:collect-issued",
+          stepId: "collect",
+          type: "collect",
+          kind: "collect-issued",
+          message: "owned_i9 for employer:acme",
+        },
+      ],
+    });
+    expect(first).toEqual({
+      runId: "dag:worker:flow:1",
+      flowDefName: "owned_flow",
+      subject: "worker:dag",
+      status: "waiting",
+      currentStepId: "collect",
+      startedAt: 50_000,
+      updatedAt: 50_000,
+      context: { employer: "employer:acme" },
+      events: [
+        {
+          eventId: "dag:event:worker:flow:1:collect-issued",
+          runId: "dag:worker:flow:1",
+          ts: 50_000,
+          stepId: "collect",
+          type: "collect",
+          kind: "collect-issued",
+          message: "owned_i9 for employer:acme",
+        },
+      ],
+    });
+
+    const second = await surface.recordDagRun({
+      flowDefName: "owned_flow",
+      subject: "worker:dag",
+      status: "completed",
+      currentStepId: "done",
+      context: { employer: "employer:acme", accepted: true },
+      now: 51_000,
+      events: [
+        {
+          eventId: "dag:event:worker:flow:1:collect-satisfied",
+          stepId: "collect",
+          type: "collect",
+          kind: "collect-satisfied",
+        },
+        {
+          eventId: "dag:event:worker:flow:1:completed",
+          stepId: "done",
+          type: "done",
+          kind: "completed",
+        },
+      ],
+    });
+    expect(second).toMatchObject({
+      runId: "dag:worker:flow:1",
+      status: "completed",
+      currentStepId: "done",
+      updatedAt: 51_000,
+      completedAt: 51_000,
+      context: { employer: "employer:acme", accepted: true },
+    });
+    expect(second.events.map((event) => event.kind)).toEqual([
+      "collect-issued",
+      "collect-satisfied",
+      "completed",
+    ]);
+
+    await expect(surface.getDagRun({ runId: "dag:worker:flow:1" })).resolves.toEqual(
+      second,
+    );
+    await expect(
+      surface.listDagRuns({ subject: "worker:dag", status: "completed" }),
+    ).resolves.toEqual([second]);
+  });
+
+  test("DAG run creation requires caller-provided run ids", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:dag-id",
+      wall: () => 950,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await expect(
+      surface.recordDagRun({
+        flowDefName: "owned_flow",
+        subject: "worker:new-dag",
+        status: "running",
+        now: 52_000,
+        events: [],
+      }),
+    ).rejects.toThrow(/runId required/);
+  });
 });

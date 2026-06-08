@@ -49,6 +49,28 @@ type StoredCollectionTick = {
   reason: string | null;
 };
 
+type StoredDagRun = {
+  run_id: string;
+  flow_def_name: string;
+  subject: string;
+  status: "running" | "waiting" | "completed" | "unsupported";
+  current_step_id: string | null;
+  started_at: number;
+  updated_at: number;
+  completed_at: number | null;
+  context_json: string | null;
+};
+
+type StoredDagEvent = {
+  event_id: string;
+  run_id: string;
+  ts: number;
+  step_id: string;
+  type: string;
+  kind: string;
+  message: string | null;
+};
+
 function cursor(rows: unknown[] = []): DurableObjectSqlCursorLike {
   return {
     toArray: () => rows,
@@ -116,6 +138,18 @@ function collectionTickStatusBinding(
   throw new Error(`expected collection tick status binding for ${name}`);
 }
 
+function dagRunStatusBinding(value: unknown, name: string): StoredDagRun["status"] {
+  if (
+    value === "running" ||
+    value === "waiting" ||
+    value === "completed" ||
+    value === "unsupported"
+  ) {
+    return value;
+  }
+  throw new Error(`expected DAG run status binding for ${name}`);
+}
+
 /**
  * Narrow fake for the structural Cloudflare DO SQLite API. It supports only the
  * exact statement families emitted by `durableObjectSqlite.ts`, which keeps tests
@@ -126,6 +160,8 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
   readonly projection = new Map<string, StoredProjectionRow>();
   readonly collections = new Map<string, StoredCollection>();
   readonly collectionTicks = new Map<string, StoredCollectionTick>();
+  readonly dagRuns = new Map<string, StoredDagRun>();
+  readonly dagEvents = new Map<string, StoredDagEvent>();
   readonly meta = new Map<string, string>();
   projectionDeleteAllCount = 0;
   projectionDeleteMatchingCount = 0;
@@ -143,6 +179,12 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
     }
 
     if (sql.includes("_timers")) return this.execCollectionTicks(sql, bindings);
+    if (sql.includes("_flow_dag_events")) {
+      return this.execDagEvents(sql, bindings);
+    }
+    if (sql.includes("_flow_dag_runs")) {
+      return this.execDagRuns(sql, bindings);
+    }
     if (sql.includes("_collections")) return this.execCollections(sql, bindings);
     if (sql.includes("_events")) return this.execEvents(sql, bindings);
     if (sql.includes("_projection")) return this.execProjection(sql, bindings);
@@ -545,6 +587,155 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
       rows.sort((a, b) => {
         const fire = a.fire_at - b.fire_at;
         return fire !== 0 ? fire : a.id.localeCompare(b.id);
+      }),
+    );
+  }
+
+  private execDagRuns(
+    sql: string,
+    bindings: readonly unknown[],
+  ): DurableObjectSqlCursorLike {
+    if (sql.startsWith("insert into")) {
+      const [
+        runIdRaw,
+        flowDefNameRaw,
+        subjectRaw,
+        statusRaw,
+        currentStepIdRaw,
+        startedAtRaw,
+        updatedAtRaw,
+        completedAtRaw,
+        contextJsonRaw,
+      ] = bindings;
+      const runId = stringBinding(runIdRaw, "DAG run id");
+      if (this.dagRuns.has(runId)) {
+        throw new Error(`DAG run already exists: ${runId}`);
+      }
+      this.dagRuns.set(runId, {
+        run_id: runId,
+        flow_def_name: stringBinding(flowDefNameRaw, "DAG flow_def_name"),
+        subject: stringBinding(subjectRaw, "DAG subject"),
+        status: dagRunStatusBinding(statusRaw, "DAG status"),
+        current_step_id: nullableStringBinding(
+          currentStepIdRaw,
+          "DAG current_step_id",
+        ),
+        started_at: numberBinding(startedAtRaw, "DAG started_at"),
+        updated_at: numberBinding(updatedAtRaw, "DAG updated_at"),
+        completed_at: nullableNumberBinding(completedAtRaw, "DAG completed_at"),
+        context_json: nullableStringBinding(contextJsonRaw, "DAG context_json"),
+      });
+      return cursor();
+    }
+
+    if (sql.startsWith("update")) {
+      const [
+        statusRaw,
+        currentStepIdRaw,
+        updatedAtRaw,
+        completedAtRaw,
+        contextJsonRaw,
+        runIdRaw,
+      ] = bindings;
+      const runId = stringBinding(runIdRaw, "DAG run id");
+      const existing = this.dagRuns.get(runId);
+      if (existing) {
+        this.dagRuns.set(runId, {
+          ...existing,
+          status: dagRunStatusBinding(statusRaw, "DAG status"),
+          current_step_id: nullableStringBinding(
+            currentStepIdRaw,
+            "DAG current_step_id",
+          ),
+          updated_at: numberBinding(updatedAtRaw, "DAG updated_at"),
+          completed_at: nullableNumberBinding(completedAtRaw, "DAG completed_at"),
+          context_json: nullableStringBinding(contextJsonRaw, "DAG context_json"),
+        });
+      }
+      return cursor();
+    }
+
+    let rows = [...this.dagRuns.values()];
+    if (sql.includes("where run_id = ?")) {
+      rows = rows.filter(
+        (row) => row.run_id === stringBinding(bindings[0], "DAG run id"),
+      );
+    } else if (
+      sql.includes(
+        "where subject = ? and flow_def_name = ? and status in ('waiting', 'running')",
+      )
+    ) {
+      const subject = stringBinding(bindings[0], "DAG subject");
+      const flowDefName = stringBinding(bindings[1], "DAG flow_def_name");
+      rows = rows.filter(
+        (row) =>
+          row.subject === subject &&
+          row.flow_def_name === flowDefName &&
+          (row.status === "waiting" || row.status === "running"),
+      );
+    } else {
+      let bindingIndex = 0;
+      if (sql.includes("subject = ?")) {
+        const subject = stringBinding(bindings[bindingIndex++], "DAG subject");
+        rows = rows.filter((row) => row.subject === subject);
+      }
+      if (sql.includes("status = ?")) {
+        const status = dagRunStatusBinding(
+          bindings[bindingIndex++],
+          "DAG status",
+        );
+        rows = rows.filter((row) => row.status === status);
+      }
+    }
+
+    return cursor(
+      rows.sort((a, b) => {
+        const updated = b.updated_at - a.updated_at;
+        return updated !== 0 ? updated : b.run_id.localeCompare(a.run_id);
+      }),
+    );
+  }
+
+  private execDagEvents(
+    sql: string,
+    bindings: readonly unknown[],
+  ): DurableObjectSqlCursorLike {
+    if (sql.startsWith("insert into")) {
+      const [
+        eventIdRaw,
+        runIdRaw,
+        tsRaw,
+        stepIdRaw,
+        typeRaw,
+        kindRaw,
+        messageRaw,
+      ] = bindings;
+      const eventId = stringBinding(eventIdRaw, "DAG event id");
+      if (this.dagEvents.has(eventId)) {
+        throw new Error(`DAG event already exists: ${eventId}`);
+      }
+      this.dagEvents.set(eventId, {
+        event_id: eventId,
+        run_id: stringBinding(runIdRaw, "DAG event run_id"),
+        ts: numberBinding(tsRaw, "DAG event ts"),
+        step_id: stringBinding(stepIdRaw, "DAG event step_id"),
+        type: stringBinding(typeRaw, "DAG event type"),
+        kind: stringBinding(kindRaw, "DAG event kind"),
+        message: nullableStringBinding(messageRaw, "DAG event message"),
+      });
+      return cursor();
+    }
+
+    let rows = [...this.dagEvents.values()];
+    if (sql.includes("where run_id = ?")) {
+      rows = rows.filter(
+        (row) => row.run_id === stringBinding(bindings[0], "DAG event run_id"),
+      );
+    }
+    return cursor(
+      rows.sort((a, b) => {
+        const ts = a.ts - b.ts;
+        return ts !== 0 ? ts : a.event_id.localeCompare(b.event_id);
       }),
     );
   }

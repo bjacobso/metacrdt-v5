@@ -58,6 +58,7 @@ export type DurableObjectSqliteRuntime = RuntimeServices & {
   projection: DurableObjectSqliteProjectionStore;
   collections: DurableObjectSqliteCollectionStore;
   timers: DurableObjectSqliteTimerStore;
+  dag: DurableObjectSqliteDagStore;
   clock: DurableObjectSqliteClock;
   sequencer: DurableObjectSqliteSequencer;
 };
@@ -144,6 +145,55 @@ export type DurableObjectSqliteCollectionTickFilter = {
   readonly limit?: number;
 };
 
+export type DurableObjectSqliteDagRunStatus =
+  | "running"
+  | "waiting"
+  | "completed"
+  | "unsupported";
+
+export type DurableObjectSqliteDagEventInput = {
+  readonly eventId: string;
+  readonly stepId: string;
+  readonly type: string;
+  readonly kind: string;
+  readonly message?: string;
+};
+
+export type DurableObjectSqliteDagEvent = DurableObjectSqliteDagEventInput & {
+  readonly runId: string;
+  readonly ts: number;
+};
+
+export type DurableObjectSqliteDagRun = {
+  readonly runId: string;
+  readonly flowDefName: string;
+  readonly subject: string;
+  readonly status: DurableObjectSqliteDagRunStatus;
+  readonly currentStepId?: string;
+  readonly startedAt: number;
+  readonly updatedAt: number;
+  readonly completedAt?: number;
+  readonly context?: unknown;
+  readonly events: readonly DurableObjectSqliteDagEvent[];
+};
+
+export type DurableObjectSqliteRecordDagRunInput = {
+  readonly runId?: string;
+  readonly flowDefName: string;
+  readonly subject: string;
+  readonly status: DurableObjectSqliteDagRunStatus;
+  readonly currentStepId?: string;
+  readonly context?: unknown;
+  readonly events: readonly DurableObjectSqliteDagEventInput[];
+  readonly now: number;
+};
+
+export type DurableObjectSqliteDagRunFilter = {
+  readonly subject?: string;
+  readonly status?: DurableObjectSqliteDagRunStatus;
+  readonly limit?: number;
+};
+
 type SqlPlan = {
   prefix: string;
   tables: {
@@ -152,6 +202,8 @@ type SqlPlan = {
     projection: string;
     collections: string;
     timers: string;
+    flowDagRuns: string;
+    flowDagEvents: string;
   };
   indexes: {
     eventsByEntity: string;
@@ -166,6 +218,11 @@ type SqlPlan = {
     timersByToken: string;
     timersByStatusFireAt: string;
     timersByPhase: string;
+    dagRunsBySubject: string;
+    dagRunsBySubjectFlowStatus: string;
+    dagRunsByStatus: string;
+    dagRunsByUpdatedAt: string;
+    dagEventsByRun: string;
   };
 };
 
@@ -185,6 +242,8 @@ function plan(prefix = "metacrdt"): SqlPlan {
       projection: identifier(`${prefix}_projection`),
       collections: identifier(`${prefix}_collections`),
       timers: identifier(`${prefix}_timers`),
+      flowDagRuns: identifier(`${prefix}_flow_dag_runs`),
+      flowDagEvents: identifier(`${prefix}_flow_dag_events`),
     },
     indexes: {
       eventsByEntity: identifier(`${prefix}_events_by_e`),
@@ -199,6 +258,13 @@ function plan(prefix = "metacrdt"): SqlPlan {
       timersByToken: identifier(`${prefix}_timers_by_token`),
       timersByStatusFireAt: identifier(`${prefix}_timers_by_status_fire_at`),
       timersByPhase: identifier(`${prefix}_timers_by_phase`),
+      dagRunsBySubject: identifier(`${prefix}_flow_dag_runs_by_subject`),
+      dagRunsBySubjectFlowStatus: identifier(
+        `${prefix}_flow_dag_runs_by_subject_flow_status`,
+      ),
+      dagRunsByStatus: identifier(`${prefix}_flow_dag_runs_by_status`),
+      dagRunsByUpdatedAt: identifier(`${prefix}_flow_dag_runs_by_updated_at`),
+      dagEventsByRun: identifier(`${prefix}_flow_dag_events_by_run`),
     },
   };
 }
@@ -286,6 +352,17 @@ function collectionTickStatus(
     : undefined;
 }
 
+function dagRunStatus(
+  value: string | undefined,
+): DurableObjectSqliteDagRunStatus | undefined {
+  return value === "running" ||
+    value === "waiting" ||
+    value === "completed" ||
+    value === "unsupported"
+    ? value
+    : undefined;
+}
+
 function decodeCollection(
   row: unknown,
 ): DurableObjectSqliteCollection | undefined {
@@ -369,6 +446,77 @@ function decodeCollectionTick(
   };
 }
 
+type DurableObjectSqliteDagRunRow = Omit<
+  DurableObjectSqliteDagRun,
+  "events"
+>;
+
+function decodeDagRunRow(row: unknown): DurableObjectSqliteDagRunRow | undefined {
+  const runId = textColumn(row, "run_id");
+  const flowDefName = textColumn(row, "flow_def_name");
+  const subject = textColumn(row, "subject");
+  const status = dagRunStatus(textColumn(row, "status"));
+  const currentStepId = textColumn(row, "current_step_id");
+  const startedAt = numberColumn(row, "started_at");
+  const updatedAt = numberColumn(row, "updated_at");
+  const completedAt = numberColumn(row, "completed_at");
+  if (
+    runId === undefined ||
+    flowDefName === undefined ||
+    subject === undefined ||
+    status === undefined ||
+    startedAt === undefined ||
+    startedAt === null ||
+    updatedAt === undefined ||
+    updatedAt === null ||
+    completedAt === undefined
+  ) {
+    return undefined;
+  }
+  const contextJson = textColumn(row, "context_json");
+  return {
+    runId,
+    flowDefName,
+    subject,
+    status,
+    ...(currentStepId === undefined ? {} : { currentStepId }),
+    startedAt,
+    updatedAt,
+    ...(completedAt === null ? {} : { completedAt }),
+    ...(contextJson === undefined ? {} : { context: JSON.parse(contextJson) }),
+  };
+}
+
+function decodeDagEvent(row: unknown): DurableObjectSqliteDagEvent | undefined {
+  const eventId = textColumn(row, "event_id");
+  const runId = textColumn(row, "run_id");
+  const ts = numberColumn(row, "ts");
+  const stepId = textColumn(row, "step_id");
+  const type = textColumn(row, "type");
+  const kind = textColumn(row, "kind");
+  const message = textColumn(row, "message");
+  if (
+    eventId === undefined ||
+    runId === undefined ||
+    ts === undefined ||
+    ts === null ||
+    stepId === undefined ||
+    type === undefined ||
+    kind === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    eventId,
+    runId,
+    ts,
+    stepId,
+    type,
+    kind,
+    ...(message === undefined ? {} : { message }),
+  };
+}
+
 function eventJson(event: Event): string {
   return JSON.stringify(event);
 }
@@ -379,6 +527,10 @@ function projectionRowJson(row: ProjectionRow): string {
 
 function collectionDataJson(data: unknown): string | null {
   return data === undefined ? null : JSON.stringify(data);
+}
+
+function dagContextJson(context: unknown): string | null {
+  return context === undefined ? null : JSON.stringify(context);
 }
 
 function clockKey(replicaId: string): string {
@@ -995,6 +1147,218 @@ export class DurableObjectSqliteTimerStore {
   }
 }
 
+export class DurableObjectSqliteDagStore {
+  private readonly plan: SqlPlan;
+
+  constructor(
+    private readonly sql: DurableObjectSqlStorageLike,
+    tablePrefix = "metacrdt",
+  ) {
+    this.plan = plan(tablePrefix);
+  }
+
+  async initialize(): Promise<void> {
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS ${this.plan.tables.flowDagRuns} (` +
+        "run_id TEXT PRIMARY KEY NOT NULL, " +
+        "flow_def_name TEXT NOT NULL, " +
+        "subject TEXT NOT NULL, " +
+        "status TEXT NOT NULL CHECK (status IN ('running', 'waiting', 'completed', 'unsupported')), " +
+        "current_step_id TEXT NULL, " +
+        "started_at REAL NOT NULL, " +
+        "updated_at REAL NOT NULL, " +
+        "completed_at REAL NULL, " +
+        "context_json TEXT NULL" +
+        ")",
+    );
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS ${this.plan.tables.flowDagEvents} (` +
+        "event_id TEXT PRIMARY KEY NOT NULL, " +
+        "run_id TEXT NOT NULL, " +
+        "ts REAL NOT NULL, " +
+        "step_id TEXT NOT NULL, " +
+        "type TEXT NOT NULL, " +
+        "kind TEXT NOT NULL, " +
+        "message TEXT NULL" +
+        ")",
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.dagRunsBySubject} ` +
+        `ON ${this.plan.tables.flowDagRuns} (subject)`,
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.dagRunsBySubjectFlowStatus} ` +
+        `ON ${this.plan.tables.flowDagRuns} (subject, flow_def_name, status)`,
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.dagRunsByStatus} ` +
+        `ON ${this.plan.tables.flowDagRuns} (status)`,
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.dagRunsByUpdatedAt} ` +
+        `ON ${this.plan.tables.flowDagRuns} (updated_at)`,
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.dagEventsByRun} ` +
+        `ON ${this.plan.tables.flowDagEvents} (run_id)`,
+    );
+  }
+
+  async record(
+    input: DurableObjectSqliteRecordDagRunInput,
+  ): Promise<DurableObjectSqliteDagRun> {
+    const existing = input.runId === undefined
+      ? await this.findActive(input.subject, input.flowDefName)
+      : await this.getRow(input.runId);
+    const runId = existing?.runId ?? input.runId;
+    if (runId === undefined) {
+      throw new Error(
+        `runId required to create DAG run for ${input.subject}/${input.flowDefName}`,
+      );
+    }
+
+    const completedAt = input.status === "completed" ||
+      input.status === "unsupported"
+      ? input.now
+      : null;
+
+    if (existing === undefined) {
+      this.sql.exec(
+        `INSERT INTO ${this.plan.tables.flowDagRuns} (` +
+          "run_id, flow_def_name, subject, status, current_step_id, started_at, " +
+          "updated_at, completed_at, context_json" +
+          ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        runId,
+        input.flowDefName,
+        input.subject,
+        input.status,
+        input.currentStepId ?? null,
+        input.now,
+        input.now,
+        completedAt,
+        dagContextJson(input.context),
+      );
+    } else {
+      this.sql.exec(
+        `UPDATE ${this.plan.tables.flowDagRuns} ` +
+          "SET status = ?, current_step_id = ?, updated_at = ?, completed_at = ?, context_json = ? " +
+          "WHERE run_id = ?",
+        input.status,
+        input.currentStepId ?? null,
+        input.now,
+        completedAt,
+        dagContextJson(input.context),
+        runId,
+      );
+    }
+
+    for (const event of input.events) {
+      this.sql.exec(
+        `INSERT INTO ${this.plan.tables.flowDagEvents} (` +
+          "event_id, run_id, ts, step_id, type, kind, message" +
+          ") VALUES (?, ?, ?, ?, ?, ?, ?)",
+        event.eventId,
+        runId,
+        input.now,
+        event.stepId,
+        event.type,
+        event.kind,
+        event.message ?? null,
+      );
+    }
+
+    const run = await this.get(runId);
+    if (run === undefined) {
+      throw new Error(`failed to record DAG run: ${runId}`);
+    }
+    return run;
+  }
+
+  async get(runId: string): Promise<DurableObjectSqliteDagRun | undefined> {
+    const row = await this.getRow(runId);
+    if (row === undefined) return undefined;
+    const events = await this.listEvents(runId);
+    return { ...row, events };
+  }
+
+  async list(
+    filter: DurableObjectSqliteDagRunFilter = {},
+  ): Promise<DurableObjectSqliteDagRun[]> {
+    const clauses: string[] = [];
+    const bindings: unknown[] = [];
+    if (filter.subject !== undefined) {
+      clauses.push("subject = ?");
+      bindings.push(filter.subject);
+    }
+    if (filter.status !== undefined) {
+      clauses.push("status = ?");
+      bindings.push(filter.status);
+    }
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const rowsOut = rows(
+      this.sql.exec(
+        `SELECT run_id, flow_def_name, subject, status, current_step_id, started_at, updated_at, completed_at, context_json ` +
+          `FROM ${this.plan.tables.flowDagRuns}${where} ORDER BY updated_at DESC, run_id DESC`,
+        ...bindings,
+      ),
+    )
+      .map(decodeDagRunRow)
+      .filter((row): row is DurableObjectSqliteDagRunRow => row !== undefined)
+      .slice(0, Math.max(1, Math.min(filter.limit ?? 20, 100)));
+    const out: DurableObjectSqliteDagRun[] = [];
+    for (const row of rowsOut) {
+      out.push({ ...row, events: await this.listEvents(row.runId) });
+    }
+    return out;
+  }
+
+  private async getRow(
+    runId: string,
+  ): Promise<DurableObjectSqliteDagRunRow | undefined> {
+    return decodeDagRunRow(
+      rows(
+        this.sql.exec(
+          `SELECT run_id, flow_def_name, subject, status, current_step_id, started_at, updated_at, completed_at, context_json ` +
+            `FROM ${this.plan.tables.flowDagRuns} WHERE run_id = ?`,
+          runId,
+        ),
+      )[0],
+    );
+  }
+
+  private async findActive(
+    subject: string,
+    flowDefName: string,
+  ): Promise<DurableObjectSqliteDagRunRow | undefined> {
+    return decodeDagRunRow(
+      rows(
+        this.sql.exec(
+          `SELECT run_id, flow_def_name, subject, status, current_step_id, started_at, updated_at, completed_at, context_json ` +
+            `FROM ${this.plan.tables.flowDagRuns} ` +
+            "WHERE subject = ? AND flow_def_name = ? AND status IN ('waiting', 'running') " +
+            "ORDER BY updated_at DESC, run_id DESC",
+          subject,
+          flowDefName,
+        ),
+      )[0],
+    );
+  }
+
+  private async listEvents(
+    runId: string,
+  ): Promise<DurableObjectSqliteDagEvent[]> {
+    return rows(
+      this.sql.exec(
+        `SELECT event_id, run_id, ts, step_id, type, kind, message ` +
+          `FROM ${this.plan.tables.flowDagEvents} WHERE run_id = ? ORDER BY ts, event_id`,
+        runId,
+      ),
+    )
+      .map(decodeDagEvent)
+      .filter((event): event is DurableObjectSqliteDagEvent => event !== undefined);
+  }
+}
+
 class DurableObjectSqliteMetaStore {
   private readonly plan: SqlPlan;
 
@@ -1118,12 +1482,14 @@ export async function createDurableObjectSqliteRuntime(
     tablePrefix,
   );
   const timers = new DurableObjectSqliteTimerStore(options.sql, tablePrefix);
+  const dag = new DurableObjectSqliteDagStore(options.sql, tablePrefix);
   const meta = new DurableObjectSqliteMetaStore(options.sql, tablePrefix);
   if (options.initialize ?? true) {
     await store.initialize();
     await projection.initialize();
     await collections.initialize();
     await timers.initialize();
+    await dag.initialize();
     await meta.initialize();
   }
   const capabilities = new Set<RuntimeCapability>(
@@ -1144,6 +1510,7 @@ export async function createDurableObjectSqliteRuntime(
     projection,
     collections,
     timers,
+    dag,
     clock: await DurableObjectSqliteClock.create(
       meta,
       options.replicaId,
