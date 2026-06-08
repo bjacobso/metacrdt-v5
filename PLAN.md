@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 28 (component-backed New Entity path) has shipped. The
+**Current goal:** Goal 29 (component-owned entity browser surface) has shipped. The
 next active goal should be chosen from the remaining TODO candidates: full app
 write authorization, live Cloudflare deployment/auth, or migrating more of the
 reference runtime onto component-owned state.
@@ -78,7 +78,7 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 94 tests at last verification.
+- Convex backend tests are green: 95 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -106,12 +106,14 @@ arguments.
     component-owned `factEvents` into disposable `facts` / `currentFacts`
   - component-owned entity current-state reads via `log.getCurrentEntity`,
     grouping current facts by attribute over the component projection
+  - component-owned typed entity discovery via `log.listCurrentEntities`,
+    listing entities from current `type` facts and attaching current names
   - a reference-app wrapper, `api.metacrdtComponent.verifyEvents`, that mounts
     the component as `components.metacrdt` while keeping table ownership and
     public API naming in the host app
   - reference-app wrappers for app-auth-derived writes into the component-owned
-    protocol log, current projection/entity reads, rebuild, and bounded
-    component-owned entity creation
+    protocol log, current projection/entity reads, typed entity lists, rebuild,
+    and bounded component-owned entity creation
   - an explicit Confect sidecar warning/helper documenting the manual-mount
     lesson from Goal 2
   - package-local tests for deterministic event reconstruction, legacy fallback
@@ -198,6 +200,11 @@ arguments.
     component-owned state
   - `/component/e/:id` reads grouped current state and event history from the
     component
+- A component-owned entity browser surface exists:
+  - `@metacrdt/convex` exposes `log.listCurrentEntities`
+  - the host wrapper exposes `api.metacrdtComponent.listOwnedCurrentEntities`
+  - the Entities route shows component-owned entities separately and links them
+    to `/component/e/:id`
 - Config history/diff exists:
   - `configHistory.currentManifest` reconstructs the current owned-artifact
     manifest from `config:default`
@@ -2565,6 +2572,85 @@ src/pages/ComponentEntity.tsx
 
 ---
 
+## Goal 29 — Component-Owned Entity Browser Surface
+
+**Status:** shipped as the first list/browser surface over component-owned
+state.
+
+**Objective:** make component-owned entities discoverable after creation. Goal 28
+could create and open `/component/e/:id`, but a user needed the route URL to get
+back to that component-owned object. Goal 29 adds a bounded typed list over the
+component-owned current projection and renders it in the app's Entities page.
+
+### Scope
+
+Component package:
+
+```text
+packages/convex/src/component/schema.ts
+  currentFacts indexes for type discovery
+
+packages/convex/src/component/log.ts
+  listCurrentEntities({ type?, limit? })
+```
+
+Reference app wrapper:
+
+```text
+convex/metacrdtComponent.ts
+  listOwnedCurrentEntities({ type?, limit? })
+```
+
+Frontend:
+
+```text
+src/pages/Entities.tsx
+  Component-owned entities section
+```
+
+### Acceptance Criteria
+
+- `log.listCurrentEntities`:
+  - discovers entities from current `type` facts;
+  - optionally filters by type;
+  - attaches current `name` when present;
+  - is bounded and index-backed.
+- `api.metacrdtComponent.listOwnedCurrentEntities` wraps the component query so
+  the frontend never calls component functions directly.
+- The Entities route:
+  - shows host-owned entities exactly as before;
+  - adds a clearly labeled component-owned section;
+  - filters component-owned rows by the selected host type when a type is
+    selected;
+  - links rows to `/component/e/:id`.
+
+### Non-Goals
+
+- Do not merge component-owned rows into host-owned `queryEntities` yet.
+- Do not make component-owned rows participate in host-owned rules/compliance
+  yet.
+- Do not migrate the production host write path in this slice.
+
+### Verification
+
+- `npm run test:convex-package` passed (31 tests).
+- `npx vitest run convex/metacrdtComponent.test.ts` passed (9 tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm test` passed (95 Convex/backend tests).
+- `npm run test:core` passed (46 tests).
+- `npm run build` passed.
+- `npx convex dev --once` deployed the backend to `chatty-hare-94`.
+- `npx @convex-dev/static-hosting upload` deployed the frontend to
+  `https://chatty-hare-94.convex.site`.
+- Live Chrome smoke passed: `/entities` → `Worker` shows the
+  `Component-owned entities` section with `Ava Reed` and
+  `Goal 28 Smoke 0707`; clicking `Ava Reed` routes to
+  `/component/e/worker:ava-reed-...` and renders the component-owned detail page
+  with current state and event log.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -2598,6 +2684,7 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Component-owned entity current-state read surface.
 - [x] First component-backed frontend write/read path (`New entity` →
   `/component/e/:id`).
+- [x] Component-owned typed entity browser/list surface.
 - [ ] Migrate more reference runtime business logic onto component-owned state.
 
 ### Auth / Privacy

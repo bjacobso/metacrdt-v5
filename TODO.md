@@ -97,6 +97,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   component-owned entities through `api.metacrdtComponent.createOwnedEntity` and
   routes to `/component/e/:id`, which reads current state + event history from
   `@metacrdt/convex` component-owned tables.
+- [x] **Component-owned typed entity browser** — `@metacrdt/convex` now lists
+  typed component-owned entities from current `type` facts, the host wrapper
+  exposes that list, and the Entities page shows component-owned rows separately
+  with links to `/component/e/:id`.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
@@ -297,6 +301,17 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Backend wrapper test proves `type`, `name`, and initial attributes are
   written into component-owned state and read back through
   `getOwnedCurrentEntity`.
+
+### 2026-06-07 — component-owned entity browser surface
+- [x] **Component-owned entities are now discoverable.**
+  `packages/convex/src/component/log.ts` exposes `listCurrentEntities`, backed by
+  current `type` facts and component-owned indexes, with optional type filtering
+  and current-name attachment.
+- [x] **Reference app wrapper and UI consume it.**
+  `api.metacrdtComponent.listOwnedCurrentEntities` wraps the component query, and
+  the Entities route renders a separate component-owned section linked to
+  `/component/e/:id`.
+- [x] Tests cover the package query and mounted wrapper behavior.
 
 ### 2026-06-07 — @metacrdt/runtime p2p DataChannel transport
 - [x] **Added structural p2p transport.** `packages/runtime/src/p2p.ts` defines

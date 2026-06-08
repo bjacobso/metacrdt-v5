@@ -154,6 +154,30 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         }>,
         Name
       >;
+      listCurrentEntities: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number; type?: string },
+        Array<{
+          e: string;
+          name?: any;
+          type: string;
+          typeFact: {
+            a: string;
+            assertEventId: string;
+            assertedAt: number;
+            e: string;
+            factId: string;
+            txTime: number;
+            updatedAt: number;
+            v: any;
+            validFrom: number;
+            validTo?: number;
+          };
+          updatedAt: number;
+        }>,
+        Name
+      >;
       listEvents: FunctionReference<
         "query",
         "internal",

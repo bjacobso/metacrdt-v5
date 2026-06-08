@@ -176,6 +176,51 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     });
   });
 
+  test("lists component-owned current entities through app wrapper", async () => {
+    const t = convexTest(schema, modules);
+    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-list:worker-a",
+      type: "Worker",
+      name: "List Worker A",
+      attributes: [{ a: "worker.status", value: "active" }],
+    });
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-list:worker-b",
+      type: "Worker",
+      name: "List Worker B",
+    });
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-list:client-a",
+      type: "Client",
+      name: "List Client A",
+    });
+
+    const workers = await t.query(api.metacrdtComponent.listOwnedCurrentEntities, {
+      type: "Worker",
+    });
+    expect(workers.map((e) => e.e).sort()).toEqual([
+      "component-list:worker-a",
+      "component-list:worker-b",
+    ]);
+    expect(workers).toContainEqual(
+      expect.objectContaining({
+        e: "component-list:worker-a",
+        type: "Worker",
+        name: "List Worker A",
+        typeFact: expect.objectContaining({ a: "type", v: "Worker" }),
+      }),
+    );
+
+    const all = await t.query(api.metacrdtComponent.listOwnedCurrentEntities, {});
+    expect(all.map((e) => e.e).sort()).toEqual([
+      "component-list:client-a",
+      "component-list:worker-a",
+      "component-list:worker-b",
+    ]);
+  });
+
   test("component-owned missing current entity returns null", async () => {
     const t = convexTest(schema, modules);
     t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);

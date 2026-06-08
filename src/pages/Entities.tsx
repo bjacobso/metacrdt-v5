@@ -25,6 +25,10 @@ export default function Entities() {
     api.entities.queryEntities,
     type ? { type, pageSize: 50 } : "skip",
   );
+  const componentEntities = useQuery(
+    api.metacrdtComponent.listOwnedCurrentEntities,
+    type ? { type, limit: 50 } : { limit: 50 },
+  );
 
   const userTypes = (types ?? []).filter((t) => t.origin !== "system");
   const systemTypes = (types ?? []).filter((t) => t.origin === "system");
@@ -198,6 +202,62 @@ export default function Entities() {
                 </table>
               </div>
             )}
+          </Card>
+        )}
+        {componentEntities !== undefined && componentEntities.length > 0 && (
+          <Card className="mt-5">
+            <div className="flex items-center justify-between border-b border-line-soft px-5 py-3.5">
+              <div>
+                <h2 className="text-[15px] font-semibold text-ink">
+                  Component-owned entities
+                </h2>
+                <p className="text-[12px] text-muted">
+                  @metacrdt/convex current fold
+                </p>
+              </div>
+              <span className="text-xs text-muted">
+                {componentEntities.length}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[13px]">
+                <thead>
+                  <tr className="border-b border-line-soft text-[11px] uppercase tracking-wide text-muted">
+                    <th className="px-5 py-2.5 font-semibold">entity</th>
+                    <th className="px-3 py-2.5 font-semibold">type</th>
+                    <th className="px-3 py-2.5 font-semibold">updated</th>
+                    <th className="px-5 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line-soft">
+                  {componentEntities.map((e) => (
+                    <tr
+                      key={e.e}
+                      onClick={() =>
+                        navigate(`/component/e/${encodeURIComponent(e.e)}`)
+                      }
+                      className="cursor-pointer hover:bg-line-soft"
+                    >
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-ink">
+                            {displayValue(e.name ?? shortId(e.e))}
+                          </span>
+                          <Mono>{e.e}</Mono>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-ink-2">{e.type}</td>
+                      <td className="px-3 py-3 text-muted">
+                        {new Date(e.updatedAt).toLocaleString()}
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <ChevronRight className="ml-auto h-4 w-4 text-faint" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Card>
         )}
       </div>

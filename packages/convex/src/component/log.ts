@@ -98,6 +98,14 @@ const currentEntityValidator = v.object({
   attributes: v.array(currentAttributeValidator),
 });
 
+const currentEntityListItemValidator = v.object({
+  e: v.string(),
+  type: v.string(),
+  name: v.optional(v.any()),
+  updatedAt: v.number(),
+  typeFact: currentFactValidator,
+});
+
 const rebuildResultValidator = v.object({
   events: v.number(),
   facts: v.number(),
@@ -758,5 +766,50 @@ export const getCurrentEntity = query({
     const facts = await summarizeCurrentRows(ctx, rows);
     if (facts.length === 0) return null;
     return groupCurrentEntity(args.e, facts);
+  },
+});
+
+export const listCurrentEntities = query({
+  args: {
+    type: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(currentEntityListItemValidator),
+  handler: async (ctx, args) => {
+    const take = Math.max(1, Math.min(args.limit ?? 50, 200));
+    const typeRows =
+      args.type === undefined
+        ? await ctx.db
+            .query("currentFacts")
+            .withIndex("by_a_and_updatedAt", (q) => q.eq("a", "type"))
+            .order("desc")
+            .take(take)
+        : await ctx.db
+            .query("currentFacts")
+            .withIndex("by_a_and_v_and_updatedAt", (q) =>
+              q.eq("a", "type").eq("v", args.type!),
+            )
+            .order("desc")
+            .take(take);
+
+    const out = [];
+    for (const typeRow of typeRows) {
+      const typeFact = await ctx.db.get(typeRow.factId);
+      if (typeFact === null) continue;
+      const names = await ctx.db
+        .query("currentFacts")
+        .withIndex("by_e_and_a", (q) => q.eq("e", typeRow.e).eq("a", "name"))
+        .take(1);
+      out.push(
+        withoutUndefined({
+          e: typeRow.e,
+          type: String(typeRow.v),
+          name: names[0]?.v,
+          updatedAt: typeRow.updatedAt,
+          typeFact: currentFactSummary(typeRow, typeFact),
+        }),
+      );
+    }
+    return out;
   },
 });

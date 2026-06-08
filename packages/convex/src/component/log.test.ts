@@ -234,6 +234,68 @@ describe("@metacrdt/convex component-owned protocol log", () => {
     ).toBe(false);
   });
 
+  test("lists typed component-owned current entities", async () => {
+    const t = initComponentTest();
+    await t.mutation(componentInternal.log.appendAssert, {
+      ...actor,
+      txTime: 10_000,
+      e: "worker:list-a",
+      a: "type",
+      v: "Worker",
+      cardinality: "one",
+    });
+    await t.mutation(componentInternal.log.appendAssert, {
+      ...actor,
+      txTime: 10_001,
+      e: "worker:list-a",
+      a: "name",
+      v: "List A",
+      cardinality: "one",
+    });
+    await t.mutation(componentInternal.log.appendAssert, {
+      ...actor,
+      txTime: 10_002,
+      e: "worker:list-b",
+      a: "type",
+      v: "Worker",
+      cardinality: "one",
+    });
+    await t.mutation(componentInternal.log.appendAssert, {
+      ...actor,
+      txTime: 10_003,
+      e: "client:list-c",
+      a: "type",
+      v: "Client",
+      cardinality: "one",
+    });
+
+    const workers = await t.query(componentInternal.log.listCurrentEntities, {
+      type: "Worker",
+    });
+    expect(workers).toHaveLength(2);
+    expect(workers.map((e: { e: string }) => e.e).sort()).toEqual([
+      "worker:list-a",
+      "worker:list-b",
+    ]);
+    expect(
+      workers.find((e: { e: string }) => e.e === "worker:list-a"),
+    ).toMatchObject({
+      type: "Worker",
+      name: "List A",
+      typeFact: expect.objectContaining({
+        a: "type",
+        v: "Worker",
+      }),
+    });
+
+    const all = await t.query(componentInternal.log.listCurrentEntities, {});
+    expect(all.map((e: { e: string }) => e.e).sort()).toEqual([
+      "client:list-c",
+      "worker:list-a",
+      "worker:list-b",
+    ]);
+  });
+
   test("cardinality-one assertions reconcile current state by protocol order", async () => {
     const t = initComponentTest();
     await t.mutation(componentInternal.log.appendAssert, {

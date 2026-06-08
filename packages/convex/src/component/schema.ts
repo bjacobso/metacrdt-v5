@@ -95,5 +95,8 @@ export default defineSchema({
     .index("by_factId", ["factId"])
     .index("by_e", ["e"])
     .index("by_e_and_a", ["e", "a"])
+    .index("by_a_and_v", ["a", "v"])
+    .index("by_a_and_v_and_updatedAt", ["a", "v", "updatedAt"])
+    .index("by_a_and_updatedAt", ["a", "updatedAt"])
     .index("by_updatedAt", ["updatedAt"]),
 });
