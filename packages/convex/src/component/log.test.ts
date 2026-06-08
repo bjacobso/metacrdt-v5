@@ -9,6 +9,7 @@ const componentInternal = internal as unknown as {
     appendLifecycle: any;
     getEvent: any;
     listEvents: any;
+    listCurrent: any;
   };
 };
 
@@ -96,6 +97,83 @@ describe("@metacrdt/convex component-owned protocol log", () => {
       verifiable: true,
       validEventId: true,
     });
+  });
+
+  test("maintains component-owned current projection through lifecycle events", async () => {
+    const t = initComponentTest();
+    const asserted = await t.mutation(componentInternal.log.appendAssert, {
+      ...actor,
+      e: "worker:projection",
+      a: "worker.status",
+      v: "active",
+      validFrom: 9_000,
+    });
+
+    expect(
+      await t.query(componentInternal.log.listCurrent, {
+        e: "worker:projection",
+        a: "worker.status",
+      }),
+    ).toMatchObject([
+      {
+        factId: asserted.factId,
+        e: "worker:projection",
+        a: "worker.status",
+        v: "active",
+        assertEventId: asserted.eventId,
+      },
+    ]);
+
+    await t.mutation(componentInternal.log.appendLifecycle, {
+      ...actor,
+      txTime: 11_000,
+      kind: "tombstone",
+      targetEventId: asserted.eventId,
+      e: "worker:projection",
+      a: "worker.status",
+      v: "active",
+      reason: "bad source",
+    });
+    expect(
+      await t.query(componentInternal.log.listCurrent, {
+        e: "worker:projection",
+        a: "worker.status",
+      }),
+    ).toEqual([]);
+
+    await t.mutation(componentInternal.log.appendLifecycle, {
+      ...actor,
+      txTime: 12_000,
+      kind: "untombstone",
+      targetEventId: asserted.eventId,
+      e: "worker:projection",
+      a: "worker.status",
+      v: "active",
+      reason: "restored",
+    });
+    expect(
+      await t.query(componentInternal.log.listCurrent, {
+        e: "worker:projection",
+        a: "worker.status",
+      }),
+    ).toHaveLength(1);
+
+    await t.mutation(componentInternal.log.appendLifecycle, {
+      ...actor,
+      txTime: 13_000,
+      kind: "retract",
+      targetEventId: asserted.eventId,
+      e: "worker:projection",
+      a: "worker.status",
+      v: "active",
+      reason: "closed",
+    });
+    expect(
+      await t.query(componentInternal.log.listCurrent, {
+        e: "worker:projection",
+        a: "worker.status",
+      }),
+    ).toEqual([]);
   });
 
   test("filters component-owned events by entity and attribute", async () => {

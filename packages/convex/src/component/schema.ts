@@ -58,4 +58,42 @@ export default defineSchema({
     .index("by_e", ["e"])
     .index("by_e_and_a_and_txTime", ["e", "a", "txTime"])
     .index("by_txTime", ["txTime"]),
+
+  // Component-owned bitemporal fact projection. This is a read model of the
+  // component log, not a second source of truth.
+  facts: defineTable({
+    e: v.string(),
+    a: v.string(),
+    v: value,
+    firstTxId: v.id("transactions"),
+    lastTxId: v.optional(v.id("transactions")),
+    assertedAt: v.number(),
+    retractedAt: v.optional(v.number()),
+    validFrom: v.number(),
+    validTo: v.optional(v.number()),
+    tombstonedAt: v.optional(v.number()),
+    tombstoneTxId: v.optional(v.id("transactions")),
+    tombstoneReason: v.optional(v.string()),
+    assertEventId: v.string(),
+    metadata: v.optional(value),
+  })
+    .index("by_assertEventId", ["assertEventId"])
+    .index("by_e", ["e"])
+    .index("by_e_and_a", ["e", "a"])
+    .index("by_assertedAt", ["assertedAt"]),
+
+  // Component-owned now projection. Disposable; it can be rebuilt from `facts`.
+  currentFacts: defineTable({
+    e: v.string(),
+    a: v.string(),
+    v: value,
+    factId: v.id("facts"),
+    validFrom: v.number(),
+    txTime: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_factId", ["factId"])
+    .index("by_e", ["e"])
+    .index("by_e_and_a", ["e", "a"])
+    .index("by_updatedAt", ["updatedAt"]),
 });

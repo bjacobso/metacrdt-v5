@@ -83,5 +83,39 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       targetEventId: asserted.eventId,
       reason: "component-owned retract",
     });
+
+    const current = await t.query(api.metacrdtComponent.listOwnedCurrent, {
+      e: "component-owned:worker",
+      a: "worker.status",
+      limit: 10,
+    });
+    expect(current).toEqual([]);
+  });
+
+  test("lists component-owned current projection through app wrapper", async () => {
+    const t = convexTest(schema, modules);
+    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+
+    const asserted = await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
+      e: "component-current:worker",
+      a: "worker.status",
+      value: "active",
+      validFrom: 1_000,
+    });
+
+    const current = await t.query(api.metacrdtComponent.listOwnedCurrent, {
+      e: "component-current:worker",
+      a: "worker.status",
+    });
+
+    expect(current).toMatchObject([
+      {
+        factId: asserted.factId,
+        e: "component-current:worker",
+        a: "worker.status",
+        v: "active",
+        assertEventId: asserted.eventId,
+      },
+    ]);
   });
 });

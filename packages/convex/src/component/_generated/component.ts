@@ -44,7 +44,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           validFrom?: number;
           validTo?: number;
         },
-        { eventId: string; rowId: string; txId: string },
+        { eventId: string; factId?: string; rowId: string; txId: string },
         Name
       >;
       appendLifecycle: FunctionReference<
@@ -68,7 +68,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           v: any;
           validTo?: number;
         },
-        { eventId: string; rowId: string; txId: string },
+        { eventId: string; factId?: string; rowId: string; txId: string },
         Name
       >;
       getEvent: FunctionReference<
@@ -96,6 +96,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           validTo?: number;
           verifiable: boolean;
         } | null,
+        Name
+      >;
+      listCurrent: FunctionReference<
+        "query",
+        "internal",
+        { a?: string; e?: string; limit?: number },
+        Array<{
+          a: string;
+          assertEventId: string;
+          assertedAt: number;
+          e: string;
+          factId: string;
+          txTime: number;
+          updatedAt: number;
+          v: any;
+          validFrom: number;
+          validTo?: number;
+        }>,
         Name
       >;
       listEvents: FunctionReference<

@@ -77,6 +77,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   component now owns `transactions` + append-only protocol `factEvents`, exposes
   `log.appendAssert` / `log.appendLifecycle` / `log.getEvent` / `log.listEvents`,
   and the reference app wraps those functions with server-derived actor context.
+- [x] **`@metacrdt/convex` projection-owned slice** — component-owned writes now
+  maintain component-owned `facts` and `currentFacts`; `log.listCurrent` and
+  `api.metacrdtComponent.listOwnedCurrent` expose current component state.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
@@ -110,8 +113,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **p2p DataChannel transport** — `packages/runtime/src/p2p.ts` adds a
   structural WebRTC/DataChannel-compatible transport with JSON wire messages,
   hello/delta catch-up, directed deltas, lifecycle cleanup, and multi-hop gossip.
-- [ ] Targets: live Cloudflare deployment/auth and a projection-owning
-  `@metacrdt/convex` component/function surface.
+- [ ] Targets: live Cloudflare deployment/auth and migrating more reference
+  runtime business logic onto `@metacrdt/convex` component-owned state.
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -170,8 +173,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 **Next goal candidates**
 - [ ] Choose the next active goal: full app write authorization, live Cloudflare
-  deployment/auth, or the next projection-owning `@metacrdt/convex` component
-  slice.
+  deployment/auth, or migrating more reference runtime business logic onto
+  `@metacrdt/convex` component-owned state.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -210,8 +213,23 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   prove assert/lifecycle writes, event verification, and entity/attribute filters;
   the app wrapper test proves the installed component can own events while the
   host app keeps its existing tables and public API names.
-- [ ] Still deferred: moving `facts` / `currentFacts` / materialized projections
-  into a component-owned surface, and live app write authorization.
+- [x] Follow-up shipped: the next slice moved `facts` / `currentFacts` into the
+  component-owned surface for component-owned writes.
+- [ ] Still deferred: materialized/rule projections inside the component,
+  migrating the reference app's production write path, and live app write
+  authorization.
+
+### 2026-06-07 — @metacrdt/convex component-owned current projections
+- [x] **Component now owns its first read models.**
+  `packages/convex/src/component/schema.ts` adds `facts` and `currentFacts`;
+  `appendAssert` creates fact/current rows and `appendLifecycle` folds retract,
+  tombstone, and untombstone into those projections.
+- [x] **Current-state API shipped.** `log.listCurrent` filters component-owned
+  current state by entity/attribute, and the reference app exposes
+  `api.metacrdtComponent.listOwnedCurrent` as the app-owned wrapper.
+- [x] Tests prove assert creates current state, tombstone removes it,
+  untombstone restores it, retract removes it permanently, and mounted app
+  wrappers can read the component-owned projection.
 
 ### 2026-06-07 — @metacrdt/runtime p2p DataChannel transport
 - [x] **Added structural p2p transport.** `packages/runtime/src/p2p.ts` defines

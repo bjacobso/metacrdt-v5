@@ -1,9 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 23 (`@metacrdt/convex` state-owned protocol log
-component) has shipped. The next active goal should be chosen from the remaining
-TODO candidates: full app write authorization, live Cloudflare deployment/auth,
-or the next projection-owning `@metacrdt/convex` component slice.
+**Current goal:** Goal 24 (`@metacrdt/convex` component-owned projections) has
+shipped. The next active goal should be chosen from the remaining TODO
+candidates: full app write authorization, live Cloudflare deployment/auth, or
+migrating more of the reference runtime onto component-owned state.
 
 This plan is the operational goal file. Read it with:
 
@@ -98,6 +98,8 @@ arguments.
     functions that operate on values passed across the component boundary
   - component-owned `transactions` and `factEvents` tables plus append/list/get
     functions for a durable protocol log
+  - component-owned `facts` and `currentFacts` projections maintained by the
+    component append/lifecycle functions
   - a reference-app wrapper, `api.metacrdtComponent.verifyEvents`, that mounts
     the component as `components.metacrdt` while keeping table ownership and
     public API naming in the host app
@@ -106,7 +108,8 @@ arguments.
   - an explicit Confect sidecar warning/helper documenting the manual-mount
     lesson from Goal 2
   - package-local tests for deterministic event reconstruction, legacy fallback
-    behavior, registered component functions, and component-owned log writes
+    behavior, registered component functions, component-owned log writes, and
+    component-owned current projection lifecycle
 - `@metacrdt/forma` exists in [`packages/forma`](./packages/forma):
   - runtime-neutral Lisp / S-expression authoring language
   - parser, formatter, evaluator, VM, type inference, and language-owned
@@ -209,10 +212,11 @@ arguments.
   rows, while new corrections write protocol primitives.
 - `facts` and `currentFacts` are still maintained as imperative projections,
   not folded directly from raw core-shaped events.
-- `@metacrdt/convex` now has adapter helpers, stateless protocol helpers, and a
-  component-owned protocol transaction/event log. The host app still owns its
-  production `facts` / `currentFacts` projections and has not migrated the
-  reference write path into component-owned tables.
+- `@metacrdt/convex` now has adapter helpers, stateless protocol helpers, a
+  component-owned protocol transaction/event log, and component-owned
+  `facts`/`currentFacts` projections for component-owned writes. The reference
+  app still owns its production write path and has not migrated its existing
+  business logic/rules onto component-owned state.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime.
 - Multi-replica sync is specified and now implemented as in-memory
@@ -2214,6 +2218,74 @@ convex/metacrdtComponent.ts
 
 ---
 
+## Goal 24 — `@metacrdt/convex` Component-Owned Projections
+
+**Status:** shipped as the first projection-owning component slice.
+
+**Objective:** make the packaged Convex component maintain its own read models
+for component-owned writes. The component log remains the source of truth, but
+`facts` and `currentFacts` now live inside the component too, proving the package
+can own both protocol events and current-state projection state.
+
+### Scope
+
+Package additions:
+
+```text
+packages/convex/src/component/schema.ts
+  facts
+  currentFacts
+
+packages/convex/src/component/log.ts
+  listCurrent
+  assert/retract/tombstone/untombstone projection maintenance
+```
+
+Reference app additions:
+
+```text
+convex/metacrdtComponent.ts
+  listOwnedCurrent
+```
+
+### Acceptance Criteria
+
+- Component schema owns:
+  - bitemporal `facts` projection rows;
+  - disposable `currentFacts` now-projection rows;
+  - indexes for target event lookup, entity/attribute current lookup, and rebuild
+    viability.
+- `log.appendAssert`:
+  - writes a protocol assert event;
+  - creates a component-owned fact projection row;
+  - inserts a current projection row when the fact is visible at the write time.
+- `log.appendLifecycle`:
+  - finds the target component-owned fact by `assertEventId`;
+  - `retract` patches `retractedAt` and removes current state;
+  - `tombstone` patches tombstone metadata and removes current state;
+  - `untombstone` clears tombstone metadata and restores current state if still
+    visible.
+- `log.listCurrent` exposes component-owned current state by optional entity and
+  attribute filters.
+- Reference app wrapper `listOwnedCurrent` proves host apps can expose the
+  component-owned projection without direct component calls from clients.
+
+### Non-Goals
+
+- Do not import host-app schema/cardinality rules into the component projection.
+- Do not migrate the reference app's production `facts`, `currentFacts`, Datalog
+  materialization, or compliance logic into the component yet.
+- Do not implement component-owned rule/materialized projections in this slice.
+
+### Verification
+
+- `npm run test:convex-package` passed (26 tests).
+- `npx vitest run convex/metacrdtComponent.test.ts` passed (3 tests).
+- Convex package typecheck passed.
+- App Convex typecheck passed.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -2241,7 +2313,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] p2p DataChannel-compatible transport target.
 - [ ] Live Cloudflare deployment / auth targets.
 - [x] First state-owned `@metacrdt/convex` protocol-log component slice.
-- [ ] Projection-owning `@metacrdt/convex` component/function surface.
+- [x] First projection-owning `@metacrdt/convex` component slice.
+- [ ] Migrate more reference runtime business logic onto component-owned state.
 
 ### Auth / Privacy
 

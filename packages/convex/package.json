@@ -1,7 +1,7 @@
 {
   "name": "@metacrdt/convex",
   "version": "0.1.0",
-  "description": "MetaCRDT Convex target helpers: protocol metadata validators, Convex-row adapters, component-owned protocol log functions, projection visibility, and optional Confect integration utilities.",
+  "description": "MetaCRDT Convex target helpers: protocol metadata validators, Convex-row adapters, component-owned protocol log/current projection functions, and optional Confect integration utilities.",
   "type": "module",
   "license": "MIT",
   "main": "./src/index.ts",

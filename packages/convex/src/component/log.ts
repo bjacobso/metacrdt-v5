@@ -59,6 +59,20 @@ const appendResultValidator = v.object({
   txId: v.id("transactions"),
   rowId: v.id("factEvents"),
   eventId: v.string(),
+  factId: v.optional(v.id("facts")),
+});
+
+const currentFactValidator = v.object({
+  factId: v.id("facts"),
+  e: v.string(),
+  a: v.string(),
+  v: v.any(),
+  assertedAt: v.number(),
+  validFrom: v.number(),
+  validTo: v.optional(v.number()),
+  txTime: v.number(),
+  updatedAt: v.number(),
+  assertEventId: v.string(),
 });
 
 const txArgs = {
@@ -135,6 +149,64 @@ function summarizeOwned(row: Doc<"factEvents">, tx: Doc<"transactions">) {
   };
 }
 
+async function deleteCurrentForFact(ctx: MutationCtx, factId: Id<"facts">) {
+  const rows = await ctx.db
+    .query("currentFacts")
+    .withIndex("by_factId", (q) => q.eq("factId", factId))
+    .collect();
+  for (const row of rows) await ctx.db.delete(row._id);
+}
+
+async function insertCurrentIfNowVisible(
+  ctx: MutationCtx,
+  fact: Doc<"facts">,
+  now: number,
+) {
+  if (fact.retractedAt !== undefined || fact.tombstonedAt !== undefined) return;
+  if (fact.validFrom > now) return;
+  if (fact.validTo !== undefined && fact.validTo <= now) return;
+  await deleteCurrentForFact(ctx, fact._id);
+  await ctx.db.insert("currentFacts", {
+    e: fact.e,
+    a: fact.a,
+    v: fact.v,
+    factId: fact._id,
+    validFrom: fact.validFrom,
+    txTime: now,
+    updatedAt: now,
+  });
+}
+
+async function targetFact(
+  ctx: MutationCtx,
+  eventId: string,
+): Promise<Doc<"facts">> {
+  const fact = await ctx.db
+    .query("facts")
+    .withIndex("by_assertEventId", (q) => q.eq("assertEventId", eventId))
+    .unique();
+  if (fact === null) throw new Error(`target assert event ${eventId} not found`);
+  return fact;
+}
+
+function currentFactSummary(
+  row: Doc<"currentFacts">,
+  fact: Doc<"facts">,
+): typeof currentFactValidator.type {
+  return {
+    factId: fact._id,
+    e: row.e,
+    a: row.a,
+    v: row.v,
+    assertedAt: fact.assertedAt,
+    validFrom: row.validFrom,
+    txTime: row.txTime,
+    updatedAt: row.updatedAt,
+    assertEventId: fact.assertEventId,
+    ...(fact.validTo === undefined ? {} : { validTo: fact.validTo }),
+  };
+}
+
 async function createTransaction(
   ctx: MutationCtx,
   args: {
@@ -179,10 +251,10 @@ export const appendAssert = mutation({
   returns: appendResultValidator,
   handler: async (ctx, args) => {
     const tx = await createTransaction(ctx, args);
-    const built = buildAssertFactEvent<Id<"transactions">, string>({
+    const built = buildAssertFactEvent<Id<"transactions">, Id<"facts">>({
       tx: txForCore(tx),
       txId: tx._id,
-      factId: args.factId,
+      factId: undefined,
       e: args.e,
       a: args.a,
       v: args.v,
@@ -192,11 +264,28 @@ export const appendAssert = mutation({
       metadata: args.eventMetadata,
       causalRefs: args.causalRefs,
     });
+    const factId = await ctx.db.insert(
+      "facts",
+      withoutUndefined({
+        e: args.e,
+        a: args.a,
+        v: args.v,
+        firstTxId: tx._id,
+        assertedAt: tx.txTime,
+        validFrom: args.validFrom ?? tx.txTime,
+        validTo: args.validTo,
+        assertEventId: built.event.id,
+        metadata: args.eventMetadata,
+      }),
+    );
     const rowId = await ctx.db.insert(
       "factEvents",
-      withoutUndefined(built.row),
+      withoutUndefined({ ...built.row, factId }),
     );
-    return { txId: tx._id, rowId, eventId: built.event.id };
+    const fact = await ctx.db.get(factId);
+    if (fact === null) throw new Error(`inserted fact ${factId} not found`);
+    await insertCurrentIfNowVisible(ctx, fact, tx.txTime);
+    return { txId: tx._id, rowId, eventId: built.event.id, factId };
   },
 });
 
@@ -220,10 +309,11 @@ export const appendLifecycle = mutation({
   returns: appendResultValidator,
   handler: async (ctx, args) => {
     const tx = await createTransaction(ctx, args);
-    const built = buildLifecycleFactEvent<Id<"transactions">, string>({
+    const fact = await targetFact(ctx, args.targetEventId);
+    const built = buildLifecycleFactEvent<Id<"transactions">, Id<"facts">>({
       tx: txForCore(tx),
       txId: tx._id,
-      factId: args.factId,
+      factId: fact._id,
       kind: args.kind,
       targetEventId: args.targetEventId,
       e: args.e,
@@ -238,7 +328,31 @@ export const appendLifecycle = mutation({
       "factEvents",
       withoutUndefined(built.row),
     );
-    return { txId: tx._id, rowId, eventId: built.event.id };
+    if (args.kind === "retract") {
+      await ctx.db.patch(fact._id, {
+        retractedAt: tx.txTime,
+        lastTxId: tx._id,
+      });
+      await deleteCurrentForFact(ctx, fact._id);
+    } else if (args.kind === "tombstone") {
+      await ctx.db.patch(fact._id, {
+        tombstonedAt: tx.txTime,
+        tombstoneTxId: tx._id,
+        tombstoneReason: args.reason,
+        lastTxId: tx._id,
+      });
+      await deleteCurrentForFact(ctx, fact._id);
+    } else {
+      await ctx.db.patch(fact._id, {
+        tombstonedAt: undefined,
+        tombstoneTxId: undefined,
+        tombstoneReason: undefined,
+        lastTxId: tx._id,
+      });
+      const patched = await ctx.db.get(fact._id);
+      if (patched !== null) await insertCurrentIfNowVisible(ctx, patched, tx.txTime);
+    }
+    return { txId: tx._id, rowId, eventId: built.event.id, factId: fact._id };
   },
 });
 
@@ -289,6 +403,41 @@ export const listEvents = query({
     for (const row of rows) {
       const tx = await ctx.db.get(row.txId);
       if (tx !== null) out.push(summarizeOwned(row, tx));
+    }
+    return out;
+  },
+});
+
+export const listCurrent = query({
+  args: {
+    e: v.optional(v.string()),
+    a: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(currentFactValidator),
+  handler: async (ctx, args) => {
+    const take = Math.max(1, Math.min(args.limit ?? 50, 200));
+    const rows =
+      args.e === undefined
+        ? await ctx.db.query("currentFacts").order("desc").take(take)
+        : args.a === undefined
+          ? await ctx.db
+              .query("currentFacts")
+              .withIndex("by_e", (q) => q.eq("e", args.e!))
+              .order("desc")
+              .take(take)
+          : await ctx.db
+              .query("currentFacts")
+              .withIndex("by_e_and_a", (q) =>
+                q.eq("e", args.e!).eq("a", args.a!),
+              )
+              .order("desc")
+              .take(take);
+
+    const out = [];
+    for (const row of rows) {
+      const fact = await ctx.db.get(row.factId);
+      if (fact !== null) out.push(currentFactSummary(row, fact));
     }
     return out;
   },

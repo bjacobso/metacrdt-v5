@@ -80,6 +80,20 @@ const appendOwnedResultValidator = v.object({
   txId: v.string(),
   rowId: v.string(),
   eventId: v.string(),
+  factId: v.optional(v.string()),
+});
+
+const ownedCurrentFactValidator = v.object({
+  factId: v.string(),
+  e: v.string(),
+  a: v.string(),
+  v: v.any(),
+  assertedAt: v.number(),
+  validFrom: v.number(),
+  validTo: v.optional(v.number()),
+  txTime: v.number(),
+  updatedAt: v.number(),
+  assertEventId: v.string(),
 });
 
 async function actorContext(ctx: MutationCtx) {
@@ -264,6 +278,20 @@ export const listOwnedEvents = query({
   handler: async (ctx, args) =>
     await ctx.runQuery(
       components.metacrdt.log.listEvents,
+      withoutUndefined(args),
+    ),
+});
+
+export const listOwnedCurrent = query({
+  args: {
+    e: v.optional(v.string()),
+    a: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(ownedCurrentFactValidator),
+  handler: async (ctx, args) =>
+    await ctx.runQuery(
+      components.metacrdt.log.listCurrent,
       withoutUndefined(args),
     ),
 });
