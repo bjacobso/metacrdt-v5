@@ -6,6 +6,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ## Now / up next
 
+### Current pulse
+
+- [x] Goal 130 shipped: Cloudflare DO SQLite DAG resume surface seed.
+- [ ] Choose the next active slice from remaining Cloudflare parity (full flow
+  interpreter/action execution, live-query fanout, or full historical SQL query
+  conformance), Node production hardening, provider-specific auth/UI wrapping,
+  or a scoped Confect/domain wrapper.
+
 ### Handoff: continue MetaCRDT on `main` from commit `c6c4379`
 
 **TASK:** Start the next Cloudflare target parity slice: add the first
@@ -162,9 +170,15 @@ After implementation:
   solver and core visibility semantics while fetching bounded assertion
   candidates through indexed SQLite `e` / `a` scans and lifecycle rows through
   the existing `target` index.
-- [ ] **Remaining Cloudflare Phase D parity** — flow execution/resume semantics,
-  live-query fanout, and full historical SQL query-provider parity/conformance
-  remain open; do not claim full parity until those are implemented.
+- [x] **Goal 130 shipped: DAG resume surface seed** —
+  `listDagRuns` can now filter by `flowDefName`, and `resumeDagRun` terminally
+  transitions an existing `running` DAG row to `completed` or `unsupported`
+  with caller-provided timeline events. This is operational row/timeline
+  plumbing only, not a Cloudflare DAG interpreter or action executor.
+- [ ] **Remaining Cloudflare Phase D parity** — full flow interpreter/action
+  execution, live-query fanout, and full historical SQL query-provider
+  parity/conformance remain open; do not claim full parity until those are
+  implemented.
 
 **Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
 - [x] Commutative supersession — centralized Convex writes now stamp
@@ -240,6 +254,10 @@ After implementation:
   historical facade queries now use a Cloudflare-specific Datalog candidate
   source over indexed SQLite `e` / `a` and lifecycle `target` scans, preserving
   shared `@metacrdt/query` solving and `@metacrdt/core` visibility semantics.
+- [x] Cloudflare Durable Object SQLite DAG resume surface seed —
+  `listDagRuns` filters by `flowDefName`, and `resumeDagRun` records
+  deterministic terminal `completed` / `unsupported` decisions for existing
+  `running` rows with caller-provided timeline events.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -249,8 +267,8 @@ After implementation:
 - [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — full
-  SQL-indexed query-provider parity/conformance, flow execution/resume
-  semantics, and live-query WebSocket fanout/plumbing (see
+  SQL-indexed query-provider parity/conformance, full flow interpreter/action
+  execution, and live-query WebSocket fanout/plumbing (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).

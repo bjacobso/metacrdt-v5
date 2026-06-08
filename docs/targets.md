@@ -68,7 +68,8 @@ On open hosts the adapter is a selectable dependency.
   rows/entities) plus simple collection capability rows (`issueCollection`,
   `collectionByToken`, `listCollections`, `submitCollection`) with optional
   submit-time assertion lowering through the same append/reconcile path and
-  operational collection reminder/escalation/expiry timer rows.
+  operational collection reminder/escalation/expiry timer rows, DAG timelines,
+  flow-wait alarms, and a narrow `resumeDagRun` terminal-decision surface.
   Growing to a full DO + SQLite bitemporal triple store remains the active target plan
   ([cloudflare-target.md](./cloudflare-target.md)).
 - `@metacrdt/local` — browser/local-first host with localStorage / IndexedDB /
@@ -139,7 +140,7 @@ On open hosts the adapter is a selectable dependency.
 | SQLite-wasm | `local` | done |
 | SQLite (server) | `node` | done (structural driver API + shared lifecycle plan) |
 | Postgres | `node` | done (structural `query(sql, params)` adapter + shared lifecycle plan) |
-| DO SQLite | `cloudflare` | started (runtime-service substrate + projection/persistence conformance + log/current/query surface, including projection-backed current Datalog reads, collection capability rows with optional assertion lowering, collection timer rows, collection/flow-wait alarm multiplexing, and DAG run/timeline rows; full operational flow execution/resume parity planned in [cloudflare-target.md](./cloudflare-target.md)) |
+| DO SQLite | `cloudflare` | started (runtime-service substrate + projection/persistence conformance + log/current/query surface, including projection-backed current Datalog reads, collection capability rows with optional assertion lowering, collection timer rows, collection/flow-wait alarm multiplexing, DAG run/timeline rows, and a terminal DAG resume seed; full operational flow interpreter/action parity planned in [cloudflare-target.md](./cloudflare-target.md)) |
 | Convex tables | `convex` | done (managed) |
 | FoundationDB | — | archive unless a real need appears |
 
@@ -282,8 +283,10 @@ a sibling target.
    Datalog reads, current-projection change summaries, and scoped
    current-coordinate projection replacement. Target-event lookup is now part of
    the EventStore contract and DO SQLite uses it for bounded coordinate folds;
-   historical queries now have an indexed provider seed; next is full SQL query
-   provider parity/conformance plus flow execution/resume and live-query surface over SQLite
+   historical queries now have an indexed provider seed, and running DAG rows
+   have a terminal resume-decision seed; next is full SQL query provider
+   parity/conformance plus full flow interpreter/action execution and
+   live-query surface over SQLite
    ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal
    enough repeated DDL/query-generation logic beyond the current Node lifecycle

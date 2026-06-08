@@ -244,12 +244,16 @@ Cloudflare SQL-indexed historical Datalog provider seed: the historical
 Cloudflare-specific `DatalogQueryService` source that fetches assertion
 candidates through indexed SQLite `e` / `a` scans and checks lifecycle
 visibility through target-indexed scans, avoiding unrelated full event-log loads
-for bounded patterns without claiming full SQL query-provider parity. The next
-active goal should be chosen from the remaining TODO candidates:
+for bounded patterns without claiming full SQL query-provider parity. Goal 130
+adds a narrow Cloudflare DAG resume surface: `listDagRuns` can filter by
+`flowDefName`, and `resumeDagRun` terminally transitions existing `running`
+DAG rows to `completed` or `unsupported` with caller-provided timeline events,
+without interpreting flow definitions or executing actions. The next active goal
+should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (full SQL query-provider
-conformance, flow execution/resume, live fanout),
+conformance, full flow interpreter/action execution, live fanout),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9464,6 +9468,50 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 130 — Cloudflare DO SQLite DAG Resume Surface Seed
+
+**Status:** shipped.
+
+**Objective:** add a narrow operational resume facade over the existing
+Cloudflare DO SQLite DAG run rows, so hosts can deterministically finish or
+mark unsupported a runnable DAG slice without this package interpreting flow
+definitions or executing actions.
+
+### What Shipped
+
+- Added `flowDefName` filtering to `DurableObjectSqliteDagStore.list` and the
+  current-surface `listDagRuns` schema, so callers can enumerate runnable rows
+  for a specific flow definition.
+- Added `resumeDagRun` to `createDurableObjectSqliteCurrentSurface`, plus the
+  `resumeDurableObjectSqliteDagRunEffect` helper and exported Effect schemas.
+- `resumeDagRun`:
+  - loads an existing run by caller-provided `runId`;
+  - rejects unknown runs through the tagged current-surface error path;
+  - rejects rows that are no longer `running`;
+  - terminally records either `completed` or `unsupported` through the existing
+    DAG store;
+  - preserves the run's subject/flow identity, keeps the prior step/context when
+    replacements are omitted, and persists caller-provided timeline events.
+- Focused Cloudflare tests prove flow-name listing, completed and unsupported
+  resume decisions, missing-run errors, and non-running duplicate rejection.
+
+### Non-Goals
+
+- Do not claim a Cloudflare DAG interpreter, flow-definition evaluator, action
+  executor, collection/control-flow loop, or full operational flow parity.
+- Do not append protocol facts from resumed DAG events; this remains an
+  operational row/timeline surface.
+- Do not add live-query fanout or full historical SQL query-provider
+  conformance.
+- Do not touch root `convex/`.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 40 Cloudflare tests.
 
 ---
 

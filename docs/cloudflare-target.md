@@ -13,10 +13,11 @@ projection-backed `queryCurrent` / `pageCurrent` / `aggregateCurrent` /
 `derivedRowsCurrent`, `rebuildCurrent`, `listCurrent`, `getCurrentEntity`,
 `listCurrentEntities`, collection `issueCollection` / `collectionByToken` /
 `listCollections` / `submitCollection`, DAG `recordDagRun` / `getDagRun` /
-`listDagRuns`, flow-wait timer rows, an operational timer alarm multiplexer, and
-deterministic projection change summaries for touched `(e, a)` coordinates).
-Full historical SQL query-provider parity/conformance and full operational flow
-execution/resume parity are still ahead.
+`listDagRuns` / `resumeDagRun`, flow-wait timer rows, an operational timer alarm
+multiplexer, and deterministic projection change summaries for touched `(e, a)`
+coordinates).
+Full historical SQL query-provider parity/conformance and full Cloudflare flow
+interpreter/action-execution parity are still ahead.
 
 **Scope:** Grow `@metacrdt/cloudflare` from a sync-plane shell into a full
 MetaCRDT target at parity with the `@metacrdt/convex` component — an indexed,
@@ -55,8 +56,9 @@ collection subject through the existing append/reconcile path. Collection
 reminder/escalation/expiry ticks now persist as caller-identified `timers` rows
 and can be fired through the facade. Component-style DAG run/timeline rows now
 persist as caller-identified `flow_dag_runs` and `flow_dag_events`, exposed
-through `recordDagRun`, `getDagRun`, and `listDagRuns`. Flow-wait timer rows can
-now be scheduled, listed, fired, and drained through the DO alarm multiplexer.
+through `recordDagRun`, `getDagRun`, `listDagRuns`, and the narrow
+`resumeDagRun` terminal-decision surface. Flow-wait timer rows can now be
+scheduled, listed, fired, and drained through the DO alarm multiplexer.
 Historical Datalog queries now use a Cloudflare-specific indexed SQLite
 candidate source for bounded assertion patterns and target-indexed lifecycle
 visibility checks. It still has no full SQL query-provider conformance/parity,
@@ -126,7 +128,7 @@ function surface — backed by Durable Object SQLite instead of the Convex DB.
 | `DurableObjectSqliteDagStore` | SQLite-backed DAG run rows and child timeline events; indexed by subject, status, updated time, and run id |
 | `DurableObjectSqliteFlowWaitTimerStore` | SQLite-backed flow-wait timer rows; indexed by run, step, status, and fire time |
 | `DurableObjectSqliteClock` / `DurableObjectSqliteSequencer` | SQLite-backed HLC + per-replica `seq` metadata |
-| `createDurableObjectSqliteCurrentSurface` | First component-equivalent log/current/query/collection/DAG facade: append helpers with scoped current-coordinate projection reconcile, get/list events, indexed historical bitemporal Datalog reads, projection-backed current Datalog reads, rebuild with changed `(e, a)` summaries, list current rows, read current entity, list typed current entities, issue/read/list/submit collection tokens, collection tick rows, flow-wait tick rows, and record/read/list DAG runs |
+| `createDurableObjectSqliteCurrentSurface` | First component-equivalent log/current/query/collection/DAG facade: append helpers with scoped current-coordinate projection reconcile, get/list events, indexed historical bitemporal Datalog reads, projection-backed current Datalog reads, rebuild with changed `(e, a)` summaries, list current rows, read current entity, list typed current entities, issue/read/list/submit collection tokens, collection tick rows, flow-wait tick rows, record/read/list DAG runs, and terminally resume running DAG rows |
 | `durableObjectSqliteIndexedHistoricalDatalogQueryService` | Cloudflare-specific historical Datalog source: reuses the shared runtime solver, scans bounded assertion candidates through SQLite `e` / `a` indexes, and checks lifecycle visibility through target-indexed rows |
 | `createDurableObjectSqliteAlarmMultiplexer` | Structural single-alarm helper: arms `ctx.storage.setAlarm` to the earliest pending collection or flow-wait timer row, drains due ticks through the corresponding firing path, and re-arms or deletes the alarm |
 | `DurableObjectWebSocketRelay` | version-vector hello/delta sync + event fan-out |
@@ -149,7 +151,7 @@ projection-backed current Datalog reads over SQLite projection rows, rebuild
 SQLite-backed current projection rows, serve current entity/list reads, and
 persist simple collection capability rows plus DAG run/timeline history and
 flow-wait timer rows; it cannot yet expose the full historical SQL query-provider
-parity/conformance surface or the full **operational flow execution/resume**
+parity/conformance surface or the full **operational flow interpreter/action**
 surface.
 
 ---
@@ -228,13 +230,14 @@ lifecycle events discovered through the SQLite `target` index. Explicit
 
 **Still ahead for parity:** richer append function surface, full SQL-indexed
 query-provider parity/conformance for historical bitemporal queries, live
-invalidation fanout, and the full flow execution/resume surface.
+invalidation fanout, and the full flow interpreter/action-execution surface.
 
 ### Phase D — Operational surface + alarms
 
 Port `flowRuns` / `flowDagRuns` / `flowDagEvents` and the collection/DAG
-functions. Collection rows, timer rows, DAG history rows, and flow-wait alarm
-wakeups have started; full flow execution/resume remains. Map **Convex scheduler → Durable
+functions. Collection rows, timer rows, DAG history rows, flow-wait alarm
+wakeups, and terminal DAG resume decisions have started; full flow
+interpreter/action execution remains. Map **Convex scheduler → Durable
 Object `setAlarm()`**. Caveat: a DO has a single alarm, but the operational
 layer has reminder + escalation + expiry + flow-wait timers — so introduce a
 `timers` table and set
@@ -258,9 +261,12 @@ collection timestamps, expires still-issued collections, or records a skipped
 tick after submission/expiry. This is timer row execution only, not DO alarm
 multiplexing. Cloudflare DO SQLite also now owns `flow_dag_runs` and
 `flow_dag_events` tables for component-style DAG process history. The current
-facade exposes `recordDagRun`, `getDagRun`, and `listDagRuns`; new run and
-timeline ids are caller-provided, while calls without `runId` can reuse the
-newest active run for the same `(subject, flowDefName)`. The package also
+facade exposes `recordDagRun`, `getDagRun`, `listDagRuns`, and `resumeDagRun`;
+new run and timeline ids are caller-provided, while calls without `runId` can
+reuse the newest active run for the same `(subject, flowDefName)`. `listDagRuns`
+can filter by `flowDefName`, and `resumeDagRun` records caller-provided
+terminal `completed` / `unsupported` decisions for existing `running` rows with
+caller-provided timeline events. The package also
 exports `createDurableObjectSqliteAlarmMultiplexer`, which maps the single DO
 alarm to the earliest pending collection or flow-wait timer row, drains due
 collection ticks through `fireCollectionTick`, drains due flow-wait ticks through
@@ -269,7 +275,7 @@ records a deterministic `timer` / `flow-wait` DAG timeline event using a
 caller-provided event id and moves a still-waiting run back to `running`; it does
 not execute flow steps or actions.
 
-**Still ahead for Phase D parity:** flow execution/resume semantics and any
+**Still ahead for Phase D parity:** full flow interpreter/action execution and
 WebSocket live-query fanout.
 
 ### Phase E — Sharding + real multi-replica sync
@@ -357,8 +363,8 @@ keeps it converged.
 The Phase B adapters (~600–800 LOC) get **shared, not rewritten**. The
 Cloudflare-specific work is comparable to the existing Convex component: the
 runtime-service SQLite seed and first log/current/query facade are now present;
-the remaining work is full SQL-indexed query-provider parity/conformance, flow
-execution/resume semantics, and live-query fanout.
+the remaining work is full SQL-indexed query-provider parity/conformance, full
+flow interpreter/action execution, and live-query fanout.
 Roughly 2–4 focused sessions remain, gated on shared fold/reconcile reuse. The
 live-query stretch goal is a separate later increment on top.
 

@@ -235,6 +235,11 @@ export const DurableObjectSqliteDagRunStatusSchema = Schema.Literal(
   "unsupported",
 );
 
+export const DurableObjectSqliteResumeDagRunStatusSchema = Schema.Literal(
+  "completed",
+  "unsupported",
+);
+
 export const DurableObjectSqliteDagEventInputSchema = Schema.Struct({
   eventId: Schema.String,
   stepId: Schema.String,
@@ -260,10 +265,20 @@ export const DurableObjectSqliteDagRunByIdArgsSchema = Schema.Struct({
 
 export const DurableObjectSqliteListDagRunsArgsSchema = Schema.Struct({
   subject: Schema.optionalWith(Schema.String, { exact: true }),
+  flowDefName: Schema.optionalWith(Schema.String, { exact: true }),
   status: Schema.optionalWith(DurableObjectSqliteDagRunStatusSchema, {
     exact: true,
   }),
   limit: Schema.optionalWith(Schema.Number, { exact: true }),
+});
+
+export const DurableObjectSqliteResumeDagRunArgsSchema = Schema.Struct({
+  runId: Schema.String,
+  status: DurableObjectSqliteResumeDagRunStatusSchema,
+  currentStepId: Schema.optionalWith(Schema.String, { exact: true }),
+  context: Schema.optionalWith(Schema.Any, { exact: true }),
+  events: Schema.Array(DurableObjectSqliteDagEventInputSchema),
+  now: Schema.optionalWith(Schema.Number, { exact: true }),
 });
 
 export const DurableObjectSqliteAppendAssertArgsSchema = Schema.Struct({
@@ -337,6 +352,8 @@ export type DurableObjectSqliteDagRunByIdArgs =
   typeof DurableObjectSqliteDagRunByIdArgsSchema.Type;
 export type DurableObjectSqliteListDagRunsArgs =
   typeof DurableObjectSqliteListDagRunsArgsSchema.Type;
+export type DurableObjectSqliteResumeDagRunArgs =
+  typeof DurableObjectSqliteResumeDagRunArgsSchema.Type;
 export type DurableObjectSqliteAppendAssertArgs =
   typeof DurableObjectSqliteAppendAssertArgsSchema.Type;
 export type DurableObjectSqliteAppendLifecycleArgs =
@@ -464,6 +481,9 @@ export type DurableObjectSqliteCurrentSurface = {
   listDagRuns(
     args?: DurableObjectSqliteListDagRunsArgs,
   ): Promise<DurableObjectSqliteDagRun[]>;
+  resumeDagRun(
+    args: DurableObjectSqliteResumeDagRunArgs,
+  ): Promise<DurableObjectSqliteDagRun>;
   listCurrent(
     args?: DurableObjectSqliteCurrentFilter,
   ): Promise<ProjectionRow[]>;
@@ -1317,10 +1337,60 @@ export function listDurableObjectSqliteDagRunsEffect(
       try: () =>
         dag.list({
           subject: decoded.subject,
+          flowDefName: decoded.flowDefName,
           status: decoded.status as DurableObjectSqliteDagRunStatus | undefined,
           limit: limit(decoded.limit, 20, 100),
         }),
       catch: (cause) => surfaceError("listDagRuns", cause),
+    });
+  });
+}
+
+export function resumeDurableObjectSqliteDagRunEffect(
+  dag: DurableObjectSqliteDagStore,
+  args: DurableObjectSqliteResumeDagRunArgs,
+  defaultNow: number,
+): Effect.Effect<DurableObjectSqliteDagRun, DurableObjectSqliteCurrentSurfaceError> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "resumeDagRun",
+      DurableObjectSqliteResumeDagRunArgsSchema,
+      args,
+    );
+    const now = decoded.now ?? defaultNow;
+    const run = yield* Effect.tryPromise({
+      try: () => dag.get(decoded.runId),
+      catch: (cause) => surfaceError("resumeDagRun", cause),
+    });
+    if (run === undefined) {
+      return yield* Effect.fail(
+        surfaceError(
+          "resumeDagRun",
+          new Error(`unknown DAG run: ${decoded.runId}`),
+        ),
+      );
+    }
+    if (run.status !== "running") {
+      return yield* Effect.fail(
+        surfaceError(
+          "resumeDagRun",
+          new Error(`DAG run ${decoded.runId} is ${run.status}, not running`),
+        ),
+      );
+    }
+    return yield* Effect.tryPromise({
+      try: () =>
+        dag.record({
+          runId: run.runId,
+          flowDefName: run.flowDefName,
+          subject: run.subject,
+          status: decoded.status as DurableObjectSqliteDagRunStatus,
+          currentStepId: decoded.currentStepId ?? run.currentStepId,
+          context: decoded.context === undefined ? run.context : decoded.context,
+          events: decoded.events,
+          now,
+        }),
+      catch: (cause) => surfaceError("resumeDagRun", cause),
     });
   });
 }
@@ -1749,6 +1819,10 @@ export function createDurableObjectSqliteCurrentSurface(
       runCollection(getDurableObjectSqliteDagRunEffect(runtime.dag, args)),
     listDagRuns: (args = {}) =>
       runCollection(listDurableObjectSqliteDagRunsEffect(runtime.dag, args)),
+    resumeDagRun: (args) =>
+      runCollection(
+        resumeDurableObjectSqliteDagRunEffect(runtime.dag, args, coord().txTime),
+      ),
     listCurrent: (args = {}) => run(listDurableObjectSqliteCurrentEffect(args)),
     getCurrentEntity: (args) =>
       run(getDurableObjectSqliteCurrentEntityEffect(args)),

@@ -799,6 +799,13 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
         const subject = stringBinding(bindings[bindingIndex++], "DAG subject");
         rows = rows.filter((row) => row.subject === subject);
       }
+      if (sql.includes("flow_def_name = ?")) {
+        const flowDefName = stringBinding(
+          bindings[bindingIndex++],
+          "DAG flow_def_name",
+        );
+        rows = rows.filter((row) => row.flow_def_name === flowDefName);
+      }
       if (sql.includes("status = ?")) {
         const status = dagRunStatusBinding(
           bindings[bindingIndex++],

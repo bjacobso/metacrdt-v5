@@ -225,6 +225,7 @@ export type DurableObjectSqliteRecordDagRunInput = {
 
 export type DurableObjectSqliteDagRunFilter = {
   readonly subject?: string;
+  readonly flowDefName?: string;
   readonly status?: DurableObjectSqliteDagRunStatus;
   readonly limit?: number;
 };
@@ -1515,6 +1516,10 @@ export class DurableObjectSqliteDagStore {
     if (filter.subject !== undefined) {
       clauses.push("subject = ?");
       bindings.push(filter.subject);
+    }
+    if (filter.flowDefName !== undefined) {
+      clauses.push("flow_def_name = ?");
+      bindings.push(filter.flowDefName);
     }
     if (filter.status !== undefined) {
       clauses.push("status = ?");

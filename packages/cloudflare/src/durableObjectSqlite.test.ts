@@ -1316,6 +1316,142 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
     ).resolves.toEqual([second]);
   });
 
+  test("current surface resumes running DAG rows with caller timeline events", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:dag-resume",
+      wall: () => 925,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const running = await surface.recordDagRun({
+      runId: "dag:worker:resume:1",
+      flowDefName: "owned_flow",
+      subject: "worker:resume",
+      status: "running",
+      currentStepId: "review",
+      context: { attempt: 1 },
+      now: 60_000,
+      events: [
+        {
+          eventId: "dag:event:worker:resume:1:started",
+          stepId: "start",
+          type: "start",
+          kind: "started",
+        },
+      ],
+    });
+    await surface.recordDagRun({
+      runId: "dag:worker:resume:2",
+      flowDefName: "other_flow",
+      subject: "worker:resume",
+      status: "running",
+      currentStepId: "start",
+      now: 60_100,
+      events: [
+        {
+          eventId: "dag:event:worker:resume:2:started",
+          stepId: "start",
+          type: "start",
+          kind: "started",
+        },
+      ],
+    });
+
+    await expect(
+      surface.listDagRuns({
+        subject: "worker:resume",
+        flowDefName: "owned_flow",
+        status: "running",
+      }),
+    ).resolves.toEqual([running]);
+
+    const completed = await surface.resumeDagRun({
+      runId: "dag:worker:resume:1",
+      status: "completed",
+      currentStepId: "done",
+      context: { attempt: 1, accepted: true },
+      now: 61_000,
+      events: [
+        {
+          eventId: "dag:event:worker:resume:1:completed",
+          stepId: "done",
+          type: "resume",
+          kind: "completed",
+          message: "host completed the running DAG slice",
+        },
+      ],
+    });
+    expect(completed).toMatchObject({
+      runId: "dag:worker:resume:1",
+      flowDefName: "owned_flow",
+      subject: "worker:resume",
+      status: "completed",
+      currentStepId: "done",
+      updatedAt: 61_000,
+      completedAt: 61_000,
+      context: { attempt: 1, accepted: true },
+    });
+    expect(completed.events.map((event) => event.kind)).toEqual([
+      "started",
+      "completed",
+    ]);
+    await expect(
+      surface.resumeDagRun({
+        runId: "dag:worker:resume:1",
+        status: "completed",
+        now: 61_500,
+        events: [
+          {
+            eventId: "dag:event:worker:resume:1:duplicate",
+            stepId: "done",
+            type: "resume",
+            kind: "duplicate",
+          },
+        ],
+      }),
+    ).rejects.toThrow(/not running/);
+
+    const unsupported = await surface.resumeDagRun({
+      runId: "dag:worker:resume:2",
+      status: "unsupported",
+      now: 62_000,
+      events: [
+        {
+          eventId: "dag:event:worker:resume:2:unsupported",
+          stepId: "start",
+          type: "resume",
+          kind: "unsupported",
+        },
+      ],
+    });
+    expect(unsupported).toMatchObject({
+      runId: "dag:worker:resume:2",
+      status: "unsupported",
+      currentStepId: "start",
+      completedAt: 62_000,
+    });
+    await expect(
+      surface.listDagRuns({
+        subject: "worker:resume",
+        flowDefName: "owned_flow",
+        status: "running",
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      surface.resumeDagRun({
+        runId: "dag:worker:resume:missing",
+        status: "completed",
+        now: 63_000,
+        events: [],
+      }),
+    ).rejects.toThrow(/unknown DAG run/);
+  });
+
   test("DAG run creation requires caller-provided run ids", async () => {
     const sql = new FakeDurableObjectSqlStorage();
     const runtime = await createDurableObjectSqliteRuntime({
