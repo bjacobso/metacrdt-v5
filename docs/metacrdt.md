@@ -10,7 +10,8 @@
 
 Companion docs: [VISION.md](../VISION.md) (the thesis & pillars),
 [README.md](../README.md) (the engine), and the elaboration notes
-[confect.md](./confect.md), [foldkit.md](./foldkit.md), [alchemy.md](./alchemy.md).
+[confect.md](./confect.md), [foldkit.md](./foldkit.md), [alchemy.md](./alchemy.md),
+and [physics.md](./physics.md).
 
 ---
 

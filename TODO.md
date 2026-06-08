@@ -120,7 +120,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `@metacrdt/convex` function factory/component slice.
 
 **Docs**
-- [ ] `docs/physics.md` — the capstone: compliance / small-group coordination &
+- [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
   co-signing / agent swarms as three blueprints over one substrate.
 
 **Polish / loose threads**
@@ -155,6 +155,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   transport target with tests for injected HLC behavior, append/publish,
   cross-runtime G-Set exchange convergence, lifecycle operations, and capability
   checks. Convex is intentionally not migrated onto it yet.
+
+### 2026-06-07 — physics capstone
+- [x] **`docs/physics.md` added.** It defines "physics" as entities, facts,
+  rules, intentions, access, time, merge policy, and runtime target over the same
+  MetaCRDT protocol, then maps compliance datarooms, small-group co-signing, and
+  agent swarms as three blueprints over one substrate. README/metacrdt docs link
+  it.
 
 ### 2026-06-07 — Goal 12 collection-token hardening
 - [x] **Collection links are now single-use and expiring.** `flowRuns` stores

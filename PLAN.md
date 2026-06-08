@@ -1605,7 +1605,7 @@ These remain valuable, but they should not interrupt the current goal.
 
 ### Docs
 
-- [ ] `docs/physics.md`: compliance, small-group co-signing, and agent swarms
+- [x] `docs/physics.md`: compliance, small-group co-signing, and agent swarms
   as three blueprints over one substrate.
 
 ---

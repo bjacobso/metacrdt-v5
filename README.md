@@ -309,6 +309,8 @@ rebuildable from that history.
 - [docs/confect.md](./docs/confect.md) — backend as Effect via Confect.
 - [docs/foldkit.md](./docs/foldkit.md) — client as projection.
 - [docs/alchemy.md](./docs/alchemy.md) — infrastructure as the same program.
+- [docs/physics.md](./docs/physics.md) — compliance, co-signing, and agent
+  swarms as three blueprints over one substrate.
 
 ---
 
