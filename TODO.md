@@ -87,13 +87,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   provenance, pagination, aggregation, and derived-row shaping.
 - [x] **Goal 111 materialized projection-store boundary started** —
   `@metacrdt/runtime` now defines `ProjectionStoreService`, `ProjectionRow`,
-  `ProjectionStore`, and `projectionRowsFromLog`; the memory Layer provides
-  `MemoryProjectionStore`; `@metacrdt/testkit` has opt-in
-  `runRuntimeProjectionStoreConformance`.
-- [ ] **Goal 111 next: expanded suites** — wire `ProjectionStoreService` into
-  durable targets (Convex/Node/local/Cloudflare) and add a production
-  Datalog/query service contract as second implementations expose those
-  capabilities.
+  `ProjectionStore`, and `projectionRowsFromLog`; memory/localStorage, Node
+  memory/SQLite/Postgres, local-first localStorage, and Cloudflare Durable Object
+  storage now provide the service and run `runRuntimeProjectionStoreConformance`.
+- [ ] **Goal 111 next: expanded suites** — add Convex component
+  `ProjectionStoreService` adoption (component table or explicit mapping onto
+  existing read models) and a production Datalog/query service contract as second
+  implementations expose those capabilities.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
@@ -547,13 +547,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   protocol log through `@metacrdt/core` visibility/cardinality semantics and
   produces stable materialized current rows. Targets own storage and indexing;
   they do not own fold semantics.
-- [x] **Memory proves the contract.** `MemoryProjectionStore` ships with the
-  memory Layer, and `runRuntimeProjectionStoreConformance` proves replace from
-  fold, entity/attribute/id/event-id scans, atomic rebuild-style replacement, and
-  clear.
-- [ ] **Remaining adoption:** durable targets still need to provide
-  `ProjectionStoreService` before they can run the projection-store conformance
-  suite.
+- [x] **Memory and durable targets prove the contract.**
+  `MemoryProjectionStore`, `LocalProjectionStore`, Node SQLite/Postgres
+  projection tables, and `DurableObjectProjectionStore` all run
+  `runRuntimeProjectionStoreConformance`: replace from fold,
+  entity/attribute/id/event-id scans, rebuild-style replacement, and clear.
+- [ ] **Remaining adoption:** the Convex component target still needs a
+  component-owned projection table or explicit mapping onto its existing
+  `facts`/`currentFacts` read models before it can run projection-store
+  conformance.
 
 ### 2026-06-08 — Goal 111 EventStore-backed query conformance
 - [x] **Added `runRuntimeQueryConformance` to `@metacrdt/testkit`.** The suite

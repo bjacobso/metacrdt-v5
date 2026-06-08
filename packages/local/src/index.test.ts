@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 import { fromEvents, valueOf } from "@metacrdt/core";
 import {
+  runRuntimeProjectionStoreConformance,
+  type RuntimeFactoryOptions,
+  type RuntimeProjectionStoreConformanceTarget,
+} from "@metacrdt/testkit";
+import {
   EventStoreService,
   applyOperation,
   applyOperationEffect,
@@ -102,6 +107,19 @@ const localLayerProgram = Effect.gen(function* () {
   return { event, stored: yield* store.get(event.id), events: yield* store.scan() };
 });
 
+const projectionStoreTarget: RuntimeProjectionStoreConformanceTarget = {
+  name: "local-first-projection-store",
+  createLayer(options: RuntimeFactoryOptions) {
+    return createLocalFirstRuntimeLayer({
+      storage: new FakeStorage(),
+      namespace: "projection-store",
+      replicaId: options.replicaId,
+      wall: options.wall,
+      broadcast: false,
+    });
+  },
+};
+
 describe("@metacrdt/local browser/local-first target", () => {
   test("local-first runtime provides an Effect Layer", async () => {
     const result = await Effect.runPromise(
@@ -119,6 +137,20 @@ describe("@metacrdt/local browser/local-first target", () => {
     expect(result.stored).toEqual(result.event);
     expect(result.event.seq).toBe(1);
     expect(versionVector(result.events)).toEqual({ "browser:layer": 1 });
+  });
+
+  test("local-first runtime passes projection-store conformance", async () => {
+    await expect(
+      runRuntimeProjectionStoreConformance(projectionStoreTarget),
+    ).resolves.toEqual({
+      target: "local-first-projection-store",
+      checks: [
+        "projection-store-replace-from-fold",
+        "projection-store-scan-filters",
+        "projection-store-replace-is-atomic",
+        "projection-store-clear",
+      ],
+    });
   });
 
   test("composes localStorage persistence with BroadcastChannel convergence", async () => {

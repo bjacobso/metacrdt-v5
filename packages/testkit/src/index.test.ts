@@ -110,6 +110,21 @@ const storageTarget = (): RuntimePersistenceConformanceTarget => {
   };
 };
 
+const localProjectionStoreTarget = (): RuntimeProjectionStoreConformanceTarget => {
+  const storage = new MemoryStorage();
+  return {
+    name: "local-storage-projection-store",
+    createLayer(options: RuntimeFactoryOptions) {
+      return createLocalRuntimeLayer({
+        storage,
+        namespace: "testkit-projection-store",
+        replicaId: options.replicaId,
+        wall: options.wall,
+      });
+    },
+  };
+};
+
 const schedulerTarget = (): RuntimeSchedulerConformanceTarget => {
   let runtime: ReturnType<typeof createMemoryRuntime> | undefined;
   return {
@@ -411,6 +426,20 @@ describe("@metacrdt/testkit", () => {
       "projection-store-replace-is-atomic",
       "projection-store-clear",
     ]);
+  });
+
+  test("runtime projection-store conformance passes for the localStorage target", async () => {
+    await expect(
+      runRuntimeProjectionStoreConformance(localProjectionStoreTarget()),
+    ).resolves.toEqual({
+      target: "local-storage-projection-store",
+      checks: [
+        "projection-store-replace-from-fold",
+        "projection-store-scan-filters",
+        "projection-store-replace-is-atomic",
+        "projection-store-clear",
+      ],
+    });
   });
 
   test("persistence conformance passes for the localStorage target", async () => {

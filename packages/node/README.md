@@ -10,12 +10,13 @@ different storage adapters behind the same runtime contracts.
   `createNodeMemoryRuntimeLayer`, named wrappers over the runtime memory harness
   for server/dev/test processes.
 - **Server SQLite runtime** — `createNodeSqliteRuntime`, with
-  `NodeSqliteEventStore`, `NodeSqliteClock`, and `NodeSqliteSequencer` over a
-  structural SQLite driver interface. `createNodeSqliteRuntimeLayer` exposes the
-  same target as an Effect `Layer`.
+  `NodeSqliteEventStore`, `NodeSqliteProjectionStore`, `NodeSqliteClock`, and
+  `NodeSqliteSequencer` over a structural SQLite driver interface.
+  `createNodeSqliteRuntimeLayer` exposes the same target as an Effect `Layer`.
 - **Server Postgres runtime** — `createNodePostgresRuntime`, with
-  `NodePostgresEventStore`, `NodePostgresClock`, and `NodePostgresSequencer`
-  over a structural `query(sql, params)` client interface.
+  `NodePostgresEventStore`, `NodePostgresProjectionStore`,
+  `NodePostgresClock`, and `NodePostgresSequencer` over a structural
+  `query(sql, params)` client interface.
   `createNodePostgresRuntimeLayer` exposes the same target as an Effect `Layer`.
 - **Driver-neutral SQLite shape** — `NodeSqliteDatabaseLike` /
   `NodeSqliteStatementLike`, matching the common `prepare().get/all/run` surface
@@ -25,9 +26,9 @@ different storage adapters behind the same runtime contracts.
   common `pg`/Neon-style `query(sql, params)` surface. The package intentionally
   ships no Postgres driver dependency.
 - **Shared SQL lifecycle plan** — `createNodeSqlLifecyclePlan` validates table
-  prefixes and emits the runtime event/meta table names, indexes, and ordered DDL
-  used by both the SQLite and Postgres adapters. This is intentionally narrower
-  than a full `@metacrdt/sql` package.
+  prefixes and emits the runtime event/projection/meta table names, indexes, and
+  ordered DDL used by both the SQLite and Postgres adapters. This is
+  intentionally narrower than a full `@metacrdt/sql` package.
 - **HTTP/SSE sync handler** — `createNodeSyncHttpHandler`, a dependency-free
   fetch-like handler over any `RuntimeServices`: health/version-vector,
   pull-delta, push-events, and one-shot SSE delta routes. It returns a small
@@ -60,13 +61,15 @@ The memory, SQLite, and Postgres runtime services pass the shared
 `@metacrdt/testkit` EventStore / anti-entropy / deterministic-fold conformance
 suite through their Effect Layer providers. SQLite and Postgres also pass
 `@metacrdt/testkit` restart-persistence conformance for the event log, HLC, and
-per-replica `seq`; the memory target also runs shared scheduler service-boundary
-and transport publish-boundary conformance. Package-specific tests still cover
-concrete persistence regressions and the shared SQL lifecycle plan used by both
-SQL adapters. It also tests the HTTP/SSE handler's health, delta pull, event
-push, SSE response paths, and the native-style listener adapter's response
-writing and streamed POST body merge. The dev-server CLI is tested by starting a
-real ephemeral `node:http` server and querying its health route.
+per-replica `seq`; memory, SQLite, and Postgres also pass materialized
+projection-store conformance through `ProjectionStoreService`. The memory target
+also runs shared scheduler service-boundary and transport publish-boundary
+conformance. Package-specific tests still cover concrete persistence regressions
+and the shared SQL lifecycle plan used by both SQL adapters. It also tests the
+HTTP/SSE handler's health, delta pull, event push, SSE response paths, and the
+native-style listener adapter's response writing and streamed POST body merge.
+The dev-server CLI is tested by starting a real ephemeral `node:http` server and
+querying its health route.
 
 ## Usage
 

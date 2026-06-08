@@ -12,6 +12,11 @@ import type {
   EventFilter,
   EventStore,
   MergeResult,
+  ProjectionFilter,
+  ProjectionReplaceResult,
+  ProjectionRow,
+  ProjectionStore,
+  ProjectionRuntimeServices,
   RuntimeCapability,
   RuntimeClock,
   RuntimeProfile,
@@ -29,7 +34,7 @@ import { Effect, Layer } from "effect";
 export interface DurableObjectStorageLike {
   get<T = unknown>(key: string): Promise<T | undefined>;
   put<T = unknown>(key: string, value: T): Promise<void>;
-  delete?(key: string): Promise<boolean>;
+  delete(key: string): Promise<boolean>;
 }
 
 function eventKey(namespace: string, id: EventId): string {
@@ -38,6 +43,14 @@ function eventKey(namespace: string, id: EventId): string {
 
 function indexKey(namespace: string): string {
   return `${namespace}:events:index`;
+}
+
+function projectionKey(namespace: string, id: string): string {
+  return `${namespace}:projection:${id}`;
+}
+
+function projectionIndexKey(namespace: string): string {
+  return `${namespace}:projection:index`;
 }
 
 function clockKey(namespace: string, replicaId: string): string {
@@ -61,6 +74,21 @@ async function saveIds(
   ids: readonly EventId[],
 ): Promise<void> {
   await storage.put(indexKey(namespace), [...ids].sort());
+}
+
+async function loadProjectionIds(
+  storage: DurableObjectStorageLike,
+  namespace: string,
+): Promise<string[]> {
+  return (await storage.get<string[]>(projectionIndexKey(namespace))) ?? [];
+}
+
+async function saveProjectionIds(
+  storage: DurableObjectStorageLike,
+  namespace: string,
+  ids: readonly string[],
+): Promise<void> {
+  await storage.put(projectionIndexKey(namespace), [...ids].sort());
 }
 
 function isHlc(value: unknown, replicaId: string): value is Hlc {
@@ -130,6 +158,58 @@ export class DurableObjectEventStore implements EventStore {
       if ((await this.append(event)).inserted) inserted++;
     }
     return { inserted, seen };
+  }
+}
+
+export class DurableObjectProjectionStore implements ProjectionStore {
+  constructor(
+    private readonly storage: DurableObjectStorageLike,
+    private readonly namespace = "metacrdt",
+  ) {}
+
+  async replace(
+    rows: Iterable<ProjectionRow>,
+  ): Promise<ProjectionReplaceResult> {
+    const previousIds = await loadProjectionIds(this.storage, this.namespace);
+    for (const id of previousIds) {
+      await this.storage.delete(projectionKey(this.namespace, id));
+    }
+
+    const ids: string[] = [];
+    for (const row of rows) {
+      ids.push(row.id);
+      await this.storage.put(projectionKey(this.namespace, row.id), row);
+    }
+    await saveProjectionIds(this.storage, this.namespace, ids);
+    return { rows: ids.length };
+  }
+
+  async clear(): Promise<void> {
+    const ids = await loadProjectionIds(this.storage, this.namespace);
+    for (const id of ids) {
+      await this.storage.delete(projectionKey(this.namespace, id));
+    }
+    await saveProjectionIds(this.storage, this.namespace, []);
+  }
+
+  async scan(filter: ProjectionFilter = {}): Promise<ProjectionRow[]> {
+    const ids = filter.ids ? [...new Set(filter.ids)] : await loadProjectionIds(
+      this.storage,
+      this.namespace,
+    );
+    const eventIds = filter.eventIds ? new Set(filter.eventIds) : null;
+    const out: ProjectionRow[] = [];
+    for (const id of ids) {
+      const row = await this.storage.get<ProjectionRow>(
+        projectionKey(this.namespace, id),
+      );
+      if (!row) continue;
+      if (eventIds && !eventIds.has(row.eventId)) continue;
+      if (filter.e !== undefined && row.e !== filter.e) continue;
+      if (filter.a !== undefined && row.a !== filter.a) continue;
+      out.push(row);
+    }
+    return out.sort((a, b) => a.id.localeCompare(b.id));
   }
 }
 
@@ -222,13 +302,18 @@ export async function createDurableObjectRuntime(
 ): Promise<
   RuntimeServices & {
     store: DurableObjectEventStore;
+    projection: DurableObjectProjectionStore;
     clock: DurableObjectClock;
     sequencer: DurableObjectSequencer;
   }
 > {
   const namespace = options.namespace ?? "metacrdt";
   const capabilities = new Set<RuntimeCapability>(
-    options.capabilities ?? ["convergent-log", "coordinated-writes"],
+    options.capabilities ?? [
+      "convergent-log",
+      "coordinated-writes",
+      "projection-store",
+    ],
   );
   const profile: RuntimeProfile = {
     name: options.name ?? "cloudflare-durable-object",
@@ -249,6 +334,7 @@ export async function createDurableObjectRuntime(
   return {
     profile,
     store: new DurableObjectEventStore(options.storage, namespace),
+    projection: new DurableObjectProjectionStore(options.storage, namespace),
     clock,
     sequencer,
   };
@@ -265,14 +351,23 @@ function durableObjectRuntimeInitError(cause: unknown): RuntimeServiceError {
 
 export function createDurableObjectRuntimeLayer(
   options: DurableObjectRuntimeOptions,
-) {
+): Layer.Layer<ProjectionRuntimeServices, RuntimeServiceError> {
   return Layer.unwrapEffect(
     Effect.map(
       Effect.tryPromise({
         try: () => createDurableObjectRuntime(options),
         catch: durableObjectRuntimeInitError,
       }),
-      runtimeServicesLayer,
+      (runtime) =>
+        runtimeServicesLayer({
+          profile: runtime.profile,
+          store: runtime.store,
+          projection: runtime.projection,
+          clock: runtime.clock,
+          sequencer: runtime.sequencer,
+          scheduler: runtime.scheduler,
+          transport: runtime.transport,
+        }),
     ),
   );
 }

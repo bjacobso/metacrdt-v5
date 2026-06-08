@@ -13,6 +13,10 @@ import type {
   EventFilter,
   EventStore,
   MergeResult,
+  ProjectionFilter,
+  ProjectionReplaceResult,
+  ProjectionRow,
+  ProjectionStore,
   RuntimeCapability,
   RuntimeClock,
   RuntimeProfile,
@@ -42,6 +46,10 @@ export type EncodedLocalValue =
 
 export type EncodedLocalEvent = Omit<Event, "v"> & { v?: EncodedLocalValue };
 
+export type EncodedLocalProjectionRow = Omit<ProjectionRow, "v"> & {
+  v: EncodedLocalValue;
+};
+
 export function localEventsKey(namespace: string): string {
   return `${namespace}:events`;
 }
@@ -52,6 +60,10 @@ export function localClockKey(namespace: string, replicaId: string): string {
 
 export function localSeqKey(namespace: string, replicaId: string): string {
   return `${namespace}:seq:${replicaId}`;
+}
+
+export function localProjectionKey(namespace: string): string {
+  return `${namespace}:projection`;
 }
 
 export function encodeLocalValue(v: Value): EncodedLocalValue {
@@ -96,6 +108,18 @@ export function decodeLocalEvent(event: EncodedLocalEvent): Event {
     (out as { v: Value }).v = decodeLocalValue(event.v);
   }
   return out;
+}
+
+export function encodeLocalProjectionRow(
+  row: ProjectionRow,
+): EncodedLocalProjectionRow {
+  return { ...row, v: encodeLocalValue(row.v) };
+}
+
+export function decodeLocalProjectionRow(
+  row: EncodedLocalProjectionRow,
+): ProjectionRow {
+  return { ...row, v: decodeLocalValue(row.v) };
 }
 
 function parseJson<T>(raw: string | null, fallback: T): T {
@@ -197,6 +221,62 @@ export class LocalEventStore implements EventStore {
   }
 }
 
+export class LocalProjectionStore implements ProjectionStore {
+  #rows: Map<string, ProjectionRow> | undefined;
+
+  constructor(
+    private readonly storage: LocalRuntimeStorage,
+    private readonly namespace = "metacrdt",
+  ) {}
+
+  #load(): Map<string, ProjectionRow> {
+    if (this.#rows) return this.#rows;
+    const encoded = parseJson<EncodedLocalProjectionRow[]>(
+      this.storage.getItem(localProjectionKey(this.namespace)),
+      [],
+    );
+    this.#rows = new Map();
+    for (const item of encoded) {
+      const row = decodeLocalProjectionRow(item);
+      this.#rows.set(row.id, row);
+    }
+    return this.#rows;
+  }
+
+  #persist(): void {
+    const rows = [...this.#load().values()]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map(encodeLocalProjectionRow);
+    this.storage.setItem(localProjectionKey(this.namespace), JSON.stringify(rows));
+  }
+
+  async replace(rows: Iterable<ProjectionRow>): Promise<ProjectionReplaceResult> {
+    this.#rows = new Map();
+    for (const row of rows) this.#rows.set(row.id, row);
+    this.#persist();
+    return { rows: this.#rows.size };
+  }
+
+  async clear(): Promise<void> {
+    this.#rows = new Map();
+    this.#persist();
+  }
+
+  async scan(filter: ProjectionFilter = {}): Promise<ProjectionRow[]> {
+    const ids = filter.ids ? new Set(filter.ids) : null;
+    const eventIds = filter.eventIds ? new Set(filter.eventIds) : null;
+    return [...this.#load().values()]
+      .filter((row) => {
+        if (ids && !ids.has(row.id)) return false;
+        if (eventIds && !eventIds.has(row.eventId)) return false;
+        if (filter.e !== undefined && row.e !== filter.e) return false;
+        if (filter.a !== undefined && row.a !== filter.a) return false;
+        return true;
+      })
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
+}
+
 export class LocalClock implements RuntimeClock {
   #clock: Hlc;
   readonly replicaId: string;
@@ -276,12 +356,13 @@ export function createLocalRuntime(
   options: LocalRuntimeOptions,
 ): RuntimeServices & {
   store: LocalEventStore;
+  projection: LocalProjectionStore;
   clock: LocalClock;
   sequencer: LocalSequencer;
 } {
   const namespace = options.namespace ?? "metacrdt";
   const capabilities = new Set<RuntimeCapability>(
-    options.capabilities ?? ["convergent-log"],
+    options.capabilities ?? ["convergent-log", "projection-store"],
   );
   const profile: RuntimeProfile = {
     name: options.name ?? "local",
@@ -291,6 +372,7 @@ export function createLocalRuntime(
   return {
     profile,
     store: new LocalEventStore(options.storage, namespace),
+    projection: new LocalProjectionStore(options.storage, namespace),
     clock: new LocalClock(
       options.storage,
       namespace,

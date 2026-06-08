@@ -17,6 +17,11 @@ import {
   mergeFrom,
   type MergeResult,
   type MemoryRuntimeOptions,
+  type ProjectionFilter,
+  type ProjectionReplaceResult,
+  type ProjectionRow,
+  type ProjectionStore,
+  type ProjectionRuntimeServices,
   type RuntimeCapability,
   type RuntimeClock,
   type RuntimeProfile,
@@ -84,26 +89,36 @@ export type NodeSqlLifecyclePlan = {
   tables: {
     events: string;
     meta: string;
+    projection: string;
   };
   indexes: {
     eventsByEntity: string;
     eventsByAttribute: string;
+    projectionByEntity: string;
+    projectionByAttribute: string;
+    projectionByEventId: string;
   };
   createEventsTable: string;
   createEventsByEntityIndex: string;
   createEventsByAttributeIndex: string;
   createMetaTable: string;
+  createProjectionTable: string;
+  createProjectionByEntityIndex: string;
+  createProjectionByAttributeIndex: string;
+  createProjectionByEventIdIndex: string;
   initializeStatements: readonly string[];
 };
 
 export type NodeSqliteRuntime = RuntimeServices & {
   store: NodeSqliteEventStore;
+  projection: NodeSqliteProjectionStore;
   clock: NodeSqliteClock;
   sequencer: NodeSqliteSequencer;
 };
 
 export type NodePostgresRuntime = RuntimeServices & {
   store: NodePostgresEventStore;
+  projection: NodePostgresProjectionStore;
   clock: NodePostgresClock;
   sequencer: NodePostgresSequencer;
 };
@@ -150,10 +165,15 @@ function identifier(name: string): string {
   return `"${name}"`;
 }
 
-function tableNames(prefix: string): { events: string; meta: string } {
+function tableNames(prefix: string): {
+  events: string;
+  meta: string;
+  projection: string;
+} {
   return {
     events: identifier(`${prefix}_events`),
     meta: identifier(`${prefix}_meta`),
+    projection: identifier(`${prefix}_projection`),
   };
 }
 
@@ -174,6 +194,9 @@ export function createNodeSqlLifecyclePlan(
   const indexes = {
     eventsByEntity: identifier(`${tablePrefix}_events_by_e`),
     eventsByAttribute: identifier(`${tablePrefix}_events_by_a`),
+    projectionByEntity: identifier(`${tablePrefix}_projection_by_e`),
+    projectionByAttribute: identifier(`${tablePrefix}_projection_by_a`),
+    projectionByEventId: identifier(`${tablePrefix}_projection_by_event_id`),
   };
   const createEventsTable =
     `CREATE TABLE IF NOT EXISTS ${tables.events} (` +
@@ -193,6 +216,23 @@ export function createNodeSqlLifecyclePlan(
     "key TEXT PRIMARY KEY NOT NULL, " +
     "value TEXT NOT NULL" +
     ")";
+  const createProjectionTable =
+    `CREATE TABLE IF NOT EXISTS ${tables.projection} (` +
+    "id TEXT PRIMARY KEY NOT NULL, " +
+    "e TEXT NOT NULL, " +
+    "a TEXT NOT NULL, " +
+    "event_id TEXT NOT NULL, " +
+    "row_json TEXT NOT NULL" +
+    ")";
+  const createProjectionByEntityIndex =
+    `CREATE INDEX IF NOT EXISTS ${indexes.projectionByEntity} ` +
+    `ON ${tables.projection} (e)`;
+  const createProjectionByAttributeIndex =
+    `CREATE INDEX IF NOT EXISTS ${indexes.projectionByAttribute} ` +
+    `ON ${tables.projection} (a)`;
+  const createProjectionByEventIdIndex =
+    `CREATE INDEX IF NOT EXISTS ${indexes.projectionByEventId} ` +
+    `ON ${tables.projection} (event_id)`;
   return {
     dialect,
     tablePrefix,
@@ -202,10 +242,18 @@ export function createNodeSqlLifecyclePlan(
     createEventsByEntityIndex,
     createEventsByAttributeIndex,
     createMetaTable,
+    createProjectionTable,
+    createProjectionByEntityIndex,
+    createProjectionByAttributeIndex,
+    createProjectionByEventIdIndex,
     initializeStatements: [
       createEventsTable,
       createEventsByEntityIndex,
       createEventsByAttributeIndex,
+      createProjectionTable,
+      createProjectionByEntityIndex,
+      createProjectionByAttributeIndex,
+      createProjectionByEventIdIndex,
       createMetaTable,
     ],
   };
@@ -238,6 +286,17 @@ function valueColumn(row: unknown): string | undefined {
   return undefined;
 }
 
+function rowJsonColumn(row: unknown): string | undefined {
+  if (row === undefined || row === null) return undefined;
+  if (typeof row === "string") return row;
+  if (Array.isArray(row)) return typeof row[0] === "string" ? row[0] : undefined;
+  if (typeof row === "object") {
+    const value = (row as { row_json?: unknown }).row_json;
+    return typeof value === "string" ? value : undefined;
+  }
+  return undefined;
+}
+
 function decodeEvent(row: unknown): Event | undefined {
   const raw = valueColumn(row);
   if (raw === undefined) return undefined;
@@ -248,6 +307,15 @@ function decodeEvent(row: unknown): Event | undefined {
 
 function eventJson(event: Event): string {
   return JSON.stringify(event);
+}
+
+function decodeProjectionRow(row: unknown): ProjectionRow | undefined {
+  const raw = rowJsonColumn(row);
+  return raw === undefined ? undefined : (JSON.parse(raw) as ProjectionRow);
+}
+
+function projectionRowJson(row: ProjectionRow): string {
+  return JSON.stringify(row);
 }
 
 function jsonResponse(value: unknown, status = 200): NodeSyncHttpResponse {
@@ -628,6 +696,104 @@ export class NodeSqliteEventStore implements EventStore {
   }
 }
 
+export class NodeSqliteProjectionStore implements ProjectionStore {
+  private readonly plan: NodeSqlLifecyclePlan;
+
+  constructor(
+    private readonly db: NodeSqliteDatabaseLike,
+    tablePrefix = "metacrdt",
+  ) {
+    this.plan = createNodeSqlLifecyclePlan({ dialect: "sqlite", tablePrefix });
+  }
+
+  async initialize(): Promise<void> {
+    await this.exec(this.plan.createProjectionTable);
+    await this.exec(this.plan.createProjectionByEntityIndex);
+    await this.exec(this.plan.createProjectionByAttributeIndex);
+    await this.exec(this.plan.createProjectionByEventIdIndex);
+  }
+
+  private async exec(sql: string): Promise<void> {
+    if (this.db.exec) {
+      await this.db.exec(sql);
+      return;
+    }
+    const stmt = await prepare(this.db, sql);
+    if (!stmt.run) throw new Error("SQLite statement does not support run()");
+    await stmt.run();
+  }
+
+  async replace(rows: Iterable<ProjectionRow>): Promise<ProjectionReplaceResult> {
+    await this.clear();
+    const stmt = await prepare(
+      this.db,
+      `INSERT INTO ${this.plan.tables.projection} (id, e, a, event_id, row_json) VALUES (?, ?, ?, ?, ?)`,
+    );
+    if (!stmt.run) throw new Error("SQLite statement does not support run()");
+    let count = 0;
+    for (const row of rows) {
+      await stmt.run(row.id, row.e, row.a, row.eventId, projectionRowJson(row));
+      count += 1;
+    }
+    return { rows: count };
+  }
+
+  async clear(): Promise<void> {
+    const stmt = await prepare(
+      this.db,
+      `DELETE FROM ${this.plan.tables.projection}`,
+    );
+    if (!stmt.run) throw new Error("SQLite statement does not support run()");
+    await stmt.run();
+  }
+
+  async scan(filter: ProjectionFilter = {}): Promise<ProjectionRow[]> {
+    if (filter.ids) {
+      const out: ProjectionRow[] = [];
+      for (const id of new Set(filter.ids)) {
+        const stmt = await prepare(
+          this.db,
+          `SELECT row_json FROM ${this.plan.tables.projection} WHERE id = ?`,
+        );
+        if (!stmt.get) throw new Error("SQLite statement does not support get()");
+        const row = decodeProjectionRow(await stmt.get(id));
+        if (!row) continue;
+        if (filter.e !== undefined && row.e !== filter.e) continue;
+        if (filter.a !== undefined && row.a !== filter.a) continue;
+        if (filter.eventIds !== undefined && !filter.eventIds.includes(row.eventId)) {
+          continue;
+        }
+        out.push(row);
+      }
+      return out.sort((a, b) => a.id.localeCompare(b.id));
+    }
+
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filter.e !== undefined) {
+      clauses.push("e = ?");
+      params.push(filter.e);
+    }
+    if (filter.a !== undefined) {
+      clauses.push("a = ?");
+      params.push(filter.a);
+    }
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const stmt = await prepare(
+      this.db,
+      `SELECT row_json FROM ${this.plan.tables.projection}${where} ORDER BY id`,
+    );
+    if (!stmt.all) throw new Error("SQLite statement does not support all()");
+    const eventIds = filter.eventIds ? new Set(filter.eventIds) : null;
+    return (await stmt.all(...params))
+      .map(decodeProjectionRow)
+      .filter(
+        (row): row is ProjectionRow =>
+          row !== undefined && (eventIds === null || eventIds.has(row.eventId)),
+      );
+  }
+}
+
 export class NodeSqliteMetaStore {
   private readonly plan: NodeSqlLifecyclePlan;
 
@@ -850,6 +1016,88 @@ export class NodePostgresEventStore implements EventStore {
   }
 }
 
+export class NodePostgresProjectionStore implements ProjectionStore {
+  private readonly plan: NodeSqlLifecyclePlan;
+
+  constructor(
+    private readonly client: NodePostgresClientLike,
+    tablePrefix = "metacrdt",
+  ) {
+    this.plan = createNodeSqlLifecyclePlan({ dialect: "postgres", tablePrefix });
+  }
+
+  async initialize(): Promise<void> {
+    await queryPostgres(this.client, this.plan.createProjectionTable);
+    await queryPostgres(this.client, this.plan.createProjectionByEntityIndex);
+    await queryPostgres(this.client, this.plan.createProjectionByAttributeIndex);
+    await queryPostgres(this.client, this.plan.createProjectionByEventIdIndex);
+  }
+
+  async replace(rows: Iterable<ProjectionRow>): Promise<ProjectionReplaceResult> {
+    await this.clear();
+    let count = 0;
+    for (const row of rows) {
+      await queryPostgres(
+        this.client,
+        `INSERT INTO ${this.plan.tables.projection} (id, e, a, event_id, row_json) VALUES ($1, $2, $3, $4, $5)`,
+        [row.id, row.e, row.a, row.eventId, projectionRowJson(row)],
+      );
+      count += 1;
+    }
+    return { rows: count };
+  }
+
+  async clear(): Promise<void> {
+    await queryPostgres(this.client, `DELETE FROM ${this.plan.tables.projection}`);
+  }
+
+  async scan(filter: ProjectionFilter = {}): Promise<ProjectionRow[]> {
+    if (filter.ids) {
+      const out: ProjectionRow[] = [];
+      for (const id of new Set(filter.ids)) {
+        const result = await queryPostgres(
+          this.client,
+          `SELECT row_json FROM ${this.plan.tables.projection} WHERE id = $1`,
+          [id],
+        );
+        const row = decodeProjectionRow(result.rows?.[0]);
+        if (!row) continue;
+        if (filter.e !== undefined && row.e !== filter.e) continue;
+        if (filter.a !== undefined && row.a !== filter.a) continue;
+        if (filter.eventIds !== undefined && !filter.eventIds.includes(row.eventId)) {
+          continue;
+        }
+        out.push(row);
+      }
+      return out.sort((a, b) => a.id.localeCompare(b.id));
+    }
+
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filter.e !== undefined) {
+      params.push(filter.e);
+      clauses.push(`e = $${params.length}`);
+    }
+    if (filter.a !== undefined) {
+      params.push(filter.a);
+      clauses.push(`a = $${params.length}`);
+    }
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const result = await queryPostgres(
+      this.client,
+      `SELECT row_json FROM ${this.plan.tables.projection}${where} ORDER BY id`,
+      params,
+    );
+    const eventIds = filter.eventIds ? new Set(filter.eventIds) : null;
+    return (result.rows ?? [])
+      .map(decodeProjectionRow)
+      .filter(
+        (row): row is ProjectionRow =>
+          row !== undefined && (eventIds === null || eventIds.has(row.eventId)),
+      );
+  }
+}
+
 export class NodePostgresMetaStore {
   private readonly plan: NodeSqlLifecyclePlan;
 
@@ -982,7 +1230,15 @@ export function createNodeMemoryRuntimeLayer(options: MemoryRuntimeOptions) {
 
 function nodeAsyncRuntimeLayer(
   operation: string,
-  init: () => Promise<RuntimeServices & { sequencer: RuntimeSequencer }>,
+  init: () => Promise<NodeSqliteRuntime>,
+): Layer.Layer<ProjectionRuntimeServices, RuntimeServiceError>;
+function nodeAsyncRuntimeLayer(
+  operation: string,
+  init: () => Promise<NodePostgresRuntime>,
+): Layer.Layer<ProjectionRuntimeServices, RuntimeServiceError>;
+function nodeAsyncRuntimeLayer<T extends RuntimeServices & { sequencer: RuntimeSequencer }>(
+  operation: string,
+  init: () => Promise<T>,
 ) {
   return Layer.unwrapEffect(
     Effect.map(
@@ -1000,13 +1256,19 @@ export async function createNodeSqliteRuntime(
 ): Promise<NodeSqliteRuntime> {
   const prefix = options.tablePrefix ?? "metacrdt";
   const store = new NodeSqliteEventStore(options.db, prefix);
+  const projection = new NodeSqliteProjectionStore(options.db, prefix);
   const meta = new NodeSqliteMetaStore(options.db, prefix);
   if (options.initialize ?? true) {
     await store.initialize();
+    await projection.initialize();
     await meta.initialize();
   }
   const capabilities = new Set<RuntimeCapability>(
-    options.capabilities ?? ["convergent-log", "coordinated-writes"],
+    options.capabilities ?? [
+      "convergent-log",
+      "coordinated-writes",
+      "projection-store",
+    ],
   );
   const profile: RuntimeProfile = {
     name: options.name ?? "node-sqlite",
@@ -1016,6 +1278,7 @@ export async function createNodeSqliteRuntime(
   return {
     profile,
     store,
+    projection,
     clock: await NodeSqliteClock.create(meta, options.replicaId, options.wall),
     sequencer: await NodeSqliteSequencer.create(meta, options.replicaId),
   };
@@ -1034,13 +1297,19 @@ export async function createNodePostgresRuntime(
 ): Promise<NodePostgresRuntime> {
   const prefix = options.tablePrefix ?? "metacrdt";
   const store = new NodePostgresEventStore(options.client, prefix);
+  const projection = new NodePostgresProjectionStore(options.client, prefix);
   const meta = new NodePostgresMetaStore(options.client, prefix);
   if (options.initialize ?? true) {
     await store.initialize();
+    await projection.initialize();
     await meta.initialize();
   }
   const capabilities = new Set<RuntimeCapability>(
-    options.capabilities ?? ["convergent-log", "coordinated-writes"],
+    options.capabilities ?? [
+      "convergent-log",
+      "coordinated-writes",
+      "projection-store",
+    ],
   );
   const profile: RuntimeProfile = {
     name: options.name ?? "node-postgres",
@@ -1050,6 +1319,7 @@ export async function createNodePostgresRuntime(
   return {
     profile,
     store,
+    projection,
     clock: await NodePostgresClock.create(meta, options.replicaId, options.wall),
     sequencer: await NodePostgresSequencer.create(meta, options.replicaId),
   };

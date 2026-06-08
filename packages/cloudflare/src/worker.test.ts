@@ -19,6 +19,10 @@ class FakeStorage implements DurableObjectStorageLike {
   async put<T = unknown>(key: string, value: T): Promise<void> {
     this.data.set(key, value);
   }
+
+  async delete(key: string): Promise<boolean> {
+    return this.data.delete(key);
+  }
 }
 
 class FakeSocket implements WebSocketLike {

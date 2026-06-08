@@ -146,8 +146,11 @@ it does not claim peer discovery, delivery, retries, or relay semantics.
 catch-up behaviors from SPEC §8 for a target-provided network harness; relay
 auth, retries, and durability remain target-specific.
 `runRuntimeProjectionStoreConformance` proves the materialized projection-store
-boundary for targets that expose `ProjectionStoreService`; it does not imply
-every target has adopted that boundary yet.
+boundary for targets that expose `ProjectionStoreService`; it currently runs
+against runtime memory/localStorage, Node memory/SQLite/Postgres, local-first
+localStorage, and Cloudflare Durable Object storage. Convex component adoption
+remains separate because it needs a component-owned projection table or an
+explicit mapping onto the existing component read models.
 
 ## Usage
 
@@ -187,8 +190,8 @@ log/HLC/seq across re-creation, payload-preserving scheduler submission,
 event-batch preserving transport publication, and peer delivery/catch-up for the
 BroadcastChannel, p2p DataChannel, and Cloudflare Durable Object WebSocket relay
 harnesses. It does **not yet** cover live relay deployment auth/retry/durability,
-a production Datalog/query service API contract, or durable target adoption of
-materialized triple-store projection stores. Those checks should be added when
+a production Datalog/query service API contract, or Convex component adoption of
+the materialized projection-store boundary. Those checks should be added when
 the relevant target capabilities are shared beyond the Convex reference app (see
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md) and
 [docs/targets.md](../../docs/targets.md)).

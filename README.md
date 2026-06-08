@@ -183,9 +183,11 @@ Current packages:
   verification, version-vector anti-entropy, deterministic fold convergence, and
   EventStore-backed projection and Datalog/query semantics. It also includes
   opt-in materialized projection-store conformance for targets that provide
-  `ProjectionStoreService`, restart-persistence conformance for durable targets,
-  checking event-log/HLC/seq continuity across runtime re-creation, plus
-  scheduler service-boundary, transport publish-boundary, and peer network
+  `ProjectionStoreService` (runtime memory/localStorage, Node
+  memory/SQLite/Postgres, local-first localStorage, Cloudflare Durable Object),
+  restart-persistence conformance for durable targets, checking
+  event-log/HLC/seq continuity across runtime re-creation, plus scheduler
+  service-boundary, transport publish-boundary, and peer network
   delivery/catch-up conformance for observable services/harnesses. The package
   proves itself against runtime Layers (including BroadcastChannel, p2p, and
   Cloudflare relay network harnesses) and is consumed by Convex/Node/local/
@@ -691,8 +693,8 @@ Frontier:
 - HLC + version-vector sync across replicas
 - Durable Object + SQLite triple-store parity
 - production database lifecycle/migrations beyond the current Node SQL DDL plan
-- production Datalog/query-service conformance and durable-target adoption of the
-  materialized projection-store suite
+- production Datalog/query-service conformance and Convex component adoption of
+  the materialized projection-store suite
 
 See [TODO.md](./TODO.md) for the running pulse.
 

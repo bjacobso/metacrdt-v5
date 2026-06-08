@@ -2,8 +2,10 @@ import { describe, expect, test } from "vitest";
 import {
   runRuntimeNetworkTransportConformance,
   runRuntimeConformance,
+  runRuntimeProjectionStoreConformance,
   type RuntimeNetworkTransportConformanceTarget,
   type RuntimeLayerConformanceTarget,
+  type RuntimeProjectionStoreConformanceTarget,
   type RuntimeFactoryOptions,
 } from "@metacrdt/testkit";
 import {
@@ -42,6 +44,18 @@ const cloudflareTarget: RuntimeLayerConformanceTarget = {
     return createDurableObjectRuntimeLayer({
       storage: new FakeDurableObjectStorage(),
       namespace: "conformance",
+      replicaId: options.replicaId,
+      wall: options.wall,
+    });
+  },
+};
+
+const cloudflareProjectionStoreTarget: RuntimeProjectionStoreConformanceTarget = {
+  name: "cloudflare-do-projection-store",
+  createLayer(options: RuntimeFactoryOptions) {
+    return createDurableObjectRuntimeLayer({
+      storage: new FakeDurableObjectStorage(),
+      namespace: "projection-store",
       replicaId: options.replicaId,
       wall: options.wall,
     });
@@ -197,6 +211,20 @@ describe("@metacrdt/cloudflare conformance", () => {
         "query-or-dedupe",
         "query-pagination-aggregation",
         "query-derived-rows",
+      ],
+    });
+  });
+
+  test("passes the shared projection-store conformance suite", async () => {
+    await expect(
+      runRuntimeProjectionStoreConformance(cloudflareProjectionStoreTarget),
+    ).resolves.toEqual({
+      target: "cloudflare-do-projection-store",
+      checks: [
+        "projection-store-replace-from-fold",
+        "projection-store-scan-filters",
+        "projection-store-replace-is-atomic",
+        "projection-store-clear",
       ],
     });
   });

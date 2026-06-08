@@ -83,8 +83,9 @@ On open hosts the adapter is a selectable dependency.
   wired into testkit memory and Node memory; network delivery/catch-up
   conformance is proven against BroadcastChannel, p2p DataChannel, and
   Cloudflare Durable Object WebSocket relay harnesses. Projection-store
-  conformance is currently proven against runtime memory; durable target adoption
-  is next. Compatibility
+  conformance is currently proven against runtime memory/localStorage, Node
+  memory/SQLite/Postgres, local-first localStorage, and Cloudflare Durable Object
+  storage; Convex component adoption is next. Compatibility
   `RuntimeServices` targets still adapt through `runtimeServicesLayer`.
 
 ### Should exist next
@@ -239,10 +240,12 @@ a sibling target.
    observable services. Network delivery/catch-up conformance has started for
    BroadcastChannel, p2p DataChannel, and Cloudflare relay harnesses. EventStore
    projection and EventStore-backed Datalog/query conformance are included in the
-   shared runtime suite. Materialized projection-store conformance has started as
-   an opt-in suite over `ProjectionStoreService`; add durable target providers
-   and production query-service conformance whenever the relevant target
-   capabilities are exposed. This is what *proves* the
+   shared runtime suite. Materialized projection-store conformance is an opt-in
+   suite over `ProjectionStoreService`, now wired through runtime memory/local,
+   Node memory/SQLite/Postgres, local-first localStorage, and Cloudflare Durable
+   Object storage; add Convex component projection-store adoption and production
+   query-service conformance whenever the relevant target capabilities are
+   exposed. This is what *proves* the
    "guaranteed to converge" claim across targets.
 3. **Cloudflare Phase B/C** — extract the shared fold into core, then the DO +
    SQLite triple store ([cloudflare-target.md](./cloudflare-target.md)).

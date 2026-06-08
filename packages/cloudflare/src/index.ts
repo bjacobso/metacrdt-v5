@@ -1,6 +1,7 @@
 export {
   DurableObjectClock,
   DurableObjectEventStore,
+  DurableObjectProjectionStore,
   DurableObjectSequencer,
   createDurableObjectRuntime,
   createDurableObjectRuntimeLayer,
