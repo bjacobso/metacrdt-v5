@@ -98,6 +98,8 @@ export type DatalogDerivedRowsArgs = typeof DatalogDerivedRowsArgs.Type;
 
 export type QueryState = ProvenancedBinding<string, string>;
 
+export type { DerivedRow, ResultPage } from "@metacrdt/query";
+
 export type DatalogQueryResult = {
   readonly states: readonly QueryState[];
   readonly rows: readonly Record<string, unknown>[];

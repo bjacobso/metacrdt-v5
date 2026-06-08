@@ -31,10 +31,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Cloudflare Durable Object SQLite runtime seed — structural `sql.exec`
   event/projection/HLC/seq services with Effect Layer, runtime conformance,
   projection-store conformance, and restart-persistence conformance.
-- [x] Cloudflare Durable Object SQLite log/current-state surface —
-  append-and-rebuild, event get/list, rebuild, current-row, current-entity, and
-  typed current-entity reads over SQLite event/projection stores with Effect
-  helpers and a Promise facade.
+- [x] Cloudflare Durable Object SQLite log/current/query surface —
+  append-and-rebuild, event get/list, EventStore-backed bitemporal Datalog
+  reads, rebuild, current-row, current-entity, and typed current-entity reads
+  over SQLite event/projection stores with Effect helpers and a Promise facade.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -43,8 +43,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   dependency-free structural SQLite key/value adapter and local-first runtime.
 - [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
   DataChannel anti-entropy transport with multi-hop gossip.
-- [ ] Cloudflare remaining component-equivalent SQLite surface — bitemporal
-  query/index APIs, cardinality-one reconcile/invalidation reporting,
+- [ ] Cloudflare remaining component-equivalent SQLite surface — SQL-indexed
+  query-provider optimization, cardinality-one reconcile/invalidation reporting,
   operational collection/flow surface, DO alarm multiplexing, and live-query
   WebSocket plumbing (see [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
@@ -569,6 +569,22 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ## Log
 
+### 2026-06-08 — @metacrdt/cloudflare SQLite bitemporal query surface
+- [x] **Added EventStore-backed Datalog reads to the DO SQLite facade.**
+  `createDurableObjectSqliteCurrentSurface` now exposes `query`, `page`,
+  `aggregate`, and `derivedRows` alongside append/event/current reads; the
+  Effect helpers depend on `DatalogQueryService`, and the runtime Layer is
+  composed with `datalogQueryLayer()` so query semantics stay shared.
+- [x] **Kept this as default-provider parity, not SQL optimization.** No
+  Cloudflare-specific planner/index provider was added; future work can replace
+  the provider behind the same query contract and prove equivalence with
+  provider-specific conformance.
+- [x] **Tests and docs.** Cloudflare tests now prove query, pagination,
+  aggregation, and derived-row shaping through the SQLite event table. PLAN,
+  TODO, README, `docs/cloudflare-target.md`, and `docs/targets.md` now describe
+  the shipped surface as log/current/query and leave SQL-indexed optimization,
+  operational flow/collection, alarms, and live-query plumbing as remaining.
+
 ### 2026-06-08 — @metacrdt/cloudflare SQLite event read surface
 - [x] **Added protocol event reads to the DO SQLite facade.**
   `createDurableObjectSqliteCurrentSurface` now exposes `getEvent` and
@@ -581,8 +597,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **Tests and docs.** Cloudflare tests now prove single-event reads,
   entity/attribute event filters, id filters, and limits over the facade. PLAN,
   TODO, README, `docs/cloudflare-target.md`, and `docs/targets.md` now list
-  remaining Cloudflare parity as bitemporal query/index, reconcile/invalidation,
-  operational flow/collection, alarms, and live-query plumbing.
+  remaining Cloudflare parity as SQL-indexed query optimization,
+  reconcile/invalidation, operational flow/collection, alarms, and live-query
+  plumbing.
 
 ### 2026-06-08 — @metacrdt/cloudflare SQLite current-state surface
 - [x] **Started Cloudflare Phase C.** `@metacrdt/cloudflare` now exports
@@ -644,7 +661,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   driver and prove Layer use, restart persistence, two-replica convergence,
   invalid event-id rejection, shared runtime conformance, shared
   projection-store conformance, and shared restart-persistence conformance.
-- [x] Still ahead after this seed: bitemporal query/index surface,
+- [x] Still ahead after this seed: bitemporal query/index surface (later started
+  by the EventStore-backed query facade; SQL-indexed optimization remains),
   cardinality-one reconcile/invalidation reporting, collection/flow surface, DO
   alarm multiplexing, live query subscriptions, and live Cloudflare deployment.
 

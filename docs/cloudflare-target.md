@@ -4,10 +4,11 @@
 `@metacrdt/cloudflare` now has a structural Durable Object SQLite runtime
 adapter over `ctx.storage.sql.exec(...)`, with EventStore / ProjectionStore /
 HLC / seq services, Layer-backed conformance, and the first
-component-equivalent log/current-state surface (`appendAssert` /
+component-equivalent log/current/query surface (`appendAssert` /
 `appendLifecycle` append-and-rebuild helpers, `getEvent`, `listEvents`,
-`rebuildCurrent`, `listCurrent`, `getCurrentEntity`, `listCurrentEntities`).
-Full bitemporal query and operational parity are still ahead.
+`query`, `page`, `aggregate`, `derivedRows`, `rebuildCurrent`, `listCurrent`,
+`getCurrentEntity`, `listCurrentEntities`). SQL-indexed query optimization and
+operational parity are still ahead.
 
 **Scope:** Grow `@metacrdt/cloudflare` from a sync-plane shell into a full
 MetaCRDT target at parity with the `@metacrdt/convex` component — an indexed,
@@ -29,11 +30,13 @@ real operational triple store. `@metacrdt/cloudflare` started as only the
 WebSocket relay and a Worker shell. It now also has the first Durable Object
 SQLite runtime substrate: structural SQLite services for events, projection
 rows, HLC, and per-replica `seq`. It now has the first component-equivalent
-log/current-state surface over that substrate: append-and-rebuild helpers,
-`getEvent`, `listEvents`, `rebuildCurrent`, and current entity/list reads backed
-by SQLite projection rows. It still has no indexed triple queries, no
-bitemporal fold-on-read API, no full cardinality-one projection reconcile /
-invalidation surface, and none of the operational (collection/flow) surface.
+log/current/query surface over that substrate: append-and-rebuild helpers,
+`getEvent`, `listEvents`, EventStore-backed bitemporal Datalog reads
+(`query`, `page`, `aggregate`, `derivedRows`), `rebuildCurrent`, and current
+entity/list reads backed by SQLite projection rows. It still has no
+SQL-optimized indexed triple queries, no full cardinality-one projection
+reconcile / invalidation surface, and none of the operational (collection/flow)
+surface.
 
 This doc defines what it takes to bring Cloudflare to parity, in what order, and
 which decisions must be settled first — and it makes **live frontend queries an
@@ -95,7 +98,7 @@ function surface — backed by Durable Object SQLite instead of the Convex DB.
 | `DurableObjectSqliteEventStore` | SQLite-backed event table over `ctx.storage.sql.exec(...)`; indexed by entity and attribute |
 | `DurableObjectSqliteProjectionStore` | SQLite-backed materialized projection table; indexed by entity, attribute, and source event |
 | `DurableObjectSqliteClock` / `DurableObjectSqliteSequencer` | SQLite-backed HLC + per-replica `seq` metadata |
-| `createDurableObjectSqliteCurrentSurface` | First component-equivalent log/current-state facade: append-and-rebuild, get/list events, rebuild, list current rows, read current entity, and list typed current entities |
+| `createDurableObjectSqliteCurrentSurface` | First component-equivalent log/current/query facade: append-and-rebuild, get/list events, EventStore-backed Datalog reads, rebuild, list current rows, read current entity, and list typed current entities |
 | `DurableObjectWebSocketRelay` | version-vector hello/delta sync + event fan-out |
 | `MetaCrdtRelayDurableObject` / `relayWorker` | Worker/DO example shell |
 
@@ -109,9 +112,10 @@ full queryable component-equivalent bitemporal triple store.
 ## The gap, in one sentence
 
 Cloudflare can already **converge and persist an event log**, expose protocol
-event reads, rebuild SQLite-backed current projection rows, and serve current
-entity/list reads; it cannot yet expose the full component-equivalent
-**bitemporal-query/index and operational collection/flow** surface.
+event reads, run EventStore-backed bitemporal Datalog reads, rebuild
+SQLite-backed current projection rows, and serve current entity/list reads; it
+cannot yet expose the optimized SQL-indexed query provider or the full
+**operational collection/flow** surface.
 
 ---
 
@@ -166,13 +170,15 @@ reconcile reuses the Phase B helper.
 **Shipped seed:** `createDurableObjectSqliteCurrentSurface` wraps the SQLite
 runtime with `appendAssert` / `appendLifecycle` append-and-rebuild helpers,
 `getEvent`, `listEvents`, `rebuildCurrent`, `listCurrent`, `getCurrentEntity`,
-and `listCurrentEntities`. It reads protocol events from the SQLite event
-table, rebuilds the neutral `ProjectionStoreService` rows from the protocol log
-using shared `@metacrdt/runtime` / `@metacrdt/core` fold semantics, then serves
-current reads from the SQLite projection table.
+`listCurrentEntities`, and the default `DatalogQueryService` methods (`query`,
+`page`, `aggregate`, `derivedRows`). It reads protocol events from the SQLite
+event table, rebuilds the neutral `ProjectionStoreService` rows from the
+protocol log using shared `@metacrdt/runtime` / `@metacrdt/core` fold semantics,
+serves current reads from the SQLite projection table, and routes bitemporal
+Datalog reads through the shared EventStore-backed query service.
 
-**Still ahead for parity:** richer append function surface, bitemporal
-fold-on-read/indexed query APIs, full component-style cardinality-one
+**Still ahead for parity:** richer append function surface, SQL-indexed query
+provider optimization/conformance, full component-style cardinality-one
 reconcile/invalidation reporting, and the collection/flow surface.
 
 ### Phase D — Operational surface + alarms
@@ -263,10 +269,10 @@ keeps it converged.
 
 The Phase B adapters (~600–800 LOC) get **shared, not rewritten**. The
 Cloudflare-specific work is comparable to the existing Convex component: the
-runtime-service SQLite seed and first log/current-state facade are now present;
-the remaining work is a richer SQL schema + migration, the rest of the
-SQL-backed component-equivalent bitemporal query / operational surface, and the
-alarm-multiplexing layer.
+runtime-service SQLite seed and first log/current/query facade are now present;
+the remaining work is a richer SQL schema + migration, optimized SQL-indexed
+query-provider parity, the operational surface, and the alarm-multiplexing
+layer.
 Roughly 2–4 focused sessions remain, gated on shared fold/reconcile reuse. The
 live-query stretch goal is a separate later increment on top.
 

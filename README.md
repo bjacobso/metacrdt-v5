@@ -165,8 +165,9 @@ Current packages:
 - **`@metacrdt/cloudflare`** (`packages/cloudflare`) — Durable Object / Worker
   target helpers: KV-backed and SQLite-backed event log/projection/HLC/seq
   services, Effect Layer providers, the first SQLite-backed current-state surface
-  (append-and-rebuild, protocol event reads, rebuild, current rows/entities),
-  WebSocket relay shell, Worker router, and example Wrangler config.
+  (append-and-rebuild, protocol event reads, EventStore-backed Datalog reads,
+  rebuild, current rows/entities), WebSocket relay shell, Worker router, and
+  example Wrangler config.
 - **`@metacrdt/local`** (`packages/local`) — browser/local-first target package:
   localStorage-backed event/HLC/seq services composed with BroadcastChannel
   anti-entropy, IndexedDB-compatible async persistence, SQLite-compatible local

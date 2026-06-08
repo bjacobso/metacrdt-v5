@@ -199,11 +199,13 @@ C by adding the first DO SQLite component-equivalent current-state surface:
 append-and-rebuild helpers plus `rebuildCurrent`, `listCurrent`,
 `getCurrentEntity`, and `listCurrentEntities` backed by the SQLite projection
 store. Goal 117 adds protocol event reads (`getEvent` / `listEvents`) to the
-same DO SQLite facade. The next active goal should be chosen from the remaining
-TODO candidates:
+same DO SQLite facade. Goal 118 adds the default EventStore-backed bitemporal
+Datalog query surface (`query`, `page`, `aggregate`, `derivedRows`) to that
+facade. The next active goal should be chosen from the remaining TODO
+candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
-remaining Cloudflare DO+SQLite bitemporal-query/operational parity, another
+remaining Cloudflare DO+SQLite SQL-indexed-query/operational parity, another
 carefully scoped Confect/domain wrapper, or the next projection dependency
 (closure/derived provenance or remaining operational process state).
 
@@ -524,8 +526,9 @@ arguments.
     `ctx.storage.sql.exec(...)`
   - first DO SQLite current-state surface:
     `createDurableObjectSqliteCurrentSurface` plus Effect-native
-    append-and-rebuild, get/list events, rebuild, current-row, current-entity,
-    and typed-current-entity helpers backed by SQLite event/projection rows
+    append-and-rebuild, get/list events, EventStore-backed bitemporal Datalog
+    reads, rebuild, current-row, current-entity, and typed-current-entity
+    helpers backed by SQLite event/projection rows
   - structural Durable Object WebSocket relay shell for hello/delta sync and
     event fan-out
   - Worker-facing router + Durable Object class shell and example Wrangler config
@@ -533,8 +536,8 @@ arguments.
     vectors, stored event verification, WebSocket publish/catch-up, and protocol
     filtering, Worker routing, and WebSocket upgrade wiring; SQLite target tests
     additionally prove runtime, projection-store, restart-persistence
-    conformance, and the log/current-state surface append/rebuild/event/current
-    read behavior
+    conformance, and the log/current/query surface append/rebuild/event/query/
+    current read behavior
 - `@metacrdt/local` exists in [`packages/local`](./packages/local):
   - browser-facing local-first target package
   - composes the `@metacrdt/runtime` localStorage-backed event/HLC/seq services
@@ -9419,6 +9422,57 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
 
 ---
 
+## Goal 118 — @metacrdt/cloudflare DO SQLite Bitemporal Query Surface
+
+**Status:** shipped.
+
+**Objective:** extend the first Cloudflare Phase C facade with the production
+runtime query contract, without inventing target-specific query semantics or
+claiming SQL-indexed query optimization. The facade should expose Promise
+methods suitable for Durable Object RPC entrypoints while the Effect helpers
+depend on `DatalogQueryService`, so the shared EventStore-backed provider can
+be swapped for a SQL-optimized provider later.
+
+### What Shipped
+
+- Extended `packages/cloudflare/src/sqliteCurrent.ts` with:
+  - `queryDurableObjectSqliteEffect`;
+  - `pageDurableObjectSqliteEffect`;
+  - `aggregateDurableObjectSqliteEffect`;
+  - `derivedRowsDurableObjectSqliteEffect`;
+  - Promise-facade methods `query`, `page`, `aggregate`, and `derivedRows` on
+    `createDurableObjectSqliteCurrentSurface`.
+- Composed the existing DO SQLite runtime `Layer` with
+  `@metacrdt/runtime`'s `datalogQueryLayer()`, so Cloudflare reads through the
+  same `DatalogQueryService` contract as other targets.
+- Added a direct `@metacrdt/query` dependency for the facade's public query
+  result types (`ResultPage`, `DerivedRow`).
+- Extended Cloudflare package tests to prove:
+  - bitemporal `query` reads through the SQLite event table;
+  - `page` uses stable Datalog pagination;
+  - `aggregate` summarizes bindings;
+  - `derivedRows` shapes query bindings into deterministic derived facts.
+- Updated package docs, root README, `docs/cloudflare-target.md`,
+  `docs/targets.md`, PLAN, and TODO so Cloudflare's shipped surface is now
+  described as log/current/query, with SQL-indexed query optimization and
+  operational parity still ahead.
+
+### Non-Goals
+
+- Do not add a SQL-specific query planner/provider yet; this slice uses the
+  default EventStore-backed `DatalogQueryService`.
+- Do not claim query-index performance parity with Convex or future DO SQL
+  indexes.
+- Do not implement collection/flow, alarm multiplexing, or live-query
+  WebSocket subscriptions yet.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare`
+- `npm test --workspace @metacrdt/cloudflare`
+
+---
+
 ## Goal 117 — @metacrdt/cloudflare DO SQLite Event Read Surface
 
 **Status:** shipped.
@@ -9857,7 +9911,7 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] `@metacrdt/cloudflare` Durable Object WebSocket relay shell.
 - [x] Cloudflare Worker/DO example shell + Wrangler config.
 - [x] Cloudflare Durable Object SQLite runtime-service substrate.
-- [x] Cloudflare Durable Object SQLite log/current-state surface.
+- [x] Cloudflare Durable Object SQLite log/current/query surface.
 - [x] `@metacrdt/local` browser/local-first package over localStorage +
   BroadcastChannel.
 - [x] IndexedDB-compatible async local persistence adapter.

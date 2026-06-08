@@ -57,8 +57,10 @@ export {
   type DatalogQueryEffect,
   type DatalogQueryPageArgs as DatalogQueryPageArgsType,
   type DatalogQueryResult,
+  type DerivedRow,
   type PaginationOpts as PaginationOptsType,
   type QueryState,
+  type ResultPage,
 } from "./query.js";
 
 export {
