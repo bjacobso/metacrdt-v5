@@ -442,9 +442,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Choose the next Node slice: structural HTTP/SSE sync handler.
 - [x] Choose the next Node slice: native-style HTTP listener adapter.
 - [x] Choose the next Node slice: packaged dev-server CLI.
-- [ ] Choose between production provider wiring, next Node slice (Postgres /
-  durable SQL storage), Cloudflare DO+SQLite parity, or another parked Query/Rules
-  item.
+- [x] Choose the next Node slice: Postgres runtime services.
+- [ ] Choose between production provider wiring, Node SDK / shared SQL lifecycle
+  helpers, Cloudflare DO+SQLite parity, or another parked Query/Rules item.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -530,9 +530,21 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `packages/cloudflare/README.md` now link the target model and Cloudflare plan.
 - [x] Next concrete target-runtime candidate chosen: first `@metacrdt/testkit`
   conformance suite.
-- [ ] Remaining target-runtime candidates: Node Postgres / durable SQL storage,
-  Cloudflare Phase B/C, or expanded testkit persistence/scheduler/transport
-  suites once a second target needs them.
+- [ ] Remaining target-runtime candidates: Node SDK / shared SQL lifecycle
+  helpers, Cloudflare Phase B/C, or expanded testkit persistence/scheduler/
+  transport suites once a second target needs them.
+
+### 2026-06-08 — Node Postgres runtime services
+- [x] **Goal 109 shipped:** `@metacrdt/node` now exports structural Postgres
+  runtime services over a driver-neutral `query(sql, params)` client interface.
+- [x] Added `NodePostgresEventStore`, `NodePostgresMetaStore`,
+  `NodePostgresClock`, `NodePostgresSequencer`, and
+  `createNodePostgresRuntime`.
+- [x] Postgres is treated as a storage adapter under the Node target, not a peer
+  target. The package still ships no native database dependency.
+- [x] Verification: focused Node tests/typecheck, package build/pack, full package
+  tests, root typecheck, and app build passed. Node package tests are now 12/12,
+  with shared runtime conformance covering memory, SQLite, and Postgres.
 
 ### 2026-06-08 — Node packaged dev-server CLI
 - [x] **Goal 108 shipped:** `@metacrdt/node` now ships the
@@ -592,7 +604,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   version vector, push remote events through `mergeFrom`, and one-shot
   `text/event-stream` delta frames. The handler returns structural
   `{ status, headers, body }` responses so native `node:http`, Express, Fastify,
-  Hono, Bun, tests, or a future dev server can adapt it without this package
+  Hono, Bun, tests, or the packaged dev server can adapt it without this package
   owning listener lifecycle.
 - [x] Verification: focused Node tests/typecheck, `npm run test:packages`,
   `npm run build:packages`, and `npm run typecheck` passed.

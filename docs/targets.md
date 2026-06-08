@@ -63,20 +63,21 @@ On open hosts the adapter is a selectable dependency.
   store ([cloudflare-target.md](./cloudflare-target.md)).
 - `@metacrdt/local` — browser/local-first host.
 - `@metacrdt/node` — open server-process host with memory and structural
-  server-SQLite runtime services plus a dependency-free structural HTTP/SSE sync
-  handler, native `node:http`-style request listener, and packaged in-memory
-  dev-server CLI. Postgres and SDK integration remain future slices.
+  server-SQLite/Postgres runtime services plus a dependency-free structural
+  HTTP/SSE sync handler, native `node:http`-style request listener, and packaged
+  in-memory dev-server CLI. SDK integration and shared SQL lifecycle helpers
+  remain future slices.
 - `@metacrdt/runtime`'s in-memory target — the reference harness.
 - `@metacrdt/testkit` — framework-neutral conformance helpers for EventStore,
   anti-entropy, and deterministic fold convergence (currently proven against
   the in-memory runtime, Cloudflare Durable Object runtime services, the async
-  local runtime, and Node memory/SQLite runtimes).
+  local runtime, and Node memory/SQLite/Postgres runtimes).
 
 ### Should exist next
 
-- **`@metacrdt/node` next slices** — add Postgres and SDK integration on top of
-  the memory/SQLite host, HTTP/SSE sync surface, and packaged dev server now in
-  place.
+- **`@metacrdt/node` next slices** — add SDK integration and shared SQL
+  lifecycle/migration helpers on top of the memory/SQLite/Postgres host,
+  HTTP/SSE sync surface, and packaged dev server now in place.
 
 ### Defer until a real need justifies them
 
@@ -102,7 +103,7 @@ On open hosts the adapter is a selectable dependency.
 | IndexedDB | `local` | done |
 | SQLite-wasm | `local` | done |
 | SQLite (server) | `node` | done (structural driver API) |
-| Postgres | `node` | planned |
+| Postgres | `node` | done (structural `query(sql, params)` adapter) |
 | DO SQLite | `cloudflare` | planned ([cloudflare-target.md](./cloudflare-target.md)) |
 | Convex tables | `convex` | done (managed) |
 | FoundationDB | — | archive unless a real need appears |
@@ -210,16 +211,16 @@ a sibling target.
 
 ## Recommended build order
 
-1. **`@metacrdt/node`** + `memory` / `sqlite` adapters + HTTP/SSE handler +
-   packaged dev server — unlocks SDK/self-hosting work and another host for the
-   testkit to exercise.
+1. **`@metacrdt/node`** + `memory` / `sqlite` / `postgres` adapters + HTTP/SSE
+   handler + packaged dev server — unlocks SDK/self-hosting work and another
+   host for the testkit to exercise.
 2. **Expand `@metacrdt/testkit` as targets mature** — add persistence,
    scheduler, transport, and query/projection suites whenever a second target
    exposes the relevant capability. This is what *proves* the "guaranteed to
    converge" claim across targets.
 3. **Cloudflare Phase B/C** — extract the shared fold into core, then the DO +
    SQLite triple store ([cloudflare-target.md](./cloudflare-target.md)).
-4. **Extract `@metacrdt/sql`** once node-SQLite and DO-SQLite both exist; add the
-   **Postgres** dialect.
+4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal
+   enough repeated DDL/query-generation logic to justify a shared SQL package.
 5. **Bun / Deno / desktop / serverless** — adapter selections or deployment
    shapes, not new packages, until divergence forces otherwise.

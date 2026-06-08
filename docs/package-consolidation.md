@@ -71,7 +71,7 @@ packages/
 ├── convex/           @metacrdt/convex     # target (managed): component-owned log + projections + cardinality / bindings
 ├── cloudflare/       @metacrdt/cloudflare # target (managed): DO storage + WebSocket relay + Worker example
 ├── local/            @metacrdt/local      # target (browser): localStorage + IndexedDB + SQLite + BroadcastChannel
-├── node/             @metacrdt/node       # done: open host memory + structural SQLite + HTTP/SSE handler/listener + dev-server CLI; postgres later
+├── node/             @metacrdt/node       # done: open host memory + structural SQLite/Postgres + HTTP/SSE handler/listener + dev-server CLI
 ├── cli/              @metacrdt/cli
 ├── sdk/              @metacrdt/sdk
 └── testkit/          @metacrdt/testkit    # done: first convergence-conformance suite
@@ -150,7 +150,7 @@ The proposed MetaCRDT destination is intentionally not one-to-one.
 | `@open-ontology/database` | `@metacrdt/query` + target storage helpers | Split. Datalog/rules move to query; storage bindings move to targets. |
 | `@open-ontology/database-sql` | archive or target-private helper | SQL generation is not central to MetaCRDT. Keep only if used by `node`/`local`. |
 | `@open-ontology/database-sqlite` | `@metacrdt/local` / `@metacrdt/node` | SQLite is a local/node target concern. |
-| `@open-ontology/database-postgres` | `@metacrdt/node` optional adapter | Defer. Not first-class until a Postgres target is real. |
+| `@open-ontology/database-postgres` | `@metacrdt/node` optional adapter | Folded as structural Postgres runtime services; keep concrete driver deps out. |
 | `@open-ontology/database-cloudflare` | `@metacrdt/cloudflare` | Fold into the Cloudflare target if useful. |
 | `@open-ontology/database-foundationdb` | archive | Do not port unless a FoundationDB target becomes a priority. |
 | `@open-ontology/database-testkit` | `@metacrdt/testkit` | Keep useful convergence/query fixtures. |

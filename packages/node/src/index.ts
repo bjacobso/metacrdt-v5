@@ -46,10 +46,38 @@ export type NodeSqliteRuntimeOptions = {
   capabilities?: Iterable<RuntimeCapability>;
 };
 
+export type NodePostgresQueryResultLike = {
+  rows?: readonly unknown[];
+  rowCount?: number | null;
+};
+
+export type NodePostgresClientLike = {
+  query(
+    sql: string,
+    params?: readonly unknown[],
+  ): NodePostgresQueryResultLike | Promise<NodePostgresQueryResultLike>;
+};
+
+export type NodePostgresRuntimeOptions = {
+  name?: string;
+  replicaId: string;
+  client: NodePostgresClientLike;
+  tablePrefix?: string;
+  initialize?: boolean;
+  wall?: () => number;
+  capabilities?: Iterable<RuntimeCapability>;
+};
+
 export type NodeSqliteRuntime = RuntimeServices & {
   store: NodeSqliteEventStore;
   clock: NodeSqliteClock;
   sequencer: NodeSqliteSequencer;
+};
+
+export type NodePostgresRuntime = RuntimeServices & {
+  store: NodePostgresEventStore;
+  clock: NodePostgresClock;
+  sequencer: NodePostgresSequencer;
 };
 
 export type NodeSyncHttpRequestLike = {
@@ -89,7 +117,7 @@ const DEFAULT_SYNC_PROTOCOL = "metacrdt.node.http.v1";
 
 function identifier(name: string): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
-    throw new Error(`invalid SQLite identifier: ${name}`);
+    throw new Error(`invalid SQL identifier: ${name}`);
   }
   return `"${name}"`;
 }
@@ -106,6 +134,14 @@ async function prepare(
   sql: string,
 ): Promise<NodeSqliteStatementLike> {
   return await db.prepare(sql);
+}
+
+async function queryPostgres(
+  client: NodePostgresClientLike,
+  sql: string,
+  params: readonly unknown[] = [],
+): Promise<NodePostgresQueryResultLike> {
+  return await client.query(sql, params);
 }
 
 function valueColumn(row: unknown): string | undefined {
@@ -649,6 +685,223 @@ export class NodeSqliteSequencer implements RuntimeSequencer {
   }
 }
 
+export class NodePostgresEventStore implements EventStore {
+  private readonly tables: { events: string; meta: string };
+
+  constructor(
+    private readonly client: NodePostgresClientLike,
+    tablePrefix = "metacrdt",
+  ) {
+    this.tables = tableNames(tablePrefix);
+  }
+
+  async initialize(): Promise<void> {
+    await queryPostgres(
+      this.client,
+      `CREATE TABLE IF NOT EXISTS ${this.tables.events} (` +
+        "id TEXT PRIMARY KEY NOT NULL, " +
+        "e TEXT, " +
+        "a TEXT, " +
+        "event_json TEXT NOT NULL" +
+        ")",
+    );
+    await queryPostgres(
+      this.client,
+      `CREATE INDEX IF NOT EXISTS ${this.tables.events.slice(1, -1)}_by_e ` +
+        `ON ${this.tables.events} (e)`,
+    );
+    await queryPostgres(
+      this.client,
+      `CREATE INDEX IF NOT EXISTS ${this.tables.events.slice(1, -1)}_by_a ` +
+        `ON ${this.tables.events} (a)`,
+    );
+  }
+
+  async append(event: Event): Promise<AppendResult> {
+    if (!verifyId(event)) throw new Error(`invalid event id: ${event.id}`);
+    const existing = await this.get(event.id);
+    let inserted = false;
+    if (existing === undefined) {
+      const result = await queryPostgres(
+        this.client,
+        `INSERT INTO ${this.tables.events} (id, e, a, event_json) VALUES ($1, $2, $3, $4) ` +
+          "ON CONFLICT (id) DO NOTHING",
+        [event.id, event.e ?? null, event.a ?? null, eventJson(event)],
+      );
+      inserted = result.rowCount === undefined || result.rowCount === null
+        ? true
+        : result.rowCount > 0;
+    } else if (existing.seq === undefined && event.seq !== undefined) {
+      await queryPostgres(
+        this.client,
+        `UPDATE ${this.tables.events} SET event_json = $1 WHERE id = $2`,
+        [eventJson(event), event.id],
+      );
+    }
+    return { event, inserted };
+  }
+
+  async get(id: EventId): Promise<Event | undefined> {
+    const result = await queryPostgres(
+      this.client,
+      `SELECT event_json FROM ${this.tables.events} WHERE id = $1`,
+      [id],
+    );
+    return decodeEvent(result.rows?.[0]);
+  }
+
+  async scan(filter: EventFilter = {}): Promise<Event[]> {
+    if (filter.ids) {
+      const out: Event[] = [];
+      for (const id of new Set(filter.ids)) {
+        const event = await this.get(id);
+        if (!event) continue;
+        if (filter.e !== undefined && event.e !== filter.e) continue;
+        if (filter.a !== undefined && event.a !== filter.a) continue;
+        out.push(event);
+      }
+      return out.sort((a, b) => a.id.localeCompare(b.id));
+    }
+
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filter.e !== undefined) {
+      params.push(filter.e);
+      clauses.push(`e = $${params.length}`);
+    }
+    if (filter.a !== undefined) {
+      params.push(filter.a);
+      clauses.push(`a = $${params.length}`);
+    }
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const result = await queryPostgres(
+      this.client,
+      `SELECT event_json FROM ${this.tables.events}${where} ORDER BY id`,
+      params,
+    );
+    return (result.rows ?? [])
+      .map(decodeEvent)
+      .filter((event): event is Event => event !== undefined);
+  }
+
+  async merge(events: Iterable<Event>): Promise<MergeResult> {
+    let inserted = 0;
+    let seen = 0;
+    for (const event of events) {
+      seen++;
+      if ((await this.append(event)).inserted) inserted++;
+    }
+    return { inserted, seen };
+  }
+}
+
+export class NodePostgresMetaStore {
+  private readonly table: string;
+
+  constructor(
+    private readonly client: NodePostgresClientLike,
+    tablePrefix = "metacrdt",
+  ) {
+    this.table = tableNames(tablePrefix).meta;
+  }
+
+  async initialize(): Promise<void> {
+    await queryPostgres(
+      this.client,
+      `CREATE TABLE IF NOT EXISTS ${this.table} (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)`,
+    );
+  }
+
+  async get(key: string): Promise<string | undefined> {
+    const result = await queryPostgres(
+      this.client,
+      `SELECT value FROM ${this.table} WHERE key = $1`,
+      [key],
+    );
+    return valueColumn(result.rows?.[0]);
+  }
+
+  async set(key: string, value: string): Promise<void> {
+    await queryPostgres(
+      this.client,
+      `INSERT INTO ${this.table} (key, value) VALUES ($1, $2) ` +
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+      [key, value],
+    );
+  }
+}
+
+export class NodePostgresClock implements RuntimeClock {
+  private constructor(
+    private readonly meta: NodePostgresMetaStore,
+    readonly replicaId: string,
+    private readonly wall: () => number,
+    private clock: Hlc,
+  ) {}
+
+  static async create(
+    meta: NodePostgresMetaStore,
+    replicaId: string,
+    wall: () => number = () => Date.now(),
+  ): Promise<NodePostgresClock> {
+    const raw = await meta.get(clockKey(replicaId));
+    const parsed = raw === undefined ? undefined : (JSON.parse(raw) as unknown);
+    return new NodePostgresClock(
+      meta,
+      replicaId,
+      wall,
+      isHlc(parsed, replicaId) ? parsed : initialClock(replicaId),
+    );
+  }
+
+  current(): Hlc {
+    return this.clock;
+  }
+
+  async tick(): Promise<Hlc> {
+    this.clock = tick(this.clock, this.wall(), this.replicaId);
+    await this.meta.set(clockKey(this.replicaId), JSON.stringify(this.clock));
+    return this.clock;
+  }
+
+  async receive(remote: Hlc): Promise<Hlc> {
+    this.clock = receive(this.clock, remote, this.wall(), this.replicaId);
+    await this.meta.set(clockKey(this.replicaId), JSON.stringify(this.clock));
+    return this.clock;
+  }
+}
+
+export class NodePostgresSequencer implements RuntimeSequencer {
+  private constructor(
+    private readonly meta: NodePostgresMetaStore,
+    readonly replicaId: string,
+    private seq: number,
+  ) {}
+
+  static async create(
+    meta: NodePostgresMetaStore,
+    replicaId: string,
+  ): Promise<NodePostgresSequencer> {
+    const raw = await meta.get(seqKey(replicaId));
+    const parsed = raw === undefined ? 0 : Number(raw);
+    return new NodePostgresSequencer(
+      meta,
+      replicaId,
+      Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0,
+    );
+  }
+
+  current(): number {
+    return this.seq;
+  }
+
+  async next(): Promise<number> {
+    this.seq += 1;
+    await this.meta.set(seqKey(this.replicaId), String(this.seq));
+    return this.seq;
+  }
+}
+
 export function createNodeMemoryRuntime(options: MemoryRuntimeOptions): RuntimeServices {
   return createMemoryRuntime({
     ...options,
@@ -680,5 +933,31 @@ export async function createNodeSqliteRuntime(
     store,
     clock: await NodeSqliteClock.create(meta, options.replicaId, options.wall),
     sequencer: await NodeSqliteSequencer.create(meta, options.replicaId),
+  };
+}
+
+export async function createNodePostgresRuntime(
+  options: NodePostgresRuntimeOptions,
+): Promise<NodePostgresRuntime> {
+  const prefix = options.tablePrefix ?? "metacrdt";
+  const store = new NodePostgresEventStore(options.client, prefix);
+  const meta = new NodePostgresMetaStore(options.client, prefix);
+  if (options.initialize ?? true) {
+    await store.initialize();
+    await meta.initialize();
+  }
+  const capabilities = new Set<RuntimeCapability>(
+    options.capabilities ?? ["convergent-log", "coordinated-writes"],
+  );
+  const profile: RuntimeProfile = {
+    name: options.name ?? "node-postgres",
+    replicaId: options.replicaId,
+    capabilities,
+  };
+  return {
+    profile,
+    store,
+    clock: await NodePostgresClock.create(meta, options.replicaId, options.wall),
+    sequencer: await NodePostgresSequencer.create(meta, options.replicaId),
   };
 }

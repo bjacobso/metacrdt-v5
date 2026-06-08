@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 107 (Central Package Build Config) has
+**Current goal:** Goal 109 (Node Postgres Runtime Services) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -159,13 +159,16 @@ bodies, delegates to the structural sync handler, and writes status/headers/body
 back to structural response objects while still importing no Node framework or
 Node type package. The next active goal
 should be chosen from the remaining TODO candidates:
-choosing/wiring the provider-specific React wrapper/JWT flow, adding the next
-Node slice (Postgres), Cloudflare DO+SQLite parity, another carefully scoped
-Confect/domain wrapper, or the next projection dependency (closure/derived
-provenance or remaining operational process state). Goal 108 adds the packaged
-Node dev-server CLI (`metacrdt-node-dev`) as an in-memory local sync process over
-the existing native listener, proving the Node target can now be run directly
-from an installed package.
+choosing/wiring the provider-specific React wrapper/JWT flow, adding Node SDK or
+shared SQL lifecycle helpers, Cloudflare DO+SQLite parity, another carefully
+scoped Confect/domain wrapper, or the next projection dependency
+(closure/derived provenance or remaining operational process state). Goal 108
+adds the packaged Node dev-server CLI (`metacrdt-node-dev`) as an in-memory
+local sync process over the existing native listener, proving the Node target can
+now be run directly from an installed package. Goal 109 adds the durable Node
+storage slice: a driver-neutral Postgres runtime over a structural
+`query(sql, params)` client, with EventStore/HLC/seq services passing the same
+conformance suite as memory and SQLite.
 
 This plan is the operational goal file. Read it with:
 
@@ -9185,8 +9188,8 @@ request listener, not a second sync implementation and not a production server.
 - Do not add production auth, observability, static asset serving, or process
   supervision.
 - Do not add durable production storage here. The packaged dev server is
-  intentionally memory-only; Postgres remains the next durable Node storage
-  candidate.
+  intentionally memory-only; durable Node storage belongs in the separate
+  Postgres/SQL adapter slice.
 - Do not add an SDK client in this slice.
 
 ### Verification
@@ -9198,6 +9201,55 @@ request listener, not a second sync implementation and not a production server.
   `npm run typecheck`, and `npm run build` pass.
 - `packages/node/dist/dev-server.js` preserves the `#!/usr/bin/env node`
   shebang in the package build.
+
+---
+
+## Goal 109 — @metacrdt/node Postgres Runtime Services
+
+**Status:** shipped.
+
+**Objective:** make the Node target durable beyond SQLite without adding a
+native database dependency. Postgres should be a storage adapter under
+`@metacrdt/node`, not a peer target, and it should expose the same runtime
+contracts as memory and SQLite so the shared conformance suite proves the same
+event-log semantics.
+
+### What Shipped
+
+- Added `NodePostgresClientLike`, a structural driver interface requiring only:
+  - `query(sql, params?)`
+- Added `NodePostgresEventStore`:
+  - initializes `events` table and `e` / `a` indexes
+  - appends content-addressed events after `verifyId`
+  - preserves append idempotency
+  - supports `get`, filtered `scan`, and `merge`
+  - upgrades a stored event when the incoming copy carries a previously-missing
+    `seq`, matching memory/SQLite behavior
+- Added `NodePostgresMetaStore` for durable runtime metadata.
+- Added `NodePostgresClock` and `NodePostgresSequencer` over the meta store.
+- Added `createNodePostgresRuntime(options)` returning `RuntimeServices` with:
+  - profile name `node-postgres`
+  - `convergent-log` and `coordinated-writes` capabilities by default
+  - durable event log, HLC clock, and per-replica seq services
+
+### Non-Goals
+
+- Do not depend on `pg`, Neon, Postgres.js, or any other concrete driver.
+- Do not add hosted database provisioning, migrations, pooling, connection
+  lifecycle, auth, or production server framework concerns.
+- Do not extract `@metacrdt/sql` in this slice. Keep the duplication visible
+  until a second SQL consumer (for example DO SQLite) makes the shared DDL/query
+  boundary obvious.
+
+### Verification
+
+- `npm test --workspace @metacrdt/node` passes, now with twelve Node tests.
+- The Postgres runtime passes `@metacrdt/testkit` shared runtime conformance.
+- A Postgres persistence regression recreates the runtime over the same
+  structural client and proves event log, HLC, and per-replica `seq` survive.
+- `npx tsc --noEmit -p packages/node/tsconfig.json` passes.
+- `npm run test:packages`, `npm run build:packages`, `npm run pack:packages`,
+  `npm run typecheck`, and `npm run build` pass.
 
 ---
 

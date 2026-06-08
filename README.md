@@ -160,14 +160,15 @@ Current packages:
   anti-entropy, IndexedDB-compatible async persistence, SQLite-compatible local
   persistence, plus browser defaults and lifecycle helpers.
 - **`@metacrdt/node`** (`packages/node`) — open server-process target:
-  `createNodeMemoryRuntime` and structural server-SQLite runtime services
-  (`NodeSqliteEventStore`, HLC clock, sequencer) without a native SQLite
-  dependency, plus a dependency-free `createNodeSyncHttpHandler` exposing health,
-  delta pull, event push, and one-shot SSE sync over any `RuntimeServices`, and a
+  `createNodeMemoryRuntime`, structural server-SQLite runtime services, and
+  structural Postgres runtime services (`query(sql, params)` client shape)
+  without native database dependencies, plus a dependency-free
+  `createNodeSyncHttpHandler` exposing health, delta pull, event push, and
+  one-shot SSE sync over any `RuntimeServices`, and a
   `createNodeHttpRequestListener` adapter for native `node:http`-style
   request/response objects. It also ships `metacrdt-node-dev`, an in-memory
-  local sync server CLI over native `node:http`. Both memory and SQLite runtimes pass
-  `@metacrdt/testkit`.
+  local sync server CLI over native `node:http`. Memory, SQLite, and Postgres
+  runtimes pass `@metacrdt/testkit`.
 - **`@metacrdt/testkit`** (`packages/testkit`) — target conformance helpers:
   framework-neutral async checks for EventStore idempotency/filtering/content-id
   verification, version-vector anti-entropy, and deterministic fold convergence.
@@ -203,7 +204,7 @@ Planned package graph:
 @metacrdt/cloudflare  Durable Object / Worker target
 @metacrdt/local       browser/local-first target
 @metacrdt/testkit     target conformance checks
-@metacrdt/node        Node target (memory + structural SQLite + HTTP/SSE + listener + dev-server CLI shipped)
+@metacrdt/node        Node target (memory + structural SQLite/Postgres + HTTP/SSE + listener + dev-server CLI shipped)
 ```
 
 Open Ontology is vendored as a context submodule at
@@ -670,7 +671,7 @@ Frontier:
 - commutative supersession in the write path
 - HLC + version-vector sync across replicas
 - Durable Object + SQLite triple-store parity
-- Postgres and shared SQL storage adapters
+- shared SQL storage helpers and production database lifecycle/migrations
 - expanded conformance suites for persistence, scheduler, transport, and queries
 
 See [TODO.md](./TODO.md) for the running pulse.

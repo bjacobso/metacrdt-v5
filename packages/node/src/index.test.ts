@@ -9,10 +9,13 @@ import {
 import {
   createNodeHttpRequestListener,
   createNodeMemoryRuntime,
+  createNodePostgresRuntime,
   createNodeSyncHttpHandler,
   createNodeSqliteRuntime,
   type NodeHttpIncomingMessageLike,
   type NodeHttpServerResponseLike,
+  type NodePostgresClientLike,
+  type NodePostgresQueryResultLike,
   type NodeSqliteDatabaseLike,
   type NodeSqliteStatementLike,
 } from "./index.js";
@@ -96,6 +99,88 @@ class FakeSqliteDatabase implements NodeSqliteDatabaseLike {
   }
 }
 
+class FakePostgresClient implements NodePostgresClientLike {
+  readonly events = new Map<string, EventRow>();
+  readonly meta = new Map<string, string>();
+
+  query(sql: string, params: readonly unknown[] = []): NodePostgresQueryResultLike {
+    const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
+    if (normalized.startsWith("create table") || normalized.startsWith("create index")) {
+      return { rows: [], rowCount: null };
+    }
+
+    if (normalized.startsWith("insert into") && normalized.includes("event_json")) {
+      const [id, e, a, eventJson] = params;
+      if (typeof id !== "string" || typeof eventJson !== "string") {
+        throw new Error("bad event insert params");
+      }
+      const inserted = !this.events.has(id);
+      if (inserted) {
+        this.events.set(id, {
+          id,
+          e: typeof e === "string" ? e : null,
+          a: typeof a === "string" ? a : null,
+          event_json: eventJson,
+        });
+      }
+      return { rows: [], rowCount: inserted ? 1 : 0 };
+    }
+
+    if (normalized.startsWith("update") && normalized.includes("event_json")) {
+      const [eventJson, id] = params;
+      if (typeof id !== "string" || typeof eventJson !== "string") {
+        throw new Error("bad event update params");
+      }
+      const existing = this.events.get(id);
+      if (existing) {
+        this.events.set(id, { ...existing, event_json: eventJson });
+      }
+      return { rows: [], rowCount: existing ? 1 : 0 };
+    }
+
+    if (normalized.startsWith("select event_json")) {
+      let rows = [...this.events.values()];
+      if (normalized.includes("where id = $1")) {
+        const [id] = params;
+        rows = typeof id === "string" ? rows.filter((row) => row.id === id) : [];
+      } else if (normalized.includes("where e = $1 and a = $2")) {
+        const [e, a] = params;
+        rows = rows.filter((row) => row.e === e && row.a === a);
+      } else if (normalized.includes("where e = $1")) {
+        const [e] = params;
+        rows = rows.filter((row) => row.e === e);
+      } else if (normalized.includes("where a = $1")) {
+        const [a] = params;
+        rows = rows.filter((row) => row.a === a);
+      }
+      return {
+        rows: rows.sort((a, b) => a.id.localeCompare(b.id)),
+        rowCount: rows.length,
+      };
+    }
+
+    if (normalized.startsWith("insert into") && normalized.includes("value")) {
+      const [key, value] = params;
+      if (typeof key !== "string" || typeof value !== "string") {
+        throw new Error("bad meta upsert params");
+      }
+      this.meta.set(key, value);
+      return { rows: [], rowCount: 1 };
+    }
+
+    if (normalized.startsWith("select value")) {
+      const [key] = params;
+      const value = typeof key === "string" ? this.meta.get(key) : undefined;
+      return {
+        rows: value === undefined ? [] : [{ value }],
+        rowCount: value === undefined ? 0 : 1,
+      };
+    }
+
+    throw new Error(`unhandled fake postgres query: ${sql}`);
+  }
+}
+
 class FakeIncomingMessage implements NodeHttpIncomingMessageLike {
   constructor(
     readonly method: string,
@@ -147,6 +232,17 @@ const sqliteTarget: RuntimeConformanceTarget = {
   },
 };
 
+const postgresTarget: RuntimeConformanceTarget = {
+  name: "node-postgres",
+  createRuntime(options: RuntimeFactoryOptions) {
+    return createNodePostgresRuntime({
+      client: new FakePostgresClient(),
+      replicaId: options.replicaId,
+      wall: options.wall,
+    });
+  },
+};
+
 const coord = { txTime: 10_000, validTime: 10_000 };
 const one = () => "one" as const;
 
@@ -165,6 +261,17 @@ describe("@metacrdt/node target", () => {
   test("node SQLite runtime passes shared conformance", async () => {
     await expect(runRuntimeConformance(sqliteTarget)).resolves.toMatchObject({
       target: "node-sqlite",
+      checks: expect.arrayContaining([
+        "append-idempotent",
+        "deterministic-fold-convergence",
+        "idempotent-second-sync",
+      ]),
+    });
+  });
+
+  test("node Postgres runtime passes shared conformance", async () => {
+    await expect(runRuntimeConformance(postgresTarget)).resolves.toMatchObject({
+      target: "node-postgres",
       checks: expect.arrayContaining([
         "append-idempotent",
         "deterministic-fold-convergence",
@@ -218,6 +325,53 @@ describe("@metacrdt/node target", () => {
       "terminated",
     );
     expect(versionVector(await third.store.scan())).toEqual({ "node:sqlite": 2 });
+  });
+
+  test("Postgres runtime persists event log, HLC, and seq across recreation", async () => {
+    const client = new FakePostgresClient();
+    const first = await createNodePostgresRuntime({
+      client,
+      replicaId: "node:postgres",
+      wall: () => 700,
+    });
+    const active = await applyOperation(first, {
+      op: "assert",
+      e: "worker:post",
+      a: "worker.status",
+      v: "active",
+      actor: "user:1",
+    });
+    expect(active.seq).toBe(1);
+
+    const second = await createNodePostgresRuntime({
+      client,
+      replicaId: "node:postgres",
+      wall: () => 700,
+    });
+    expect(second.clock.current()).toEqual({ pt: 700, l: 0, r: "node:postgres" });
+    expect(second.sequencer.current()).toBe(1);
+    expect(await second.store.get(active.id)).toEqual(active);
+
+    const terminated = await applyOperation(second, {
+      op: "assert",
+      e: "worker:post",
+      a: "worker.status",
+      v: "terminated",
+      actor: "user:1",
+    });
+    expect(terminated.seq).toBe(2);
+    expect(terminated.hlc).toEqual({ pt: 700, l: 1, r: "node:postgres" });
+
+    const third = await createNodePostgresRuntime({
+      client,
+      replicaId: "node:postgres",
+      wall: () => 700,
+    });
+    const log = fromEvents(await third.store.scan());
+    expect(valueOf("worker:post", "worker.status", coord, log, one)).toBe(
+      "terminated",
+    );
+    expect(versionVector(await third.store.scan())).toEqual({ "node:postgres": 2 });
   });
 
   test("HTTP sync handler exposes health, delta pull, and event push", async () => {
