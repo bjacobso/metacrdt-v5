@@ -45,8 +45,22 @@ verified to behave identically at the boundaries that matter.
   - `projection-filtered-source-query` — projection works over a target-filtered
     event source such as `scan({ e })`. This proves the shared projection over
     events returned by the target, not a full Datalog/query service.
-- **`runRuntimeConformance`** — runs EventStore, convergence, and projection
-  suites and returns the combined report.
+- **`runRuntimeQueryConformance`** — that target-loaded event logs can feed the
+  shared pure `@metacrdt/query` planner and row helpers:
+  - `query-join-or-negation-provenance` — joins visible triples, branches over
+    status with `or`, filters terminated workers with `not`, and preserves
+    contributing event ids.
+  - `query-compare-compute-project` — compares bound numeric values, computes a
+    derived binding, and projects rows.
+  - `query-or-dedupe` — duplicate disjunction paths collapse to one row while
+    merged provenance remains available.
+  - `query-pagination-aggregation` — stable projected rows paginate, and
+    aggregate rows summarize the provenanced bindings.
+  - `query-derived-rows` — query bindings deterministically shape derived rows.
+  This proves EventStore-backed Datalog/query semantics over target-returned
+  logs; it is intentionally **not** a production query-service API contract.
+- **`runRuntimeConformance`** — runs EventStore, convergence, projection, and
+  query suites and returns the combined report.
 - **`runRuntimePersistenceConformance`** — that a durable Layer target survives
   runtime re-creation over the same backing store:
   - `event-log-survives-recreate` — the pre-restart event remains readable.
@@ -96,6 +110,7 @@ verified to behave identically at the boundaries that matter.
 ## Dependencies
 
 - `@metacrdt/core`
+- `@metacrdt/query`
 - `@metacrdt/runtime`
 - `effect` v3 (`^3.21.3`) for Layer-provided conformance.
 
@@ -103,11 +118,13 @@ verified to behave identically at the boundaries that matter.
 
 Testkit is the executable check on the guarantees the SPEC makes: §4 content
 addressing (`content-id-verification`), §5 the grow-only-set merge and the
-deterministic fold, and §8 version-vector anti-entropy. If a target passes
-`runRuntimeConformance`, it satisfies the log/sync convergence contract those
-sections define, and it can project target-returned event logs through the shared
-core fold. If a durable target also passes `runRuntimePersistenceConformance`,
-its log/HLC/seq state survives runtime re-creation over the same backing store.
+deterministic fold, §6 deterministic query/derivation helpers, and §8
+version-vector anti-entropy. If a target passes `runRuntimeConformance`, it
+satisfies the log/sync convergence contract those sections define, can project
+target-returned event logs through the shared core fold, and can feed those logs
+through the shared query planner and row helpers. If a durable target also passes
+`runRuntimePersistenceConformance`, its log/HLC/seq state survives runtime
+re-creation over the same backing store.
 `runRuntimeSchedulerConformance` proves the Effect scheduler service boundary
 for targets that expose an observable scheduler; it does not claim host wakeup
 durability.
@@ -143,16 +160,17 @@ can add `runRuntimeNetworkTransportConformance`.
 
 ## Scope Today, and What's Next
 
-The suite covers the **log + sync + projection plane**, durable restart
-semantics, scheduler submission, the basic transport publish boundary, and the
-first network-delivery checks: event-store semantics, anti-entropy, the in-log
-fold, projection from target-returned event sources, persistence of the event
-log/HLC/seq across re-creation, payload-preserving scheduler submission,
+The suite covers the **log + sync + projection + EventStore-backed query plane**,
+durable restart semantics, scheduler submission, the basic transport publish
+boundary, and the first network-delivery checks: event-store semantics,
+anti-entropy, the in-log fold, projection from target-returned event sources,
+querying those target-returned logs through `@metacrdt/query`, persistence of the
+event log/HLC/seq across re-creation, payload-preserving scheduler submission,
 event-batch preserving transport publication, and peer delivery/catch-up for the
 BroadcastChannel, p2p DataChannel, and Cloudflare Durable Object WebSocket relay
 harnesses. It does **not yet** cover live relay deployment auth/retry/durability,
-a full Datalog/query service contract, or materialized triple-store projection
-stores. Those checks should be added when the relevant target capabilities are
-shared beyond the Convex reference app (see
+a production Datalog/query service API contract, or materialized triple-store
+projection stores. Those checks should be added when the relevant target
+capabilities are shared beyond the Convex reference app (see
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md) and
 [docs/targets.md](../../docs/targets.md)).

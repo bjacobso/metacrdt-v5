@@ -80,7 +80,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   core projection semantics over target-returned EventStore logs: cardinality-one
   `≺` winners, cardinality-many sets, bitemporal coordinates, audit flags, entity
   maps, and filtered-source point projection.
-- [ ] **Goal 111 next: expanded suites** — add a full Datalog/query service
+- [x] **Goal 111 Datalog/query conformance started** —
+  `@metacrdt/testkit` now has `runRuntimeQueryConformance`, proving
+  EventStore-backed Datalog/query semantics over target-returned logs through the
+  pure `@metacrdt/query` helpers: joins, `or`, `not`, compare/compute,
+  provenance, pagination, aggregation, and derived-row shaping.
+- [ ] **Goal 111 next: expanded suites** — add a production Datalog/query service
   contract and materialized projection-store conformance as second
   implementations expose those capabilities.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
@@ -525,6 +530,19 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — Goal 111 EventStore-backed query conformance
+- [x] **Added `runRuntimeQueryConformance` to `@metacrdt/testkit`.** The suite
+  builds a small target-owned protocol log through `EventStoreService`, then runs
+  a testkit-only EventStore-backed Datalog adapter that delegates planning,
+  pattern extension, `not`, `or`, compare/compute, projection, pagination,
+  aggregation, provenance merging, and derived-row shaping to `@metacrdt/query`.
+- [x] **Included query checks in `runRuntimeConformance`.** Memory/testkit,
+  `@metacrdt/local`, `@metacrdt/cloudflare`, and `@metacrdt/convex` now prove the
+  same EventStore-backed query semantics over their Layer-provided logs.
+- [x] **Scope remains honest.** This is not yet a production query-service API
+  contract and not a materialized projection-store conformance suite; it proves
+  target logs can feed the shared pure query planner and row semantics.
 
 ### 2026-06-08 — Goal 111 EventStore projection conformance
 - [x] **Added `runRuntimeProjectionConformance`.** The shared runtime suite now

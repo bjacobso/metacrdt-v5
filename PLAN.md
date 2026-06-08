@@ -9405,8 +9405,14 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   filtered-source point projection over events returned by each target's
   `EventStoreService`. It is included in `runRuntimeConformance` for current
   Layer targets.
-- **Remaining keystone work:** conformance still does not cover a full
-  Datalog/query service contract or materialized triple-store projection stores.
+- **EventStore-backed query conformance started:** `@metacrdt/testkit` also has
+  `runRuntimeQueryConformance`, proving target-returned logs can feed the shared
+  pure `@metacrdt/query` planner and row helpers for joins, `or`, `not`,
+  compare/compute, provenance, pagination, aggregation, and derived-row shaping.
+  It is included in `runRuntimeConformance` for current Layer targets.
+- **Remaining keystone work:** conformance still does not cover a production
+  Datalog/query service API contract or materialized triple-store projection
+  stores.
 - **Zero Effect today (by current design):** `core`, `schema`, `query`, and the
   root Convex reference app stay pure/plain where appropriate. `runtime`,
   `testkit`, and Convex/Node/local/Cloudflare target packages now use Effect v3

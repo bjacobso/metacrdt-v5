@@ -4,11 +4,36 @@ import {
   fromEvents,
   retract as retractEvent,
   tombstone as tombstoneEvent,
+  visible,
   value as projectValue,
   valueOf,
   verifyId,
   type Event,
+  type Log,
+  type Value,
 } from "@metacrdt/core";
+import {
+  advanceBoundVars,
+  aggregateBindings,
+  applyComputeStates,
+  dedupeProvenancedBindings,
+  derivedRowsFromBindings,
+  extendPatternCandidatesWithinLimit,
+  filterCompareStates,
+  initialSolverFrame,
+  paginateRows,
+  parseClauses,
+  passesNegationCandidates,
+  patternInputForBinding,
+  project,
+  selectNextClause,
+  valueKey,
+  type AnyClause,
+  type Binding,
+  type PatternClause,
+  type ProvenancedBinding,
+  type QueryTriple,
+} from "@metacrdt/query";
 import {
   applyOperationEffect,
   mergeFromEffect,
@@ -23,6 +48,7 @@ import {
   type RuntimeError,
   type RuntimeServices,
   type ScheduledOperation,
+  type EventStoreEffect,
 } from "@metacrdt/runtime";
 import { Effect, Layer } from "effect";
 import * as Either from "effect/Either";
@@ -256,6 +282,210 @@ function sampleAssert(replicaId: string, n: number): Event {
     actor: "testkit",
     actorType: "system",
     hlc: { pt: n, l: 0, r: replicaId },
+  });
+}
+
+type QueryCoord = { readonly txTime: number; readonly validTime: number };
+type QueryState = ProvenancedBinding<string, string>;
+type QueryResult = {
+  readonly states: readonly QueryState[];
+  readonly rows: readonly Record<string, unknown>[];
+  readonly eventSourceIds: readonly string[];
+};
+
+function uniqueSorted(ids: Iterable<string>): string[] {
+  return [...new Set(ids)].sort((a, b) => a.localeCompare(b));
+}
+
+function rowKey(row: Record<string, unknown>): string {
+  return JSON.stringify(
+    Object.entries(row)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => [k, valueKey(v)]),
+  );
+}
+
+function sortRows(
+  rows: readonly Record<string, unknown>[],
+): Record<string, unknown>[] {
+  return [...rows].sort((a, b) => rowKey(a).localeCompare(rowKey(b)));
+}
+
+function sameRows(
+  actual: readonly Record<string, unknown>[],
+  expected: readonly Record<string, unknown>[],
+): boolean {
+  return JSON.stringify(sortRows(actual)) === JSON.stringify(sortRows(expected));
+}
+
+function scanFilterForPattern(
+  clause: PatternClause,
+  binding: Binding,
+): { e?: string; a?: string } | null {
+  const input = patternInputForBinding(clause, binding);
+  if (input.eConst !== undefined && typeof input.eConst !== "string") return null;
+  if (input.aConst !== undefined && typeof input.aConst !== "string") return null;
+  return {
+    ...(input.eConst === undefined ? {} : { e: input.eConst }),
+    ...(input.aConst === undefined ? {} : { a: input.aConst }),
+  };
+}
+
+function visibleAssertCandidates(
+  clause: PatternClause,
+  binding: Binding,
+  scanned: readonly Event[],
+  fullLog: Log,
+  coord: QueryCoord,
+): QueryTriple<string, string>[] {
+  const input = patternInputForBinding(clause, binding);
+  return scanned
+    .filter((event) => {
+      if (
+        event.kind !== "assert" ||
+        event.e === undefined ||
+        event.a === undefined ||
+        event.v === undefined
+      ) {
+        return false;
+      }
+      if (!visible(event, coord, fullLog)) return false;
+      if (input.eConst !== undefined && input.eConst !== event.e) return false;
+      if (input.aConst !== undefined && input.aConst !== event.a) return false;
+      if (input.vIsConst && valueKey(input.vConst) !== valueKey(event.v)) {
+        return false;
+      }
+      return true;
+    })
+    .map((event) => ({
+      e: event.e!,
+      a: event.a!,
+      v: event.v!,
+      prov: [event.id],
+      eventProv: [event.id],
+    }))
+    .sort((a, b) => a.prov[0]!.localeCompare(b.prov[0]!));
+}
+
+function fetchPatternCandidates(
+  store: EventStoreEffect,
+  clause: PatternClause,
+  binding: Binding,
+  fullLog: Log,
+  coord: QueryCoord,
+): Effect.Effect<QueryTriple<string, string>[], RuntimeError> {
+  const filter = scanFilterForPattern(clause, binding);
+  if (filter === null) return Effect.succeed([]);
+  return Effect.map(store.scan(filter), (events) =>
+    visibleAssertCandidates(clause, binding, events, fullLog, coord),
+  );
+}
+
+function solveParsedQuery(
+  store: EventStoreEffect,
+  clauses: AnyClause[],
+  seed: QueryState,
+  fullLog: Log,
+  coord: QueryCoord,
+): Effect.Effect<QueryState[], RuntimeError> {
+  return Effect.gen(function* () {
+    let frame = initialSolverFrame<string, string>(
+      clauses,
+      seed.binding,
+      seed.sources,
+      seed.eventSources ?? [],
+    );
+
+    while (frame.remaining.length > 0) {
+      const selected = selectNextClause(clauses, frame.remaining, frame.bound);
+      let nextStates: QueryState[] = [];
+
+      if (selected.clause.kind === "pattern") {
+        for (const state of frame.states) {
+          const candidates = yield* fetchPatternCandidates(
+            store,
+            selected.clause,
+            state.binding,
+            fullLog,
+            coord,
+          );
+          nextStates.push(
+            ...extendPatternCandidatesWithinLimit(
+              selected.clause,
+              state,
+              candidates,
+              nextStates.length,
+            ),
+          );
+        }
+      } else if (selected.clause.kind === "compare") {
+        nextStates = filterCompareStates(selected.clause, frame.states);
+      } else if (selected.clause.kind === "compute") {
+        nextStates = applyComputeStates(selected.clause, frame.states);
+      } else if (selected.clause.kind === "not") {
+        for (const state of frame.states) {
+          const candidates = yield* fetchPatternCandidates(
+            store,
+            selected.clause.pattern,
+            state.binding,
+            fullLog,
+            coord,
+          );
+          if (passesNegationCandidates(selected.clause, state.binding, candidates)) {
+            nextStates.push(state);
+          }
+        }
+      } else {
+        for (const state of frame.states) {
+          for (const branch of selected.clause.branches) {
+            nextStates.push(
+              ...(yield* solveParsedQuery(store, branch, state, fullLog, coord)),
+            );
+          }
+        }
+      }
+
+      frame = {
+        remaining: selected.remaining,
+        bound: advanceBoundVars(frame.bound, selected.clause),
+        states: dedupeProvenancedBindings(nextStates),
+      };
+    }
+
+    return frame.states;
+  });
+}
+
+function queryEventStore(
+  store: EventStoreEffect,
+  args: {
+    readonly where: readonly unknown[];
+    readonly select: readonly string[];
+    readonly coord: QueryCoord;
+  },
+): Effect.Effect<QueryResult, RuntimeError> {
+  return Effect.gen(function* () {
+    const clauses = parseClauses([...args.where]);
+    const allEvents = yield* store.scan();
+    const fullLog = fromEvents(allEvents);
+    const states = yield* solveParsedQuery(
+      store,
+      clauses,
+      { binding: {}, sources: [], eventSources: [] },
+      fullLog,
+      args.coord,
+    );
+    const rows = project(
+      states.map((state) => state.binding),
+      [...args.select],
+    );
+    return {
+      states,
+      rows,
+      eventSourceIds: uniqueSorted(
+        states.flatMap((state) => state.eventSources ?? []),
+      ),
+    };
   });
 }
 
@@ -684,15 +914,229 @@ export async function runRuntimeProjectionConformance(
   );
 }
 
+export async function runRuntimeQueryConformance(
+  target: AnyRuntimeConformanceTarget,
+): Promise<ConformanceReport> {
+  const checks: string[] = [];
+  return await runWithTargetLayer(
+    target,
+    { replicaId: "testkit:query", wall: () => 20_000 },
+    Effect.gen(function* () {
+      const store = yield* EventStoreService;
+      const coord = { txTime: 10_000, validTime: 100 };
+      const ev = (pt: number, e: string, a: string, v: Value) =>
+        assertEvent({
+          e,
+          a,
+          v,
+          validFrom: 0,
+          actor: "testkit",
+          actorType: "system",
+          hlc: { pt, l: 0, r: "testkit:query" },
+        });
+
+      const mariaType = ev(1, "worker:maria", "type", "Worker");
+      const mariaStatus = ev(2, "worker:maria", "worker.status", "active");
+      const mariaScore = ev(3, "worker:maria", "worker.score", 12);
+      const mariaName = ev(4, "worker:maria", "worker.name", "MARIA");
+      const ivanType = ev(5, "worker:ivan", "type", "Worker");
+      const ivanStatus = ev(6, "worker:ivan", "worker.status", "pending");
+      const ivanScore = ev(7, "worker:ivan", "worker.score", 8);
+      const terminatedType = ev(8, "worker:terminated", "type", "Worker");
+      const terminatedStatus = ev(
+        9,
+        "worker:terminated",
+        "worker.status",
+        "terminated",
+      );
+      const terminatedScore = ev(
+        10,
+        "worker:terminated",
+        "worker.score",
+        20,
+      );
+      const placement1Worker = ev(
+        11,
+        "placement:1",
+        "placement.worker",
+        "worker:maria",
+      );
+      const placement1Status = ev(12, "placement:1", "placement.status", "open");
+      const placement2Worker = ev(
+        13,
+        "placement:2",
+        "placement.worker",
+        "worker:ivan",
+      );
+      const placement2Status = ev(14, "placement:2", "placement.status", "open");
+      const placement3Worker = ev(
+        15,
+        "placement:3",
+        "placement.worker",
+        "worker:terminated",
+      );
+      const placement3Status = ev(16, "placement:3", "placement.status", "open");
+      const oldPlacement = assertEvent({
+        e: "placement:old",
+        a: "placement.worker",
+        v: "worker:maria",
+        validFrom: 0,
+        validTo: 50,
+        actor: "testkit",
+        actorType: "system",
+        hlc: { pt: 17, l: 0, r: "testkit:query" },
+      });
+
+      for (const event of [
+        placement2Status,
+        mariaScore,
+        terminatedStatus,
+        placement1Worker,
+        ivanStatus,
+        oldPlacement,
+        mariaType,
+        placement3Worker,
+        terminatedType,
+        mariaName,
+        placement1Status,
+        ivanScore,
+        placement2Worker,
+        mariaStatus,
+        terminatedScore,
+        ivanType,
+        placement3Status,
+      ]) {
+        yield* store.append(event);
+      }
+
+      const openAssignable = yield* queryEventStore(store, {
+        coord,
+        where: [
+          ["?w", "type", "Worker"],
+          { or: [[["?w", "worker.status", "active"]], [["?w", "worker.status", "pending"]]] },
+          { not: ["?w", "worker.status", "terminated"] },
+          ["?p", "placement.worker", "?w"],
+          ["?p", "placement.status", "open"],
+        ],
+        select: ["?w", "?p"],
+      });
+      expect(
+        target,
+        sameRows(openAssignable.rows, [
+          { w: "worker:maria", p: "placement:1" },
+          { w: "worker:ivan", p: "placement:2" },
+        ]),
+        "query should join visible triples, branch over status, and filter negation",
+      );
+      expect(
+        target,
+        openAssignable.eventSourceIds.includes(placement1Worker.id) &&
+          openAssignable.eventSourceIds.includes(placement2Worker.id) &&
+          !openAssignable.eventSourceIds.includes(placement3Worker.id),
+        "query provenance should include contributing visible event ids",
+      );
+      checks.push("query-join-or-negation-provenance");
+
+      const scored = yield* queryEventStore(store, {
+        coord,
+        where: [
+          ["?w", "type", "Worker"],
+          ["?w", "worker.score", "?score"],
+          ["?score", ">=", 10],
+          { compute: ["+", "?score", 1], as: "?next" },
+        ],
+        select: ["?w", "?next"],
+      });
+      expect(
+        target,
+        sameRows(scored.rows, [
+          { w: "worker:maria", next: 13 },
+          { w: "worker:terminated", next: 21 },
+        ]),
+        "query should apply compare and compute clauses after binding inputs",
+      );
+      checks.push("query-compare-compute-project");
+
+      const deduped = yield* queryEventStore(store, {
+        coord,
+        where: [
+          { or: [[["?w", "worker.status", "active"]], [["?w", "worker.score", 12]]] },
+        ],
+        select: ["?w"],
+      });
+      expect(
+        target,
+        sameRows(deduped.rows, [{ w: "worker:maria" }]) &&
+          deduped.eventSourceIds.includes(mariaStatus.id) &&
+          deduped.eventSourceIds.includes(mariaScore.id),
+        "query disjunction should dedupe rows while preserving merged provenance",
+      );
+      checks.push("query-or-dedupe");
+
+      const page = paginateRows(sortRows(openAssignable.rows), { numItems: 1 });
+      const nextPage = paginateRows(sortRows(openAssignable.rows), {
+        numItems: 1,
+        cursor: page.continueCursor,
+      });
+      expect(
+        target,
+        page.page.length === 1 &&
+          page.continueCursor === "1" &&
+          !page.isDone &&
+          nextPage.page.length === 1 &&
+          nextPage.isDone,
+        "query pagination should split stable projected rows",
+      );
+
+      const aggregates = aggregateBindings(
+        openAssignable.states.map((state) => state.binding),
+        [],
+        [
+          { op: "count", as: "openAssignments" },
+          { op: "countDistinct", var: "?w", as: "workers" },
+        ],
+      );
+      expect(
+        target,
+        sameRows(aggregates, [{ openAssignments: 2, workers: 2 }]),
+        "query aggregation should summarize provenanced bindings",
+      );
+      checks.push("query-pagination-aggregation");
+
+      const derived = derivedRowsFromBindings(
+        openAssignable.states.map((state) => state.binding),
+        { e: "?w", a: "worker.hasOpenPlacement", v: true },
+      );
+      expect(
+        target,
+        sameRows(derived, [
+          { e: "worker:ivan", a: "worker.hasOpenPlacement", v: true },
+          { e: "worker:maria", a: "worker.hasOpenPlacement", v: true },
+        ]),
+        "query bindings should shape deterministic derived rows",
+      );
+      checks.push("query-derived-rows");
+
+      return { target: target.name, checks };
+    }),
+  );
+}
+
 export async function runRuntimeConformance(
   target: AnyRuntimeConformanceTarget,
 ): Promise<ConformanceReport> {
   const store = await runEventStoreConformance(target);
   const convergence = await runRuntimeConvergenceConformance(target);
   const projection = await runRuntimeProjectionConformance(target);
+  const query = await runRuntimeQueryConformance(target);
   return {
     target: target.name,
-    checks: [...store.checks, ...convergence.checks, ...projection.checks],
+    checks: [
+      ...store.checks,
+      ...convergence.checks,
+      ...projection.checks,
+      ...query.checks,
+    ],
   };
 }
 

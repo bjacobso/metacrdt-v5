@@ -17,6 +17,7 @@ import {
   runRuntimeNetworkTransportConformance,
   runRuntimePersistenceConformance,
   runRuntimeProjectionConformance,
+  runRuntimeQueryConformance,
   runRuntimeSchedulerConformance,
   runRuntimeTransportConformance,
   type RuntimeNetworkTransportConformanceTarget,
@@ -359,7 +360,7 @@ describe("@metacrdt/testkit", () => {
   test("combined conformance returns all checks", async () => {
     const report = await runRuntimeConformance(memoryTarget);
     expect(report.target).toBe("memory");
-    expect(report.checks).toHaveLength(14);
+    expect(report.checks).toHaveLength(19);
   });
 
   test("runtime projection conformance passes for the in-memory target", async () => {
@@ -372,6 +373,18 @@ describe("@metacrdt/testkit", () => {
       "projection-bitemporal-coordinate",
       "projection-audit-flags",
       "projection-filtered-source-query",
+    ]);
+  });
+
+  test("runtime query conformance passes for the in-memory target", async () => {
+    const report = await runRuntimeQueryConformance(memoryTarget);
+    expect(report.target).toBe("memory");
+    expect(report.checks).toEqual([
+      "query-join-or-negation-provenance",
+      "query-compare-compute-project",
+      "query-or-dedupe",
+      "query-pagination-aggregation",
+      "query-derived-rows",
     ]);
   });
 

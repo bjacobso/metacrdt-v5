@@ -56,6 +56,11 @@ describe("@metacrdt/convex runtime Layer", () => {
         "projection-bitemporal-coordinate",
         "projection-audit-flags",
         "projection-filtered-source-query",
+        "query-join-or-negation-provenance",
+        "query-compare-compute-project",
+        "query-or-dedupe",
+        "query-pagination-aggregation",
+        "query-derived-rows",
       ],
     });
   });

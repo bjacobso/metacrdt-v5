@@ -72,11 +72,12 @@ On open hosts the adapter is a selectable dependency.
 - `@metacrdt/runtime`'s in-memory target/Layer — the reference harness.
 - `@metacrdt/testkit` — Effect Layer-backed conformance helpers for EventStore,
   anti-entropy, deterministic fold convergence, EventStore-backed projection,
-  and restart-persistence semantics (log/HLC/seq), plus scheduler
+  EventStore-backed Datalog/query semantics, and restart-persistence semantics
+  (log/HLC/seq), plus scheduler
   service-boundary, transport publish-boundary, and first network
-  delivery/catch-up semantics. Log/sync/projection conformance is proven against
-  the in-memory Layer, Convex component Layer, Cloudflare Durable Object Layer,
-  async local Layer, and Node memory/SQLite/Postgres Layers; persistence
+  delivery/catch-up semantics. Log/sync/projection/query conformance is proven
+  against the in-memory Layer, Convex component Layer, Cloudflare Durable Object
+  Layer, async local Layer, and Node memory/SQLite/Postgres Layers; persistence
   conformance is wired into runtime localStorage, local async, and Node
   SQLite/Postgres; scheduler submission and transport publication conformance are
   wired into testkit memory and Node memory; network delivery/catch-up
@@ -235,9 +236,10 @@ a sibling target.
    service-boundary / transport publish-boundary conformance has started for
    observable services. Network delivery/catch-up conformance has started for
    BroadcastChannel, p2p DataChannel, and Cloudflare relay harnesses. EventStore
-   projection conformance is included in the shared runtime suite; add full
-   Datalog/query-service and materialized projection-store suites whenever the
-   relevant target capabilities are exposed. This is what *proves* the
+   projection and EventStore-backed Datalog/query conformance are included in the
+   shared runtime suite; add production query-service and materialized
+   projection-store suites whenever the relevant target capabilities are exposed.
+   This is what *proves* the
    "guaranteed to converge" claim across targets.
 3. **Cloudflare Phase B/C** — extract the shared fold into core, then the DO +
    SQLite triple store ([cloudflare-target.md](./cloudflare-target.md)).
