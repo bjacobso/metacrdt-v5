@@ -257,13 +257,17 @@ clients. Goal 132 adds a first Cloudflare live current-query result seed:
 bounded current Datalog query subscriptions receive an initial snapshot and are
 refreshed when later projection changes overlap their static `e` / `a`
 dependencies, without persisted subscriptions, Worker routing, auth, result
-diffing, or full frontend live-query parity. The next active goal should be
-chosen from the remaining TODO candidates:
+diffing, or full frontend live-query parity. Goal 133 adds conformance-style
+coverage for the Cloudflare indexed historical query provider itself: the DO
+SQLite current facade now proves joins, disjunction, negation, compare/compute,
+pagination, aggregation, derived-row shaping, lifecycle visibility, and bounded
+SQLite index usage without unrelated full event-log scans. The next active goal
+should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
-remaining Cloudflare DO+SQLite operational parity (full SQL query-provider
-conformance, full flow interpreter/action execution, persisted/authenticated
-live-query frontend plumbing),
+remaining Cloudflare DO+SQLite operational parity (broader SQL query-provider
+parity/performance hardening, full flow interpreter/action execution,
+persisted/authenticated live-query frontend plumbing),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9478,6 +9482,42 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 133 — Cloudflare Indexed Historical Query Provider Conformance Coverage
+
+**Status:** shipped.
+
+**Objective:** strengthen the Cloudflare SQL-indexed historical Datalog provider
+from a seed smoke test to representative conformance-style coverage over the DO
+SQLite current facade.
+
+### What Shipped
+
+- Expanded the focused Cloudflare historical Datalog test to exercise the
+  target-specific indexed provider through joins, `or`, `not`, compare/compute
+  clauses, pagination, aggregation, and derived-row shaping.
+- Kept lifecycle visibility in the same test by retracting a visible assertion
+  and proving historical queries exclude that retracted fact while preserving
+  the newer visible status.
+- Asserted bounded historical queries use SQLite `e` / `a` / `(e, a)` and
+  `target` scans in the fake DO SQLite storage without increasing the full event
+  scan counter.
+
+### Non-Goals
+
+- Do not claim complete SQL performance parity with Convex or a formal shared
+  SQL query-provider conformance suite; this is representative coverage for the
+  Cloudflare indexed provider path.
+- Do not add a new shared testkit API for target-specific query-provider
+  injection.
+- Do not implement Cloudflare flow interpreter/action execution or
+  persisted/authenticated live-query frontend plumbing.
+
+### Verification
+
+- `npm test --workspace @metacrdt/cloudflare` passes with 47 Cloudflare tests.
 
 ---
 

@@ -522,7 +522,7 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
     expect(sql.projectionDeleteMatchingCount).toBeGreaterThan(0);
   });
 
-  test("historical Datalog queries use indexed SQLite event scans with lifecycle visibility", async () => {
+  test("historical Datalog queries use indexed SQLite event scans with conformance-style clauses", async () => {
     const sql = new FakeDurableObjectSqlStorage();
     const runtime = await createDurableObjectSqliteRuntime({
       sql,
@@ -538,6 +538,18 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       e: "worker:indexed",
       a: "type",
       v: "Worker",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:indexed",
+      a: "worker.score",
+      v: 12,
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:indexed",
+      a: "worker.name",
+      v: "INDEXED",
       actor: "user:1",
     });
     const active = await surface.appendAssert({
@@ -558,9 +570,45 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       actor: "user:1",
     });
     await surface.appendAssert({
-      e: "task:indexed",
+      e: "worker:ivan",
       a: "type",
-      v: "Task",
+      v: "Worker",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:ivan",
+      a: "worker.status",
+      v: "pending",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:ivan",
+      a: "worker.score",
+      v: 8,
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "placement:1",
+      a: "placement.worker",
+      v: "worker:ivan",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "placement:1",
+      a: "placement.status",
+      v: "open",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "placement:2",
+      a: "placement.worker",
+      v: "worker:indexed",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "placement:2",
+      a: "placement.status",
+      v: "open",
       actor: "user:1",
     });
 
@@ -573,13 +621,21 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       surface.query({
         where: [
           ["?w", "type", "Worker"],
-          ["?w", "worker.status", "terminated"],
+          {
+            or: [
+              [["?w", "worker.status", "active"]],
+              [["?w", "worker.status", "pending"]],
+            ],
+          },
+          { not: ["?w", "worker.status", "terminated"] },
+          ["?p", "placement.worker", "?w"],
+          ["?p", "placement.status", "open"],
         ],
-        select: ["?w"],
+        select: ["?w", "?p"],
         coord,
       }),
     ).resolves.toMatchObject({
-      rows: [{ w: "worker:indexed" }],
+      rows: [{ w: "worker:ivan", p: "placement:1" }],
     });
     await expect(
       surface.query({
@@ -588,6 +644,100 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
         coord,
       }),
     ).resolves.toMatchObject({ rows: [] });
+    await expect(
+      surface.query({
+        where: [
+          ["?w", "type", "Worker"],
+          ["?w", "worker.score", "?score"],
+          ["?score", ">=", 10],
+          { compute: ["+", "?score", 1], as: "?next" },
+        ],
+        select: ["?w", "?next"],
+        coord,
+      }),
+    ).resolves.toMatchObject({
+      rows: [{ w: "worker:indexed", next: 13 }],
+    });
+    await expect(
+      surface.query({
+        where: [
+          {
+            or: [
+              [["?w", "worker.status", "pending"]],
+              [["?w", "worker.score", 8]],
+            ],
+          },
+        ],
+        select: ["?w"],
+        coord,
+      }),
+    ).resolves.toMatchObject({
+      rows: [{ w: "worker:ivan" }],
+    });
+
+    const firstOpen = await surface.page({
+      where: [
+        ["?w", "type", "Worker"],
+        {
+          or: [
+            [["?w", "worker.status", "active"]],
+            [["?w", "worker.status", "pending"]],
+          ],
+        },
+        { not: ["?w", "worker.status", "terminated"] },
+        ["?p", "placement.worker", "?w"],
+        ["?p", "placement.status", "open"],
+      ],
+      select: ["?w", "?p"],
+      coord,
+      paginationOpts: { numItems: 1 },
+    });
+    expect(firstOpen).toMatchObject({
+      page: [{ w: "worker:ivan", p: "placement:1" }],
+      isDone: true,
+    });
+    await expect(
+      surface.aggregate({
+        where: [
+          ["?w", "type", "Worker"],
+          {
+            or: [
+              [["?w", "worker.status", "active"]],
+              [["?w", "worker.status", "pending"]],
+            ],
+          },
+          { not: ["?w", "worker.status", "terminated"] },
+          ["?p", "placement.worker", "?w"],
+          ["?p", "placement.status", "open"],
+        ],
+        coord,
+        groupBy: [],
+        aggregates: [
+          { op: "count", as: "openAssignments" },
+          { op: "countDistinct", var: "?w", as: "workers" },
+        ],
+      }),
+    ).resolves.toEqual([{ openAssignments: 1, workers: 1 }]);
+    await expect(
+      surface.derivedRows({
+        where: [
+          ["?w", "type", "Worker"],
+          {
+            or: [
+              [["?w", "worker.status", "active"]],
+              [["?w", "worker.status", "pending"]],
+            ],
+          },
+          { not: ["?w", "worker.status", "terminated"] },
+          ["?p", "placement.worker", "?w"],
+          ["?p", "placement.status", "open"],
+        ],
+        coord,
+        emit: { e: "?w", a: "worker.hasOpenPlacement", v: true },
+      }),
+    ).resolves.toEqual([
+      { e: "worker:ivan", a: "worker.hasOpenPlacement", v: true },
+    ]);
 
     expect(sql.eventFullScanCount).toBe(fullScansBefore);
     expect(sql.eventAttributeScanCount).toBeGreaterThan(attributeScansBefore);

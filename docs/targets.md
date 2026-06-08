@@ -288,8 +288,10 @@ a sibling target.
    historical queries now have an indexed provider seed, running DAG rows have a
    terminal resume-decision seed, changed coordinates have a WebSocket
    invalidation fanout seed, and bounded current Datalog subscriptions can send
-   live snapshots/refreshes; next is full SQL query provider parity/conformance
-   plus full flow interpreter/action execution and persisted/authenticated live-query frontend plumbing
+   live snapshots/refreshes; indexed historical queries now have
+   conformance-style clause/visibility/index-scan coverage, and next is broader
+   SQL query provider parity/performance hardening plus full flow
+   interpreter/action execution and persisted/authenticated live-query frontend plumbing
    ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal
    enough repeated DDL/query-generation logic beyond the current Node lifecycle

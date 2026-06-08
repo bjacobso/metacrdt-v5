@@ -16,10 +16,13 @@ projection-backed `queryCurrent` / `pageCurrent` / `aggregateCurrent` /
 `listDagRuns` / `resumeDagRun`, flow-wait timer rows, an operational timer alarm
 multiplexer, deterministic projection change summaries for touched `(e, a)`
 coordinates, a live invalidation fanout helper for those coordinates, and a
-bounded live current-query snapshot/update helper).
-Full historical SQL query-provider parity/conformance, full Cloudflare flow
-interpreter/action-execution parity, and persisted/authenticated live frontend
-subscription plumbing are still ahead.
+bounded live current-query snapshot/update helper). The indexed historical query
+provider now has conformance-style coverage for joins, `or`, `not`,
+compare/compute, pagination, aggregation, derived rows, lifecycle visibility,
+and bounded SQLite index scan usage.
+Broader historical SQL query-provider parity/performance hardening, full
+Cloudflare flow interpreter/action-execution parity, and
+persisted/authenticated live frontend subscription plumbing are still ahead.
 
 **Scope:** Grow `@metacrdt/cloudflare` from a sync-plane shell into a full
 MetaCRDT target at parity with the `@metacrdt/convex` component — an indexed,
@@ -63,14 +66,17 @@ through `recordDagRun`, `getDagRun`, `listDagRuns`, and the narrow
 scheduled, listed, fired, and drained through the DO alarm multiplexer.
 Historical Datalog queries now use a Cloudflare-specific indexed SQLite
 candidate source for bounded assertion patterns and target-indexed lifecycle
-visibility checks. SQLite projection changes can now be broadcast to matching
-bounded WebSocket subscriptions through
+visibility checks, with conformance-style coverage across joins, disjunction,
+negation, compare/compute, pagination, aggregation, derived rows, and fake
+SQLite scan counters that prove bounded queries avoid unrelated full event-log
+scans. SQLite projection changes can now be broadcast to matching bounded
+WebSocket subscriptions through
 `DurableObjectSqliteLiveInvalidationFanout`, and bounded current Datalog query
 subscriptions can be snapshotted/refreshed through
-`DurableObjectSqliteLiveCurrentQueryFanout`. It still has no full SQL
-query-provider conformance/parity, no persisted/authenticated live frontend
-subscription surface, and no Cloudflare DAG interpreter/action execution
-surface.
+`DurableObjectSqliteLiveCurrentQueryFanout`. It still has no broader SQL
+query-provider performance-hardening pass, no persisted/authenticated live
+frontend subscription surface, and no Cloudflare DAG interpreter/action
+execution surface.
 
 This doc defines what it takes to bring Cloudflare to parity, in what order, and
 which decisions must be settled first — and it makes **live frontend queries an
@@ -237,8 +243,8 @@ reconcile. The scoped reconcile folds only matching `(e, a)` assertions plus
 lifecycle events discovered through the SQLite `target` index. Explicit
 `rebuildCurrent` remains the full truncate/replay recovery path.
 
-**Still ahead for parity:** richer append function surface, full SQL-indexed
-query-provider parity/conformance for historical bitemporal queries,
+**Still ahead for parity:** richer append function surface, broader SQL-indexed
+query-provider parity/performance hardening for historical bitemporal queries,
 persisted/authenticated live frontend query plumbing, and the full flow
 interpreter/action-execution surface.
 
@@ -389,9 +395,9 @@ keeps it converged.
 The Phase B adapters (~600–800 LOC) get **shared, not rewritten**. The
 Cloudflare-specific work is comparable to the existing Convex component: the
 runtime-service SQLite seed and first log/current/query facade are now present;
-the remaining work is full SQL-indexed query-provider parity/conformance, full
-flow interpreter/action execution, and persisted/authenticated live frontend
-query plumbing over the snapshot/update helper.
+the remaining work is broader SQL-indexed query-provider parity/performance
+hardening, full flow interpreter/action execution, and persisted/authenticated
+live frontend query plumbing over the snapshot/update helper.
 Roughly 2–4 focused sessions remain, gated on shared fold/reconcile reuse. The
 live-query stretch goal is a separate later increment on top.
 

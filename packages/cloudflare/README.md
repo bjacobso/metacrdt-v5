@@ -158,10 +158,13 @@ runtime, and the same facade now exposes protocol event reads (`getEvent` /
 `listEvents`) plus EventStore-backed Datalog reads (`query`, `page`,
 `aggregate`, `derivedRows`) plus projection-backed current Datalog reads
 (`queryCurrent`, `pageCurrent`, `aggregateCurrent`, `derivedRowsCurrent`) and
-deterministic `changed` summaries for current-projection rebuilds. The remaining
-parity plan — full historical SQL-indexed query optimization, full flow
-interpreter/action execution, and persisted/authenticated live frontend query
-plumbing over DO WebSockets — is
+deterministic `changed` summaries for current-projection rebuilds. The indexed
+historical provider has conformance-style coverage for joins, disjunction,
+negation, compare/compute, pagination, aggregation, derived rows, lifecycle
+visibility, and bounded SQLite scan counters. The remaining parity plan —
+broader historical SQL-indexed query optimization, full flow interpreter/action
+execution, and persisted/authenticated live frontend query plumbing over DO
+WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth
