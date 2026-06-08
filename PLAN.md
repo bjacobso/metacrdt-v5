@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 73 (System flow-resumer count reads flow status from the event log) has
+**Current goal:** Goal 74 (derived rows carry protocol source event ids) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -31,7 +31,9 @@ closure semi-naive add worker boundary from the changed projection `factId` to
 the changed assertion `eventId`, while preserving existing `sourceFactIds`
 through an event-log compatibility lookup. Goal 73 mirrors host `flowRuns`
 status transitions into ordinary `flow.run.status` facts and moves the System
-flow-resumer waiting-run count to that event-log fold. The next active goal
+flow-resumer waiting-run count to that event-log fold. Goal 74 extends the
+solver/materializers so materialized `derivedFacts` keep protocol
+`sourceEventIds` alongside compatibility `sourceFactIds`. The next active goal
 should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
@@ -184,6 +186,9 @@ arguments.
 - Host flow-run status transitions are mirrored into protocol-shaped
   `flow.run.status` facts, and the System tab's flow-resumer waiting-run count
   reads those facts from `factEvents` instead of scanning `flowRuns`.
+- Materialized derived rows now store protocol `sourceEventIds` alongside
+  compatibility `sourceFactIds`, for both non-closure Datalog output and
+  transitive-closure output.
 - Convex backend tests are green: 150 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
@@ -7091,6 +7096,93 @@ Docs:
 - `npx vitest run convex/appconfig.test.ts` passed (16 tests).
 - Full gate passed:
   - `npx convex codegen` passed.
+  - `npm test` passed (17 backend test files, 150 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+  - `git diff --check` passed.
+
+---
+
+## Goal 74 — Derived Rows Carry Protocol Source Event IDs
+
+**Status:** shipped for materialized derived-row provenance.
+
+**Objective:** make derived-row provenance protocol-shaped without breaking the
+existing fact-id explanation path. `derivedFacts` remains the disposable
+materialized projection, and `sourceFactIds` remains the compatibility lineage
+used by current explain UI, but every newly materialized row also carries the
+source assertion event ids that justified it.
+
+### Scope
+
+Backend:
+
+- `convex/schema.ts`
+  - optional `derivedFacts.sourceEventIds`
+- `convex/lib/engine.ts`
+  - `Triple.eventProv`
+  - `SolvedBinding.eventSources`
+  - join/dedupe propagation
+- `convex/lib/eventLogTripleSource.ts`
+  - base-event and derived-event provenance
+- `convex/materialize.ts`
+  - Datalog `emitSolved`
+  - full closure recompute
+  - closure semi-naive incremental add
+
+Tests:
+
+- `convex/provenance.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+
+### Semantics
+
+- Event-log base triples contribute both:
+  - compatibility fact provenance: `prov: [factId]` when a projection id exists
+  - protocol provenance: `eventProv: [eventId]`
+- Derived triples contribute both their stored `sourceFactIds` and
+  `sourceEventIds`.
+- The Datalog solver unions `eventSources` through pattern joins, OR branches,
+  and deduped equivalent bindings just as it already unions `sources`.
+- Non-closure Datalog materialization writes `sourceEventIds` from solved
+  `eventSources`.
+- Full closure recompute carries event provenance through every path support.
+- Closure semi-naive add resolves the changed edge's `edgeEventId` into both
+  compatibility fact ids and protocol event ids, then writes/patches
+  `sourceEventIds`.
+
+### Non-Goals
+
+- Do not remove `derivedFacts`.
+- Do not remove or rewrite `sourceFactIds`; existing `explainDerived` still uses
+  fact ids for human-readable source fact details.
+- Do not make derived output itself an event-log fold in this slice.
+- Do not backfill old derived rows without `sourceEventIds`; the field is
+  optional for compatibility.
+
+### Acceptance Criteria
+
+- Materialized non-closure Datalog rows carry source assertion event ids.
+- Incremental closure rows carry the new edge's assertion event id.
+- Existing source-fact explanation still works.
+- Focused provenance/Datalog/rebuild tests and Convex typecheck pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/provenance.test.ts convex/datalog.test.ts convex/rebuild.test.ts`
+  passed (40 tests).
+- Full gate passed:
   - `npm test` passed (17 backend test files, 150 tests).
   - `npm run test:convex-package` passed (33 tests).
   - `npm run test:core` passed (46 tests).

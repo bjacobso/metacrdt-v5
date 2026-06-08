@@ -43,15 +43,25 @@ export const COMPUTE_OPS = new Set([
 
 export type Binding = Record<string, unknown>;
 
-/** A binding plus the source facts that justify it (provenance). */
-export type SolvedBinding = { binding: Binding; sources: Id<"facts">[] };
+/** A binding plus the source facts/events that justify it (provenance). */
+export type SolvedBinding = {
+  binding: Binding;
+  sources: Id<"facts">[];
+  eventSources?: string[];
+};
 
 /**
  * Normalized triple. `prov` is the base-fact provenance of the row: a fact row
  * contributes its own id; a derived-fact row contributes the base facts it was
  * itself derived from (so provenance always resolves to source facts).
  */
-export type Triple = { e: string; a: string; v: unknown; prov: Id<"facts">[] };
+export type Triple = {
+  e: string;
+  a: string;
+  v: unknown;
+  prov: Id<"facts">[];
+  eventProv?: string[];
+};
 
 type Term =
   | { kind: "var"; name: string }
@@ -290,7 +300,13 @@ function dynamicSelectivity(p: PatternClause, bound: Set<string>): number {
 function factsVisible(rows: Doc<"facts">[], coord: BitemporalCoord): Triple[] {
   return rows
     .filter((r) => isVisible(r, coord))
-    .map((r) => ({ e: r.e, a: r.a, v: r.v, prov: [r._id] }));
+    .map((r) => ({
+      e: r.e,
+      a: r.a,
+      v: r.v,
+      prov: [r._id],
+      ...(r.assertEventId === undefined ? {} : { eventProv: [r.assertEventId] }),
+    }));
 }
 
 function derivedVisible(
@@ -307,7 +323,13 @@ function derivedVisible(
         r.validFrom <= coord.validTime &&
         (r.validTo === undefined || r.validTo > coord.validTime),
     )
-    .map((r) => ({ e: r.e, a: r.a, v: r.v, prov: r.sourceFactIds ?? [] }));
+    .map((r) => ({
+      e: r.e,
+      a: r.a,
+      v: r.v,
+      prov: r.sourceFactIds ?? [],
+      eventProv: r.sourceEventIds ?? [],
+    }));
 }
 
 /**
@@ -698,6 +720,7 @@ export async function solveWhere(
     seed,
     readFilter,
     [],
+    [],
     source,
   );
 }
@@ -709,11 +732,14 @@ async function solveParsedWhere(
   seed: Binding,
   readFilter: ReadFilter,
   seedSources: Id<"facts">[],
+  seedEventSources: string[],
   source: TripleSource,
 ): Promise<SolvedBinding[]> {
   const remaining = clauses.map((_, i) => i);
   const bound = new Set<string>(Object.keys(seed));
-  let states: SolvedBinding[] = [{ binding: { ...seed }, sources: seedSources }];
+  let states: SolvedBinding[] = [
+    { binding: { ...seed }, sources: seedSources, eventSources: seedEventSources },
+  ];
 
   while (remaining.length > 0) {
     let pickAt = remaining.findIndex((i) => {
@@ -764,6 +790,7 @@ async function solveParsedWhere(
             next.push({
               binding: extended,
               sources: mergeSources(st.sources, t.prov),
+              eventSources: mergeStringSources(st.eventSources ?? [], t.eventProv ?? []),
             });
           }
         }
@@ -782,7 +809,11 @@ async function solveParsedWhere(
       for (const st of states) {
         const computed = applyCompute(clause, st.binding);
         if (computed !== null) {
-          next.push({ binding: computed, sources: st.sources });
+          next.push({
+            binding: computed,
+            sources: st.sources,
+            eventSources: st.eventSources,
+          });
         }
       }
       states = next;
@@ -815,6 +846,7 @@ async function solveParsedWhere(
             st.binding,
             readFilter,
             st.sources,
+            st.eventSources ?? [],
             source,
           );
           next.push(...solved);
@@ -850,10 +882,21 @@ function dedupeSolved(states: SolvedBinding[]): SolvedBinding[] {
       byBinding.set(key, {
         binding: existing.binding,
         sources: mergeSources(existing.sources, st.sources),
+        eventSources: mergeStringSources(
+          existing.eventSources ?? [],
+          st.eventSources ?? [],
+        ),
       });
     }
   }
   return [...byBinding.values()];
+}
+
+function mergeStringSources(a: string[], b: string[]): string[] {
+  if (b.length === 0) return a;
+  const set = new Set(a);
+  for (const id of b) set.add(id);
+  return [...set];
 }
 
 function mergeSources(

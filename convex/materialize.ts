@@ -15,6 +15,7 @@ type ClosureSupport = {
   from: string;
   to: string;
   prov: Id<"facts">[];
+  eventProv: string[];
   supportCount: number;
 };
 
@@ -279,12 +280,19 @@ export const recomputeTransitiveClosure = internalMutation({
       {},
       { source: eventLogTripleSource },
     );
-    const adj = new Map<string, Array<{ to: string; prov: Id<"facts">[] }>>();
+    const adj = new Map<
+      string,
+      Array<{ to: string; prov: Id<"facts">[]; eventProv: string[] }>
+    >();
     for (const row of edgeRows) {
       const from = String(row.binding.from);
       const to = String(row.binding.to);
       if (!adj.has(from)) adj.set(from, []);
-      adj.get(from)!.push({ to, prov: row.sources });
+      adj.get(from)!.push({
+        to,
+        prov: row.sources,
+        eventProv: row.eventSources ?? [],
+      });
     }
 
     const { pairs, truncated } = computeClosureSupports(
@@ -317,6 +325,7 @@ export const recomputeTransitiveClosure = internalMutation({
         priorByPair.delete(closureKey(pair.from, pair.to));
         await ctx.db.patch(existing._id, {
           sourceFactIds: pair.prov,
+          sourceEventIds: pair.eventProv,
           supportCount: pair.supportCount,
           derivedAt: now,
           txWatermark: now,
@@ -329,6 +338,7 @@ export const recomputeTransitiveClosure = internalMutation({
           a: closureAttribute,
           v: pair.to,
           sourceFactIds: pair.prov,
+          sourceEventIds: pair.eventProv,
           supportCount: pair.supportCount,
           derivedAt: now,
           validFrom: now,
@@ -364,7 +374,7 @@ export const incrementalClosureAdd = internalMutation({
     if (!rule || !rule.enabled || rule.closure === undefined) return;
     const { closureAttribute, reflexive } = rule.closure;
     const now = Date.now();
-    const edgeProv = await compatibilitySourceFactIdsForEvent(
+    const edgeProv = await provenanceForEvent(
       ctx,
       args.edgeEventId,
     );
@@ -379,15 +389,16 @@ export const incrementalClosureAdd = internalMutation({
       .take(LIMITS.maxClauseScan);
     const predProv = new Map<
       string,
-      { prov: Id<"facts">[]; supportCount: number }
+      { prov: Id<"facts">[]; eventProv: string[]; supportCount: number }
     >();
     for (const r of predRows) {
       predProv.set(r.e, {
         prov: r.sourceFactIds ?? [],
+        eventProv: r.sourceEventIds ?? [],
         supportCount: r.supportCount ?? 1,
       });
     }
-    predProv.set(args.u, { prov: [], supportCount: 1 });
+    predProv.set(args.u, { prov: [], eventProv: [], supportCount: 1 });
 
     // successors(w): y such that (w --closure--> y) already holds, plus w.
     const succRows = await ctx.db
@@ -398,15 +409,16 @@ export const incrementalClosureAdd = internalMutation({
       .take(LIMITS.maxClauseScan);
     const succProv = new Map<
       string,
-      { prov: Id<"facts">[]; supportCount: number }
+      { prov: Id<"facts">[]; eventProv: string[]; supportCount: number }
     >();
     for (const r of succRows) {
       succProv.set(String(r.v), {
         prov: r.sourceFactIds ?? [],
+        eventProv: r.sourceEventIds ?? [],
         supportCount: r.supportCount ?? 1,
       });
     }
-    succProv.set(args.w, { prov: [], supportCount: 1 });
+    succProv.set(args.w, { prov: [], eventProv: [], supportCount: 1 });
 
     let inserted = 0;
     for (const [x, xSupport] of predProv) {
@@ -423,13 +435,23 @@ export const incrementalClosureAdd = internalMutation({
       for (const [y, ySupport] of succProv) {
         if (x === y && !reflexive) continue;
         const prov = [
-          ...new Set([...xSupport.prov, ...edgeProv, ...ySupport.prov]),
+          ...new Set([...xSupport.prov, ...edgeProv.factIds, ...ySupport.prov]),
+        ];
+        const eventProv = [
+          ...new Set([
+            ...xSupport.eventProv,
+            ...edgeProv.eventIds,
+            ...ySupport.eventProv,
+          ]),
         ];
         const addedSupports = xSupport.supportCount * ySupport.supportCount;
         const current = existing.get(y);
         if (current) {
           await ctx.db.patch(current._id, {
             supportCount: (current.supportCount ?? 1) + addedSupports,
+            sourceEventIds: [
+              ...new Set([...(current.sourceEventIds ?? []), ...eventProv]),
+            ],
             txWatermark: now,
             stale: false,
           });
@@ -445,6 +467,7 @@ export const incrementalClosureAdd = internalMutation({
           a: closureAttribute,
           v: y,
           sourceFactIds: prov,
+          sourceEventIds: eventProv,
           supportCount: addedSupports,
           derivedAt: now,
           validFrom: now,
@@ -472,21 +495,27 @@ function closureKey(from: string, to: string): string {
   return `${from}\u0000${valueKey(to)}`;
 }
 
-async function compatibilitySourceFactIdsForEvent(
+async function provenanceForEvent(
   ctx: MutationCtx,
   eventId: string | undefined,
-): Promise<Id<"facts">[]> {
-  if (eventId === undefined) return [];
+): Promise<{ factIds: Id<"facts">[]; eventIds: string[] }> {
+  if (eventId === undefined) return { factIds: [], eventIds: [] };
   const rows = await ctx.db
     .query("factEvents")
     .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
     .take(2);
   const row = rows[0];
-  return row?.factId !== undefined ? [row.factId] : [];
+  return {
+    factIds: row?.factId !== undefined ? [row.factId] : [],
+    eventIds: row?.eventId !== undefined ? [row.eventId] : [eventId],
+  };
 }
 
 function computeClosureSupports(
-  adj: Map<string, Array<{ to: string; prov: Id<"facts">[] }>>,
+  adj: Map<
+    string,
+    Array<{ to: string; prov: Id<"facts">[]; eventProv: string[] }>
+  >,
   maxDepth: number,
   reflexive: boolean,
 ): { pairs: Map<string, ClosureSupport>; truncated: boolean } {
@@ -498,24 +527,30 @@ function computeClosureSupports(
     let frontier: Array<{
       node: string;
       prov: Id<"facts">[];
+      eventProv: string[];
       visited: Set<string>;
-    }> = [{ node: source, prov: [], visited: new Set([source]) }];
+    }> = [{ node: source, prov: [], eventProv: [], visited: new Set([source]) }];
 
     for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
       const nextFrontier: typeof frontier = [];
-      for (const { node, prov, visited } of frontier) {
+      for (const { node, prov, eventProv, visited } of frontier) {
         for (const edge of adj.get(node) ?? []) {
           if (visited.has(edge.to)) continue;
           const pathProv = [...new Set([...prov, ...edge.prov])];
+          const pathEventProv = [...new Set([...eventProv, ...edge.eventProv])];
           const key = closureKey(source, edge.to);
           const existing = pairs.get(key);
           if (existing) {
             existing.supportCount++;
+            existing.eventProv = [
+              ...new Set([...existing.eventProv, ...pathEventProv]),
+            ];
           } else {
             pairs.set(key, {
               from: source,
               to: edge.to,
               prov: pathProv,
+              eventProv: pathEventProv,
               supportCount: 1,
             });
           }
@@ -527,6 +562,7 @@ function computeClosureSupports(
           nextFrontier.push({
             node: edge.to,
             prov: pathProv,
+            eventProv: pathEventProv,
             visited: new Set([...visited, edge.to]),
           });
         }
@@ -540,6 +576,7 @@ function computeClosureSupports(
         from: source,
         to: source,
         prov: [],
+        eventProv: [],
         supportCount: (pairs.get(key)?.supportCount ?? 0) + 1,
       });
     }
@@ -656,7 +693,7 @@ async function emitSolved(
   if (rule.emit === undefined) return;
   const merged = new Map<
     string,
-    { e: string; v: unknown; sources: Set<string> }
+    { e: string; v: unknown; sources: Set<string>; eventSources: Set<string> }
   >();
   for (const s of solved) {
     const e = resolveTerm(rule.emit.e, s.binding);
@@ -665,10 +702,16 @@ async function emitSolved(
     const key = `${String(e)}\u0000${valueKey(value)}`;
     let m = merged.get(key);
     if (!m) {
-      m = { e: String(e), v: value, sources: new Set() };
+      m = {
+        e: String(e),
+        v: value,
+        sources: new Set(),
+        eventSources: new Set(),
+      };
       merged.set(key, m);
     }
     for (const src of s.sources) m.sources.add(src as unknown as string);
+    for (const src of s.eventSources ?? []) m.eventSources.add(src);
   }
   for (const m of merged.values()) {
     await ctx.db.insert("derivedFacts", {
@@ -677,6 +720,7 @@ async function emitSolved(
       a: rule.emit.a,
       v: m.v,
       sourceFactIds: [...m.sources] as unknown as Id<"facts">[],
+      sourceEventIds: [...m.eventSources],
       derivedAt: now,
       validFrom: now,
       txWatermark: now,

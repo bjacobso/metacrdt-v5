@@ -102,9 +102,13 @@ export const eventLogTripleSource: TripleSource = async (
   const events = eventRows.map(({ ev }) => ev);
   const log = fromEvents(events);
   const sourceFactIdsByEventId = new Map<string, Id<"facts">[]>();
+  const sourceEventIdsByEventId = new Map<string, string[]>();
   for (const { ev, row } of eventRows) {
-    if (ev.kind === "assert" && row.factId !== undefined) {
-      sourceFactIdsByEventId.set(ev.id, [row.factId]);
+    if (ev.kind === "assert") {
+      if (row.factId !== undefined) {
+        sourceFactIdsByEventId.set(ev.id, [row.factId]);
+      }
+      sourceEventIdsByEventId.set(ev.id, [ev.id]);
     }
   }
   const keys =
@@ -133,6 +137,7 @@ export const eventLogTripleSource: TripleSource = async (
         a: ev.a!,
         v: ev.v,
         prov: sourceFactIdsByEventId.get(ev.id) ?? [],
+        eventProv: sourceEventIdsByEventId.get(ev.id) ?? [],
       });
     }
   }
@@ -209,6 +214,7 @@ export const eventLogBaseWithDerivedTripleSource: TripleSource = async (
       a: row.a,
       v: row.v,
       prov: row.sourceFactIds as Id<"facts">[],
+      eventProv: row.sourceEventIds ?? [],
     });
   }
   return [...base, ...derived];

@@ -237,6 +237,9 @@ Built today:
 - closure incremental-add jobs receive the changed edge's protocol assertion
   `eventId` and resolve compatibility `sourceFactIds` through `factEvents`,
   rather than receiving the changed projection `factId`
+- materialized derived rows carry protocol `sourceEventIds` alongside existing
+  compatibility `sourceFactIds`, so derived provenance is now event-addressable
+  while current explanations keep working
 - Datalog query engine with joins, comparisons, computed arithmetic/string
   predicates, negation, aggregation, cursor-paged result APIs, and materialized
   transitive closure

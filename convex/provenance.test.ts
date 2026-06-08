@@ -47,6 +47,26 @@ describe("provenance", () => {
       ]);
       // Each source carries its asserting transaction's actor.
       expect(v.because.every((b) => b.actor !== undefined)).toBe(true);
+
+      await t.run(async (ctx) => {
+        const rows = await ctx.db
+          .query("derivedFacts")
+          .withIndex("by_e_a", (q) =>
+            q.eq("e", "w:1").eq("a", "compliance.violation"),
+          )
+          .collect();
+        expect(rows).toHaveLength(1);
+        expect(rows[0].sourceFactIds).toHaveLength(2);
+        expect(rows[0].sourceEventIds).toHaveLength(2);
+        for (const eventId of rows[0].sourceEventIds ?? []) {
+          const eventRows = await ctx.db
+            .query("factEvents")
+            .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
+            .collect();
+          expect(eventRows).toHaveLength(1);
+          expect(eventRows[0].kind).toBe("assert");
+        }
+      });
     } finally {
       vi.useRealTimers();
     }
@@ -129,6 +149,7 @@ describe("provenance", () => {
           .collect();
         const closureToZ = closureRows.find((r) => r.v === "z");
         expect(closureToZ?.sourceFactIds).toContain(incrementalEdge.factId);
+        expect(closureToZ?.sourceEventIds).toContain(edge!.assertEventId);
       });
     } finally {
       vi.useRealTimers();

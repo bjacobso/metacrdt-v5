@@ -99,9 +99,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   assertion `eventId` and resolves compatibility provenance through `factEvents`.
   Host flow-run status transitions are now mirrored into `flow.run.status` facts,
   and System flow-resumer counts read waiting runs from `factEvents` instead of
-  host `flowRuns`. Remaining: derived rows are still stored in `derivedFacts`,
-  and derived provenance still uses compatibility `sourceFactIds` instead of
-  protocol event ids.
+  host `flowRuns`. Materialized derived rows now carry protocol
+  `sourceEventIds` alongside compatibility `sourceFactIds`. Remaining: derived
+  rows are still stored in `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -363,6 +363,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 74 shipped:** materialized `derivedFacts` rows now carry
+  `sourceEventIds` in addition to compatibility `sourceFactIds`. The Datalog
+  solver propagates event provenance through pattern joins, OR branches, and
+  deduped bindings; non-closure rule output, full closure recompute, and
+  semi-naive closure add all write protocol source event ids.
+- [x] **Derived provenance protocol proof.** `convex/provenance.test.ts` now
+  verifies normal Datalog-derived rows store the two source assertion event ids,
+  and incremental closure rows include the newly asserted edge's event id while
+  preserving existing fact-id explanations.
 - [x] **Goal 73 shipped:** host `flowRuns` status transitions are mirrored as
   protocol facts (`flowRun:<runId>`, `flow.run.status`, status). The attribute is
   built-in cardinality-one, and the mirror helper explicitly retracts the prior
