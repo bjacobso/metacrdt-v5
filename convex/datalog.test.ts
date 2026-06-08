@@ -957,6 +957,60 @@ describe("transitive closure", () => {
     }
   });
 
+  test("full closure recompute reads base edges from event log", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await assert(t, "el-closure:a", "eventLogReportsTo", "el-closure:b");
+      await assert(t, "el-closure:b", "eventLogReportsTo", "el-closure:c");
+      await t.mutation(api.rules.defineTransitiveRule, {
+        name: "eventLogReportsToClosure",
+        baseAttribute: "eventLogReportsTo",
+        closureAttribute: "eventLogReportsTo+",
+        maxDepth: 16,
+      });
+
+      await t.run(async (ctx) => {
+        const rows = await ctx.db
+          .query("facts")
+          .withIndex("by_a", (q) => q.eq("a", "eventLogReportsTo"))
+          .collect();
+        for (const row of rows) {
+          await ctx.db.patch(row._id, { retractedAt: Date.now() });
+        }
+      });
+      await flush(t);
+
+      const closure = await t.query(api.datalog.datalog, {
+        where: [["el-closure:a", "eventLogReportsTo+", "?x"]],
+        select: ["?x"],
+      });
+      expect(closure.map((r) => r.x).sort()).toEqual([
+        "el-closure:b",
+        "el-closure:c",
+      ]);
+
+      const direct = await t.query(api.datalog.datalog, {
+        where: [["el-closure:a", "eventLogReportsTo", "?x"]],
+        select: ["?x"],
+      });
+      expect(direct).toEqual([]);
+
+      await t.run(async (ctx) => {
+        const rows = await ctx.db
+          .query("derivedFacts")
+          .withIndex("by_e_a", (q) =>
+            q.eq("e", "el-closure:a").eq("a", "eventLogReportsTo+"),
+          )
+          .collect();
+        expect(rows).toHaveLength(2);
+        expect(rows.every((row) => (row.sourceFactIds ?? []).length > 0)).toBe(true);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("incremental add extends the closure when an edge is asserted", async () => {
     vi.useFakeTimers();
     try {

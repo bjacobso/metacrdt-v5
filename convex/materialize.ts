@@ -4,9 +4,12 @@ import { MutationCtx } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { isEntityLocalRule, solveWhere, LIMITS } from "./lib/engine";
-import { isVisible, valueKey } from "./lib/visibility";
+import { valueKey } from "./lib/visibility";
 import { SolvedBinding } from "./lib/engine";
-import { eventLogBaseWithDerivedTripleSource } from "./lib/eventLogTripleSource";
+import {
+  eventLogBaseWithDerivedTripleSource,
+  eventLogTripleSource,
+} from "./lib/eventLogTripleSource";
 
 type ClosureSupport = {
   from: string;
@@ -266,18 +269,22 @@ export const recomputeTransitiveClosure = internalMutation({
     const now = Date.now();
     const coord = { txTime: now, validTime: now };
 
-    // Build adjacency from current visible base-attribute facts, keeping the
-    // edge's fact id so each closure pair can carry its path provenance.
-    const edgeRows = await ctx.db
-      .query("facts")
-      .withIndex("by_a", (q) => q.eq("a", baseAttribute))
-      .take(LIMITS.maxClauseScan);
-    const adj = new Map<string, Array<{ to: string; factId: Id<"facts"> }>>();
-    for (const r of edgeRows) {
-      if (!isVisible(r, coord)) continue;
-      const to = String(r.v);
-      if (!adj.has(r.e)) adj.set(r.e, []);
-      adj.get(r.e)!.push({ to, factId: r._id });
+    // Build adjacency from current visible base-attribute facts folded from the
+    // protocol event log. The triple source carries the assertion event's
+    // projected fact id as provenance while that compatibility id exists.
+    const edgeRows = await solveWhere(
+      ctx,
+      [["?from", baseAttribute, "?to"]],
+      coord,
+      {},
+      { source: eventLogTripleSource },
+    );
+    const adj = new Map<string, Array<{ to: string; prov: Id<"facts">[] }>>();
+    for (const row of edgeRows) {
+      const from = String(row.binding.from);
+      const to = String(row.binding.to);
+      if (!adj.has(from)) adj.set(from, []);
+      adj.get(from)!.push({ to, prov: row.sources });
     }
 
     const { pairs, truncated } = computeClosureSupports(
@@ -463,7 +470,7 @@ function closureKey(from: string, to: string): string {
 }
 
 function computeClosureSupports(
-  adj: Map<string, Array<{ to: string; factId: Id<"facts"> }>>,
+  adj: Map<string, Array<{ to: string; prov: Id<"facts">[] }>>,
   maxDepth: number,
   reflexive: boolean,
 ): { pairs: Map<string, ClosureSupport>; truncated: boolean } {
@@ -483,7 +490,7 @@ function computeClosureSupports(
       for (const { node, prov, visited } of frontier) {
         for (const edge of adj.get(node) ?? []) {
           if (visited.has(edge.to)) continue;
-          const pathProv = [...prov, edge.factId];
+          const pathProv = [...new Set([...prov, ...edge.prov])];
           const key = closureKey(source, edge.to);
           const existing = pairs.get(key);
           if (existing) {

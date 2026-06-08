@@ -194,6 +194,9 @@ Built today:
 - non-closure Datalog rule materialization solves base facts from
   protocol-shaped `factEvents` while still writing the existing `derivedFacts`
   projection for production reads
+- full transitive-closure recompute reads base edges from protocol-shaped
+  `factEvents`, preserving path provenance through compatibility `factId`s while
+  still materializing closure rows into `derivedFacts`
 - Datalog query engine with joins, comparisons, computed arithmetic/string
   predicates, negation, aggregation, cursor-paged result APIs, and materialized
   transitive closure

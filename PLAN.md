@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 57 (non-closure rule materialization solves from the event log)
+**Current goal:** Goal 58 (full closure recompute reads edges from the event log)
 has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth, or
@@ -109,7 +109,11 @@ arguments.
   shared event-log-base + materialized-derived triple source. Base facts come
   from protocol-shaped `factEvents`; existing `derivedFacts` remain available for
   rules that depend on already-materialized output.
-- Convex backend tests are green: 144 tests at last verification.
+- Full transitive-closure recompute now builds base-edge adjacency through the
+  shared event-log triple source instead of scanning `facts.by_a`, preserving
+  path provenance through compatibility `factId`s while still materializing
+  closure rows into `derivedFacts`.
+- Convex backend tests are green: 145 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -401,7 +405,9 @@ arguments.
 - Production non-closure Datalog rule materialization now solves base facts from
   protocol-shaped `factEvents`, but still writes the `derivedFacts` projection and
   still represents provenance as projection `sourceFactIds`.
-- Closure materialization still reads the `facts` projection for base edges.
+- Full transitive-closure recompute now reads base edges from protocol-shaped
+  `factEvents`; closure semi-naive add still receives the changed projection
+  `factId`, and closure output still lives in `derivedFacts`.
 - `@metacrdt/convex` now has adapter helpers, stateless protocol helpers, a
   component-owned protocol transaction/event log, and component-owned
   `facts`/`currentFacts` projections with opt-in cardinality-one reconciliation
@@ -5251,6 +5257,81 @@ TODO.md
 
 ---
 
+## Goal 58 — Full Closure Recompute Reads Edges from the Event Log
+
+**Status:** shipped for full transitive-closure recompute in the Convex
+reference runtime.
+
+**Objective:** move the conservative/full transitive-closure recompute path off
+the base `facts` projection. Closure output still materializes into
+`derivedFacts`, but the full recompute now builds its edge adjacency from
+protocol-shaped `factEvents`.
+
+### Scope
+
+Backend:
+
+- `convex/materialize.ts`
+  - `recomputeTransitiveClosure`
+  - `computeClosureSupports` adjacency provenance shape
+
+Tests:
+
+- `convex/datalog.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+
+### Semantics
+
+- Full closure recompute solves `["?from", baseAttribute, "?to"]` through the
+  shared `eventLogTripleSource`.
+- The adjacency map is built from solved bindings, not from `facts.by_a`.
+- Path provenance is carried as source fact id arrays from assertion
+  `factEvents.factId` while those compatibility ids exist.
+- Edges with no compatibility provenance still participate in reachability with
+  empty provenance, preserving legacy tolerance.
+- Closure rows are still reconciled into `derivedFacts` with support counts and
+  deletion-safe stale cleanup.
+
+### Non-Goals
+
+- Do not change the semi-naive add path; it still receives the changed
+  projection `factId` from the write pipeline.
+- Do not remove or stop writing closure `derivedFacts`.
+- Do not rewrite closure provenance to protocol event ids yet.
+- Do not replace production Datalog base reads.
+
+### Acceptance Criteria
+
+- If direct base-edge `facts` are corrupted before a scheduled full closure
+  recompute runs, closure rows still materialize from `factEvents`.
+- A production Datalog query over the corrupted direct edge still fails, proving
+  the remaining projection-backed base-read dependency is explicit.
+- Closure rows retain non-empty source provenance when assertion events carry
+  compatibility `factId`s.
+- Convex typecheck and focused Datalog/provenance/rebuild tests pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/datalog.test.ts convex/provenance.test.ts convex/rebuild.test.ts`
+  passed (40 tests).
+- Broader gate passed:
+  - `npm test` passed (17 backend test files, 145 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+
+---
+
 ## Goal 57 — Non-Closure Rule Materialization Solves from the Event Log
 
 **Status:** shipped for non-closure Datalog rules in the Convex reference
@@ -5664,10 +5745,10 @@ or intentionally moved out of this repo's scope. Each shipped slice must update
 `PLAN.md` / `TODO.md`, pass the relevant test/typecheck/build gate, and be
 committed/pushed with the verification recorded.
 
-Goal 57 is complete: non-closure Datalog rule materialization now solves through
-the shared event-log-base + materialized-derived triple source, preserving
-`sourceFactIds` from assertion `factEvents.factId` while still writing the
-existing `derivedFacts` projection.
+Goal 58 is complete: full transitive-closure recompute now builds its base-edge
+adjacency through the shared event-log triple source instead of scanning
+`facts.by_a`, preserving closure reachability and compatibility provenance while
+still writing closure output to `derivedFacts`.
 
 The next shipped slice should update this section with its own concrete
 definition of done before implementation starts.

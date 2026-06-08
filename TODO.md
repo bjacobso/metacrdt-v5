@@ -70,10 +70,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   computes read-only rule output directly from the event log for a supplied
   `where` + `emit`. Production non-closure Datalog rule materialization now solves
   base facts through the shared event-log-base + derived source while preserving
-  `sourceFactIds` from assertion `factEvents.factId`.
-  Remaining: move closure materialization and production base Datalog reads away
-  from the hand-maintained `facts` projection; derived rows are still stored in
-  `derivedFacts`.
+  `sourceFactIds` from assertion `factEvents.factId`. Full transitive-closure
+  recompute now reads base edges through the shared event-log source too,
+  preserving path provenance through compatibility `factId`s.
+  Remaining: move production base Datalog reads away from the hand-maintained
+  `facts` projection; closure semi-naive add still receives the changed
+  projection `factId`; derived rows are still stored in `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -331,6 +333,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 58 shipped:** full transitive-closure recompute now builds its base
+  edge adjacency through the shared event-log triple source instead of scanning
+  `facts.by_a`. Closure output still materializes into `derivedFacts`.
+- [x] **Closure projection-corruption proof.** Tests corrupt direct base-edge
+  `facts` before the scheduled full closure recompute runs; closure rows still
+  materialize from `factEvents`, direct edge Datalog over `facts` fails, and
+  closure provenance remains populated.
 - [x] **Goal 57 shipped:** non-closure rule materialization now solves rule bodies
   through the shared event-log-base + materialized-derived triple source. Base
   facts come from protocol-shaped `factEvents`; existing `derivedFacts` remain
