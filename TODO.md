@@ -131,6 +131,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `listOwnedCollections` exposes those runs, `/collect` submits them into
   component-owned state, and `/component/e/:id` shows the component-owned run
   list.
+- [ ] **Goal 39: component-owned compliance issue/reuse** — compute
+  `reuse`/`collect` decisions for component-owned Workers from host configured
+  `require.*` rules plus component-owned placement/scope/evidence state, then
+  issue missing evidence as component-owned collection runs without creating host
+  `flowRuns` rows.
 - [x] **Datalog disjunction** — Datalog `where` bodies now support bounded
   `{ or: [[...clauses], ...] }` branches. Branches run from the current binding,
   union/dedupe their bindings with provenance merged, and continue into later
@@ -230,10 +235,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [ ] Provider-backed login UI / production auth configuration for the live app.
 
 **Next goal candidates**
-- [ ] Choose the next active goal: provider-backed login UI / production auth,
-  live Cloudflare deployment/auth, or migrating more reference runtime business
-  logic onto `@metacrdt/convex` component-owned state (next likely seam:
-  component-owned flows / compliance).
+- [x] Choose the next active goal: Goal 39, component-owned compliance
+  issue/reuse.
+- [ ] After Goal 39, choose between provider-backed login UI / production auth,
+  live Cloudflare deployment/auth, or component-owned DAG flows/materialization.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -258,6 +263,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — Goal 39 selected: component-owned compliance issue/reuse
+- [x] **PLAN.md is actionable again.** Goal 39 is now the active objective:
+  compute component-owned Worker compliance plans from configured host
+  `require.*` rules plus component-owned placement/scope/evidence state.
+- [x] **Bounded before DAG migration.** The plan explicitly stops short of
+  component-owned rule materialization, parked multi-step flows, schedulers, and
+  generic Datalog over component state. It only issues/reuses component-owned
+  collection runs for missing evidence.
+- [x] **Acceptance criteria are testable.** The required proof is
+  collect→submit→reuse entirely in component-owned state, with no host
+  `flowRuns` rows and no regression to host compliance or host `/collect`.
 
 ### 2026-06-07 — component-owned collection run/token storage
 - [x] **Goal 37 shipped:** the installed `@metacrdt/convex` component now owns

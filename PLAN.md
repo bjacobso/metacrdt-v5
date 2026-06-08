@@ -1,9 +1,13 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 38 (component-owned standalone collect runs) has shipped.
-The next active goal should be chosen from the remaining TODO candidates:
-component-owned DAG flows/compliance, provider-backed login UI / production auth,
-live Cloudflare deployment/auth, or another parked Query/Rules item.
+**Current goal:** Goal 39 — component-owned compliance issue/reuse.
+
+Goal 38 proved component-owned collect runs can own their run/token/form/evidence
+state inside the installed `@metacrdt/convex` component. Goal 39 uses that
+capability for the first real product workflow over component-owned entities:
+given a component-owned Worker and its component-owned placements, compute which
+configured compliance forms are required, which can reuse existing submitted
+evidence, and which should issue new component-owned collection links.
 
 This plan is the operational goal file. Read it with:
 
@@ -3596,6 +3600,241 @@ convex/appconfig.test.ts
 
 ---
 
+## Goal 39 — Component-Owned Compliance Issue/Reuse
+
+**Status:** active plan, not yet implemented.
+
+**Objective:** make component-owned Worker entities useful for the compliance
+vertical without migrating the full host DAG runner or rule materializer. The
+reference app should compute a compliance plan for a component-owned Worker from
+the existing configured requirement rules, decide `reuse` vs `collect` using
+component-owned submitted evidence, and issue missing component-owned collection
+runs through the component-owned `flowRuns` table.
+
+This goal is the narrow bridge between Goal 38's standalone component collect
+capability and a future component-owned flow/compliance engine:
+
+```text
+host configured requirements
+        +
+component-owned Worker / Placement / scope entities
+        +
+component-owned submitted.<form> evidence
+        ↓
+component compliance plan: reuse | collect
+        ↓
+component-owned collection runs for missing evidence
+```
+
+### Why This Goal Now
+
+- Goal 38 gave the component durable collection tokens and component-owned form
+  submission. The next product-level proof is to decide when to issue those
+  tokens from real compliance requirements.
+- This is smaller and safer than migrating host DAG flows. It does not need a
+  scheduler, parked flow state machine, component-owned rule materializer, or
+  host `derivedFacts` replacement.
+- It exercises the commercial seam: component-owned operational data can
+  participate in the Onboarded/datarooms compliance workflow without writing
+  host business rows.
+
+### Scope
+
+Reference app wrapper:
+
+```text
+convex/metacrdtComponent.ts
+  ownedCompliancePlan
+  issueOwnedOpenCollections
+```
+
+Frontend:
+
+```text
+src/pages/ComponentEntity.tsx
+  Component compliance card for Worker entities
+  reuse/collect table
+  Issue open collections action
+```
+
+Tests:
+
+```text
+convex/metacrdtComponent.test.ts
+convex/forms.test.ts
+```
+
+### Data Sources
+
+- **Requirement definitions:** still live in host `rules` rows produced by
+  `applyConfig` / staffing blueprint. Goal 39 reads configured `require.<form>`
+  rules but does not move rules into the component.
+- **Operational state:** Worker, Placement, Employer/Client/etc. scope entities
+  live in component-owned current state (`components.metacrdt.log.getCurrentEntity`
+  / `listCurrent` / `listCurrentEntities`).
+- **Evidence state:** submitted form markers live as component-owned
+  `submitted.<form>` facts on the Worker, written by component token submission.
+- **Collection capability rows:** new missing-evidence links live in the
+  component-owned `flowRuns` table through `components.metacrdt.log.issueCollection`.
+
+### Semantics
+
+`ownedCompliancePlan({ worker })`:
+
+- verifies the component-owned Worker exists;
+- loads enabled host requirement rules whose names start with `require.`;
+- supports the staffing-style rule shape:
+  - placement has `type = "Placement"`;
+  - placement points at the Worker;
+  - placement points at a scope entity through one scope attribute
+    (`employer`, `client`, `job`, `venue`, etc.);
+  - optional literal guard on the scope entity is allowed;
+- scans component-owned placements for that Worker;
+- evaluates each supported requirement against component-owned placement/scope
+  facts;
+- deduplicates by `(form, scope)`;
+- returns `decision: "reuse"` when the Worker already has
+  `submitted.<form> = scope` in component-owned current state;
+- otherwise returns `decision: "collect"`;
+- includes the placements that caused each requirement and a compact summary.
+
+`issueOwnedOpenCollections({ worker })`:
+
+- requires host write auth and derives actor server-side, like other component
+  write wrappers;
+- computes the same plan inside the mutation;
+- for each `collect` item, calls the component's `issueCollection`;
+- reuses existing waiting component-owned runs for the same
+  `(subject, form, scope)`;
+- returns issued/reused token information and does not create host `flowRuns`
+  rows.
+
+### Non-Goals
+
+- Do not migrate host compliance `workerCompliance` or host `derivedFacts`.
+- Do not move configured requirements/rules into `@metacrdt/convex` yet.
+- Do not implement component-owned DAG flow definitions or parked multi-step
+  runs.
+- Do not implement scheduler reminders/escalations.
+- Do not add a generic Datalog interpreter over component-owned state in this
+  slice; support the bounded staffing requirement shape first.
+- Do not change public `/collect` semantics except to keep dispatching component
+  tokens through the existing fallback path.
+
+### Design Rules
+
+1. **Reuse existing configured rules, do not duplicate the blueprint.**
+   Requirement semantics should come from host `rules`, not a second hard-coded
+   list of forms.
+2. **Component state remains the source for component entities.**
+   The plan must not inspect host `currentFacts` for component Worker/Placement
+   operational facts.
+3. **Unsupported rules fail loudly or are explicitly skipped with a reason.**
+   Avoid silently pretending arbitrary Datalog is supported.
+4. **Write auth stays at the host wrapper.**
+   The component remains auth-neutral; the host wrapper passes actor context.
+5. **Collection reuse is component-local.**
+   Host runs do not satisfy component-owned collect runs, and component runs do
+   not mutate host `flowRuns`.
+6. **This is an issue/reuse planner, not a materializer.**
+   It may compute live decisions on demand; it does not need to write obligation
+   facts or component-owned `derivedFacts`.
+
+### Work Breakdown
+
+#### 1. Read Convex Guidelines
+
+- [ ] Read `convex/_generated/ai/guidelines.md` before implementation.
+- [ ] Confirm the component wrapper still follows the project component rules:
+  host public functions own auth, component functions own isolated state.
+
+#### 2. Audit Requirement Rule Shape
+
+- [ ] Inspect `convex/appconfig.ts` requirement lowering.
+- [ ] Inspect `confect/compliance.impl.ts` dry-run parsing/planning helpers.
+- [ ] Inspect current staffing blueprint requirement rules in tests/dev data.
+- [ ] Decide the minimal supported rule subset for component-owned planning.
+
+#### 3. Add Component-Owned Compliance Planner
+
+- [ ] Add validators for plan items and summaries in
+  `convex/metacrdtComponent.ts`.
+- [ ] Add helper to load enabled host `require.*` rules.
+- [ ] Add helper to parse the supported staffing requirement shape:
+  - form name;
+  - placement worker attribute;
+  - placement scope attribute;
+  - optional literal guard on the scope entity.
+- [ ] Add helper to read component current entity rows and attribute maps.
+- [ ] Add helper to find component-owned placements for the Worker.
+- [ ] Add `ownedCompliancePlan({ worker })` query.
+
+#### 4. Add Issue Mutation
+
+- [ ] Add `issueOwnedOpenCollections({ worker })` mutation.
+- [ ] Require authenticated host writer.
+- [ ] Recompute the plan inside the mutation.
+- [ ] Issue/reuse component-owned collection runs for `collect` items.
+- [ ] Return token URLs for issued/reused component runs.
+- [ ] Prove no host `flowRuns` row is created.
+
+#### 5. Update Component Entity UI
+
+- [ ] Show a Component compliance card for component-owned Worker entities.
+- [ ] Render required forms with form, scope, decision, reason, and triggering
+  placements.
+- [ ] Show existing waiting/completed component collection runs beside the plan.
+- [ ] Add an Issue open collections button when `collect > 0`.
+- [ ] Link returned tokens through the existing `/collect?token=...` route.
+
+#### 6. Tests
+
+- [ ] Component-owned Worker + component-owned Placement + host requirement rule
+  produces `collect` decisions.
+- [ ] Submitting a component-owned token writes `submitted.<form> = scope` into
+  component-owned state.
+- [ ] The plan changes from `collect` to `reuse` after submission.
+- [ ] Issuing open collections creates/reuses component-owned `flowRuns` rows.
+- [ ] Host `flowRuns` remains untouched for component-owned compliance runs.
+- [ ] Unsupported requirement shapes are reported predictably.
+- [ ] Existing host compliance and host `/collect` tests still pass.
+
+### Acceptance Criteria
+
+- Component-owned Worker detail can show live compliance requirements from the
+  configured staffing rules.
+- Missing evidence can be issued as component-owned collection links.
+- Completed component-owned submissions satisfy later component-owned compliance
+  plans by reuse.
+- Host-owned compliance behavior remains unchanged.
+- No component-owned compliance operation writes host `flowRuns` rows.
+- Focused tests, full backend tests, package tests, Convex typecheck, app
+  typecheck, build, backend deploy, static upload, and live smoke pass.
+
+### Verification To Run
+
+```bash
+npx vitest run convex/metacrdtComponent.test.ts convex/forms.test.ts convex/appconfig.test.ts
+npm run test:core
+npm run test:convex-package
+npm test
+npx tsc --noEmit -p convex/tsconfig.json
+npx tsc --noEmit -p tsconfig.json
+npm run build
+npx convex dev --once
+npx @convex-dev/static-hosting upload
+```
+
+Live smoke:
+
+```bash
+curl -I https://chatty-hare-94.convex.site
+npx convex run metacrdtComponent:listOwnedCurrentEntities '{"type":"Worker","limit":5}'
+npx convex run metacrdtComponent:listOwnedCollections '{"subject":"<component-worker-id>"}'
+```
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -3636,7 +3875,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Component-owned collection submission into component state.
 - [x] Component-owned collection run/token storage.
 - [x] Component-owned standalone collect runs.
-- [ ] Migrate more reference runtime business logic onto component-owned state.
+- [ ] Goal 39: component-owned compliance issue/reuse.
+- [ ] Component-owned DAG flows and compliance materialization after Goal 39.
 
 ### Auth / Privacy
 
@@ -3694,8 +3934,9 @@ or intentionally moved out of this repo's scope. Each shipped slice must update
 `PLAN.md` / `TODO.md`, pass the relevant test/typecheck/build gate, and be
 committed/pushed with the verification recorded.
 
-For Goal 38 specifically, done means standalone component-owned collect runs no
-longer require a host `flowRuns` row, component-owned tokens render and submit
-through the existing public `/collect` API, component entity pages list those
-runs, legacy host tokens still work, tests cover both paths, all gates pass, the
-deployed app is smoke-tested, and the result is committed and pushed.
+For Goal 39 specifically, done means component-owned Worker detail can compute
+reuse/collect compliance decisions from configured requirement rules, issue
+missing component-owned collection links without host `flowRuns`, reuse completed
+component-owned submitted evidence, preserve host compliance behavior, pass the
+verification gates above, smoke-test the deployed app, and commit/push the
+result.
