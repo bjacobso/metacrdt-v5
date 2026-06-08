@@ -2,17 +2,17 @@ import { Doc, Id } from "../_generated/dataModel";
 import { QueryCtx, MutationCtx } from "../_generated/server";
 import {
   LIMITS,
-  applyCompute,
+  applyComputeStates,
   chooseNextClausePosition,
   clauseBoundVars,
   dedupeProvenancedBindings,
   extendProvenancedBinding,
+  filterCompareStates,
   parseClauses,
   passesNegationCandidates,
   patternInputForBinding,
   patternVars,
   project,
-  satisfiesCompare,
   valueKey,
   type AnyClause,
   type Binding,
@@ -29,12 +29,14 @@ export {
   COMPUTE_OPS,
   LIMITS,
   aggregateBindings,
+  applyComputeStates,
   chooseNextClausePosition,
   dedupeProvenancedBindings,
   derivedRowsFromBindings,
   describeClauses,
   entityVarOf,
   extendProvenancedBinding,
+  filterCompareStates,
   isEntityLocalRule,
   paginateRows,
   passesNegationCandidates,
@@ -319,20 +321,9 @@ async function solveParsedWhere(
       for (const vn of patternVars(clause)) bound.add(vn);
       states = next;
     } else if (clause.kind === "compare") {
-      states = states.filter((st) => satisfiesCompare(clause, st.binding));
+      states = filterCompareStates(clause, states);
     } else if (clause.kind === "compute") {
-      const next: SolvedBinding[] = [];
-      for (const st of states) {
-        const computed = applyCompute(clause, st.binding);
-        if (computed !== null) {
-          next.push({
-            binding: computed,
-            sources: st.sources,
-            eventSources: st.eventSources,
-          });
-        }
-      }
-      states = next;
+      states = applyComputeStates(clause, states);
       for (const vn of clauseBoundVars(clause)) bound.add(vn);
     } else if (clause.kind === "not") {
       const kept: SolvedBinding[] = [];

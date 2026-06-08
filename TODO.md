@@ -157,6 +157,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   owns `passesNegationCandidates`, applying typed pattern unification to
   already-fetched candidate triples. Convex still owns candidate fetching, read
   auth, and source semantics.
+- [x] **`@metacrdt/query` local state transitions extracted** — the package now
+  owns `filterCompareStates` and `applyComputeStates`, applying compare/compute
+  clauses to provenanced solved bindings while preserving source/event
+  provenance. Convex still owns the async solver loop, source fetching, read auth,
+  negation IO, and branch recursion.
 - [ ] Then peel off, as they stabilize: more `@metacrdt/query` solver/rule AST
   seams, then `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/views`, and
   `@metacrdt/agent`.
@@ -426,6 +431,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 92 shipped:** `@metacrdt/query` local state transitions. Added
+  `filterCompareStates` and `applyComputeStates`; Convex compare/compute solver
+  branches now delegate those pure transitions while retaining async scheduling,
+  source fetching, read auth, negation IO, disjunction recursion, and source
+  semantics.
 - [x] **Goal 91 shipped:** `@metacrdt/query` negation candidate check. Added
   `passesNegationCandidates`; Convex `passesNegation` still fetches candidates
   through the injected source and read-auth path, then delegates the typed

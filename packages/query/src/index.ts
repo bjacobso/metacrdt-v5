@@ -667,6 +667,37 @@ export function passesNegationCandidates<
   return true;
 }
 
+export function filterCompareStates<
+  SourceId extends string,
+  EventSourceId extends string = string,
+>(
+  clause: CompareClause,
+  states: ProvenancedBinding<SourceId, EventSourceId>[],
+): ProvenancedBinding<SourceId, EventSourceId>[] {
+  return states.filter((state) => satisfiesCompare(clause, state.binding));
+}
+
+export function applyComputeStates<
+  SourceId extends string,
+  EventSourceId extends string = string,
+>(
+  clause: ComputeClause,
+  states: ProvenancedBinding<SourceId, EventSourceId>[],
+): ProvenancedBinding<SourceId, EventSourceId>[] {
+  const next: ProvenancedBinding<SourceId, EventSourceId>[] = [];
+  for (const state of states) {
+    const binding = applyCompute(clause, state.binding);
+    if (binding !== null) {
+      next.push({
+        binding,
+        sources: state.sources,
+        eventSources: state.eventSources,
+      });
+    }
+  }
+  return next;
+}
+
 export type ResultPage<T> = {
   page: T[];
   isDone: boolean;

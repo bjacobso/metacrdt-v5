@@ -120,9 +120,10 @@ Current packages:
   planner used by the Datalog scheduler, plus provenance-preserving solved-binding
   dedupe/source merging, pattern-input construction for target triple sources,
   provenanced pattern extension for positive joins, and negation candidate
-  checking over fetched triples. The Convex engine consumes and
-  re-exports it while keeping triple fetching, read authorization, provenance,
-  and async join execution in `convex/lib/engine.ts`.
+  checking over fetched triples, plus compare/compute state transitions over
+  solved bindings. The Convex engine consumes and re-exports it while keeping
+  triple fetching, read authorization, provenance, and async join execution in
+  `convex/lib/engine.ts`.
 - **`@metacrdt/convex`** (`packages/convex`) — Convex target adapters:
   protocol metadata validators, Convex/core event construction, row
   reconstruction/verification, projected-row visibility, cardinality-one
@@ -162,7 +163,7 @@ Planned package graph:
 @metacrdt/core        protocol kernel: events, ids, order, fold
 @metacrdt/forma       Lisp authoring language
 @metacrdt/schema      schema-as-facts, types, attributes (definition lowering shipped)
-@metacrdt/query       Datalog, rules, derivation (query helpers + emit shaping + planner + dedupe + pattern inputs + join/negation helpers shipped)
+@metacrdt/query       Datalog, rules, derivation (query helpers + emit shaping + planner + dedupe + pattern inputs + join/negation/state helpers shipped)
 @metacrdt/workflow    processes, flows, obligations
 @metacrdt/forms       forms, collection, prompt-response
 @metacrdt/views       ViewSpec / generated response surfaces

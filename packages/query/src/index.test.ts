@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   aggregateBindings,
   applyCompute,
+  applyComputeStates,
   bindingKey,
   chooseNextClausePosition,
   dedupeProvenancedBindings,
@@ -9,6 +10,7 @@ import {
   describeClauses,
   dynamicSelectivity,
   extendProvenancedBinding,
+  filterCompareStates,
   isEntityLocalRule,
   paginateRows,
   passesNegationCandidates,
@@ -287,6 +289,55 @@ describe("@metacrdt/query rows", () => {
         ],
       ),
     ).toBe(true);
+  });
+
+  test("filters compare states while preserving provenance", () => {
+    const clause = parseClause(["?score", ">=", 10]);
+    expect(clause.kind).toBe("compare");
+    if (clause.kind !== "compare") return;
+
+    expect(
+      filterCompareStates(clause, [
+        {
+          binding: { e: "w:1", score: 10 },
+          sources: ["fact:1"],
+          eventSources: ["event:1"],
+        },
+        {
+          binding: { e: "w:2", score: 9 },
+          sources: ["fact:2"],
+          eventSources: ["event:2"],
+        },
+      ]),
+    ).toEqual([
+      {
+        binding: { e: "w:1", score: 10 },
+        sources: ["fact:1"],
+        eventSources: ["event:1"],
+      },
+    ]);
+  });
+
+  test("applies compute states while preserving provenance", () => {
+    const clause = parseClause({ compute: ["lower", "?name"], as: "?normalized" });
+    expect(clause.kind).toBe("compute");
+    if (clause.kind !== "compute") return;
+
+    expect(
+      applyComputeStates(clause, [
+        {
+          binding: { e: "w:1", name: "MARIA" },
+          sources: ["fact:1"],
+          eventSources: ["event:1"],
+        },
+      ]),
+    ).toEqual([
+      {
+        binding: { e: "w:1", name: "MARIA", normalized: "maria" },
+        sources: ["fact:1"],
+        eventSources: ["event:1"],
+      },
+    ]);
   });
 
   test("paginates deterministic rows with bounded page size", () => {
