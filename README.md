@@ -191,6 +191,9 @@ Built today:
 - production typed entity table reads (`api.entities.queryEntities`) now use
   event-log-backed Datalog for membership/filters and fold table row attributes
   + sort values from protocol-shaped `factEvents`
+- production type discovery and picker reads (`listEntityTypes`, `listEntities`,
+  `typeAttributes`) now discover current type/name/attribute facts from
+  protocol-shaped `factEvents`
 - production fact point queries (`api.facts.queryFacts`) now fold base facts
   directly from protocol-shaped `factEvents` while preserving the old array
   return shape and read-authorization behavior; `queryFactsFromEventLog` remains

@@ -16,20 +16,16 @@ const SAMPLE = 1000;
 
 /** The set of formally-declared type names (type:<Name> registry entities). */
 async function configuredTypeNames(ctx: QueryCtx): Promise<Set<string>> {
-  const regs = await ctx.db
-    .query("currentFacts")
-    .withIndex("by_a_v", (q) => q.eq("a", TYPE_ATTR).eq("v", META.entityType))
-    .take(SAMPLE);
-  return new Set(regs.map((r) => typeNameOf(r.e)));
+  const rows = await projectCurrent(ctx, [["?e", TYPE_ATTR, META.entityType]], [
+    "?e",
+  ]);
+  return new Set(rows.map((r) => typeNameOf(String(r.e))));
 }
 
 /** All `type` values currently asserted on an entity. */
 async function typesOf(ctx: QueryCtx, e: string): Promise<string[]> {
-  const rows = await ctx.db
-    .query("currentFacts")
-    .withIndex("by_e_a", (q) => q.eq("e", e).eq("a", TYPE_ATTR))
-    .collect();
-  return rows.map((r) => String(r.v));
+  const rows = await projectCurrent(ctx, [[e, TYPE_ATTR, "?type"]], ["?type"]);
+  return [...new Set(rows.map((r) => String(r.type)))].sort();
 }
 
 function coerce(raw: string): unknown {
@@ -50,6 +46,31 @@ function compareForSort(a: unknown, b: unknown): number {
   return String(a).localeCompare(String(b));
 }
 
+async function projectCurrent(
+  ctx: QueryCtx,
+  where: unknown[],
+  select: string[],
+  coord: { txTime: number; validTime: number } = {
+    txTime: Date.now(),
+    validTime: Date.now(),
+  },
+) {
+  return project(
+    await runWhere(ctx, where, coord, {}, { source: eventLogTripleSource }),
+    select,
+  );
+}
+
+async function currentValues(
+  ctx: QueryCtx,
+  e: string,
+  a: string,
+  coord?: { txTime: number; validTime: number },
+): Promise<unknown[]> {
+  const rows = await projectCurrent(ctx, [[e, a, "?v"]], ["?v"], coord);
+  return rows.map((row) => row.v);
+}
+
 /** Load an entity's current attributes as { attr: values[] }. */
 async function loadAttributes(
   ctx: QueryCtx,
@@ -62,10 +83,7 @@ async function loadAttributes(
   attributes: Record<string, unknown[]>;
   denied: DeniedAttribute[];
 }> {
-  const bindings = await runWhere(ctx, [[e, "?a", "?v"]], coord, {}, {
-    source: eventLogTripleSource,
-  });
-  const rows = project(bindings, ["?a", "?v"]);
+  const rows = await projectCurrent(ctx, [[e, "?a", "?v"]], ["?a", "?v"], coord);
   const attrs: Record<string, unknown[]> = {};
   for (const r of rows) (attrs[String(r.a)] ??= []).push(r.v);
   return await redactAttributeMap(ctx, e, attrs);
@@ -80,13 +98,17 @@ async function loadAttributes(
 export const listEntityTypes = query({
   args: {},
   handler: async (ctx) => {
-    const rows = await ctx.db
-      .query("currentFacts")
-      .withIndex("by_a", (q) => q.eq("a", TYPE_ATTR))
-      .take(SAMPLE);
+    const rows = (await projectCurrent(ctx, [["?e", TYPE_ATTR, "?type"]], [
+      "?e",
+      "?type",
+    ])).slice(0, SAMPLE);
     const counts = new Map<string, number>();
+    const seen = new Set<string>();
     for (const r of rows) {
-      const t = String(r.v);
+      const t = String(r.type);
+      const key = `${String(r.e)}\u0000${t}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       counts.set(t, (counts.get(t) ?? 0) + 1);
     }
 
@@ -120,32 +142,39 @@ export const listEntities = query({
   handler: async (ctx, args) => {
     const cap = Math.min(args.limit ?? 500, 1000);
     const want = args.origin ?? "all";
-    const typeRows = args.type
-      ? await ctx.db
-          .query("currentFacts")
-          .withIndex("by_a_v", (q) => q.eq("a", TYPE_ATTR).eq("v", args.type))
-          .take(cap)
-      : await ctx.db
-          .query("currentFacts")
-          .withIndex("by_a", (q) => q.eq("a", TYPE_ATTR))
-          .take(cap);
+    const coord = { txTime: Date.now(), validTime: Date.now() };
+    const typeRows = (
+      await projectCurrent(
+        ctx,
+        args.type
+          ? [["?e", TYPE_ATTR, args.type]]
+          : [["?e", TYPE_ATTR, "?type"]],
+        args.type ? ["?e"] : ["?e", "?type"],
+        coord,
+      )
+    ).slice(0, cap);
 
     const seen = new Set<string>();
     const out: { id: string; name?: string; type: string; origin: Origin }[] = [];
     for (const r of typeRows) {
-      if (seen.has(r.e)) continue;
-      seen.add(r.e);
-      const sys = isSystemEntity(r.e, [String(r.v)]);
+      const id = String(r.e);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const types =
+        args.type !== undefined
+          ? [args.type]
+          : "type" in r
+            ? [String(r.type)]
+            : await typesOf(ctx, id);
+      const type = types[0] ?? "";
+      const sys = isSystemEntity(id, types);
       if (want === "data" && sys) continue;
       if (want === "system" && !sys) continue;
-      const nameRow = await ctx.db
-        .query("currentFacts")
-        .withIndex("by_e_a", (q) => q.eq("e", r.e).eq("a", "name"))
-        .first();
+      const name = (await currentValues(ctx, id, "name", coord))[0];
       out.push({
-        id: r.e,
-        name: nameRow ? String(nameRow.v) : undefined,
-        type: String(r.v),
+        id,
+        name: name !== undefined ? String(name) : undefined,
+        type,
         origin: sys ? "system" : "data",
       });
     }
@@ -282,17 +311,13 @@ export const entityDetail = query({
 export const typeAttributes = query({
   args: { type: v.string() },
   handler: async (ctx, args) => {
-    const members = await ctx.db
-      .query("currentFacts")
-      .withIndex("by_a_v", (q) => q.eq("a", TYPE_ATTR).eq("v", args.type))
-      .take(200);
+    const members = (await projectCurrent(ctx, [["?e", TYPE_ATTR, args.type]], [
+      "?e",
+    ])).slice(0, 200);
     const attrs = new Set<string>();
     for (const m of members) {
-      const rows = await ctx.db
-        .query("currentFacts")
-        .withIndex("by_e", (q) => q.eq("e", m.e))
-        .collect();
-      for (const r of rows) attrs.add(r.a);
+      const rows = await projectCurrent(ctx, [[String(m.e), "?a", "?v"]], ["?a"]);
+      for (const r of rows) attrs.add(String(r.a));
     }
     attrs.delete(TYPE_ATTR);
     return [...attrs].sort();

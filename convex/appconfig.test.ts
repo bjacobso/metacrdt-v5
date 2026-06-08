@@ -60,6 +60,49 @@ describe("config-as-code + origin + entity detail", () => {
     }
   });
 
+  test("type discovery and picker APIs survive a wiped currentFacts projection", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await setup(t);
+
+      await t.run(async (ctx) => {
+        const rows = await ctx.db.query("currentFacts").collect();
+        for (const row of rows) await ctx.db.delete(row._id);
+      });
+
+      const types = await t.query(api.entities.listEntityTypes, {});
+      const byName = new Map(types.map((x) => [x.type, x]));
+      expect(byName.get("Worker")).toMatchObject({
+        count: expect.any(Number),
+        origin: "configured",
+      });
+      expect(byName.get("Worker")!.count).toBeGreaterThan(0);
+      expect(byName.get("EntityType")?.origin).toBe("system");
+
+      const data = await t.query(api.entities.listEntities, { origin: "data" });
+      const maria = data.find((x) => x.id === "worker:maria");
+      expect(maria).toMatchObject({
+        id: "worker:maria",
+        name: "Maria",
+        type: "Worker",
+        origin: "data",
+      });
+
+      const sys = await t.query(api.entities.listEntities, { origin: "system" });
+      expect(sys.some((x) => x.id === "type:Worker")).toBe(true);
+
+      const attrs = await t.query(api.entities.typeAttributes, {
+        type: "Placement",
+      });
+      expect(attrs).toEqual(
+        expect.arrayContaining(["client", "employer", "job", "venue", "worker"]),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("entityDetail computes flows, obligations, and state for a worker", async () => {
     vi.useFakeTimers();
     try {

@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 64 (production typed entity table reads from the event log) has
+**Current goal:** Goal 65 (production type discovery and picker reads from the event log) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -13,11 +13,13 @@ production fact comparisons (`api.facts.compareFacts`) to the same event-log
 point fold. Goal 64 moved the production typed entity table
 (`api.entities.queryEntities`) to event-log-backed Datalog/filtering plus
 event-log-backed row loading and sorting, while leaving type discovery, picker
-lists, and type-attribute discovery on `currentFacts` until later goals. The next
-active goal should be chosen from the remaining TODO candidates: type discovery /
-picker reads, provider-backed login UI / production auth, live Cloudflare
-deployment/auth, or a carefully scoped Confect wrapper now that the main
-production base fact reads have moved to event-log folds.
+lists, and type-attribute discovery on `currentFacts` until later goals. Goal 65
+moved those discovery/picker surfaces (`listEntityTypes`, `listEntities`, and
+`typeAttributes`) to protocol-shaped `factEvents`. The next active goal should
+be chosen from the remaining TODO candidates: provider-backed login UI /
+production auth, live Cloudflare deployment/auth, or a carefully scoped Confect
+wrapper now that the main production base fact reads have moved to event-log
+folds.
 
 This plan is the operational goal file. Read it with:
 
@@ -107,6 +109,11 @@ arguments.
   Datalog source for type membership and filters, then loads table row attributes
   and sort values from protocol-shaped `factEvents` instead of `currentFacts`,
   preserving pagination, sorting, compiled query reporting, and denied markers.
+- Production entity discovery/picker reads (`listEntityTypes`, `listEntities`,
+  and `typeAttributes`) read current type/name/attribute facts from
+  protocol-shaped `factEvents` instead of `currentFacts`, preserving configured
+  type origins, system/data origin filters, picker labels, and discovered
+  attribute columns.
 - `api.facts.entityFromEventLog` folds a host entity directly from
   protocol-shaped `factEvents` with `@metacrdt/core`, including schema
   cardinality facts from the same log, and redacts through the same read-auth
@@ -145,7 +152,7 @@ arguments.
   shared event-log triple source instead of scanning `facts.by_a`, preserving
   path provenance through compatibility `factId`s while still materializing
   closure rows into `derivedFacts`.
-- Convex backend tests are green: 147 tests at last verification.
+- Convex backend tests are green: 148 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -427,8 +434,8 @@ arguments.
 - Production `getEntity` now uses the same bounded event-log fold as
   `entityFromEventLog`; production `entityAsOf` and `entityFactsAsOf` also fold
   from protocol-shaped `factEvents`.
-- Type discovery (`listEntityTypes`), picker lists (`listEntities`), and
-  type-attribute discovery (`typeAttributes`) still use `currentFacts`.
+- Some configured-carrier read paths still use `currentFacts` internally, notably
+  the action registry portion of `entityDetail`.
 - `entityFromEventLog` remains intentionally bounded and proof/read-model
   oriented, returning coordinate/skipped-legacy counts that production
   `getEntity` does not expose.
@@ -5292,6 +5299,111 @@ TODO.md
   - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
   - `npx tsc --noEmit -p tsconfig.json` passed.
 - `npm run build` passed.
+
+---
+
+## Goal 65 — Production Type Discovery and Picker Reads from the Event Log
+
+**Status:** shipped in the Convex reference runtime.
+
+**Objective:** make production `api.entities.listEntityTypes`,
+`api.entities.listEntities`, and `api.entities.typeAttributes` read current
+type/name/attribute facts from protocol-shaped `factEvents` instead of from the
+`currentFacts` projection.
+
+This follows Goal 64, which moved the schema-driven typed entity table. These
+three APIs drive the type sidebar, entity picker/datalist options, system/data
+origin splits, and opportunistic attribute discovery. Moving them means the
+user-facing entity browser no longer depends on `currentFacts` for its primary
+read path.
+
+### Scope
+
+Backend:
+
+```text
+convex/entities.ts
+  listEntityTypes
+  listEntities
+  typeAttributes
+  configuredTypeNames
+  typesOf
+  loadAttributes helper reuse
+```
+
+Tests:
+
+```text
+convex/appconfig.test.ts
+```
+
+Docs:
+
+```text
+README.md
+PLAN.md
+TODO.md
+```
+
+### Semantics
+
+- `listEntityTypes` keeps returning `{ type, count, origin }[]`, but discovers
+  visible `type` facts via the event-log triple source.
+- Configured-type registry detection (`type:<Name> type EntityType`) also reads
+  from the event log, so declared-but-empty configured types still appear.
+- `listEntities` keeps returning picker/list rows `{ id, name?, type, origin }`,
+  with optional type and origin filters. Type facts and name labels come from the
+  event log.
+- `typeAttributes` discovers current attributes on visible members of a type
+  from the event log, omitting the `type` attribute as before.
+- These APIs intentionally remain bounded by the existing sample/cap limits.
+
+### Non-Goals
+
+- Do not remove or stop maintaining `facts` / `currentFacts`.
+- Do not replace configured-carrier reads inside `entityDetail` in this slice.
+- Do not backfill legacy `factEvents` without protocol metadata.
+- Do not migrate this code to Confect in this slice.
+
+### Implementation
+
+- [x] Add a local `projectCurrent` helper that runs bounded current-coordinate
+  Datalog through `eventLogTripleSource`.
+- [x] Route configured type lookup and per-entity type lookup through that helper.
+- [x] Route `listEntityTypes`, `listEntities`, and `typeAttributes` through that
+  helper.
+- [x] Preserve origin classification, picker labels, sorting, and response
+  shapes.
+
+### Acceptance Criteria
+
+- For ordinary protocol-shaped writes, the type sidebar, picker lists, and
+  type-attribute discovery preserve existing behavior.
+- If `currentFacts` is wiped, `listEntityTypes` still discovers configured/data
+  types, `listEntities` still returns data and system rows with names/origins, and
+  `typeAttributes` still discovers columns for a configured type.
+
+### Verification
+
+- `npx vitest run convex/appconfig.test.ts convex/readAuth.test.ts convex/triples.test.ts`
+  passed (35 tests).
+- Broader gate passed:
+  - `npx convex codegen` passed.
+  - `npm test` passed.
+  - `npm run test:convex-package` passed.
+  - `npm run test:core` passed.
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+  - `git diff --check` passed.
+
+### Definition of Done
+
+Goal 65 is complete when production `listEntityTypes`, `listEntities`, and
+`typeAttributes` no longer read `currentFacts`, compatibility/projection
+corruption tests pass, docs record the remaining configured-carrier projection
+reads, and the change is committed and pushed.
 
 ---
 

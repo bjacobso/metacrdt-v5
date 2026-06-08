@@ -84,7 +84,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   event-log point fold at both requested coordinates. Production
   `api.entities.queryEntities` now uses event-log-backed Datalog for
   membership/filters and event-log base folds for row attributes + sort values.
-  Remaining: type discovery / picker / type-attribute discovery still use the
+  Production type discovery / picker / type-attribute discovery
+  (`listEntityTypes`, `listEntities`, `typeAttributes`) now read current
+  type/name/attribute facts from `factEvents`. Remaining: configured-carrier
+  reads such as the action registry section of `entityDetail` still use the
   hand-maintained `currentFacts` projection; closure semi-naive add still
   receives the changed projection `factId`; derived rows are still stored in
   `derivedFacts`.
@@ -345,6 +348,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 65 shipped:** production `api.entities.listEntityTypes`,
+  `listEntities`, and `typeAttributes` now read current type/name/attribute facts
+  from protocol-shaped `factEvents`, not from `currentFacts`.
+- [x] **Discovery/picker projection-corruption proof.** `convex/appconfig.test.ts`
+  now wipes `currentFacts` entirely and asserts type discovery still reports
+  configured/system origins, picker/list rows still return data/system entities
+  with names, and type-attribute discovery still finds configured columns.
 - [x] **Goal 64 shipped:** production `api.entities.queryEntities` now uses
   `eventLogBaseWithDerivedTripleSource` for typed membership/filters and
   `eventLogTripleSource` for row attributes + sort values, rather than trusting
