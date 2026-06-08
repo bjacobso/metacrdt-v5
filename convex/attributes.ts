@@ -265,7 +265,9 @@ export const attributeLifecycle = query({
 
 /**
  * The declared shape of an entity type as of a bitemporal coordinate — the set
- * of attribute names reachable via `hasAttribute` at that point in time.
+ * of attribute names reachable via `hasAttribute` at that point in time, plus
+ * each attribute's schema facts where available. `attributes` stays as the
+ * compatibility list; `columns` is the richer generated-UI surface.
  */
 export const typeSchemaAsOf = query({
   args: {
@@ -283,6 +285,14 @@ export const typeSchemaAsOf = query({
       .filter((r) => r.a === "hasAttribute")
       .map((r) => attrNameOf(String(r.v)))
       .sort();
-    return { type: args.type, coord, attributes };
+    const columns = [];
+    for (const name of attributes) {
+      const attrRows = await visibleRowsAsOf(ctx, attrId(name), coord);
+      columns.push({
+        ...shapeAttribute(name, attrMapFromRows(attrRows)),
+        declared: attrRows.length > 0,
+      });
+    }
+    return { type: args.type, coord, attributes, columns };
   },
 });

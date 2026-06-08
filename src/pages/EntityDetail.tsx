@@ -23,6 +23,11 @@ export default function EntityDetail() {
   const id = decodeURIComponent(raw ?? "");
   const navigate = useNavigate();
   const detail = useQuery(api.entities.entityDetail, { e: id });
+  const primaryType = detail?.types[0];
+  const schema = useQuery(
+    api.attributes.typeSchemaAsOf,
+    primaryType ? { type: primaryType } : "skip",
+  );
   const startFlow = useMutation(api.flows.startFlow);
   const runAction = useMutation(api.actions.runAction);
   const submitForm = useMutation(api.compliance.submitForm);
@@ -42,7 +47,16 @@ export default function EntityDetail() {
   if (detail === undefined)
     return <p className="text-[13px] text-muted">Loading…</p>;
 
-  const attrs = Object.entries(detail.attributes).filter(([a]) => a !== "type");
+  const declared = (schema?.attributes ?? []).filter((a) => a !== "type");
+  const attrNames = [
+    ...declared,
+    ...Object.keys(detail.attributes)
+      .filter((a) => a !== "type" && !declared.includes(a))
+      .sort(),
+  ];
+  const attrs = attrNames
+    .map((a) => [a, detail.attributes[a] ?? []] as const)
+    .filter(([, vals]) => vals.length > 0);
   const denied = detail.denied ?? [];
   const linked = [
     ...new Set(

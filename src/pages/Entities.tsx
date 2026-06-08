@@ -3,7 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { ChevronRight, ChevronDown } from "lucide-react";
-import { Card, Button, Chip, Mono, shortId } from "../ui";
+import { Card, Button, Mono, shortId } from "../ui";
+
+function displayValue(v: unknown): string {
+  return typeof v === "string" ? v : JSON.stringify(v);
+}
 
 export default function Entities() {
   const navigate = useNavigate();
@@ -13,9 +17,13 @@ export default function Entities() {
   const setupStaffing = useMutation(api.appconfig.setupStaffing);
   const [busy, setBusy] = useState(false);
 
+  const schema = useQuery(
+    api.attributes.typeSchemaAsOf,
+    type ? { type } : "skip",
+  );
   const entities = useQuery(
-    api.entities.listEntities,
-    type ? { type, origin: "all" } : "skip",
+    api.entities.queryEntities,
+    type ? { type, pageSize: 50 } : "skip",
   );
 
   const userTypes = (types ?? []).filter((t) => t.origin !== "system");
@@ -128,35 +136,67 @@ export default function Entities() {
             <div className="flex items-center justify-between border-b border-line-soft px-5 py-3.5">
               <h2 className="text-[15px] font-semibold text-ink">{type}</h2>
               <span className="text-xs text-muted">
-                {entities ? `${entities.length}` : "…"}
+                {entities ? `${entities.total}` : "…"}
               </span>
             </div>
             {entities === undefined ? (
               <p className="px-5 py-4 text-[13px] text-muted">Loading…</p>
-            ) : entities.length === 0 ? (
+            ) : entities.page.length === 0 ? (
               <p className="px-5 py-4 text-[13px] text-muted">
                 No entities of this type.
               </p>
             ) : (
-              <ul className="divide-y divide-line-soft">
-                {entities.map((e) => (
-                  <li key={e.id}>
-                    <button
-                      onClick={() => navigate(`/e/${encodeURIComponent(e.id)}`)}
-                      className="flex w-full items-center justify-between px-5 py-3 text-left hover:bg-line-soft"
-                    >
-                      <span className="flex items-center gap-3">
-                        <span className="text-[14px] font-medium text-ink">
-                          {e.name ?? shortId(e.id)}
-                        </span>
-                        <Mono>{e.id}</Mono>
-                        {e.origin === "system" && <Chip tone="system">system</Chip>}
-                      </span>
-                      <ChevronRight className="h-4 w-4 text-faint" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[13px]">
+                  <thead>
+                    <tr className="border-b border-line-soft text-[11px] uppercase tracking-wide text-muted">
+                      <th className="px-5 py-2.5 font-semibold">entity</th>
+                      {(schema?.columns ?? []).slice(0, 5).map((c) => (
+                        <th key={c.name} className="px-3 py-2.5 font-semibold">
+                          {c.name}
+                        </th>
+                      ))}
+                      <th className="px-5 py-2.5" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line-soft">
+                    {entities.page.map((e) => (
+                      <tr
+                        key={e.id}
+                        onClick={() => navigate(`/e/${encodeURIComponent(e.id)}`)}
+                        className="cursor-pointer hover:bg-line-soft"
+                      >
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-ink">
+                              {displayValue(e.attributes.name?.[0] ?? shortId(e.id))}
+                            </span>
+                            <Mono>{e.id}</Mono>
+                          </div>
+                        </td>
+                        {(schema?.columns ?? []).slice(0, 5).map((c) => {
+                          const denied = (e.denied ?? []).some((d) => d.a === c.name);
+                          const vals = e.attributes[c.name] ?? [];
+                          return (
+                            <td key={c.name} className="max-w-56 truncate px-3 py-3 text-ink-2">
+                              {denied ? (
+                                <span className="text-red-ink">Denied</span>
+                              ) : vals.length === 0 ? (
+                                <span className="text-faint">—</span>
+                              ) : (
+                                vals.map(displayValue).join(", ")
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className="px-5 py-3 text-right">
+                          <ChevronRight className="ml-auto h-4 w-4 text-faint" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </Card>
         )}

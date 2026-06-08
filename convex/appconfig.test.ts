@@ -80,6 +80,40 @@ describe("config-as-code + origin + entity detail", () => {
     }
   });
 
+  test("configured type schema drives entity table columns", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await setup(t);
+
+      const shape = await t.query(api.attributes.typeSchemaAsOf, {
+        type: "Placement",
+      });
+      expect(shape.attributes).toEqual([
+        "client",
+        "employer",
+        "job",
+        "venue",
+        "worker",
+      ]);
+      expect(shape.columns.find((c) => c.name === "worker")).toMatchObject({
+        valueType: "entityRef",
+        cardinality: "one",
+      });
+
+      const rows = await t.query(api.entities.queryEntities, {
+        type: "Placement",
+        pageSize: 10,
+      });
+      expect(rows.total).toBeGreaterThan(0);
+      const first = rows.page.find((r) => r.id === "placement:p1");
+      expect(first?.attributes.worker).toEqual(["worker:maria"]);
+      expect(first?.attributes.employer).toEqual(["employer:acme"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("runAction asserts the action's facts on the target entity", async () => {
     vi.useFakeTimers();
     try {

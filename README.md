@@ -236,6 +236,11 @@ from Convex auth identity, check grant facts on that principal
 (`grants.read`), and omit/redact ungranted values with `Denied` markers. Internal
 materializers still fold raw facts so system derivations stay coherent.
 
+Generated UI reads the same schema facts. `typeSchemaAsOf` returns declared
+columns with attribute definitions, the entity browser uses those columns for
+tables, entity detail orders state by the primary type schema, and collection
+forms render from `formDef`.
+
 ---
 
 ## Query and Write Surface

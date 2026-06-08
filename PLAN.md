@@ -1,9 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 6 (attribute-level PII read authorization) has shipped in
+**Current goal:** Goal 7 (schema-driven entity list/detail UI) has shipped in
 the Convex reference runtime. The next product/runtime goal should be chosen
-from the TODO candidates: schema-driven UI, dry-run compliance, or
-`@metacrdt/runtime` harness groundwork.
+from the TODO candidates: dry-run compliance, `@metacrdt/runtime` harness
+groundwork, or auth/write hardening.
 
 This plan is the operational goal file. Read it with:
 
@@ -39,8 +39,9 @@ The repository should make that statement true in code:
 
 The immediate technical gap is now product/runtime ergonomics: the package graph
 has `core`, `convex`, and `forma`; the live config-as-code layer reconciles
-owned artifacts; and PII read authorization is enforced in public read
-projections, while full write authorization and multi-runtime sync remain open.
+owned artifacts; PII read authorization is enforced in public read projections;
+and the entity UI is now driven by declared type schema, while full write
+authorization and multi-runtime sync remain open.
 
 ---
 
@@ -109,6 +110,13 @@ projections, while full write authorization and multi-runtime sync remain open.
   - read grants are ordinary facts on the principal (`grants.read`)
   - public entity, bitemporal, Datalog, and timeline projections omit/redact
     ungranted PII and report `Denied` markers where appropriate
+- Schema-driven entity UI exists:
+  - `typeSchemaAsOf` returns both the compatibility `attributes` list and richer
+    `columns` with attribute definitions
+  - the Entities route renders declared type columns via `queryEntities`
+  - entity detail orders state by the primary type's declared schema, then appends
+    extra runtime facts
+  - collection forms were already rendered from form definitions
 
 ### Not Yet True
 
@@ -874,6 +882,41 @@ attribute grants. Ungranted projections must omit the value and report a
 
 ---
 
+## Goal 7 — Schema-Driven Entity UI
+
+**Status:** shipped in the Convex reference runtime.
+
+**Objective:** make the user-facing entity browser/rendering follow configured
+type schema instead of opportunistically discovering whatever facts happen to be
+present on current data rows.
+
+### Implementation Notes
+
+- `attributes.typeSchemaAsOf` now returns:
+  - `attributes`: the existing compatibility list of declared attribute names
+  - `columns`: UI-ready attribute definition objects (`valueType`, `cardinality`,
+    description, etc.) reconstructed from schema-as-facts where present
+- `src/pages/Entities.tsx` uses `typeSchemaAsOf(...).columns` as the table
+  columns and `entities.queryEntities` as the paginated row source.
+- `src/pages/EntityDetail.tsx` orders the state table by the entity's primary
+  declared type schema first, then appends extra runtime facts not in the schema.
+- The collection page already renders from `forms.collectionByToken` /
+  `formDef`, so form rendering remains schema-driven.
+- PII `Denied` markers continue to flow through list/detail rows.
+
+### Acceptance Criteria
+
+- Configured type schema exposes declared column definitions from facts.
+- Entity list rows render declared columns rather than only id/name rows or
+  discovered columns.
+- Entity detail state is ordered by declared schema.
+- Tests prove `typeSchemaAsOf` includes column definitions and that configured
+  staffing rows expose declared Placement attributes.
+- Full Convex tests, package tests, typechecks, build, static upload, and
+  `npx convex dev --once` pass.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -899,8 +942,6 @@ These remain valuable, but they should not interrupt the current goal.
 
 ### UX
 
-- [ ] Schema-driven list columns.
-- [ ] Schema-driven forms.
 - [ ] Search / command menu.
 - [ ] Guided demo tour.
 - [ ] "New entity" flow.
@@ -936,18 +977,15 @@ These remain valuable, but they should not interrupt the current goal.
 
 ## Definition of Done for the Current Goal
 
-Goal 5 is complete when:
+Goal 7 is complete when:
 
-- `applyConfig` has reconcile semantics for the artifacts it owns.
-- Removing a configured item from the blueprint causes the old configured
-  representation to disappear from the relevant read models on the next apply.
-- The reconcile path records history through transactions/facts where possible,
-  and documents any intentionally append-only rows.
-- Runtime data and system/meta facts are protected from config cleanup.
-- Re-applying the same blueprint remains idempotent.
-- Tests cover removal of at least one requirement, one action, and one configured
-  type/attribute without deleting runtime entities.
+- `typeSchemaAsOf` exposes UI-ready column definitions while preserving the old
+  attribute-name list.
+- Entity list rows render declared columns from schema-as-facts.
+- Entity detail state is ordered by declared schema first.
+- Existing form collection remains driven by `formDef`.
+- Tests cover declared column definitions and configured data rows.
 - `npm run test:forma`, `npm run test:core`, `npm run test:convex-package`,
-  `npm test`, both typechecks, and `npx convex dev --once` still pass.
-- `PLAN.md`, `TODO.md`, and relevant docs record the reconcile result.
+  `npm test`, typechecks, build, static upload, and `npx convex dev --once` pass.
+- `PLAN.md`, `TODO.md`, and relevant docs record the schema-driven UI result.
 - The change is committed and pushed.

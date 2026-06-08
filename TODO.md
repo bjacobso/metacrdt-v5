@@ -69,15 +69,22 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   read projections omit/redact ungranted values with `Denied` markers.
 - [x] Protect public Datalog while leaving internal rule/materialization folds
   unfiltered.
-- [ ] Choose the next active goal. Leading candidates: schema-driven UI,
-  dry-run compliance, or `@metacrdt/runtime` harness groundwork.
+
+**Goal 7 — schema-driven entity UI**
+- [x] Extend `typeSchemaAsOf` with UI-ready column definitions reconstructed
+  from schema-as-facts.
+- [x] Render the Entities table from declared type columns via `queryEntities`.
+- [x] Order entity detail state by the primary type's declared schema, then
+  append extra runtime facts.
+- [ ] Choose the next active goal. Leading candidates: dry-run compliance,
+  `@metacrdt/runtime` harness groundwork, or auth/write hardening.
 
 **Product / engine**
 - [x] Attribute-level PII authorization — read grants; query layer omits
   ungranted attrs (the i9 SSN) and reports `Denied`.
 - [ ] Dry-run compliance — read-only "for a hypothetical worker + scope, what's
   required and would it reuse or collect?" No writes; cheapest high-value add.
-- [ ] Schema-driven forms / list views — render columns + collection fields from a
+- [x] Schema-driven forms / list views — render columns + collection fields from a
   type's declared attributes (`typeSchemaAsOf`), not ad-hoc.
 - [ ] Auth + write authorization — the live site takes public writes; the collect
   token is demo-grade (no single-use / expiry).
@@ -104,6 +111,19 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — schema-driven entity UI
+- [x] **Goal 7 shipped:** `attributes.typeSchemaAsOf` now returns UI-ready
+  `columns` with attribute definitions reconstructed from schema-as-facts while
+  preserving the existing `attributes` compatibility list.
+- [x] **Entities list from declared schema:** the Entities route uses
+  `typeSchemaAsOf(...).columns` for table columns and `queryEntities` for rows,
+  so configured type shape drives the browser rather than ad-hoc current-fact
+  discovery.
+- [x] **Detail ordering from schema:** entity detail renders state in primary
+  type schema order, then appends extra runtime facts. Collection forms remain
+  form-definition driven, and PII `Denied` markers continue to render.
+- [x] Tests cover column definitions and configured Placement row attributes.
 
 ### 2026-06-07 — attribute-level PII read authorization
 - [x] **Goal 6 shipped:** form definitions can mark fields `pii` / `sensitive`,

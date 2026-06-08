@@ -112,6 +112,16 @@ describe("schema-as-facts: entity types", () => {
       type: "Employee",
     });
     expect(shape.attributes.sort()).toEqual(["salary", "title"]);
+    expect(shape.columns.find((c) => c.name === "salary")).toMatchObject({
+      name: "salary",
+      valueType: "number",
+      cardinality: "one",
+      declared: true,
+    });
+    expect(shape.columns.find((c) => c.name === "title")).toMatchObject({
+      name: "title",
+      declared: false,
+    });
   });
 
   test("bootstrapSchema makes meta-attributes self-describing", async () => {
