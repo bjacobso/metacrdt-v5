@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 31 (component-owned configured action runner) has shipped. The
+**Current goal:** Goal 32 (Datalog disjunction) has shipped. The
 next active goal should be chosen from the remaining TODO candidates: full app
 write authorization, live Cloudflare deployment/auth, or migrating more of the
 reference runtime onto component-owned state.
@@ -78,7 +78,7 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 98 tests at last verification.
+- Convex backend tests are green: 103 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -223,6 +223,13 @@ arguments.
     component-owned entities
   - `/component/e/:id` now renders configured actions for the entity's primary
     type instead of hard-coded Worker status buttons
+- Datalog disjunction exists:
+  - `convex/lib/engine.ts` parses bounded `{ or: [[...clauses], ...] }`
+    clauses
+  - branches evaluate as normal `where` bodies from the current binding and are
+    unioned/deduped with provenance preserved
+  - `explainDatalog` describes nested branch clauses
+  - the Data model Datalog console and README examples include `or`
 - Config history/diff exists:
   - `configHistory.currentManifest` reconstructs the current owned-artifact
     manifest from `config:default`
@@ -2819,6 +2826,85 @@ src/pages/ComponentEntity.tsx
 
 ---
 
+## Goal 32 — Datalog Disjunction
+
+**Status:** shipped as a bounded non-recursive `or` clause in the Datalog engine.
+
+**Objective:** close the explicit Query / Rules backlog item for disjunction
+without changing the existing fact-pattern, comparison, negation, derivation, or
+aggregation semantics. A Datalog `where` body can now express a union of branch
+bodies and continue joining from the variables those branches bind.
+
+### Syntax
+
+```ts
+{
+  or: [
+    [["?e", "worker.status", "active"]],
+    [["?e", "worker.status", "pending"]],
+  ],
+}
+```
+
+Branches are normal non-recursive `where` bodies evaluated from the current
+binding. Nested `or` clauses are intentionally rejected for now.
+
+### Scope
+
+Engine:
+
+```text
+convex/lib/engine.ts
+  parseClause / parseClauses
+  solveWhere branch union
+  describeClauses
+  isEntityLocalRule
+```
+
+API / UI docs:
+
+```text
+convex/datalog.ts
+README.md
+src/pages/DataModel.tsx
+```
+
+### Acceptance Criteria
+
+- `{ or: [...] }` is accepted anywhere a clause is accepted.
+- Each branch is an array of ordinary clauses.
+- Branches are evaluated from the incoming binding.
+- Branch results are unioned and deduped by binding, with provenance merged.
+- Branches can bind variables used by later joins.
+- Branches can contain comparisons and safe negation.
+- Unsafe branches still throw an `unsafe` error instead of scanning
+  unboundedly.
+- `explainDatalog` reports `or` branches.
+- Limits remain bounded: branch count is capped by `LIMITS.maxOrBranches`, and
+  nested disjunction is rejected.
+
+### Verification
+
+- `npx vitest run convex/datalog.test.ts` passed (12 tests).
+- `npx vitest run convex/datalog.test.ts convex/triples.test.ts` passed
+  (25 tests).
+- `npm test` passed (16 backend test files, 103 tests).
+- `npm run test:core` passed (46 tests).
+- `npm run test:convex-package` passed (31 tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex dev --once` deployed backend functions to `chatty-hare-94`.
+- `npx @convex-dev/static-hosting upload` deployed the frontend to
+  `https://chatty-hare-94.convex.site`.
+- Live smoke:
+  - `npx convex run datalog:explainDatalog ...` returned an `or` clause with
+    two pattern branches and `maxOrBranches` in limits.
+  - `npx convex run datalog:datalog ...` with active-or-pending Worker status
+    returned `worker:maria` on the dev deployment.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -2866,7 +2952,7 @@ These remain valuable, but they should not interrupt the current goal.
 
 - [ ] Engine-level result pagination / streaming.
 - [ ] Computed predicates: arithmetic, string ops.
-- [ ] Disjunction.
+- [x] Disjunction.
 - [ ] Cross-entity rule incremental recompute.
 - [ ] DRed/counting for transitive closure deletions.
 

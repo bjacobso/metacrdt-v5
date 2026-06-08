@@ -294,8 +294,13 @@ queryFacts({
 datalog({
   where: [
     ["?e", "type", "Worker"],
-    ["?e", "worker.status", "active"],
-    { not: ["?e", "status", "terminated"] },
+    {
+      or: [
+        [["?e", "worker.status", "active"]],
+        [["?e", "worker.status", "pending"]],
+      ],
+    },
+    { not: ["?e", "worker.status", "terminated"] },
   ],
   select: ["?e"],
 })

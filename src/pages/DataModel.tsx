@@ -17,7 +17,16 @@ function coerce(raw: string): unknown {
 
 const DEFAULT_QUERY = JSON.stringify(
   {
-    where: [["?e", "type", "Worker"], { not: ["?e", "worker.status", "terminated"] }],
+    where: [
+      ["?e", "type", "Worker"],
+      {
+        or: [
+          [["?e", "worker.status", "active"]],
+          [["?e", "worker.status", "pending"]],
+        ],
+      },
+      { not: ["?e", "worker.status", "terminated"] },
+    ],
     select: ["?e"],
   },
   null,
@@ -26,7 +35,7 @@ const DEFAULT_QUERY = JSON.stringify(
 
 function DatalogConsole() {
   const [text, setText] = useState(DEFAULT_QUERY);
-  const [args, setArgs] = useState<{ where: unknown[][]; select: string[] } | null>(null);
+  const [args, setArgs] = useState<{ where: unknown[]; select: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const result = useQuery(api.datalog.datalog, args ?? "skip");
 

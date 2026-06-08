@@ -109,6 +109,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   now render configured host actions by type and run their assert semantics
   through `api.metacrdtComponent.runOwnedAction`, with host schema cardinality
   adapted into component-owned writes.
+- [x] **Datalog disjunction** — Datalog `where` bodies now support bounded
+  `{ or: [[...clauses], ...] }` branches. Branches run from the current binding,
+  union/dedupe their bindings with provenance merged, and continue into later
+  joins.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
@@ -347,6 +351,23 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   Terminate/Reactivate against `worker:ava-reed-mq4ph0h7`.
 - [x] Tests cover arg resolution, cardinality-one replacement, and `appliesTo`
   enforcement.
+
+### 2026-06-07 — Datalog disjunction
+- [x] **Added bounded `or` clauses to the engine.** `convex/lib/engine.ts` now
+  parses `{ or: [[...clauses], ...] }`, caps branch count with
+  `LIMITS.maxOrBranches`, rejects nested `or` for now, and preserves the existing
+  unsafe-query behavior for branches whose variables are not bound by incoming
+  state or branch-local patterns.
+- [x] **Branch union composes with the existing solver.** Each branch evaluates
+  from the current binding; resulting bindings are unioned/deduped and provenance
+  is merged. Branches can bind variables for later joins and can contain compare
+  and safe negation clauses.
+- [x] **Docs/UI expose the syntax.** `convex/datalog.ts`, `README.md`, and the
+  Data model Datalog console now show an active-or-pending Worker query using
+  `or`.
+- [x] Verification: focused Datalog tests, full backend suite (103 tests), core
+  and convex-package suites, typechecks, build, backend/static deploy, and live
+  `convex run` smoke all passed.
 
 ### 2026-06-07 — @metacrdt/runtime p2p DataChannel transport
 - [x] **Added structural p2p transport.** `packages/runtime/src/p2p.ts` defines

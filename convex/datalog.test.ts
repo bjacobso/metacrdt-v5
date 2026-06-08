@@ -82,6 +82,133 @@ describe("negation", () => {
   });
 });
 
+describe("disjunction", () => {
+  test("or-clause unions branch results", async () => {
+    const t = convexTest(schema, modules);
+    await assert(t, "w:1", "type", "Worker");
+    await assert(t, "w:1", "worker.status", "active");
+    await assert(t, "w:2", "type", "Worker");
+    await assert(t, "w:2", "worker.status", "pending");
+    await assert(t, "w:3", "type", "Worker");
+    await assert(t, "w:3", "worker.status", "terminated");
+
+    const rows = await t.query(api.datalog.datalog, {
+      where: [
+        ["?e", "type", "Worker"],
+        {
+          or: [
+            [["?e", "worker.status", "active"]],
+            [["?e", "worker.status", "pending"]],
+          ],
+        },
+      ],
+      select: ["?e"],
+    });
+    expect(rows.map((r) => r.e).sort()).toEqual(["w:1", "w:2"]);
+  });
+
+  test("or branches can bind variables and continue joining", async () => {
+    const t = convexTest(schema, modules);
+    await assert(t, "worker:a", "type", "Worker");
+    await assert(t, "worker:a", "primarySite", "site:1");
+    await assert(t, "worker:b", "type", "Worker");
+    await assert(t, "worker:b", "secondarySite", "site:1");
+    await assert(t, "worker:c", "type", "Worker");
+    await assert(t, "worker:c", "secondarySite", "site:2");
+    await assert(t, "site:1", "region", "west");
+    await assert(t, "site:2", "region", "east");
+
+    const rows = await t.query(api.datalog.datalog, {
+      where: [
+        ["?e", "type", "Worker"],
+        {
+          or: [
+            [["?e", "primarySite", "?site"]],
+            [["?e", "secondarySite", "?site"]],
+          ],
+        },
+        ["?site", "region", "west"],
+      ],
+      select: ["?e", "?site"],
+    });
+    expect(rows).toEqual([
+      { e: "worker:a", site: "site:1" },
+      { e: "worker:b", site: "site:1" },
+    ]);
+  });
+
+  test("or branches support compare and not filters", async () => {
+    const t = convexTest(schema, modules);
+    await assert(t, "p:1", "type", "Person");
+    await assert(t, "p:1", "score", 95);
+    await assert(t, "p:2", "type", "Person");
+    await assert(t, "p:2", "tier", "gold");
+    await assert(t, "p:2", "blocked", true);
+    await assert(t, "p:3", "type", "Person");
+    await assert(t, "p:3", "tier", "gold");
+
+    const rows = await t.query(api.datalog.datalog, {
+      where: [
+        ["?e", "type", "Person"],
+        {
+          or: [
+            [
+              ["?e", "score", "?s"],
+              ["?s", ">=", 90],
+            ],
+            [
+              ["?e", "tier", "gold"],
+              { not: ["?e", "blocked", true] },
+            ],
+          ],
+        },
+      ],
+      select: ["?e"],
+    });
+    expect(rows.map((r) => r.e).sort()).toEqual(["p:1", "p:3"]);
+  });
+
+  test("unsafe or branch throws", async () => {
+    const t = convexTest(schema, modules);
+    await expect(
+      t.query(api.datalog.datalog, {
+        where: [
+          {
+            or: [
+              [["?e", "type", "Worker"]],
+              [["?score", ">", 10]],
+            ],
+          },
+        ],
+        select: ["?e"],
+      }),
+    ).rejects.toThrow(/unsafe/);
+  });
+
+  test("explainDatalog classifies or branches", async () => {
+    const t = convexTest(schema, modules);
+    const plan = await t.query(api.datalog.explainDatalog, {
+      where: [
+        {
+          or: [
+            [["?e", "kind", "A"]],
+            [["?e", "kind", "B"]],
+          ],
+        },
+      ],
+    });
+    expect(plan.clauses).toEqual([
+      {
+        kind: "or",
+        branches: [
+          [{ kind: "pattern", e: "?e", a: "\"kind\"", v: "\"A\"" }],
+          [{ kind: "pattern", e: "?e", a: "\"kind\"", v: "\"B\"" }],
+        ],
+      },
+    ]);
+  });
+});
+
 describe("derived facts are queryable", () => {
   test("a rule's output can be joined in a later Datalog query", async () => {
     vi.useFakeTimers();

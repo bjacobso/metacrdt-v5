@@ -5,6 +5,7 @@ import { canReadAttribute, readPrincipal } from "./readAuth";
 
 export const LIMITS = {
   maxClauses: 16,
+  maxOrBranches: 8,
   maxIntermediateRows: 5_000,
   maxResultRows: 1_000,
   maxClauseScan: 2_000,
@@ -32,10 +33,16 @@ type Term =
 type PatternClause = { kind: "pattern"; e: Term; a: Term; v: Term };
 type CompareClause = { kind: "compare"; left: Term; op: string; right: Term };
 type NotClause = { kind: "not"; pattern: PatternClause };
-type AnyClause = PatternClause | CompareClause | NotClause;
+type OrClause = { kind: "or"; branches: AnyClause[][] };
+type AnyClause = PatternClause | CompareClause | NotClause | OrClause;
 
 type Ctx = QueryCtx | MutationCtx;
 type ReadFilter = { principal: string } | null;
+type ClauseDescription =
+  | { kind: "pattern"; e: string; a: string; v: string }
+  | { kind: "compare"; left: string; op: string; right: string }
+  | { kind: "not"; e: string; a: string; v: string }
+  | { kind: "or"; branches: ClauseDescription[][] };
 
 // --- parsing ----------------------------------------------------------------
 
@@ -64,6 +71,34 @@ export function parseClause(raw: unknown): AnyClause {
   if (raw && typeof raw === "object" && !Array.isArray(raw) && "not" in raw) {
     return { kind: "not", pattern: parsePattern((raw as { not: unknown }).not) };
   }
+  // Disjunction: { or: [whereBranch, whereBranch, ...] }. Each branch is a
+  // normal non-recursive where body evaluated from the current binding. Keep the
+  // first implementation deliberately simple: nested or-clauses are rejected so
+  // safety and provenance remain easy to reason about.
+  if (raw && typeof raw === "object" && !Array.isArray(raw) && "or" in raw) {
+    const branches = (raw as { or: unknown }).or;
+    if (!Array.isArray(branches) || branches.length === 0) {
+      throw new Error("or clause must be { or: [whereBranch, ...] }");
+    }
+    if (branches.length > LIMITS.maxOrBranches) {
+      throw new Error(
+        `or clause has ${branches.length} branches, exceeding maxOrBranches=${LIMITS.maxOrBranches}`,
+      );
+    }
+    return {
+      kind: "or",
+      branches: branches.map((branch) => {
+        if (!Array.isArray(branch)) {
+          throw new Error("each or branch must be an array of clauses");
+        }
+        const parsed = branch.map(parseClause);
+        if (parsed.some((clause) => clause.kind === "or")) {
+          throw new Error("nested or clauses are not supported");
+        }
+        return parsed;
+      }),
+    };
+  }
   if (Array.isArray(raw) && raw.length === 3) {
     // Comparison: [term, op, term] where op is a comparison operator.
     if (typeof raw[1] === "string" && COMPARISON_OPS.has(raw[1])) {
@@ -77,17 +112,27 @@ export function parseClause(raw: unknown): AnyClause {
     return parsePattern(raw);
   }
   throw new Error(
-    "each clause must be a [e, a, v] triple, a [term, op, term] comparison, or { not: [e, a, v] }",
+    "each clause must be a [e, a, v] triple, a [term, op, term] comparison, { not: [e, a, v] }, or { or: [[...], ...] }",
   );
 }
 
 export function parseClauses(where: unknown[]): AnyClause[] {
-  if (where.length > LIMITS.maxClauses) {
+  const clauses = where.map(parseClause);
+  const clauseCount =
+    clauses.length +
+    clauses
+      .filter((clause): clause is OrClause => clause.kind === "or")
+      .reduce(
+        (sum, clause) =>
+          sum + clause.branches.reduce((n, branch) => n + branch.length, 0),
+        0,
+      );
+  if (clauseCount > LIMITS.maxClauses) {
     throw new Error(
-      `query has ${where.length} clauses, exceeding maxClauses=${LIMITS.maxClauses}`,
+      `query has ${clauseCount} clauses, exceeding maxClauses=${LIMITS.maxClauses}`,
     );
   }
-  return where.map(parseClause);
+  return clauses;
 }
 
 // --- term / binding helpers -------------------------------------------------
@@ -112,11 +157,44 @@ function requiredVars(clause: AnyClause): string[] {
     const p = clause.pattern;
     return [...termVars(p.e), ...termVars(p.a), ...termVars(p.v)];
   }
+  if (clause.kind === "or") {
+    const required = new Set<string>();
+    for (const branch of clause.branches) {
+      for (const vn of branchExternalRequiredVars(branch)) required.add(vn);
+    }
+    return [...required];
+  }
   return [];
 }
 
 function patternVars(p: PatternClause): string[] {
   return [...termVars(p.e), ...termVars(p.a), ...termVars(p.v)];
+}
+
+function clauseBoundVars(clause: AnyClause): string[] {
+  if (clause.kind === "pattern") return patternVars(clause);
+  if (clause.kind === "or") {
+    return [
+      ...new Set(
+        clause.branches.flatMap((branch) => branch.flatMap(clauseBoundVars)),
+      ),
+    ];
+  }
+  return [];
+}
+
+function branchExternalRequiredVars(branch: AnyClause[]): string[] {
+  const produced = new Set<string>();
+  for (const clause of branch) {
+    for (const vn of clauseBoundVars(clause)) produced.add(vn);
+  }
+  const required = new Set<string>();
+  for (const clause of branch) {
+    for (const vn of requiredVars(clause)) {
+      if (!produced.has(vn)) required.add(vn);
+    }
+  }
+  return [...required];
 }
 
 /** Dynamic selectivity given currently-bound vars — more resolved positions first. */
@@ -338,14 +416,29 @@ export async function solveWhere(
   const readFilter = options.enforceReadAuth
     ? { principal: await readPrincipal(ctx as QueryCtx) }
     : null;
-  const clauses = parseClauses(where);
+  return await solveParsedWhere(
+    ctx,
+    parseClauses(where),
+    coord,
+    seed,
+    readFilter,
+    [],
+  );
+}
+
+async function solveParsedWhere(
+  ctx: Ctx,
+  clauses: AnyClause[],
+  coord: BitemporalCoord,
+  seed: Binding,
+  readFilter: ReadFilter,
+  seedSources: Id<"facts">[],
+): Promise<SolvedBinding[]> {
   const remaining = clauses.map((_, i) => i);
   const bound = new Set<string>(Object.keys(seed));
-  let states: SolvedBinding[] = [{ binding: { ...seed }, sources: [] }];
+  let states: SolvedBinding[] = [{ binding: { ...seed }, sources: seedSources }];
 
   while (remaining.length > 0) {
-    // Prefer a runnable filter (compare/not whose vars are all bound) — cheap
-    // and prunes the binding set before more pattern fan-out.
     let pickAt = remaining.findIndex((i) => {
       const c = clauses[i];
       return (
@@ -355,7 +448,6 @@ export async function solveWhere(
     });
 
     if (pickAt === -1) {
-      // Otherwise pick the most selective remaining pattern.
       let best = -1;
       let bestScore = -1;
       for (let k = 0; k < remaining.length; k++) {
@@ -369,7 +461,7 @@ export async function solveWhere(
       }
       if (best === -1) {
         throw new Error(
-          "query is unsafe: a comparison or negation clause has variables that no pattern binds",
+          "query is unsafe: a comparison, negation, or disjunction clause has variables that no pattern binds",
         );
       }
       pickAt = best;
@@ -407,7 +499,7 @@ export async function solveWhere(
       states = next;
     } else if (clause.kind === "compare") {
       states = states.filter((st) => satisfiesCompare(clause, st.binding));
-    } else {
+    } else if (clause.kind === "not") {
       const kept: SolvedBinding[] = [];
       for (const st of states) {
         if (await passesNegation(ctx, clause, st.binding, coord, readFilter)) {
@@ -415,12 +507,55 @@ export async function solveWhere(
         }
       }
       states = kept;
+    } else {
+      const next: SolvedBinding[] = [];
+      for (const st of states) {
+        for (const branch of clause.branches) {
+          const solved = await solveParsedWhere(
+            ctx,
+            branch,
+            coord,
+            st.binding,
+            readFilter,
+            st.sources,
+          );
+          next.push(...solved);
+        }
+        if (next.length > LIMITS.maxIntermediateRows) {
+          throw new Error(
+            `query exceeded maxIntermediateRows=${LIMITS.maxIntermediateRows}`,
+          );
+        }
+      }
+      states = dedupeSolved(next);
+      for (const vn of clauseBoundVars(clause)) bound.add(vn);
     }
 
     if (states.length === 0) break;
   }
 
   return states;
+}
+
+function dedupeSolved(states: SolvedBinding[]): SolvedBinding[] {
+  const byBinding = new Map<string, SolvedBinding>();
+  for (const st of states) {
+    const key = JSON.stringify(
+      Object.entries(st.binding)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => [k, valueKey(v)]),
+    );
+    const existing = byBinding.get(key);
+    if (existing === undefined) {
+      byBinding.set(key, st);
+    } else {
+      byBinding.set(key, {
+        binding: existing.binding,
+        sources: mergeSources(existing.sources, st.sources),
+      });
+    }
+  }
+  return [...byBinding.values()];
 }
 
 function mergeSources(
@@ -555,10 +690,10 @@ export function aggregateBindings(
 }
 
 /** A human-readable description of how a query will be classified (for explain). */
-export function describeClauses(where: unknown[]) {
+export function describeClauses(where: unknown[]): ClauseDescription[] {
   const fmt = (t: Term) =>
     t.kind === "var" ? `?${t.name}` : JSON.stringify(t.value);
-  return parseClauses(where).map((c) => {
+  const describe = (c: AnyClause): ClauseDescription => {
     if (c.kind === "pattern") {
       return { kind: "pattern", e: fmt(c.e), a: fmt(c.a), v: fmt(c.v) };
     }
@@ -570,9 +705,16 @@ export function describeClauses(where: unknown[]) {
         right: fmt(c.right),
       };
     }
-    const p = c.pattern;
-    return { kind: "not", e: fmt(p.e), a: fmt(p.a), v: fmt(p.v) };
-  });
+    if (c.kind === "not") {
+      const p = c.pattern;
+      return { kind: "not", e: fmt(p.e), a: fmt(p.a), v: fmt(p.v) };
+    }
+    return {
+      kind: "or",
+      branches: c.branches.map((branch) => branch.map(describe)),
+    };
+  };
+  return parseClauses(where).map(describe);
 }
 
 // --- rule locality (used by materialization) --------------------------------
@@ -591,8 +733,25 @@ export function isEntityLocalRule(where: unknown[], emitE: string): boolean {
   const ev = entityVarOf(emitE);
   if (ev === null) return false;
   for (const c of parseClauses(where)) {
-    const subject = c.kind === "pattern" ? c.e : c.kind === "not" ? c.pattern.e : null;
-    if (subject && subject.kind === "var" && subject.name !== ev) return false;
+    const subjects =
+      c.kind === "pattern"
+        ? [c.e]
+        : c.kind === "not"
+          ? [c.pattern.e]
+          : c.kind === "or"
+            ? c.branches.flatMap((branch) =>
+                branch.flatMap((branchClause) =>
+                  branchClause.kind === "pattern"
+                    ? [branchClause.e]
+                    : branchClause.kind === "not"
+                      ? [branchClause.pattern.e]
+                      : [],
+                ),
+              )
+            : [];
+    for (const subject of subjects) {
+      if (subject.kind === "var" && subject.name !== ev) return false;
+    }
   }
   return true;
 }

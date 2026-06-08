@@ -8,20 +8,28 @@ import {
   runWhere,
 } from "./lib/engine";
 
-// A clause is a [e, a, v] triple, a [term, op, term] comparison, or a
-// { not: [e, a, v] } negation — so clauses are heterogeneous (array | object).
+// A clause is a [e, a, v] triple, a [term, op, term] comparison,
+// { not: [e, a, v] } negation, or { or: [[...clauses], ...] } disjunction —
+// so clauses are heterogeneous (array | object).
 const whereValidator = v.array(v.any());
 
 /**
  * Bounded, non-recursive Datalog over facts ∪ materialized derived facts.
- * Supports fact patterns, comparison predicates (>, <, >=, <=, ==, !=), and
- * negation ({ not: [...] }).
+ * Supports fact patterns, comparison predicates (>, <, >=, <=, ==, !=),
+ * negation ({ not: [...] }), and bounded disjunction
+ * ({ or: [[...clauses], [...clauses]] }).
  *
  *   datalog({
  *     where: [
  *       ["?e", "type", "Employee"],
  *       ["?e", "salary", "?s"],
  *       ["?s", ">", 100000],
+ *       {
+ *         or: [
+ *           [["?e", "worker.status", "active"]],
+ *           [["?e", "worker.status", "pending"]],
+ *         ],
+ *       },
  *       { not: ["?e", "status", "terminated"] },
  *     ],
  *     select: ["?e", "?s"],
