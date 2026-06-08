@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 71 (system compliance obligation counts read from the event log) has
+**Current goal:** Goal 72 (closure semi-naive add receives event-log provenance) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -24,10 +24,13 @@ Goal 68 moved the Overview dashboard's base-fact summary counts to
 protocol-shaped `factEvents` instead of `currentFacts`. Goal 69 moved config
 manifest/history snapshots to protocol-shaped `factEvents` instead of `facts`.
 Goal 70 moved read-authorization policy lookups (PII form/schema markers and
-read grants) to protocol-shaped `factEvents` instead of `currentFacts`. The next
-slice, Goal 71, moved the System process view's compliance obligation count to a
-read-only event-log derivation instead of materialized `derivedFacts`. The next
-active goal should be chosen from the remaining TODO candidates:
+read grants) to protocol-shaped `factEvents` instead of `currentFacts`. Goal 71
+moved the System process view's compliance obligation count to a read-only
+event-log derivation instead of materialized `derivedFacts`. Goal 72 moved the
+closure semi-naive add worker boundary from the changed projection `factId` to
+the changed assertion `eventId`, while preserving existing `sourceFactIds`
+through an event-log compatibility lookup. The next active goal should be chosen
+from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
 the next projection dependency (closure/derived provenance or operational
@@ -172,7 +175,11 @@ arguments.
   shared event-log triple source instead of scanning `facts.by_a`, preserving
   path provenance through compatibility `factId`s while still materializing
   closure rows into `derivedFacts`.
-- Convex backend tests are green: 149 tests at last verification.
+- Closure semi-naive incremental add receives the changed edge's protocol
+  `eventId`, then resolves today's projection-style `sourceFactIds` through
+  `factEvents.by_eventId`; the delta worker no longer receives the changed
+  projection `factId`.
+- Convex backend tests are green: 150 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -479,8 +486,9 @@ arguments.
   protocol-shaped `factEvents`, but still writes the `derivedFacts` projection and
   still represents provenance as projection `sourceFactIds`.
 - Full transitive-closure recompute now reads base edges from protocol-shaped
-  `factEvents`; closure semi-naive add still receives the changed projection
-  `factId`, and closure output still lives in `derivedFacts`.
+  `factEvents`; closure semi-naive add now receives the changed assertion
+  `eventId` and resolves compatibility provenance through `factEvents`, while
+  closure output still lives in `derivedFacts`.
 - `@metacrdt/convex` now has adapter helpers, stateless protocol helpers, a
   component-owned protocol transaction/event log, and component-owned
   `facts`/`currentFacts` projections with opt-in cardinality-one reconciliation
@@ -6921,6 +6929,81 @@ Docs:
 - `npx tsc --noEmit -p convex/tsconfig.json` passed.
 - `npx vitest run convex/appconfig.test.ts` passed (16 tests).
 - Full gate passed:
+  - `npm test` passed (17 backend test files, 150 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+- `git diff --check` passed.
+
+---
+
+## Goal 72 — Closure Semi-Naive Add Uses Event-Log Provenance
+
+**Status:** shipped for the closure incremental-add worker boundary.
+
+**Objective:** remove the changed projection `factId` from the semi-naive
+transitive-closure worker input. The write pipeline still uses the legacy
+`processFactChange` envelope for now, but the closure delta worker now receives
+the changed edge's protocol assertion `eventId` and resolves today's
+projection-style provenance through `factEvents`.
+
+### Scope
+
+Backend:
+
+- `convex/materialize.ts`
+  - `processFactChange` closure assert scheduling
+  - `incrementalClosureAdd`
+
+Tests:
+
+- `convex/provenance.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+
+### Semantics
+
+- On an asserted closure base edge, `processFactChange` still reads the changed
+  `facts` row to get `(u, w)` and the row's `assertEventId`.
+- The scheduled `incrementalClosureAdd` job receives `edgeEventId`, not
+  `edgeFactId`.
+- `incrementalClosureAdd` resolves existing compatibility provenance by querying
+  `factEvents.by_eventId` and using the assertion event row's `factId` when
+  present.
+- Existing `derivedFacts.sourceFactIds` remain projection fact ids until derived
+  provenance is deliberately migrated to protocol event ids.
+- Legacy facts without `assertEventId` still participate in the delta, but add
+  no direct edge provenance.
+
+### Non-Goals
+
+- Do not change the `processFactChange` envelope yet; it still receives a
+  projection `factId` from host writes.
+- Do not remove or stop writing `derivedFacts`.
+- Do not rewrite `derivedFacts.sourceFactIds` to event ids.
+- Do not make closure deletion/correction incremental; those paths still full
+  recompute and reconcile.
+
+### Acceptance Criteria
+
+- `incrementalClosureAdd` has no `edgeFactId` argument.
+- Incremental closure add still records the newly asserted edge in
+  `sourceFactIds` by resolving through the edge's assertion event.
+- Focused provenance tests and Convex typecheck pass.
+
+### Verification
+
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/provenance.test.ts` passed (3 tests).
+- Full gate passed:
+  - `npx convex codegen` passed.
   - `npm test` passed (17 backend test files, 150 tests).
   - `npm run test:convex-package` passed (33 tests).
   - `npm run test:core` passed (46 tests).

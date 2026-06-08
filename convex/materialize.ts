@@ -77,7 +77,7 @@ export const processFactChange = internalMutation({
                 ruleId: rule._id,
                 u: fact.e,
                 w: String(fact.v),
-                edgeFactId: fact._id,
+                edgeEventId: fact.assertEventId,
               },
             );
           }
@@ -357,14 +357,17 @@ export const incrementalClosureAdd = internalMutation({
     ruleId: v.id("rules"),
     u: v.string(),
     w: v.string(),
-    edgeFactId: v.optional(v.id("facts")),
+    edgeEventId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const rule = await ctx.db.get("rules", args.ruleId);
     if (!rule || !rule.enabled || rule.closure === undefined) return;
     const { closureAttribute, reflexive } = rule.closure;
     const now = Date.now();
-    const edgeProv: Id<"facts">[] = args.edgeFactId ? [args.edgeFactId] : [];
+    const edgeProv = await compatibilitySourceFactIdsForEvent(
+      ctx,
+      args.edgeEventId,
+    );
 
     // predecessors(u): x such that (x --closure--> u) already holds, plus u.
     // Carry each predecessor's path provenance (its x→u source facts).
@@ -467,6 +470,19 @@ export const incrementalClosureAdd = internalMutation({
 
 function closureKey(from: string, to: string): string {
   return `${from}\u0000${valueKey(to)}`;
+}
+
+async function compatibilitySourceFactIdsForEvent(
+  ctx: MutationCtx,
+  eventId: string | undefined,
+): Promise<Id<"facts">[]> {
+  if (eventId === undefined) return [];
+  const rows = await ctx.db
+    .query("factEvents")
+    .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
+    .take(2);
+  const row = rows[0];
+  return row?.factId !== undefined ? [row.factId] : [];
 }
 
 function computeClosureSupports(

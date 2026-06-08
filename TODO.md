@@ -95,9 +95,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   now folds form/attribute PII markers and principal `grants.read` facts from
   `factEvents` instead of `currentFacts`. System process compliance-obligation
   counts now derive enabled requirement/task output from `factEvents` instead of
-  materialized `derivedFacts`. Remaining: closure semi-naive add still receives
-  the changed projection `factId`, flow-resumer process counts still summarize
-  host `flowRuns`, and derived rows are still stored in `derivedFacts`.
+  materialized `derivedFacts`. Closure semi-naive add now receives the changed
+  assertion `eventId` and resolves compatibility provenance through `factEvents`.
+  Remaining: flow-resumer process counts still summarize host `flowRuns`,
+  derived rows are still stored in `derivedFacts`, and derived provenance still
+  uses compatibility `sourceFactIds` instead of protocol event ids.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -359,6 +361,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 72 shipped:** closure semi-naive incremental add no longer receives
+  the changed projection `factId`. `processFactChange` schedules the delta worker
+  with the edge assertion's protocol `eventId`; `incrementalClosureAdd` resolves
+  today's compatibility `sourceFactIds` through `factEvents.by_eventId`.
+- [x] **Closure provenance compatibility proof.** `convex/provenance.test.ts`
+  now verifies the incrementally added edge has an assertion event row and that
+  the resulting closure row still includes the edge in `sourceFactIds`.
 - [x] **Goal 71 shipped:** `system.listSystemProcesses` now computes the
   compliance reconciler's `open/required obligations` stat by solving enabled
   `require.*` / `task.*` rules against `eventLogTripleSource` and resolving their

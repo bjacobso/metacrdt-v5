@@ -232,6 +232,9 @@ Built today:
 - full transitive-closure recompute reads base edges from protocol-shaped
   `factEvents`, preserving path provenance through compatibility `factId`s while
   still materializing closure rows into `derivedFacts`
+- closure incremental-add jobs receive the changed edge's protocol assertion
+  `eventId` and resolve compatibility `sourceFactIds` through `factEvents`,
+  rather than receiving the changed projection `factId`
 - Datalog query engine with joins, comparisons, computed arithmetic/string
   predicates, negation, aggregation, cursor-paged result APIs, and materialized
   transitive closure

@@ -97,7 +97,11 @@ describe("provenance", () => {
       await flush(t);
 
       // Extend y -> z via the incremental add path.
-      await t.mutation(api.facts.assertFact, { e: "y", a: "links", value: "z" });
+      const incrementalEdge = await t.mutation(api.facts.assertFact, {
+        e: "y",
+        a: "links",
+        value: "z",
+      });
       await flush(t);
 
       const explained = await t.query(api.rules.explainDerived, {
@@ -107,6 +111,25 @@ describe("provenance", () => {
       const toZ = explained.find((r) => r.v === "z");
       // x ->* z went through two edges (x->y, y->z).
       expect(toZ?.because).toHaveLength(2);
+
+      await t.run(async (ctx) => {
+        const edge = await ctx.db.get(incrementalEdge.factId);
+        expect(edge?.assertEventId).toEqual(expect.any(String));
+        const eventRows = await ctx.db
+          .query("factEvents")
+          .withIndex("by_eventId", (q) =>
+            q.eq("eventId", edge!.assertEventId!),
+          )
+          .collect();
+        expect(eventRows.map((r) => r.factId)).toContain(incrementalEdge.factId);
+
+        const closureRows = await ctx.db
+          .query("derivedFacts")
+          .withIndex("by_e_a", (q) => q.eq("e", "x").eq("a", "links+"))
+          .collect();
+        const closureToZ = closureRows.find((r) => r.v === "z");
+        expect(closureToZ?.sourceFactIds).toContain(incrementalEdge.factId);
+      });
     } finally {
       vi.useRealTimers();
     }
