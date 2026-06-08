@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 58 (full closure recompute reads edges from the event log)
+**Current goal:** Goal 59 (production Datalog reads base facts from the event log)
 has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth, or
@@ -88,9 +88,14 @@ arguments.
   directly over protocol-shaped `factEvents`, preserving `queryFacts`-style
   include-retracted/include-tombstoned semantics without reading the `facts`
   projection.
-- `api.datalog.datalogFromEventLog` reuses the normal Datalog solver with an
-  injected triple source over protocol-shaped `factEvents`, proving joins,
-  compute predicates, and negation can run over the source log for base facts.
+- Production `api.datalog.datalog`, `datalogPage`, `aggregate`, and
+  `aggregatePage` now reuse the normal Datalog solver with the shared
+  event-log-base + materialized-derived triple source, so base facts are folded
+  from protocol-shaped `factEvents` while derived facts remain available through
+  `derivedFacts`.
+- `api.datalog.datalogFromEventLog` remains as a base-fact-only proof API over
+  protocol-shaped `factEvents`, proving joins, compute predicates, and negation
+  can run over the source log without materialized derived rows.
 - `api.datalog.datalogPageFromEventLog`, `aggregateFromEventLog`, and
   `aggregatePageFromEventLog` extend the same event-log triple source to paged
   projected rows and aggregate group rows for base facts.
@@ -392,13 +397,12 @@ arguments.
   rows, while new corrections write protocol primitives.
 - `facts` and `currentFacts` are still maintained as imperative projections,
   not folded directly from raw core-shaped events.
-- `entityFromEventLog` is intentionally bounded and proof/read-model oriented;
-  production Datalog/materialization still read the `facts` projection.
+- `entityFromEventLog` is intentionally bounded and proof/read-model oriented.
 - `queryFactsFromEventLog` is also bounded and proof/read-model oriented; Datalog
-  and rules have not moved to direct event-log solving.
-- `datalogFromEventLog` is bounded and base-fact-only in this slice; production
-  Datalog/rules still include materialized `derivedFacts` through the projection
-  path.
+  has moved base reads to event-log solving, but general fact query production
+  reads still use the `facts` projection.
+- `datalogFromEventLog` is bounded and base-fact-only; production Datalog now
+  uses the event-log-base + materialized-derived source.
 - The `*FromEventLogWithDerived` Datalog proof APIs still depend on materialized
   `derivedFacts`.
 - `deriveFromEventLog` is read-only and proof-oriented.
@@ -5257,6 +5261,81 @@ TODO.md
 
 ---
 
+## Goal 59 — Production Datalog Reads Base Facts from the Event Log
+
+**Status:** shipped for production row/page/aggregate Datalog APIs in the Convex
+reference runtime.
+
+**Objective:** make production Datalog stop reading base facts from the
+hand-maintained `facts` projection. The production APIs now use the same shared
+event-log-base + materialized-derived source proven by Goals 54/55.
+
+### Scope
+
+Backend:
+
+- `convex/datalog.ts`
+  - `datalog`
+  - `datalogPage`
+  - `aggregate`
+  - `aggregatePage`
+
+Tests:
+
+- `convex/datalog.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+
+### Semantics
+
+- Production Datalog row, page, aggregate, and aggregate-page APIs pass
+  `eventLogBaseWithDerivedTripleSource` into the existing solver.
+- Base facts are folded from protocol-shaped `factEvents`.
+- Materialized derived facts are still read from `derivedFacts`.
+- Explicit base-only proof APIs (`*FromEventLog`) still exclude `derivedFacts`.
+- Explicit mixed proof APIs (`*FromEventLogWithDerived`) remain as compatibility
+  and migration surfaces, matching the production source shape.
+
+### Non-Goals
+
+- Do not remove the projection-backed `facts` table; other reads and projection
+  consumers still use it.
+- Do not remove `derivedFacts`.
+- Do not change event-log proof API names.
+- Do not move generic fact/entity production reads in this slice.
+
+### Acceptance Criteria
+
+- Production `datalog` survives a corrupted base `facts` projection for base-only
+  joins.
+- Production `datalog` survives a corrupted base `facts` projection for
+  base+derived joins.
+- Production `datalog` survives corrupted base `facts` after materialized rule
+  output and closure output.
+- Base-only proof APIs still exclude derived facts.
+- Convex typecheck and focused Datalog/rebuild/triples/provenance tests pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/datalog.test.ts convex/rebuild.test.ts convex/triples.test.ts convex/provenance.test.ts`
+  passed (58 tests).
+- Broader gate passed:
+  - `npm test` passed (17 backend test files, 145 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+
+---
+
 ## Goal 58 — Full Closure Recompute Reads Edges from the Event Log
 
 **Status:** shipped for full transitive-closure recompute in the Convex
@@ -5303,14 +5382,14 @@ Docs:
   projection `factId` from the write pipeline.
 - Do not remove or stop writing closure `derivedFacts`.
 - Do not rewrite closure provenance to protocol event ids yet.
-- Do not replace production Datalog base reads.
+- Production Datalog base reads were intentionally moved in Goal 59.
 
 ### Acceptance Criteria
 
 - If direct base-edge `facts` are corrupted before a scheduled full closure
   recompute runs, closure rows still materialize from `factEvents`.
-- A production Datalog query over the corrupted direct edge still fails, proving
-  the remaining projection-backed base-read dependency is explicit.
+- Goal 59 supersedes the old production-Datalog-failure boundary: production
+  Datalog now reads the corrupted direct edge from `factEvents`.
 - Closure rows retain non-empty source provenance when assertion events carry
   compatibility `factId`s.
 - Convex typecheck and focused Datalog/provenance/rebuild tests pass.
@@ -5382,21 +5461,18 @@ Docs:
 
 ### Non-Goals
 
-- Do not change transitive-closure materialization; it still reads base edges
-  from `facts`.
+- Full transitive-closure recompute was intentionally moved in Goal 58.
 - Do not remove or stop writing the `derivedFacts` projection.
 - Do not rewrite derived provenance to protocol event ids yet.
-- Do not change production Datalog base reads; production Datalog still has its
-  existing projection-backed API, alongside the event-log proof APIs.
+- Production Datalog base reads were intentionally moved in Goal 59.
 
 ### Acceptance Criteria
 
 - Scheduled non-closure rule materialization succeeds even if the base `facts`
   projection is corrupted before the materializer runs.
 - The emitted derived row keeps source fact id provenance.
-- A production Datalog query that explicitly joins the corrupted base projection
-  still fails, proving the remaining base-read dependency is documented rather
-  than hidden.
+- Goal 59 supersedes the old production-Datalog-failure boundary: production
+  Datalog now reads corrupted base facts from `factEvents`.
 - Convex typecheck and focused Datalog/rebuild/triples tests pass.
 
 ### Verification
@@ -5745,10 +5821,11 @@ or intentionally moved out of this repo's scope. Each shipped slice must update
 `PLAN.md` / `TODO.md`, pass the relevant test/typecheck/build gate, and be
 committed/pushed with the verification recorded.
 
-Goal 58 is complete: full transitive-closure recompute now builds its base-edge
-adjacency through the shared event-log triple source instead of scanning
-`facts.by_a`, preserving closure reachability and compatibility provenance while
-still writing closure output to `derivedFacts`.
+Goal 59 is complete: production Datalog row/page/aggregate APIs now solve base
+facts through the shared event-log-base + materialized-derived source, so
+corrupted base `facts` no longer break production Datalog joins. Generic
+fact/entity reads and projection consumers still keep `facts` / `currentFacts`
+alive for now.
 
 The next shipped slice should update this section with its own concrete
 definition of done before implementation starts.

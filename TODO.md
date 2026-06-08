@@ -72,10 +72,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   base facts through the shared event-log-base + derived source while preserving
   `sourceFactIds` from assertion `factEvents.factId`. Full transitive-closure
   recompute now reads base edges through the shared event-log source too,
-  preserving path provenance through compatibility `factId`s.
-  Remaining: move production base Datalog reads away from the hand-maintained
-  `facts` projection; closure semi-naive add still receives the changed
-  projection `factId`; derived rows are still stored in `derivedFacts`.
+  preserving path provenance through compatibility `factId`s. Production
+  `datalog`, `datalogPage`, `aggregate`, and `aggregatePage` now use the shared
+  event-log-base + materialized-derived source for base facts.
+  Remaining: general production fact/entity reads still use the hand-maintained
+  `facts` / `currentFacts` projections; closure semi-naive add still receives the
+  changed projection `factId`; derived rows are still stored in `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -333,21 +335,28 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 59 shipped:** production Datalog row/page/aggregate APIs now use the
+  shared event-log-base + materialized-derived triple source. Base facts come
+  from protocol-shaped `factEvents`; derived facts still come from `derivedFacts`.
+- [x] **Production Datalog projection-corruption proof.** Tests that previously
+  only proved explicit event-log proof APIs now prove `datalog` itself survives
+  corrupted base `facts` for base joins, derived joins, rule-materialized output,
+  and direct closure edges.
 - [x] **Goal 58 shipped:** full transitive-closure recompute now builds its base
   edge adjacency through the shared event-log triple source instead of scanning
   `facts.by_a`. Closure output still materializes into `derivedFacts`.
 - [x] **Closure projection-corruption proof.** Tests corrupt direct base-edge
   `facts` before the scheduled full closure recompute runs; closure rows still
-  materialize from `factEvents`, direct edge Datalog over `facts` fails, and
-  closure provenance remains populated.
+  materialize from `factEvents`; after Goal 59, production Datalog direct-edge
+  reads also survive from `factEvents`, and closure provenance remains populated.
 - [x] **Goal 57 shipped:** non-closure rule materialization now solves rule bodies
   through the shared event-log-base + materialized-derived triple source. Base
   facts come from protocol-shaped `factEvents`; existing `derivedFacts` remain
   available for rules that depend on prior materialized output.
 - [x] **Materializer projection-corruption proof.** Tests corrupt base `facts`
   before the scheduled materializer runs; the rule still emits a derived row from
-  `factEvents`, preserves source fact id provenance, and production Datalog only
-  fails when it explicitly joins the corrupted base projection.
+  `factEvents` and preserves source fact id provenance. Goal 59 later moved
+  production Datalog base reads to the same event-log source.
 - [x] **Goal 56 shipped:** `api.datalog.deriveFromEventLog` solves a rule body
   against protocol-shaped `factEvents` and resolves its `emit` shape into deduped
   derived triples without writing `derivedFacts`.

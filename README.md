@@ -188,6 +188,9 @@ Built today:
   `aggregatePageFromEventLogWithDerived`) via injected triple sources over
   protocol-shaped `factEvents`, including mixed proof sources that join event-log
   base facts with materialized `derivedFacts`
+- production Datalog reads (`datalog`, `datalogPage`, `aggregate`,
+  `aggregatePage`) now use the same event-log-base + materialized-derived source
+  for base facts, rather than reading base facts from the `facts` projection
 - read-only rule-output proof query (`api.datalog.deriveFromEventLog`) that
   solves a rule body against protocol-shaped `factEvents` and resolves its
   `emit` shape into derived triples without writing `derivedFacts`

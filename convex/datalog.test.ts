@@ -88,7 +88,9 @@ describe("comparison predicates", () => {
       ],
       select: ["?e"],
     };
-    expect(await t.query(api.datalog.datalog, args)).toEqual([]);
+    expect(await t.query(api.datalog.datalog, args)).toEqual([
+      { e: "el:source" },
+    ]);
     expect(await t.query(api.datalog.datalogFromEventLog, args)).toEqual([
       { e: "el:source" },
     ]);
@@ -162,7 +164,9 @@ describe("comparison predicates", () => {
         select: ["?e"],
       };
 
-      expect(await t.query(api.datalog.datalog, args)).toEqual([]);
+      expect(await t.query(api.datalog.datalog, args)).toEqual([
+        { e: "el:derived-only" },
+      ]);
       expect(await t.query(api.datalog.datalogFromEventLogWithDerived, args))
         .toEqual([{ e: "el:derived-only" }]);
       // Base-only event-log Datalog intentionally excludes derivedFacts.
@@ -226,7 +230,10 @@ describe("comparison predicates", () => {
           ["?e", "derived.previewRegion", "?region"],
         ],
         select: ["?e", "?region"],
-      })).toEqual([]);
+      })).toEqual([
+        { e: "el:rule-preview:1", region: "north" },
+        { e: "el:rule-preview:2", region: "south" },
+      ]);
       expect(await t.query(api.datalog.deriveFromEventLog, {
         where,
         emit,
@@ -273,7 +280,7 @@ describe("comparison predicates", () => {
           ["?e", "derived.materializedFromLog", true],
         ],
         select: ["?e"],
-      })).toEqual([]);
+      })).toEqual([{ e: "el:materialized:1" }]);
       await t.run(async (ctx) => {
         const rows = await ctx.db
           .query("derivedFacts")
@@ -994,7 +1001,7 @@ describe("transitive closure", () => {
         where: [["el-closure:a", "eventLogReportsTo", "?x"]],
         select: ["?x"],
       });
-      expect(direct).toEqual([]);
+      expect(direct).toEqual([{ x: "el-closure:b" }]);
 
       await t.run(async (ctx) => {
         const rows = await ctx.db

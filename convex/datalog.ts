@@ -53,7 +53,8 @@ function derivedRowsFromBindings(
 }
 
 /**
- * Bounded, non-recursive Datalog over facts ∪ materialized derived facts.
+ * Bounded, non-recursive Datalog over base facts folded from protocol-shaped
+ * `factEvents` ∪ materialized derived facts.
  * Supports fact patterns, comparison predicates (>, <, >=, <=, ==, !=),
  * deterministic computed predicates
  * ({ compute: ["+", "?salary", "?bonus"], as: "?total" } or
@@ -93,6 +94,7 @@ export const datalog = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
+      source: eventLogBaseWithDerivedTripleSource,
     });
     const rows = project(bindings, args.select);
     if (rows.length > LIMITS.maxResultRows) {
@@ -106,10 +108,9 @@ export const datalog = query({
 
 /**
  * Bounded Datalog over base facts folded directly from protocol-shaped
- * `factEvents`. This is a proof/read-model surface for the projection-retirement
- * path: it reuses the same solver but swaps the triple source from `facts` to the
- * append-only event log. Materialized `derivedFacts` are intentionally excluded
- * in this slice; the production `datalog` query remains facts ∪ derivedFacts.
+ * `factEvents`. This proof/read-model surface intentionally excludes
+ * materialized `derivedFacts`; production `datalog` uses the event-log-base +
+ * derived source.
  */
 export const datalogFromEventLog = query({
   args: {
@@ -139,10 +140,8 @@ export const datalogFromEventLog = query({
 
 /**
  * Bounded Datalog over base facts folded from protocol `factEvents` plus the
- * existing materialized `derivedFacts` projection. This is the next proof step
- * after `datalogFromEventLog`: base facts no longer read the `facts` projection,
- * while derived facts remain projection-backed until rule/materialization folds
- * move over.
+ * existing materialized `derivedFacts` projection. This is the production source
+ * shape kept as an explicit API for comparison and migration tests.
  */
 export const datalogFromEventLogWithDerived = query({
   args: {
@@ -191,6 +190,7 @@ export const datalogPage = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
+      source: eventLogBaseWithDerivedTripleSource,
     });
     return paginateRows(project(bindings, args.select), args.paginationOpts);
   },
@@ -286,6 +286,7 @@ export const aggregate = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
+      source: eventLogBaseWithDerivedTripleSource,
     });
     const rows = aggregateBindings(bindings, args.groupBy ?? [], args.aggregates);
     if (rows.length > LIMITS.maxResultRows) {
@@ -412,6 +413,7 @@ export const aggregatePage = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
+      source: eventLogBaseWithDerivedTripleSource,
     });
     return paginateRows(
       aggregateBindings(bindings, args.groupBy ?? [], args.aggregates),
