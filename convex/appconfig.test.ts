@@ -200,6 +200,45 @@ describe("config-as-code + origin + entity detail", () => {
     }
   });
 
+  test("action registry reads survive a wiped currentFacts projection", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await setup(t);
+
+      await t.run(async (ctx) => {
+        const rows = await ctx.db.query("currentFacts").collect();
+        for (const row of rows) await ctx.db.delete(row._id);
+      });
+
+      const forType = await t.query(api.actions.actionsForType, {
+        type: "Worker",
+      });
+      expect(forType.some((a) => a.name === "terminate")).toBe(true);
+      expect(forType.some((a) => a.name === "reactivate")).toBe(true);
+
+      const all = await t.query(api.actions.listActions, {});
+      expect(all.map((a) => a.name)).toEqual(
+        expect.arrayContaining(["reactivate", "terminate"]),
+      );
+
+      const detail = await t.query(api.entities.entityDetail, {
+        e: "worker:maria",
+      });
+      expect(detail.actions.some((a) => a.name === "terminate")).toBe(true);
+      expect(detail.actions.some((a) => a.name === "reactivate")).toBe(true);
+
+      await t.mutation(api.actions.runAction, {
+        action: "terminate",
+        entity: "worker:maria",
+      });
+      const terminated = await t.query(api.facts.getEntity, { e: "worker:maria" });
+      expect(terminated.attributes["worker.status"]).toEqual(["terminated"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("runAction resolves configured action args into asserted facts", async () => {
     vi.useFakeTimers();
     try {

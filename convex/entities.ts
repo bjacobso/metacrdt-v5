@@ -6,6 +6,7 @@ import {
   eventLogBaseWithDerivedTripleSource,
   eventLogTripleSource,
 } from "./lib/eventLogTripleSource";
+import { listActionDefs } from "./lib/actionDefs";
 import { META, typeNameOf } from "./lib/meta";
 import { Origin, entityOrigin, isSystemEntity, typeOrigin } from "./lib/origin";
 import { redactAttributeMap, type DeniedAttribute } from "./lib/readAuth";
@@ -212,53 +213,9 @@ export const entityDetail = query({
       }));
 
     // Actions runnable on this entity (appliesTo ∈ its types).
-    const actionDefs = await ctx.db
-      .query("currentFacts")
-      .withIndex("by_a_v", (q) => q.eq("a", TYPE_ATTR).eq("v", "Action"))
-      .take(200);
-    const actions: {
-      name: string;
-      label?: string;
-      asserts: Record<string, unknown>;
-      fields: Array<{
-        name: string;
-        label?: string;
-        type: "string" | "number" | "boolean" | "select";
-        required?: boolean;
-        options?: string[];
-        defaultValue?: unknown;
-      }>;
-      opensForm?: { form: unknown; scope: unknown };
-    }[] = [];
-    for (const ad of actionDefs) {
-      const rows = await ctx.db
-        .query("currentFacts")
-        .withIndex("by_e", (q) => q.eq("e", ad.e))
-        .collect();
-      const m: Record<string, unknown[]> = {};
-      for (const r of rows) (m[r.a] ??= []).push(r.v);
-      const appliesTo = (m["appliesTo"] ?? []).map(String);
-      if (!appliesTo.some((t) => types.includes(t))) continue;
-      actions.push({
-        name: ad.e.slice("action:".length),
-        label: m["label"]?.[0] ? String(m["label"][0]) : undefined,
-        asserts: (m["asserts"]?.[0] ?? {}) as Record<string, unknown>,
-        fields: Array.isArray(m["fields"]?.[0])
-          ? (m["fields"]![0] as Array<{
-              name: string;
-              label?: string;
-              type: "string" | "number" | "boolean" | "select";
-              required?: boolean;
-              options?: string[];
-              defaultValue?: unknown;
-            }>)
-          : [],
-        opensForm:
-          m["opensForm"]?.[0] && typeof m["opensForm"][0] === "object"
-            ? (m["opensForm"][0] as { form: unknown; scope: unknown })
-            : undefined,
-      });
-    }
+    const actions = (await listActionDefs(ctx)).filter(
+      (def) => def.appliesTo !== undefined && types.includes(def.appliesTo),
+    );
 
     // This entity's flow runs (most recent first).
     const runDocs = await ctx.db

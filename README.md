@@ -194,6 +194,9 @@ Built today:
 - production type discovery and picker reads (`listEntityTypes`, `listEntities`,
   `typeAttributes`) now discover current type/name/attribute facts from
   protocol-shaped `factEvents`
+- configured action registry reads (`actionsForType`, `listActions`,
+  `entityDetail.actions`, and `runAction` action-definition loading) now fold
+  action definition facts from protocol-shaped `factEvents`
 - production fact point queries (`api.facts.queryFacts`) now fold base facts
   directly from protocol-shaped `factEvents` while preserving the old array
   return shape and read-authorization behavior; `queryFactsFromEventLog` remains

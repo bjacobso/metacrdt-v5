@@ -1,5 +1,7 @@
 import { v } from "convex/values";
-import type { QueryCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { project, runWhere } from "./engine";
+import { eventLogTripleSource } from "./eventLogTripleSource";
 
 export type ActionField = {
   name: string;
@@ -45,17 +47,27 @@ export function actionId(name: string): string {
   return `action:${name}`;
 }
 
+type Ctx = QueryCtx | MutationCtx;
+
+async function currentRows(ctx: Ctx, where: unknown[], select: string[]) {
+  const coord = { txTime: Date.now(), validTime: Date.now() };
+  return project(
+    await runWhere(ctx, where, coord, {}, { source: eventLogTripleSource }),
+    select,
+  );
+}
+
 export async function loadActionDef(
-  ctx: QueryCtx,
+  ctx: Ctx,
   name: string,
 ): Promise<ActionDef | null> {
-  const rows = await ctx.db
-    .query("currentFacts")
-    .withIndex("by_e", (q) => q.eq("e", actionId(name)))
-    .collect();
+  const rows = await currentRows(ctx, [[actionId(name), "?a", "?v"]], [
+    "?a",
+    "?v",
+  ]);
   if (rows.length === 0) return null;
   const m: Record<string, unknown[]> = {};
-  for (const r of rows) (m[r.a] ??= []).push(r.v);
+  for (const r of rows) (m[String(r.a)] ??= []).push(r.v);
   return {
     name,
     label: m["label"]?.[0] ? String(m["label"][0]) : undefined,
@@ -69,6 +81,20 @@ export async function loadActionDef(
         ? (m["opensForm"][0] as { form: unknown; scope: unknown })
         : undefined,
   };
+}
+
+export async function listActionDefs(ctx: Ctx): Promise<ActionDef[]> {
+  const rows = await currentRows(ctx, [["?e", "type", "Action"]], ["?e"]);
+  const seen = new Set<string>();
+  const out: ActionDef[] = [];
+  for (const row of rows) {
+    const e = String(row.e);
+    if (seen.has(e) || !e.startsWith("action:")) continue;
+    seen.add(e);
+    const def = await loadActionDef(ctx, e.slice("action:".length));
+    if (def) out.push(def);
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function resolveActionValue(

@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 65 (production type discovery and picker reads from the event log) has
+**Current goal:** Goal 66 (configured action registry reads from the event log) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -15,11 +15,13 @@ point fold. Goal 64 moved the production typed entity table
 event-log-backed row loading and sorting, while leaving type discovery, picker
 lists, and type-attribute discovery on `currentFacts` until later goals. Goal 65
 moved those discovery/picker surfaces (`listEntityTypes`, `listEntities`, and
-`typeAttributes`) to protocol-shaped `factEvents`. The next active goal should
-be chosen from the remaining TODO candidates: provider-backed login UI /
-production auth, live Cloudflare deployment/auth, or a carefully scoped Confect
-wrapper now that the main production base fact reads have moved to event-log
-folds.
+`typeAttributes`) to protocol-shaped `factEvents`. Goal 66 moved configured
+action registry reads (`actionsForType`, `listActions`, `runAction` action-def
+loading, and `entityDetail.actions`) to protocol-shaped `factEvents`. The next
+active goal should be chosen from the remaining TODO candidates: provider-backed
+login UI / production auth, live Cloudflare deployment/auth, or a carefully
+scoped Confect wrapper now that the main production base fact reads have moved
+to event-log folds.
 
 This plan is the operational goal file. Read it with:
 
@@ -114,6 +116,10 @@ arguments.
   protocol-shaped `factEvents` instead of `currentFacts`, preserving configured
   type origins, system/data origin filters, picker labels, and discovered
   attribute columns.
+- Configured action registry reads (`actionsForType`, `listActions`, `runAction`
+  action-definition loading, and `entityDetail.actions`) read action definition
+  facts from protocol-shaped `factEvents` instead of `currentFacts`, preserving
+  action fields, form-opening metadata, and entity-detail contextual actions.
 - `api.facts.entityFromEventLog` folds a host entity directly from
   protocol-shaped `factEvents` with `@metacrdt/core`, including schema
   cardinality facts from the same log, and redacts through the same read-auth
@@ -152,7 +158,7 @@ arguments.
   shared event-log triple source instead of scanning `facts.by_a`, preserving
   path provenance through compatibility `factId`s while still materializing
   closure rows into `derivedFacts`.
-- Convex backend tests are green: 148 tests at last verification.
+- Convex backend tests are green: 149 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -434,8 +440,9 @@ arguments.
 - Production `getEntity` now uses the same bounded event-log fold as
   `entityFromEventLog`; production `entityAsOf` and `entityFactsAsOf` also fold
   from protocol-shaped `factEvents`.
-- Some configured-carrier read paths still use `currentFacts` internally, notably
-  the action registry portion of `entityDetail`.
+- Some non-primary operational/config read paths still use the disposable
+  projections, for example config-history scans over `facts` and overview/system
+  counts over `currentFacts`.
 - `entityFromEventLog` remains intentionally bounded and proof/read-model
   oriented, returning coordinate/skipped-legacy counts that production
   `getEntity` does not expose.
@@ -5299,6 +5306,106 @@ TODO.md
   - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
   - `npx tsc --noEmit -p tsconfig.json` passed.
 - `npm run build` passed.
+
+---
+
+## Goal 66 — Configured Action Registry Reads from the Event Log
+
+**Status:** shipped in the Convex reference runtime.
+
+**Objective:** make configured action-definition reads use protocol-shaped
+`factEvents` instead of the `currentFacts` projection.
+
+Action definitions are configured facts on `action:<name>` entities. They are
+used by the System action registry, entity detail contextual actions, component
+detail actions, and `runAction` itself. Moving the shared loader finishes the
+main configured-action read path.
+
+### Scope
+
+Backend:
+
+```text
+convex/lib/actionDefs.ts
+  loadActionDef
+  listActionDefs
+
+convex/actions.ts
+  actionsForType
+  listActions
+
+convex/entities.ts
+  entityDetail.actions
+```
+
+Tests:
+
+```text
+convex/appconfig.test.ts
+```
+
+Docs:
+
+```text
+README.md
+PLAN.md
+TODO.md
+```
+
+### Semantics
+
+- `loadActionDef` reconstructs one action definition from current visible facts
+  on `action:<name>` through the event-log triple source.
+- `listActionDefs` discovers `Action` typed action entities through the same
+  source and then loads each definition through `loadActionDef`.
+- `actionsForType` filters the shared list by `appliesTo`.
+- `listActions` returns the shared list.
+- `entityDetail.actions` uses the shared list and filters by the entity's folded
+  types.
+- `runAction` implicitly benefits because it already calls `loadActionDef`.
+
+### Non-Goals
+
+- Do not remove or stop maintaining `facts` / `currentFacts`.
+- Do not replace flow definition rows or derived obligation rows in this slice.
+- Do not backfill legacy `factEvents` without protocol metadata.
+- Do not migrate this code to Confect in this slice.
+
+### Implementation
+
+- [x] Add event-log-backed `loadActionDef` and `listActionDefs`.
+- [x] Route `actionsForType` and `listActions` through `listActionDefs`.
+- [x] Route `entityDetail.actions` through `listActionDefs`.
+- [x] Preserve fields, `opensForm`, labels, asserts, and sort order.
+
+### Acceptance Criteria
+
+- For ordinary protocol-shaped config writes, `actionsForType`, `listActions`,
+  entity detail actions, and `runAction` behavior are unchanged.
+- If `currentFacts` is wiped, action registry reads still find configured worker
+  actions and `runAction` can still execute a configured action.
+
+### Verification
+
+- `npx vitest run convex/appconfig.test.ts convex/readAuth.test.ts convex/triples.test.ts`
+  passed (36 tests).
+- Broader gate passed:
+  - `npx convex codegen` passed.
+  - `npm test` passed.
+  - `npm run test:convex-package` passed.
+  - `npm run test:core` passed.
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+  - `git diff --check` passed.
+
+### Definition of Done
+
+Goal 66 is complete when action definition reads no longer scan `currentFacts`,
+action registry/entity detail/runAction compatibility tests pass, docs record
+the remaining projection-backed non-primary read paths, and the change is
+committed and pushed.
 
 ---
 

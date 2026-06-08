@@ -5,6 +5,7 @@ import {
   actionFieldValidator,
   actionId,
   loadActionDef,
+  listActionDefs,
   opensFormValidator,
   resolveActionString,
   resolveActionValue,
@@ -112,16 +113,7 @@ export const runAction = mutation({
 export const actionsForType = query({
   args: { type: v.string() },
   handler: async (ctx, args) => {
-    const defs = await ctx.db
-      .query("currentFacts")
-      .withIndex("by_a_v", (q) => q.eq("a", "type").eq("v", "Action"))
-      .take(200);
-    const out = [];
-    for (const d of defs) {
-      const def = await loadActionDef(ctx, d.e.slice("action:".length));
-      if (def && def.appliesTo === args.type) out.push(def);
-    }
-    return out.sort((a, b) => a.name.localeCompare(b.name));
+    return (await listActionDefs(ctx)).filter((def) => def.appliesTo === args.type);
   },
 });
 
@@ -129,15 +121,6 @@ export const actionsForType = query({
 export const listActions = query({
   args: {},
   handler: async (ctx) => {
-    const defs = await ctx.db
-      .query("currentFacts")
-      .withIndex("by_a_v", (q) => q.eq("a", "type").eq("v", "Action"))
-      .take(200);
-    const out = [];
-    for (const d of defs) {
-      const def = await loadActionDef(ctx, d.e.slice("action:".length));
-      if (def) out.push(def);
-    }
-    return out.sort((a, b) => a.name.localeCompare(b.name));
+    return await listActionDefs(ctx);
   },
 });

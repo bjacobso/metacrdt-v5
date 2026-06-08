@@ -86,11 +86,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   membership/filters and event-log base folds for row attributes + sort values.
   Production type discovery / picker / type-attribute discovery
   (`listEntityTypes`, `listEntities`, `typeAttributes`) now read current
-  type/name/attribute facts from `factEvents`. Remaining: configured-carrier
-  reads such as the action registry section of `entityDetail` still use the
-  hand-maintained `currentFacts` projection; closure semi-naive add still
-  receives the changed projection `factId`; derived rows are still stored in
-  `derivedFacts`.
+  type/name/attribute facts from `factEvents`. Configured action registry reads
+  (`actionsForType`, `listActions`, `entityDetail.actions`, and `runAction`
+  definition loading) now read action definition facts from `factEvents`.
+  Remaining: non-primary operational/config read paths such as config-history
+  scans and overview/system counts still use disposable projections; closure
+  semi-naive add still receives the changed projection `factId`; derived rows are
+  still stored in `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -348,6 +350,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 66 shipped:** configured action registry reads now fold action
+  definition facts from protocol-shaped `factEvents`: `loadActionDef`,
+  `actionsForType`, `listActions`, `entityDetail.actions`, and `runAction`
+  definition loading.
+- [x] **Action registry projection-corruption proof.** `convex/appconfig.test.ts`
+  now wipes `currentFacts` entirely and asserts `actionsForType`, `listActions`,
+  and `entityDetail.actions` still find Worker actions; `runAction` still executes
+  `terminate` from the event-log-backed action definition.
 - [x] **Goal 65 shipped:** production `api.entities.listEntityTypes`,
   `listEntities`, and `typeAttributes` now read current type/name/attribute facts
   from protocol-shaped `factEvents`, not from `currentFacts`.
