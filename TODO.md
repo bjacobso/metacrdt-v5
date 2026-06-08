@@ -36,6 +36,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   reads, projection-backed current Datalog reads, rebuild, current-row,
   current-entity, and typed current-entity reads over SQLite event/projection
   stores with Effect helpers and a Promise facade.
+- [x] Cloudflare Durable Object SQLite projection invalidation summaries —
+  `rebuildCurrent` and append/lifecycle facade results report changed `(e, a)`
+  coordinates with before/after event ids, giving the live-query transport its
+  first concrete invalidation key.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -45,9 +49,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — historical
-  SQL-indexed query-provider optimization, cardinality-one
-  reconcile/invalidation reporting, operational collection/flow surface, DO
-  alarm multiplexing, and live-query WebSocket plumbing (see
+  SQL-indexed query-provider optimization, incremental projection reconcile,
+  operational collection/flow surface, DO alarm multiplexing, and live-query
+  WebSocket fanout/plumbing (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
@@ -578,6 +582,19 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ## Log
 
+### 2026-06-08 — Cloudflare DO SQLite projection invalidation summaries
+- [x] **Made the current projection report what changed.**
+  `@metacrdt/cloudflare` now exports `DurableObjectSqliteProjectionChange`, and
+  `rebuildCurrent` returns `changed` summaries keyed by `(e, a)` with sorted
+  before/after event ids. `appendAssert` / `appendLifecycle` inherit the same
+  projection result through the facade.
+- [x] **Tests cover the live-query invalidation seed.** Cloudflare tests prove a
+  cardinality-one replacement reports the old and winning event ids, lifecycle
+  retraction reports removal, and a no-op rebuild reports `changed: []`.
+- [x] **Docs updated the parity line.** Invalidation reporting is shipped as a
+  deterministic return value; incremental reconcile and WebSocket fanout remain
+  the future transport/operational work.
+
 ### 2026-06-08 — projection-backed current Datalog provider
 - [x] **Added runtime's materialized current-query provider.**
   `@metacrdt/runtime` now exposes `projectionDatalogQueryService()` and
@@ -691,8 +708,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   projection-store conformance, and shared restart-persistence conformance.
 - [x] Still ahead after this seed: bitemporal query/index surface (later started
   by the EventStore-backed query facade; SQL-indexed optimization remains),
-  cardinality-one reconcile/invalidation reporting, collection/flow surface, DO
-  alarm multiplexing, live query subscriptions, and live Cloudflare deployment.
+  incremental projection reconcile/live fanout, collection/flow surface, DO alarm
+  multiplexing, live query subscriptions, and live Cloudflare deployment.
 
 ### 2026-06-08 — @metacrdt/node sync SDK client
 - [x] **Added the Node sync client.** `@metacrdt/node` now exports

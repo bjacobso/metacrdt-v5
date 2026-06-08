@@ -62,6 +62,7 @@ export {
   type DurableObjectSqliteCurrentSurfaceOptions,
   type DurableObjectSqliteEventArgs,
   type DurableObjectSqliteEventFilter,
+  type DurableObjectSqliteProjectionChange,
   type DurableObjectSqliteRebuildCurrentArgs,
   type DurableObjectSqliteRebuildCurrentResult,
 } from "./sqliteCurrent.js";

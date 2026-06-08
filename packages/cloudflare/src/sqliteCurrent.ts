@@ -136,9 +136,17 @@ export type DurableObjectSqliteCurrentEntityListItem = {
   readonly rows: number;
 };
 
+export type DurableObjectSqliteProjectionChange = {
+  readonly e: string;
+  readonly a: string;
+  readonly beforeEventIds: readonly string[];
+  readonly afterEventIds: readonly string[];
+};
+
 export type DurableObjectSqliteRebuildCurrentResult = {
   readonly events: number;
   readonly rows: number;
+  readonly changed: readonly DurableObjectSqliteProjectionChange[];
 };
 
 export type DurableObjectSqliteAppendAndRebuildResult = {
@@ -230,6 +238,57 @@ function sortRows(rows: readonly ProjectionRow[]): ProjectionRow[] {
   });
 }
 
+function projectionCoordKey(row: Pick<ProjectionRow, "e" | "a">): string {
+  return `${row.e}\u0000${row.a}`;
+}
+
+function sortedEventIds(rows: readonly ProjectionRow[]): string[] {
+  return [...new Set(rows.map((row) => row.eventId))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+}
+
+function projectionChangeSummary(
+  before: readonly ProjectionRow[],
+  after: readonly ProjectionRow[],
+): DurableObjectSqliteProjectionChange[] {
+  const beforeByCoord = new Map<string, ProjectionRow[]>();
+  const afterByCoord = new Map<string, ProjectionRow[]>();
+  for (const row of before) {
+    const group = beforeByCoord.get(projectionCoordKey(row)) ?? [];
+    group.push(row);
+    beforeByCoord.set(projectionCoordKey(row), group);
+  }
+  for (const row of after) {
+    const group = afterByCoord.get(projectionCoordKey(row)) ?? [];
+    group.push(row);
+    afterByCoord.set(projectionCoordKey(row), group);
+  }
+
+  const keys = [...new Set([...beforeByCoord.keys(), ...afterByCoord.keys()])].sort(
+    (a, b) => a.localeCompare(b),
+  );
+  const changes: DurableObjectSqliteProjectionChange[] = [];
+  for (const key of keys) {
+    const beforeRows = beforeByCoord.get(key) ?? [];
+    const afterRows = afterByCoord.get(key) ?? [];
+    const beforeEventIds = sortedEventIds(beforeRows);
+    const afterEventIds = sortedEventIds(afterRows);
+    if (beforeEventIds.join("\u0000") === afterEventIds.join("\u0000")) {
+      continue;
+    }
+    const sample = afterRows[0] ?? beforeRows[0];
+    if (sample === undefined) continue;
+    changes.push({
+      e: sample.e,
+      a: sample.a,
+      beforeEventIds,
+      afterEventIds,
+    });
+  }
+  return changes;
+}
+
 function sortEvents(events: readonly Event[]): Event[] {
   return [...events].sort((a, b) => a.id.localeCompare(b.id));
 }
@@ -275,13 +334,18 @@ export function rebuildDurableObjectSqliteCurrentEffect(
     );
     const store = yield* EventStoreService;
     const projection = yield* ProjectionStoreService;
+    const beforeRows = yield* projection.scan();
     const events = yield* store.scan();
     const rows = yield* Effect.try({
       try: () => projectionRowsFromLog(fromEvents(events), decoded.coord, cardinalityOf),
       catch: (cause) => surfaceError("rebuildCurrent", cause),
     });
     const replaced = yield* projection.replace(rows);
-    return { events: events.length, rows: replaced.rows };
+    return {
+      events: events.length,
+      rows: replaced.rows,
+      changed: projectionChangeSummary(beforeRows, rows),
+    };
   });
 }
 

@@ -37,7 +37,9 @@ implements them on Cloudflare.
   bitemporal query semantics through `@metacrdt/runtime`'s EventStore-backed
   `DatalogQueryService`, and routes current query methods through runtime's
   projection-backed `DatalogQueryService` provider over the SQLite projection
-  table.
+  table. `rebuildCurrent` and the append/lifecycle helpers report deterministic
+  projection changes as touched `(e, a)` coordinates with before/after event ids,
+  giving the future live-query transport a concrete invalidation key.
 - **WebSocket relay** — `DurableObjectWebSocketRelay` / `attachDurableObjectRelay`
   (`RelayConnection`, `RelayOptions`, `WebSocketLike`): accepts server sockets,
   answers version-vector hellos with deltas, merges client events through the
@@ -133,10 +135,11 @@ The first component-equivalent current-state surface exists over the SQLite
 runtime, and the same facade now exposes protocol event reads (`getEvent` /
 `listEvents`) plus EventStore-backed Datalog reads (`query`, `page`,
 `aggregate`, `derivedRows`) plus projection-backed current Datalog reads
-(`queryCurrent`, `pageCurrent`, `aggregateCurrent`, `derivedRowsCurrent`). The
-remaining parity plan — full historical SQL-indexed query optimization,
-collection/flow surface, alarm multiplexing, and live frontend queries over DO
-WebSockets — is
+(`queryCurrent`, `pageCurrent`, `aggregateCurrent`, `derivedRowsCurrent`) and
+deterministic `changed` summaries for current-projection rebuilds. The remaining
+parity plan — full historical SQL-indexed query optimization, incremental
+projection reconcile/live invalidation fanout, collection/flow surface, alarm
+multiplexing, and live frontend queries over DO WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth

@@ -223,7 +223,7 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       v: "Maria",
       actor: "user:1",
     });
-    await surface.appendAssert({
+    const active = await surface.appendAssert({
       e: "worker:maria",
       a: "worker.status",
       v: "active",
@@ -258,6 +258,14 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       events: 4,
       rows: 3,
     });
+    expect(winner.projection.changed).toEqual([
+      {
+        e: "worker:maria",
+        a: "worker.status",
+        beforeEventIds: [active.event.id],
+        afterEventIds: [winner.event.id],
+      },
+    ]);
 
     const status = await surface.listCurrent({
       e: "worker:maria",
@@ -427,6 +435,12 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
         rows: 5,
       },
     ]);
+
+    await expect(surface.rebuildCurrent()).resolves.toMatchObject({
+      events: 7,
+      rows: 6,
+      changed: [],
+    });
   });
 
   test("current surface rebuilds lifecycle changes into empty current state", async () => {
@@ -458,6 +472,14 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
     expect(retracted.projection).toEqual({
       events: 2,
       rows: 0,
+      changed: [
+        {
+          e: "worker:closed",
+          a: "worker.status",
+          beforeEventIds: [asserted.event.id],
+          afterEventIds: [],
+        },
+      ],
     });
     await expect(surface.listCurrent({ e: "worker:closed" })).resolves.toEqual([]);
     await expect(

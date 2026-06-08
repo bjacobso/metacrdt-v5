@@ -63,7 +63,8 @@ On open hosts the adapter is a selectable dependency.
   Effect Layers; Worker/DO WebSocket relay with optional token auth; the SQLite
   runtime seed persists events, projection rows, HLC, and seq over
   `ctx.storage.sql.exec(...)`; it now also exposes a first SQLite log/current
-  surface (append-and-rebuild, get/list events, rebuild, current rows/entities).
+  surface (append-and-rebuild, get/list events, rebuild with changed `(e, a)`
+  summaries, current rows/entities).
   Growing to a full DO + SQLite bitemporal triple store remains the active target plan
   ([cloudflare-target.md](./cloudflare-target.md)).
 - `@metacrdt/local` — browser/local-first host with localStorage / IndexedDB /
@@ -195,6 +196,11 @@ So "live queries" is something each *transport adapter* provides over the same
 invalidation key — not new substrate semantics. Postgres is attractive here
 because `LISTEN/NOTIFY` gives reactivity for free.
 
+The Cloudflare DO SQLite facade now reports the first version of this key:
+`rebuildCurrent` and append/lifecycle facade results include deterministic
+`changed` `(e, a)` coordinates with before/after event ids. Actual WebSocket
+subscription fanout remains transport work.
+
 ---
 
 ## Eventual dependency graph
@@ -265,8 +271,9 @@ a sibling target.
    *proves* the "guaranteed to converge" claim across targets.
 3. **Cloudflare Phase B/C** — the DO SQLite runtime-service substrate and first
    log/current/query surface have started, including projection-backed current
-   Datalog reads; next is the optimized historical SQL-indexed query provider
-   plus collection/flow, alarm, and live-query surface over SQLite
+   Datalog reads and current-projection change summaries; next is the optimized
+   historical SQL-indexed query provider plus collection/flow, alarm, and
+   live-query surface over SQLite
    ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal
    enough repeated DDL/query-generation logic beyond the current Node lifecycle

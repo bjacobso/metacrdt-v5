@@ -203,11 +203,15 @@ same DO SQLite facade. Goal 118 adds the default EventStore-backed bitemporal
 Datalog query surface (`query`, `page`, `aggregate`, `derivedRows`) to that
 facade. Goal 119 adds the runtime projection-backed current Datalog provider and
 exposes it on the same DO SQLite facade as `queryCurrent`, `pageCurrent`,
-`aggregateCurrent`, and `derivedRowsCurrent`. The next active goal should be
-chosen from the remaining TODO candidates:
+`aggregateCurrent`, and `derivedRowsCurrent`. Goal 120 makes the same DO SQLite
+current facade report deterministic projection invalidation summaries: rebuild
+and append/lifecycle results now include touched `(e, a)` coordinates with
+before/after event ids. The next active goal should be chosen from the remaining
+TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
-remaining Cloudflare DO+SQLite historical SQL-indexed-query/operational parity,
+remaining Cloudflare DO+SQLite historical SQL-indexed-query/operational parity
+(incremental reconcile, collection/flow, alarms, live fanout),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9425,6 +9429,51 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
 
 ---
 
+## Goal 120 — Cloudflare DO SQLite Projection Invalidation Summaries
+
+**Status:** shipped.
+
+**Objective:** make Cloudflare DO SQLite writes and rebuilds describe which
+current-projection coordinates changed, so the future live-query transport has a
+stable invalidation key without adding WebSocket subscriptions yet.
+
+### What Shipped
+
+- Added `DurableObjectSqliteProjectionChange`:
+  - `e`;
+  - `a`;
+  - `beforeEventIds`;
+  - `afterEventIds`.
+- Extended `DurableObjectSqliteRebuildCurrentResult` with `changed`.
+- `rebuildCurrent` now snapshots the SQLite projection rows before rebuild,
+  rebuilds current rows from the protocol event log through the shared runtime /
+  core fold, replaces the projection store, and returns a deterministic diff of
+  changed `(e, a)` coordinates.
+- `appendAssert` and `appendLifecycle` inherit the same projection result because
+  the DO SQLite facade remains append-and-rebuild for this first correct surface.
+- Exported the new change-summary type from `@metacrdt/cloudflare`.
+- Updated Cloudflare target docs, target model docs, README, PLAN, and TODO to
+  distinguish shipped invalidation reporting from still-ahead live-query fanout.
+
+### Non-Goals
+
+- Do not add Durable Object WebSocket live-query subscriptions yet.
+- Do not replace append-and-rebuild with incremental projection maintenance in
+  this slice.
+- Do not implement the historical SQL-indexed bitemporal query provider.
+- Do not add collection/flow, alarms, or deployment wiring.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare`
+- `npm test --workspace @metacrdt/cloudflare`
+- Cloudflare tests prove:
+  - cardinality-one replacement reports the previous and winning event ids;
+  - lifecycle retraction reports coordinate removal;
+  - no-op rebuild reports `changed: []`.
+
+---
+
 ## Goal 119 — Projection-Backed Current Datalog Provider
 
 **Status:** shipped.
@@ -9983,6 +10032,7 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Cloudflare Durable Object SQLite log/current/query surface.
 - [x] Projection-backed current Datalog provider for runtime + Cloudflare DO
   SQLite facade.
+- [x] Cloudflare DO SQLite current-projection invalidation summaries.
 - [x] `@metacrdt/local` browser/local-first package over localStorage +
   BroadcastChannel.
 - [x] IndexedDB-compatible async local persistence adapter.
