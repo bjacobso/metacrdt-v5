@@ -108,10 +108,11 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsdown src/*.ts --root src --format esm --dts --clean --platform node --target esnext --unbundle",
+    "build": "tsdown --config ../../tsdown.config.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pack:check": "npm pack --dry-run --json"
   },
   "dependencies": {
     "effect": "^3.21.3"

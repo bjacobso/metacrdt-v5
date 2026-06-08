@@ -32,10 +32,11 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsdown src/index.ts src/component/convex.config.ts src/component/schema.ts src/component/protocol.ts src/component/log.ts src/component/_generated/component.ts --root src --format esm --dts --clean --platform neutral --target es2020 --unbundle",
+    "build": "tsdown --config ../../tsdown.config.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pack:check": "npm pack --dry-run --json"
   },
   "dependencies": {
     "@metacrdt/core": "0.1.0",

@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 100 (Backend Auth Config Seam) has
+**Current goal:** Goal 107 (Central Package Build Config) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -131,7 +131,11 @@ Goal 99 adds Turbo-orchestrated package builds and tsdown/Rolldown package
 emit: all `@metacrdt/*` package exports now resolve to generated `dist` JS and
 declarations, while the React application remains a Vite app build. Package
 payloads are `dist`-only (plus package metadata and the Cloudflare Wrangler
-example), and dry-run npm packs verify no `src` or test files ship. Goal 100
+example), and dry-run npm packs verify no `src` or test files ship. Goal 107
+hardens that package build seam: every package now uses a shared root
+`tsdown.config.ts`, Turbo tracks that config as a global dependency, and
+`npm run pack:packages` dry-runs all workspace package payloads as a Turbo task.
+Goal 100
 adds a fail-closed `convex/auth.config.ts`: the backend now has the required auth
 config file but accepts no JWT providers until a production provider is chosen
 and the config is filled with that issuer/audience. Goal 101 clarifies the
@@ -489,10 +493,14 @@ arguments.
     with package dependency ordering.
   - tsdown (powered by Rolldown) emits ESM JavaScript and declaration files for
     every `@metacrdt/*` package.
+  - package `build` scripts share the root `tsdown.config.ts`; package-specific
+    entries and target choices live in one place instead of duplicated CLI flags.
   - package exports point at `dist` instead of raw `src/*.ts`.
   - package payloads are `dist`-only; npm pack dry-runs verify no source or test
     files are packed, with `wrangler.example.toml` retained for
     `@metacrdt/cloudflare`.
+  - Turbo also owns `pack:check`, surfaced as `npm run pack:packages`, so package
+    payload validation is part of the same workspace graph.
   - Vite remains the frontend application build (`npm run build:app`), and root
     `npm run build` runs packages before the app.
 - `applyConfig` now behaves as a true section-scoped reconciler:

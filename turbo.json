@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["tsdown.config.ts", "package-lock.json"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -10,6 +11,10 @@
       "outputs": []
     },
     "test": {
+      "dependsOn": ["build"],
+      "outputs": []
+    },
+    "pack:check": {
       "dependsOn": ["build"],
       "outputs": []
     }

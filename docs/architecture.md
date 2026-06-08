@@ -116,12 +116,17 @@ not invented:
 - Packages are built as packages. Turbo orchestrates workspace
   `build`/`typecheck`/`test` tasks, and tsdown (powered by Rolldown) emits ESM
   JavaScript plus declarations into package-local `dist/` directories.
+- The root [`tsdown.config.ts`](../tsdown.config.ts) is the package build
+  contract: most packages use the neutral ES2020 `src/index.ts` entry, while
+  outliers such as `@metacrdt/forma` and `@metacrdt/convex` declare their entry
+  surfaces there instead of copy-pasting long CLI flags in every package.
 - Package public surfaces resolve through `dist` exports, not raw TypeScript
   source. This keeps the package graph honest for downstream consumers while
   preserving `src/` as the authored implementation.
 - Package payloads are intentionally `dist`-only, plus package metadata and
   target-specific examples such as `@metacrdt/cloudflare`'s
-  `wrangler.example.toml`.
+  `wrangler.example.toml`; `npm run pack:packages` dry-runs those payloads
+  through Turbo.
 - The product/reference app remains a Vite application. Vite is not the package
   builder; root `npm run build` composes package builds first, then the app.
 

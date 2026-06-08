@@ -42,6 +42,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
   `dist`-only (Cloudflare keeps `wrangler.example.toml`); Vite remains the app
   builder.
+- [x] **Central package-build config** — root `tsdown.config.ts` owns package
+  entries/targets, package `build` scripts call it, Turbo treats it as a global
+  dependency, and `npm run pack:packages` runs dry-run payload checks as a Turbo
+  task.
 - [x] **`@metacrdt/core` extracted** — `packages/core`, pure & dependency-free
   (sha256, base32, canonical encoding, HLC, Event + content addressing, the `≺`
   order, G-Set log/merge, the bitemporal fold; SPEC §4–5). 46 tests: CRDT laws,
@@ -475,6 +479,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — package build tooling
+- [x] **Goal 107 shipped:** centralized package build config. Added root
+  `tsdown.config.ts`, moved all package build scripts to
+  `tsdown --config ../../tsdown.config.ts`, made Turbo treat the config and
+  lockfile as global dependencies, and added `pack:check` / `npm run
+  pack:packages` so payload dry-runs are first-class Turbo tasks. Policy:
+  tsdown/Rolldown for packages, Vite for the app.
 - [x] **Goal 99 shipped:** Turbo + tsdown/Rolldown package builds. Added
   `turbo.json`, root `build:packages` / `typecheck:packages` / `test:packages`
   scripts, and per-package `build` scripts. Root `npm run build` now builds
