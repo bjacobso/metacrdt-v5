@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 30 (component-owned Worker status actions) has shipped. The
+**Current goal:** Goal 31 (component-owned configured action runner) has shipped. The
 next active goal should be chosen from the remaining TODO candidates: full app
 write authorization, live Cloudflare deployment/auth, or migrating more of the
 reference runtime onto component-owned state.
@@ -78,7 +78,7 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 96 tests at last verification.
+- Convex backend tests are green: 98 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -115,6 +115,10 @@ arguments.
     protocol log, current projection/entity reads, typed entity lists, rebuild,
     bounded component-owned entity creation, and component-owned Worker status
     actions
+  - a component-owned configured-action runner that loads host action definitions,
+    validates `appliesTo` against component-owned current `type` facts, resolves
+    action args through shared action-definition helpers, resolves host schema
+    cardinality, and writes action asserts into the component-owned log
   - an explicit Confect sidecar warning/helper documenting the manual-mount
     lesson from Goal 2
   - package-local tests for deterministic event reconstruction, legacy fallback
@@ -211,6 +215,14 @@ arguments.
     the component-owned protocol log with `cardinality: "one"`
   - `/component/e/:id` surfaces Reactivate / Terminate buttons for
     component-owned Worker entities
+- Component-owned configured actions exist:
+  - `convex/lib/actionDefs.ts` centralizes action definition loading and
+    placeholder/field resolution for both host-owned and component-owned action
+    runners
+  - `api.metacrdtComponent.runOwnedAction` runs configured action asserts against
+    component-owned entities
+  - `/component/e/:id` now renders configured actions for the entity's primary
+    type instead of hard-coded Worker status buttons
 - Config history/diff exists:
   - `configHistory.currentManifest` reconstructs the current owned-artifact
     manifest from `config:default`
@@ -2723,6 +2735,90 @@ src/pages/ComponentEntity.tsx
 
 ---
 
+## Goal 31 — Component-Owned Configured Action Runner
+
+**Status:** shipped as the first generic component-owned business-action bridge.
+
+**Objective:** stop hard-coding Worker status actions in the component-owned
+detail page and reuse the configured action registry. Host-owned action
+definitions now drive component-owned state changes through a host wrapper that
+adapts schema/cardinality and auth into the component log.
+
+### Scope
+
+Shared action-definition helper:
+
+```text
+convex/lib/actionDefs.ts
+  loadActionDef / resolveActionValue / validators
+```
+
+Reference app wrapper:
+
+```text
+convex/metacrdtComponent.ts
+  runOwnedAction({ action, entity, args })
+```
+
+Frontend:
+
+```text
+src/pages/ComponentEntity.tsx
+  Configured action cards for the component-owned entity's primary type
+```
+
+### Acceptance Criteria
+
+- Host-owned `api.actions.runAction` and component-owned
+  `api.metacrdtComponent.runOwnedAction` share action definition loading and arg
+  placeholder semantics.
+- `runOwnedAction`:
+  - derives actor identity server-side;
+  - loads the configured action by name;
+  - rejects unknown actions;
+  - rejects actions that open forms for now, before writing partial asserts;
+  - reads the component-owned current entity and validates the action's
+    `appliesTo` type against current `type` facts;
+  - resolves `$arg.<name>` placeholders and select-field validation;
+  - resolves host schema cardinality for each asserted attribute;
+  - appends configured action asserts into component-owned state through
+    `components.metacrdt.log.appendAssert`.
+- `/component/e/:id`:
+  - queries `api.actions.actionsForType` for the component-owned entity's primary
+    type;
+  - renders configured action labels, asserted facts, and input fields;
+  - writes through `runOwnedAction`, not through component functions directly;
+  - no longer relies on hard-coded Worker status buttons.
+
+### Non-Goals
+
+- Do not support component-owned collection/form actions yet. Actions with
+  `opensForm` are visible but rejected by `runOwnedAction` until component-owned
+  collection state exists.
+- Do not migrate host-owned compliance/rules onto component-owned state yet.
+- Do not remove the narrower `setOwnedWorkerStatus` wrapper yet; it remains a
+  simple direct mutation path from Goal 30.
+
+### Verification
+
+- `npx vitest run convex/metacrdtComponent.test.ts` passed (12 tests).
+- `npm test` passed (16 backend test files, 98 tests).
+- `npm run test:core` passed (46 tests).
+- `npm run test:convex-package` passed (31 tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex dev --once` deployed backend functions to `chatty-hare-94`.
+- `npx @convex-dev/static-hosting upload` deployed the frontend to
+  `https://chatty-hare-94.convex.site`.
+- Live smoke on
+  `/component/e/worker%3Aava-reed-mq4ph0h7`: the page rendered configured
+  `Reactivate worker` / `Terminate worker` actions from the host registry;
+  `Terminate worker` changed component-owned `worker.status` to `terminated`;
+  `Reactivate worker` changed it back to `active`.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -2758,6 +2854,7 @@ These remain valuable, but they should not interrupt the current goal.
   `/component/e/:id`).
 - [x] Component-owned typed entity browser/list surface.
 - [x] Component-owned Worker status mutation/action path.
+- [x] Component-owned configured action runner.
 - [ ] Migrate more reference runtime business logic onto component-owned state.
 
 ### Auth / Privacy

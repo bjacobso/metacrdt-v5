@@ -1,9 +1,9 @@
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { ArrowLeft } from "lucide-react";
-import { Button, Card, CardHeader, Chip, Mono, shortId } from "../ui";
-import { useState } from "react";
+import { Button, Card, CardHeader, Chip, Input, Mono, shortId } from "../ui";
 
 function val(v: unknown): string {
   return typeof v === "string" ? v : JSON.stringify(v);
@@ -14,7 +14,8 @@ export default function ComponentEntity() {
   const id = decodeURIComponent(raw ?? "");
   const navigate = useNavigate();
   const [busy, setBusy] = useState<string | null>(null);
-  const setWorkerStatus = useMutation(api.metacrdtComponent.setOwnedWorkerStatus);
+  const [actionArgs, setActionArgs] = useState<Record<string, Record<string, unknown>>>({});
+  const runOwnedAction = useMutation(api.metacrdtComponent.runOwnedAction);
   const entity = useQuery(api.metacrdtComponent.getOwnedCurrentEntity, {
     e: id,
   });
@@ -24,23 +25,42 @@ export default function ComponentEntity() {
   });
   const types =
     entity?.attributes.find((attr) => attr.a === "type")?.values.map(String) ?? [];
+  const primaryType = types[0];
+  const actions = useQuery(
+    api.actions.actionsForType,
+    primaryType ? { type: primaryType } : "skip",
+  );
   const name =
     entity?.attributes.find((attr) => attr.a === "name")?.values[0] ?? undefined;
-  const status =
-    entity?.attributes.find((attr) => attr.a === "worker.status")?.values[0] ??
-    undefined;
-  const isWorker = types.includes("Worker");
 
-  async function setStatus(status: "active" | "terminated") {
-    setBusy(`status:${status}`);
+  function setActionArg(action: string, field: string, value: unknown) {
+    setActionArgs((prev) => ({
+      ...prev,
+      [action]: {
+        ...(prev[action] ?? {}),
+        [field]: value,
+      },
+    }));
+  }
+
+  async function runConfiguredAction(action: NonNullable<typeof actions>[number]) {
+    setBusy(`action:${action.name}`);
     try {
-      await setWorkerStatus({ e: id, status });
+      await runOwnedAction({
+        action: action.name,
+        entity: id,
+        args: actionArgs[action.name] ?? {},
+      });
     } finally {
       setBusy(null);
     }
   }
 
-  if (entity === undefined || events === undefined) {
+  if (
+    entity === undefined ||
+    events === undefined ||
+    (primaryType !== undefined && actions === undefined)
+  ) {
     return <p className="text-[13px] text-muted">Loading…</p>;
   }
 
@@ -96,35 +116,100 @@ export default function ComponentEntity() {
         )}
       </Card>
 
-      {isWorker && (
+      {(actions ?? []).length > 0 && (
         <Card>
-          <CardHeader title="Component actions" hint="host wrapper writes" />
-          <div className="flex flex-wrap items-center justify-between gap-3 p-5 text-[13px]">
-            <div>
-              <div className="font-medium text-ink">Worker status</div>
-              <div className="text-muted">
-                current:{" "}
-                <span className="font-medium text-ink">
-                  {status === undefined ? "unknown" : val(status)}
-                </span>
+          <CardHeader title="Component actions" hint="configured host actions" />
+          <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">
+            {(actions ?? []).map((action) => (
+              <div
+                key={action.name}
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-ds border border-line px-4 py-3 text-[13px]"
+              >
+                <div className="min-w-0">
+                  <div className="font-medium text-ink">
+                    {action.label ?? action.name}
+                  </div>
+                  <div className="truncate text-[12px] text-muted">
+                    {Object.entries(action.asserts)
+                      .map(([k, v]) => `${k} = ${val(v)}`)
+                      .join(", ")}
+                    {action.opensForm ? " · opens form in host runtime" : ""}
+                  </div>
+                  {action.fields.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {action.fields.map((field) => {
+                        const current =
+                          actionArgs[action.name]?.[field.name] ??
+                          field.defaultValue ??
+                          "";
+                        return (
+                          <label
+                            key={field.name}
+                            className="text-[11px] font-medium uppercase text-muted"
+                          >
+                            {field.label ?? field.name}
+                            {field.type === "select" ? (
+                              <select
+                                value={String(current)}
+                                onChange={(ev) =>
+                                  setActionArg(
+                                    action.name,
+                                    field.name,
+                                    ev.target.value,
+                                  )
+                                }
+                                className="mt-1 block w-40 rounded-md border border-line bg-surface px-2 py-1 text-[12px] text-ink"
+                              >
+                                <option value="">-</option>
+                                {(field.options ?? []).map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : field.type === "boolean" ? (
+                              <input
+                                type="checkbox"
+                                checked={Boolean(current)}
+                                onChange={(ev) =>
+                                  setActionArg(
+                                    action.name,
+                                    field.name,
+                                    ev.target.checked,
+                                  )
+                                }
+                                className="mt-2 block"
+                              />
+                            ) : (
+                              <Input
+                                value={String(current)}
+                                type={field.type === "number" ? "number" : "text"}
+                                onChange={(ev) =>
+                                  setActionArg(
+                                    action.name,
+                                    field.name,
+                                    field.type === "number"
+                                      ? Number(ev.target.value)
+                                      : ev.target.value,
+                                  )
+                                }
+                                className="mt-1 w-40"
+                              />
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  disabled={busy === `action:${action.name}`}
+                  onClick={() => runConfiguredAction(action)}
+                >
+                  Run
+                </Button>
               </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="reuse"
-                disabled={busy !== null || status === "active"}
-                onClick={() => setStatus("active")}
-              >
-                Reactivate
-              </Button>
-              <Button
-                variant="collect"
-                disabled={busy !== null || status === "terminated"}
-                onClick={() => setStatus("terminated")}
-              >
-                Terminate
-              </Button>
-            </div>
+            ))}
           </div>
         </Card>
       )}

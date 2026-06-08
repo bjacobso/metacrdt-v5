@@ -105,6 +105,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   component-owned `worker.status` through `api.metacrdtComponent.setOwnedWorkerStatus`,
   preserving component-owned cardinality-one reconciliation and append-only event
   history.
+- [x] **Component-owned configured action runner** — component-owned detail pages
+  now render configured host actions by type and run their assert semantics
+  through `api.metacrdtComponent.runOwnedAction`, with host schema cardinality
+  adapted into component-owned writes.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
@@ -327,6 +331,22 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   the current fold and append-only event log through the host wrapper.
 - [x] Wrapper test proves status current-state winner and protocol history
   (`assert`, `assert`, `retract`).
+
+### 2026-06-07 — component-owned configured action runner
+- [x] **Shared action-definition semantics.** `convex/lib/actionDefs.ts` now owns
+  action id construction, validators, action loading, and `$arg.*` placeholder
+  resolution for both host-owned `api.actions.runAction` and component-owned
+  `api.metacrdtComponent.runOwnedAction`.
+- [x] **Configured actions can write component-owned state.** `runOwnedAction`
+  derives actor context server-side, validates the component-owned entity's
+  current `type` facts against `appliesTo`, resolves action args, adapts host
+  schema cardinality, and appends action asserts into the component-owned log.
+- [x] **Component detail uses configured actions instead of hard-coded Worker
+  buttons.** `/component/e/:id` queries `actionsForType`, renders labels/asserts
+  and fields, and writes through the host wrapper. Live smoke ran configured
+  Terminate/Reactivate against `worker:ava-reed-mq4ph0h7`.
+- [x] Tests cover arg resolution, cardinality-one replacement, and `appliesTo`
+  enforcement.
 
 ### 2026-06-07 — @metacrdt/runtime p2p DataChannel transport
 - [x] **Added structural p2p transport.** `packages/runtime/src/p2p.ts` defines

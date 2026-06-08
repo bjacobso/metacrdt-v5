@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import { components } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
+import { loadActionDef, resolveActionValue } from "./lib/actionDefs";
+import { attrId, BUILTIN_CARDINALITY } from "./lib/meta";
 
 const hlcValidator = v.object({
   pt: v.number(),
@@ -91,6 +93,11 @@ const createOwnedEntityResultValidator = v.object({
   asserted: v.array(appendOwnedResultValidator),
 });
 
+const runOwnedActionResultValidator = v.object({
+  action: v.string(),
+  asserted: v.array(appendOwnedResultValidator),
+});
+
 const ownedCurrentFactValidator = v.object({
   factId: v.string(),
   e: v.string(),
@@ -142,6 +149,18 @@ async function actorContext(ctx: MutationCtx) {
     actorId: identity?.tokenIdentifier ?? "anonymous",
     actorType: "user" as const,
   };
+}
+
+async function hostCardinalityOf(
+  ctx: MutationCtx,
+  a: string,
+): Promise<"one" | "many"> {
+  const row = await ctx.db
+    .query("currentFacts")
+    .withIndex("by_e_a", (q) => q.eq("e", attrId(a)).eq("a", "cardinality"))
+    .first();
+  if (row) return row.v === "one" ? "one" : "many";
+  return BUILTIN_CARDINALITY[a] ?? "many";
 }
 
 function withoutUndefined<T extends Record<string, unknown>>(obj: T): T {
@@ -337,6 +356,63 @@ export const setOwnedWorkerStatus = mutation({
         cardinality: "one" as const,
       }),
     );
+  },
+});
+
+export const runOwnedAction = mutation({
+  args: {
+    action: v.string(),
+    entity: v.string(),
+    args: v.optional(v.record(v.string(), v.any())),
+  },
+  returns: runOwnedActionResultValidator,
+  handler: async (ctx, args) => {
+    const def = await loadActionDef(ctx, args.action);
+    if (!def) throw new Error(`unknown action: ${args.action}`);
+    if (def.opensForm !== undefined) {
+      throw new Error(
+        `component-owned action ${args.action} opens a form; component collection is not supported yet`,
+      );
+    }
+
+    const entity = await ctx.runQuery(components.metacrdt.log.getCurrentEntity, {
+      e: args.entity,
+    });
+    if (entity === null) {
+      throw new Error(`component-owned entity ${args.entity} not found`);
+    }
+    const types =
+      entity.attributes
+        .find((attr) => attr.a === "type")
+        ?.values.map((value) => String(value)) ?? [];
+    if (def.appliesTo !== undefined && !types.includes(def.appliesTo)) {
+      throw new Error(
+        `action ${args.action} applies to ${def.appliesTo}, not ${types.join(", ") || "(untyped)"}`,
+      );
+    }
+
+    const actor = await actorContext(ctx);
+    const actionArgs = args.args ?? {};
+    const asserted = [];
+    for (const [a, raw] of Object.entries(def.asserts)) {
+      const value = resolveActionValue(raw, args.entity, def.fields, actionArgs);
+      asserted.push(
+        await ctx.runMutation(
+          components.metacrdt.log.appendAssert,
+          withoutUndefined({
+            ...actor,
+            e: args.entity,
+            a,
+            v: value,
+            reason: `component-owned action ${args.action} on ${args.entity}`,
+            source: "metacrdtComponent.runOwnedAction",
+            cardinality: await hostCardinalityOf(ctx, a),
+          }),
+        ),
+      );
+    }
+
+    return { action: args.action, asserted };
   },
 });
 

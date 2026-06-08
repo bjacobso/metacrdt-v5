@@ -261,6 +261,96 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     ]);
   });
 
+  test("runs configured actions against component-owned entities", async () => {
+    const t = convexTest(schema, modules);
+    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+
+    await t.mutation(api.attributes.defineAttribute, {
+      name: "worker.status",
+      valueType: "string",
+      cardinality: "one",
+    });
+    await t.mutation(api.actions.defineAction, {
+      name: "owned_set_status",
+      label: "Set owned worker status",
+      appliesTo: "Worker",
+      fields: [
+        {
+          name: "status",
+          label: "Status",
+          type: "select",
+          options: ["active", "terminated"],
+        },
+      ],
+      asserts: { "worker.status": "$arg.status" },
+    });
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-action:worker",
+      type: "Worker",
+      name: "Action Worker",
+      attributes: [{ a: "worker.status", value: "active" }],
+    });
+
+    const result = await t.mutation(api.metacrdtComponent.runOwnedAction, {
+      action: "owned_set_status",
+      entity: "component-action:worker",
+      args: { status: "terminated" },
+    });
+    expect(result.action).toBe("owned_set_status");
+    expect(result.asserted).toHaveLength(1);
+
+    const entity = await t.query(api.metacrdtComponent.getOwnedCurrentEntity, {
+      e: "component-action:worker",
+    });
+    expect(entity?.attributes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          a: "worker.status",
+          values: ["terminated"],
+          facts: [
+            expect.objectContaining({
+              assertEventId: result.asserted[0].eventId,
+            }),
+          ],
+        }),
+      ]),
+    );
+
+    const events = await t.query(api.metacrdtComponent.listOwnedEvents, {
+      e: "component-action:worker",
+      a: "worker.status",
+      limit: 10,
+    });
+    expect(events.map((event) => event.kind).sort()).toEqual([
+      "assert",
+      "assert",
+      "retract",
+    ]);
+  });
+
+  test("component-owned actions enforce appliesTo", async () => {
+    const t = convexTest(schema, modules);
+    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+
+    await t.mutation(api.actions.defineAction, {
+      name: "owned_worker_only",
+      appliesTo: "Worker",
+      asserts: { "worker.status": "terminated" },
+    });
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-action:client",
+      type: "Client",
+      name: "Action Client",
+    });
+
+    await expect(
+      t.mutation(api.metacrdtComponent.runOwnedAction, {
+        action: "owned_worker_only",
+        entity: "component-action:client",
+      }),
+    ).rejects.toThrow(/applies to Worker/);
+  });
+
   test("component-owned missing current entity returns null", async () => {
     const t = convexTest(schema, modules);
     t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
