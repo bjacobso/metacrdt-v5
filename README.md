@@ -177,6 +177,9 @@ Built today:
 
 - append-only bitemporal fact log
 - rebuildable projections (`facts`, `currentFacts`, `derivedFacts`)
+- bounded host entity reads folded directly from protocol-shaped `factEvents`
+  (`api.facts.entityFromEventLog`) as the proof path for retiring current-state
+  projections
 - Datalog query engine with joins, comparisons, computed arithmetic/string
   predicates, negation, aggregation, cursor-paged result APIs, and materialized
   transitive closure

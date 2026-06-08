@@ -159,6 +159,80 @@ describe("cardinality-one", () => {
     const entity = await t.query(api.facts.getEntity, { e: "e:1" });
     expect((entity.attributes["tag"] as string[]).sort()).toEqual(["a", "b"]);
   });
+
+  test("event-log entity fold matches the current projection", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await t.mutation(api.attributes.defineAttribute, {
+      name: "status.fromLog",
+      valueType: "string",
+      cardinality: "one",
+    });
+    await t.mutation(api.facts.assertFact, {
+      e: "e:from-log",
+      a: "status.fromLog",
+      value: "draft",
+    });
+    await t.mutation(api.facts.assertFact, {
+      e: "e:from-log",
+      a: "status.fromLog",
+      value: "active",
+    });
+    await t.mutation(api.facts.assertFact, {
+      e: "e:from-log",
+      a: "tag",
+      value: "north",
+    });
+    await t.mutation(api.facts.assertFact, {
+      e: "e:from-log",
+      a: "tag",
+      value: "priority",
+    });
+
+    const projected = await t.query(api.facts.getEntity, { e: "e:from-log" });
+    const fromLog = await t.query(api.facts.entityFromEventLog, {
+      e: "e:from-log",
+    });
+
+    expect(fromLog.skippedLegacyEvents).toBe(0);
+    expect(fromLog.attributes["status.fromLog"]).toEqual(
+      projected.attributes["status.fromLog"],
+    );
+    expect((fromLog.attributes.tag as string[]).sort()).toEqual(
+      (projected.attributes.tag as string[]).sort(),
+    );
+  });
+
+  test("event-log entity fold survives a corrupted currentFacts projection", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await t.mutation(api.attributes.defineAttribute, {
+      name: "status.fromLogOnly",
+      valueType: "string",
+      cardinality: "one",
+    });
+    await t.mutation(api.facts.assertFact, {
+      e: "e:from-log-only",
+      a: "status.fromLogOnly",
+      value: "current",
+    });
+
+    await t.run(async (ctx) => {
+      const rows = await ctx.db
+        .query("currentFacts")
+        .withIndex("by_e", (q) => q.eq("e", "e:from-log-only"))
+        .collect();
+      for (const row of rows) await ctx.db.delete(row._id);
+    });
+
+    const projected = await t.query(api.facts.getEntity, {
+      e: "e:from-log-only",
+    });
+    const fromLog = await t.query(api.facts.entityFromEventLog, {
+      e: "e:from-log-only",
+    });
+
+    expect(projected.attributes["status.fromLogOnly"]).toBeUndefined();
+    expect(fromLog.attributes["status.fromLogOnly"]).toEqual(["current"]);
+  });
 });
 
 describe("event log is append-only", () => {

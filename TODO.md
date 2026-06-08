@@ -56,8 +56,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `eventId` + HLC + target/causal metadata, `facts.assertEventId` stores the core
   assert id, `correctFact` writes tombstone+assert protocol events, and
   cardinality-one current projection reconciles by `≺`-max; `rebuildProjections`
-  now prefers HLC/eventId ordering while retaining legacy fallback. Remaining:
-  continue toward retiring the hand-maintained `facts` projection.
+  now prefers HLC/eventId ordering while retaining legacy fallback.
+  `api.facts.entityFromEventLog` now folds a single host entity directly from
+  protocol-shaped `factEvents` + schema cardinality events. Remaining: continue
+  toward retiring the hand-maintained `facts` projection for broader query/rule
+  reads.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -298,8 +301,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Guided demo tour — route-aware shell walkthrough across Overview,
   Entities, Compliance, Flows, Data model, and Transaction log with one-time
   localStorage dismissal and a restartable header button.
-- [ ] Wire the remaining decorative bits from the mockup: "New entity",
-  "Describe an account".
+- [ ] Wire the remaining decorative bit from the mockup: "Describe an account".
 - [ ] Action/config diff-history polish.
 - [ ] Root-cause the `staticHosting:getCurrentDeployment` error over the WS path
   (works over HTTP; currently isolated behind an error boundary).
@@ -314,6 +316,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — host event-log entity fold
+- [x] **Goal 50 shipped:** `api.facts.entityFromEventLog` reconstructs one host
+  entity directly from protocol-shaped `factEvents` using `@metacrdt/core.entity`
+  instead of trusting `currentFacts`.
+- [x] **Schema cardinality comes from the log.** The query fetches
+  schema-as-facts cardinality rows for the attributes it sees and folds those
+  into the same core `Log`, so cardinality-one still resolves by `≺` at read
+  time.
+- [x] **Projection-corruption proof.** Tests prove the event-log fold matches
+  `getEntity` for normal writes and still reconstructs state after the
+  `currentFacts` projection is wiped for that entity.
 
 ### 2026-06-08 — guided demo tour
 - [x] **Goal 49 shipped:** the app shell now has a route-aware guided tour that

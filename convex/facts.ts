@@ -19,7 +19,19 @@ import {
   tombstoneEvent,
   type ProtocolEventPatch,
 } from "./lib/coreEvent";
-import { type Event, type Value } from "@metacrdt/core";
+import {
+  entity as coreEntity,
+  fromEvents,
+  valueOf as coreValueOf,
+  type Event,
+  type Log,
+  type Value,
+} from "@metacrdt/core";
+import {
+  protocolEventFromRows,
+  type ConvexTransactionRow,
+  type ProtocolFactEventRow,
+} from "@metacrdt/convex";
 
 // --- internal helpers (exported for the schema-as-facts module) -------------
 
@@ -49,6 +61,35 @@ async function getTx(
   const tx = await ctx.db.get(txId);
   if (!tx) throw new Error(`transaction ${txId} not found`);
   return tx;
+}
+
+function txForCore(tx: Doc<"transactions">): ConvexTransactionRow {
+  return {
+    _creationTime: tx._creationTime,
+    actorId: tx.actorId,
+    actorType: tx.actorType,
+    txTime: tx.txTime,
+    reason: tx.reason,
+  };
+}
+
+function rowForCore(row: Doc<"factEvents">): ProtocolFactEventRow {
+  return {
+    txTime: row.txTime,
+    eventId: row.eventId,
+    hlc: row.hlc,
+    replicaId: row.replicaId,
+    seq: row.seq,
+    targetEventId: row.targetEventId,
+    causalRefs: row.causalRefs,
+    kind: row.kind,
+    e: row.e,
+    a: row.a,
+    v: row.v,
+    validFrom: row.validFrom,
+    validTo: row.validTo,
+    reason: row.reason,
+  };
 }
 
 function targetEventId(fact: Doc<"facts">): string {
@@ -666,6 +707,116 @@ export const getEntity = query({
       (attributes[row.a] ??= []).push(row.v);
     }
     return { id: args.e, ...(await redactAttributeMap(ctx, args.e, attributes)) };
+  },
+});
+
+async function protocolEventsForRows(
+  ctx: QueryCtx,
+  rows: Doc<"factEvents">[],
+): Promise<{ events: Event[]; skipped: number }> {
+  const events: Event[] = [];
+  let skipped = 0;
+  for (const row of rows) {
+    const tx = await ctx.db.get(row.txId);
+    if (tx === null) {
+      skipped++;
+      continue;
+    }
+    const ev = protocolEventFromRows(rowForCore(row), txForCore(tx));
+    if (ev === null) {
+      skipped++;
+      continue;
+    }
+    events.push(ev);
+  }
+  return { events, skipped };
+}
+
+async function eventsForEntity(
+  ctx: QueryCtx,
+  e: string,
+  limit: number,
+): Promise<Doc<"factEvents">[]> {
+  return await ctx.db
+    .query("factEvents")
+    .withIndex("by_e", (q) => q.eq("e", e))
+    .take(limit);
+}
+
+async function cardinalityEventsForAttributes(
+  ctx: QueryCtx,
+  attrs: Iterable<string>,
+  perAttributeLimit: number,
+): Promise<Doc<"factEvents">[]> {
+  const out: Doc<"factEvents">[] = [];
+  for (const a of attrs) {
+    const rows = await ctx.db
+      .query("factEvents")
+      .withIndex("by_e_a_tx", (q) =>
+        q.eq("e", attrId(a)).eq("a", "cardinality"),
+      )
+      .take(perAttributeLimit);
+    out.push(...rows);
+  }
+  return out;
+}
+
+function cardinalityFromLog(log: Log, coord: { txTime: number; validTime: number }) {
+  return (a: string) => {
+    const v = coreValueOf(attrId(a), "cardinality", coord, log, () => "one");
+    if (v === "one" || v === "many") return v;
+    return BUILTIN_CARDINALITY[a] ?? "many";
+  };
+}
+
+/**
+ * Fold one entity directly from the append-only protocol event log. This is a
+ * bounded proof/read-model surface for retiring the hand-maintained
+ * `currentFacts` projection: it ignores legacy rows that cannot reconstruct a
+ * core event, folds current value(s) with @metacrdt/core, and derives declared
+ * cardinality from schema-as-facts in the same log.
+ */
+export const entityFromEventLog = query({
+  args: {
+    e: v.string(),
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+    includeTombstoned: v.optional(v.boolean()),
+    includeRetracted: v.optional(v.boolean()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const limit = Math.min(args.limit ?? 2000, 5000);
+    const entityRows = await eventsForEntity(ctx, args.e, limit);
+    const entityProtocol = await protocolEventsForRows(ctx, entityRows);
+    const attrs = new Set<string>();
+    for (const ev of entityProtocol.events) {
+      if (ev.kind === "assert" && ev.a !== undefined) attrs.add(ev.a);
+    }
+    const schemaRows = await cardinalityEventsForAttributes(ctx, attrs, 100);
+    const schemaProtocol = await protocolEventsForRows(ctx, schemaRows);
+    const log = fromEvents([...entityProtocol.events, ...schemaProtocol.events]);
+    const folded = coreEntity(args.e, coord, log, cardinalityFromLog(log, coord), {
+      includeRetracted: args.includeRetracted,
+      includeTombstoned: args.includeTombstoned,
+    });
+
+    const attributes: Record<string, unknown[]> = {};
+    for (const [a, evOrEvents] of Object.entries(folded)) {
+      const evs = Array.isArray(evOrEvents) ? evOrEvents : [evOrEvents];
+      attributes[a] = evs.map((ev) => ev.v);
+    }
+
+    return {
+      id: args.e,
+      coord,
+      skippedLegacyEvents: entityProtocol.skipped + schemaProtocol.skipped,
+      ...(await redactAttributeMap(ctx, args.e, attributes)),
+    };
   },
 });
 

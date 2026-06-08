@@ -1,10 +1,11 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 49 (guided demo tour)
+**Current goal:** Goal 50 (host event-log entity fold)
 has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth, or
-another parked Query/Rules item.
+continuing the host read-path migration from projections to direct event-log
+folds.
 
 This plan is the operational goal file. Read it with:
 
@@ -79,7 +80,11 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 128 tests at last verification.
+- `api.facts.entityFromEventLog` folds a host entity directly from
+  protocol-shaped `factEvents` with `@metacrdt/core`, including schema
+  cardinality facts from the same log, and redacts through the same read-auth
+  path as projection-backed entity reads.
+- Convex backend tests are green: 130 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -358,6 +363,8 @@ arguments.
   rows, while new corrections write protocol primitives.
 - `facts` and `currentFacts` are still maintained as imperative projections,
   not folded directly from raw core-shaped events.
+- `entityFromEventLog` is intentionally bounded and proof/read-model oriented;
+  production Datalog/materialization still read the `facts` projection.
 - `@metacrdt/convex` now has adapter helpers, stateless protocol helpers, a
   component-owned protocol transaction/event log, and component-owned
   `facts`/`currentFacts` projections with opt-in cardinality-one reconciliation
@@ -4889,6 +4896,85 @@ TODO.md
 - Deployed with `npx @convex-dev/static-hosting upload`.
 - Live smoke passed:
   - `curl -I https://chatty-hare-94.convex.site` returned `HTTP/2 200`.
+
+---
+
+## Goal 50 — Host Event-Log Entity Fold
+
+**Status:** shipped as a bounded proof/read-model query in the Convex reference
+runtime.
+
+**Objective:** continue retiring the hand-maintained host `facts` /
+`currentFacts` projection by adding a direct entity read over the append-only
+protocol event log. This proves the host log can reconstruct object state through
+`@metacrdt/core` without trusting the current projection.
+
+### Scope
+
+Backend:
+
+```text
+convex/facts.ts
+  entityFromEventLog
+```
+
+Tests:
+
+```text
+convex/triples.test.ts
+```
+
+Docs:
+
+```text
+PLAN.md
+TODO.md
+```
+
+### Semantics
+
+- `entityFromEventLog` fetches bounded `factEvents` for one entity and converts
+  protocol-shaped rows into core `Event`s through `@metacrdt/convex`.
+- Legacy/non-verifiable rows are skipped and counted as `skippedLegacyEvents`
+  instead of being treated as protocol facts.
+- The query fetches schema-as-facts cardinality rows for attributes seen in the
+  entity event log and includes them in the same core `Log`.
+- The entity is folded with `@metacrdt/core.entity`; cardinality-one attributes
+  choose the `≺`-max visible assert, cardinality-many attributes keep all visible
+  asserts.
+- The resulting attribute map passes through the same read-authorization/redaction
+  helper as `getEntity`.
+
+### Non-Goals
+
+- Do not replace production `getEntity`, Datalog, rules, or materialization in
+  this slice.
+- Do not backfill legacy rows; tolerant skipping is explicit for this proof
+  surface.
+- Do not scan unbounded logs. The query remains bounded and single-entity.
+
+### Acceptance Criteria
+
+- For normal protocol-shaped writes, `entityFromEventLog` matches the current
+  projection returned by `getEntity`.
+- If `currentFacts` is corrupted/empty for an entity, `entityFromEventLog` still
+  reconstructs the current value from `factEvents`.
+- Cardinality-one behavior is derived from schema-as-facts in the event log, not
+  from the entity projection row.
+- Convex typecheck and focused backend tests pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/triples.test.ts` passed (16 tests).
+- Broader gate passed:
+  - `npm test` passed (17 backend test files, 130 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
 
 ---
 
