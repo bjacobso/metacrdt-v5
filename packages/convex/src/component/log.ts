@@ -134,6 +134,20 @@ const collectionSubmitResultValidator = v.union(
   v.object({ ok: v.literal(false), reason: v.string() }),
 );
 
+const collectionRunValidator = v.object({
+  runId: v.id("flowRuns"),
+  subject: v.string(),
+  form: v.string(),
+  scope: v.string(),
+  status: v.string(),
+  issuedAt: v.number(),
+  updatedAt: v.number(),
+  token: v.string(),
+  tokenExpiresAt: v.optional(v.number()),
+  tokenConsumedAt: v.optional(v.number()),
+  context: v.optional(v.any()),
+});
+
 const rebuildResultValidator = v.object({
   events: v.number(),
   facts: v.number(),
@@ -420,6 +434,24 @@ function tokenInvalidReason(
 
 function hasLiveCollectionToken(run: Doc<"flowRuns">, now: number): boolean {
   return tokenInvalidReason(run, now) === null;
+}
+
+function collectionRunSummary(
+  run: Doc<"flowRuns">,
+): typeof collectionRunValidator.type {
+  return withoutUndefined({
+    runId: run._id,
+    subject: run.subject,
+    form: run.form,
+    scope: run.scope,
+    status: run.status,
+    issuedAt: run.issuedAt,
+    updatedAt: run.updatedAt,
+    token: run.token,
+    tokenExpiresAt: run.tokenExpiresAt,
+    tokenConsumedAt: run.tokenConsumedAt,
+    context: run.context,
+  });
 }
 
 async function loadFormDef(
@@ -770,6 +802,26 @@ export const collectionByToken = query({
       title: def?.title ?? run.form,
       fields: def?.fields ?? [],
     };
+  },
+});
+
+export const listCollections = query({
+  args: {
+    subject: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(collectionRunValidator),
+  handler: async (ctx, args) => {
+    const take = Math.max(1, Math.min(args.limit ?? 50, 200));
+    const rows =
+      args.subject === undefined
+        ? await ctx.db.query("flowRuns").order("desc").take(take)
+        : await ctx.db
+            .query("flowRuns")
+            .withIndex("by_subject", (q) => q.eq("subject", args.subject!))
+            .order("desc")
+            .take(take);
+    return rows.map(collectionRunSummary);
   },
 });
 

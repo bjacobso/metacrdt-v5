@@ -167,6 +167,25 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         { collectUrl: string; reused: boolean; runId: string; token: string },
         Name
       >;
+      listCollections: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number; subject?: string },
+        Array<{
+          context?: any;
+          form: string;
+          issuedAt: number;
+          runId: string;
+          scope: string;
+          status: string;
+          subject: string;
+          token: string;
+          tokenConsumedAt?: number;
+          tokenExpiresAt?: number;
+          updatedAt: number;
+        }>,
+        Name
+      >;
       listCurrent: FunctionReference<
         "query",
         "internal",

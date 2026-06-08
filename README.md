@@ -187,6 +187,8 @@ Built today:
   `flowRuns` path as flow collect steps
 - component-owned configured actions that issue/reuse component-owned `/collect`
   tokens and submit evidence into the installed `@metacrdt/convex` component log
+- standalone component-owned collect runs, listed on component entity pages and
+  submitted through the same public `/collect` route
 - single-use, expiring collection tokens for the public `/collect` page
 - Tailwind + React Router research-preview UI
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility
@@ -257,7 +259,7 @@ Important tables:
 | `derivedFacts` | materialized rule output with provenance |
 | `attributes` / schema facts | predicate and type metadata |
 | `flowDefs` / host `flowRuns` | durable workflow definitions and host-owned executions |
-| `@metacrdt/convex` component `flowRuns` | component-owned collection capabilities for component-owned actions |
+| `@metacrdt/convex` component `flowRuns` | component-owned collection capabilities for component-owned actions and standalone collects |
 
 New writes already stamp `eventId` + HLC metadata onto `factEvents`, lifecycle
 events target protocol assert ids, and cardinality-one current projections
@@ -290,8 +292,9 @@ Component-owned collection follows the same public `/collect` API. Host tokens
 are resolved from the app's `flowRuns` table; component-owned action tokens are
 resolved from the installed `@metacrdt/convex` component, whose submission path
 appends evidence facts into component-owned state and consumes the component
-token. The older host `collectionTarget: "component"` bridge remains supported
-for already-issued transition tokens.
+token. Standalone component-owned collect runs use the same component token path
+and are listed on `/component/e/:id`. The older host `collectionTarget:
+"component"` bridge remains supported for already-issued transition tokens.
 
 ---
 

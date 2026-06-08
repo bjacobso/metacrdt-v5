@@ -1,10 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 37 (component-owned collection run/token storage) has
-shipped. The next active goal should be chosen from the remaining TODO
-candidates: component-owned flows/compliance, provider-backed login UI /
-production auth, live Cloudflare deployment/auth, or another parked Query/Rules
-item.
+**Current goal:** Goal 38 (component-owned standalone collect runs) has shipped.
+The next active goal should be chosen from the remaining TODO candidates:
+component-owned DAG flows/compliance, provider-backed login UI / production auth,
+live Cloudflare deployment/auth, or another parked Query/Rules item.
 
 This plan is the operational goal file. Read it with:
 
@@ -79,7 +78,7 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 103 tests at last verification.
+- Convex backend tests are green: 110 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -273,6 +272,12 @@ arguments.
     component submission appends submitted field facts plus the
     `submitted.<form>` marker into the component log
   - legacy/host tokens with no target still write host facts
+- Component-owned standalone collect runs exist:
+  - `api.metacrdtComponent.startOwnedCollect` starts or reuses a component-owned
+    collect run for a component-owned entity
+  - `api.metacrdtComponent.listOwnedCollections` exposes those component-owned
+    run/capability rows
+  - `/component/e/:id` shows component-owned collection runs and live links
 - Component-owned form definitions exist:
   - `defineOwnedForm` writes `type = Form` and `formDef` into the component log
   - `collectionByToken` reads component-target form metadata from component-owned
@@ -292,9 +297,10 @@ arguments.
   and event-log rebuild for component-owned writes. The reference app still owns
   its production write path and has not migrated its existing business logic/rules
   onto component-owned state.
-- Component-owned action collection now owns token rows, form definitions, and
-  submitted evidence inside the component. Host-owned flows/actions still use the
-  host `flowRuns` table, and component-owned flows/compliance remain future work.
+- Component-owned action collection and standalone collect runs now own token
+  rows, form definitions, and submitted evidence inside the component. Host-owned
+  DAG flows/actions still use the host `flowRuns` table, and component-owned DAG
+  flows/compliance remain future work.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime.
 - Multi-replica sync is specified and now implemented as in-memory
@@ -3487,6 +3493,109 @@ npx @convex-dev/static-hosting upload
 
 ---
 
+## Goal 38 — Component-Owned Standalone Collect Runs
+
+**Status:** shipped as the first component-owned flow capability.
+
+**Objective:** turn the component-owned collection capability from action-only
+plumbing into a standalone component-owned collect run. The installed
+`@metacrdt/convex` component should be able to start/list a collect run for a
+component-owned entity, expose it through the same public `/collect` route, and
+fold submitted values into component-owned state.
+
+This is intentionally smaller than migrating the host DAG runner. It gives the
+component a complete standalone collect flow:
+
+```text
+component entity → startOwnedCollect → component flowRuns row → /collect →
+component facts + completed component run
+```
+
+### Scope
+
+Package component:
+
+```text
+packages/convex/src/component/schema.ts   by_subject index for component flowRuns
+packages/convex/src/component/log.ts      listCollections query
+```
+
+Reference app:
+
+```text
+convex/metacrdtComponent.ts     startOwnedCollect / listOwnedCollections wrappers
+src/pages/ComponentEntity.tsx   component-owned collection run list
+```
+
+Tests:
+
+```text
+convex/metacrdtComponent.test.ts
+convex/forms.test.ts
+convex/appconfig.test.ts
+```
+
+### Semantics
+
+- `startOwnedCollect({ subject, form, scope })` requires host write auth, verifies
+  the subject exists in component-owned current state, and calls
+  `components.metacrdt.log.issueCollection`.
+- Reuse is component-local: a live component run for the same
+  `(subject, form, scope)` is reused, but host `flowRuns` are never considered.
+- `listOwnedCollections({ subject })` reads component-owned collection runs only.
+- Public `/collect` behavior is unchanged: host token first, component token if
+  no host row exists.
+- Submitting the component token appends submitted field facts and
+  `submitted.<form>` into component-owned state and marks the component run
+  completed.
+- The component entity page shows component-owned collection runs and their
+  live collection links.
+
+### Non-Goals
+
+- Do not migrate host `flows.startFlow` DAG definitions/runs in this slice.
+- Do not migrate scheduler reminders/escalations for host flow collect steps.
+- Do not migrate compliance requirement/obligation materialization into the
+  component yet.
+- Do not remove host `flowRuns` or the legacy component-target host-token bridge.
+
+### Acceptance Criteria
+
+- A component-owned entity can start a standalone collect run without creating a
+  host `flowRuns` row.
+- A second start for the same subject/form/scope reuses the component-owned run.
+- `forms.collectionByToken` renders the component-owned form definition for the
+  component run token.
+- `forms.submitCollection` completes the component run and writes evidence into
+  component-owned current state.
+- `listOwnedCollections` returns the waiting/completed component run.
+- `/component/e/:id` renders component-owned collection runs.
+- Host-owned collect behavior remains unchanged.
+- Focused tests, package tests, full backend tests, typechecks, frontend build,
+  backend deploy, static upload, and live smoke pass.
+
+### Verification
+
+- `npx vitest run convex/metacrdtComponent.test.ts convex/forms.test.ts convex/appconfig.test.ts`
+  passed (30 tests).
+- `npm run test:core` passed (46 tests).
+- `npm run test:convex-package` passed (31 tests).
+- `npm test` passed (17 backend test files, 110 tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex dev --once` deployed backend functions to `chatty-hare-94`.
+- `npx @convex-dev/static-hosting upload` deployed the frontend to
+  `https://chatty-hare-94.convex.site`.
+- Live smoke:
+  - `curl -I https://chatty-hare-94.convex.site` returned HTTP 200.
+  - `npx convex run metacrdtComponent:listOwnedCurrentEntities ...` returned
+    deployed component-owned Worker rows.
+  - `npx convex run metacrdtComponent:listOwnedCollections ...` returned from
+    the deployed wrapper for a component-owned Worker.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -3525,7 +3634,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Component-owned configured action runner.
 - [x] Component-owned actions that open collection forms.
 - [x] Component-owned collection submission into component state.
-- [ ] Component-owned collection run/token storage.
+- [x] Component-owned collection run/token storage.
+- [x] Component-owned standalone collect runs.
 - [ ] Migrate more reference runtime business logic onto component-owned state.
 
 ### Auth / Privacy
@@ -3584,8 +3694,8 @@ or intentionally moved out of this repo's scope. Each shipped slice must update
 `PLAN.md` / `TODO.md`, pass the relevant test/typecheck/build gate, and be
 committed/pushed with the verification recorded.
 
-For Goal 37 specifically, done means component-owned action collection links no
+For Goal 38 specifically, done means standalone component-owned collect runs no
 longer require a host `flowRuns` row, component-owned tokens render and submit
-through the existing public `/collect` API, legacy host tokens still work, tests
-cover both paths, all gates pass, the deployed app is smoke-tested, and the
-result is committed and pushed.
+through the existing public `/collect` API, component entity pages list those
+runs, legacy host tokens still work, tests cover both paths, all gates pass, the
+deployed app is smoke-tested, and the result is committed and pushed.

@@ -503,6 +503,98 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     }
   });
 
+  test("starts and lists standalone component-owned collect runs", async () => {
+    const t = mountedTest();
+
+    await t.mutation(api.metacrdtComponent.defineOwnedForm, {
+      form: "owned_badge",
+      title: "Owned Badge",
+      fields: [{ name: "badgeId", label: "Badge ID", type: "string" }],
+    });
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-standalone:worker",
+      type: "Worker",
+      name: "Standalone Worker",
+    });
+
+    const first = await t.mutation(api.metacrdtComponent.startOwnedCollect, {
+      subject: "component-standalone:worker",
+      form: "owned_badge",
+      scope: "client:acme",
+    });
+    expect(first.collectUrl).toMatch(/^\/collect\?token=/);
+    expect(first.reused).toBe(false);
+
+    const hostRunForComponentToken = await t.run(async (ctx) => {
+      return await ctx.db
+        .query("flowRuns")
+        .withIndex("by_token", (q) => q.eq("token", first.token))
+        .first();
+    });
+    expect(hostRunForComponentToken).toBeNull();
+
+    const second = await t.mutation(api.metacrdtComponent.startOwnedCollect, {
+      subject: "component-standalone:worker",
+      form: "owned_badge",
+      scope: "client:acme",
+    });
+    expect(second.token).toBe(first.token);
+    expect(second.reused).toBe(true);
+
+    const runs = await t.query(api.metacrdtComponent.listOwnedCollections, {
+      subject: "component-standalone:worker",
+    });
+    expect(runs).toMatchObject([
+      {
+        runId: first.runId,
+        subject: "component-standalone:worker",
+        form: "owned_badge",
+        scope: "client:acme",
+        status: "waiting",
+        token: first.token,
+      },
+    ]);
+    expect(await t.query(api.forms.collectionByToken, { token: first.token })).toMatchObject({
+      found: true,
+      title: "Owned Badge",
+      subject: "component-standalone:worker",
+      form: "owned_badge",
+      scope: "client:acme",
+    });
+
+    expect(
+      await t.mutation(api.forms.submitCollection, {
+        token: first.token,
+        values: { badgeId: "B-123" },
+      }),
+    ).toEqual({ ok: true });
+
+    const after = await t.query(api.metacrdtComponent.listOwnedCollections, {
+      subject: "component-standalone:worker",
+    });
+    expect(after[0]).toMatchObject({
+      runId: first.runId,
+      status: "completed",
+      context: { badgeId: "B-123" },
+    });
+
+    const entity = await t.query(api.metacrdtComponent.getOwnedCurrentEntity, {
+      e: "component-standalone:worker",
+    });
+    expect(entity?.attributes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          a: "owned_badge/badgeId",
+          values: ["B-123"],
+        }),
+        expect.objectContaining({
+          a: "submitted.owned_badge",
+          values: ["client:acme"],
+        }),
+      ]),
+    );
+  });
+
   test("component-owned missing current entity returns null", async () => {
     const t = mountedTest();
 

@@ -105,6 +105,20 @@ const collectResultValidator = v.object({
   reused: v.boolean(),
 });
 
+const ownedCollectionRunValidator = v.object({
+  runId: v.string(),
+  subject: v.string(),
+  form: v.string(),
+  scope: v.string(),
+  status: v.string(),
+  issuedAt: v.number(),
+  updatedAt: v.number(),
+  token: v.string(),
+  tokenExpiresAt: v.optional(v.number()),
+  tokenConsumedAt: v.optional(v.number()),
+  context: v.optional(v.any()),
+});
+
 const runOwnedActionResultValidator = v.object({
   action: v.string(),
   asserted: v.array(appendOwnedResultValidator),
@@ -397,6 +411,49 @@ export const defineOwnedForm = mutation({
     }
     return { e, asserted };
   },
+});
+
+export const startOwnedCollect = mutation({
+  args: {
+    subject: v.string(),
+    form: v.string(),
+    scope: v.string(),
+    expireSeconds: v.optional(v.number()),
+  },
+  returns: collectResultValidator,
+  handler: async (ctx, args) => {
+    const actor = await actorContext(ctx);
+    const entity = await ctx.runQuery(components.metacrdt.log.getCurrentEntity, {
+      e: args.subject,
+    });
+    if (entity === null) {
+      throw new Error(`component-owned entity ${args.subject} not found`);
+    }
+    return await ctx.runMutation(
+      components.metacrdt.log.issueCollection,
+      withoutUndefined({
+        ...actor,
+        subject: args.subject,
+        form: args.form,
+        scope: args.scope,
+        expireMs:
+          args.expireSeconds === undefined ? undefined : args.expireSeconds * 1000,
+      }),
+    );
+  },
+});
+
+export const listOwnedCollections = query({
+  args: {
+    subject: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(ownedCollectionRunValidator),
+  handler: async (ctx, args) =>
+    await ctx.runQuery(
+      components.metacrdt.log.listCollections,
+      withoutUndefined(args),
+    ),
 });
 
 export const setOwnedWorkerStatus = mutation({

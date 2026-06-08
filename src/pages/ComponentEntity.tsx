@@ -26,6 +26,10 @@ export default function ComponentEntity() {
     e: id,
     limit: 20,
   });
+  const collections = useQuery(api.metacrdtComponent.listOwnedCollections, {
+    subject: id,
+    limit: 20,
+  });
   const types =
     entity?.attributes.find((attr) => attr.a === "type")?.values.map(String) ?? [];
   const primaryType = types[0];
@@ -71,6 +75,7 @@ export default function ComponentEntity() {
   if (
     entity === undefined ||
     events === undefined ||
+    collections === undefined ||
     (primaryType !== undefined && actions === undefined)
   ) {
     return <p className="text-[13px] text-muted">Loading…</p>;
@@ -237,6 +242,47 @@ export default function ComponentEntity() {
           </div>
         </Card>
       )}
+
+      <Card>
+        <CardHeader
+          title="Component collection runs"
+          hint="component-owned capability rows"
+        />
+        {collections.length === 0 ? (
+          <p className="px-5 py-4 text-[13px] text-muted">
+            No component-owned collection runs for this entity.
+          </p>
+        ) : (
+          <ul className="divide-y divide-line-soft">
+            {collections.map((run) => (
+              <li key={run.runId} className="px-5 py-3">
+                <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                  <Chip tone={run.status === "waiting" ? "configured" : "data"}>
+                    {run.status}
+                  </Chip>
+                  <span className="font-medium text-ink">{run.form}</span>
+                  <span className="text-muted">for</span>
+                  <Mono>{run.scope}</Mono>
+                  <span className="ml-auto text-[12px] text-muted">
+                    {new Date(run.updatedAt).toLocaleString()}
+                  </span>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+                  <Mono>{run.runId}</Mono>
+                  {run.status === "waiting" && run.tokenConsumedAt === undefined && (
+                    <a
+                      className="font-medium text-orange-ink underline"
+                      href={`/collect?token=${run.token}`}
+                    >
+                      /collect?token={run.token.slice(0, 8)}…
+                    </a>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <Card>
         <CardHeader title="Component event log" hint="append-only protocol rows" />

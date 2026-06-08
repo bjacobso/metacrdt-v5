@@ -113,10 +113,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   supports `opensForm`, resolves `$entity` / `$arg.*` placeholders, issues or
   reuses the collection token for the component-owned entity id, and the
   component detail page renders the returned `/collect` link.
-- [x] **Component-owned collection submission** — action-issued tokens are marked
-  `collectionTarget: "component"`, and `/collect` submission writes submitted
-  field facts plus `submitted.<form>` into component-owned current state while
-  legacy/host tokens continue to write host facts.
+- [x] **Component-owned collection submission** — `/collect` submission dispatches
+  component-owned tokens into component state, writing submitted field facts plus
+  `submitted.<form>` into component-owned current state while legacy/host tokens
+  continue to write host facts. The old host `collectionTarget: "component"`
+  bridge remains only for transition tokens.
 - [x] **Component-owned form definitions** — `api.metacrdtComponent.defineOwnedForm`
   writes `type = Form` and `formDef` facts into component-owned state, and
   component-target collection links render from that component-owned `formDef`
@@ -125,6 +126,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   action-issued collection capability rows now live in the installed
   `@metacrdt/convex` component; public `/collect` dispatches host tokens first,
   then component tokens, preserving legacy host-token behavior.
+- [x] **Component-owned standalone collect runs** — `startOwnedCollect` starts or
+  reuses component-owned collection runs for component-owned entities,
+  `listOwnedCollections` exposes those runs, `/collect` submits them into
+  component-owned state, and `/component/e/:id` shows the component-owned run
+  list.
 - [x] **Datalog disjunction** — Datalog `where` bodies now support bounded
   `{ or: [[...clauses], ...] }` branches. Branches run from the current binding,
   union/dedupe their bindings with provenance merged, and continue into later
@@ -266,6 +272,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `forms.submitCollection` check host tokens first, then dispatch unknown tokens
   to the component. The older host `collectionTarget: "component"` bridge remains
   for already-issued dev tokens.
+
+### 2026-06-07 — component-owned standalone collect runs
+- [x] **Goal 38 shipped:** `api.metacrdtComponent.startOwnedCollect` starts or
+  reuses a component-owned collect run for a component-owned entity without
+  creating a host `flowRuns` row.
+- [x] **Read/UI surface:** `api.metacrdtComponent.listOwnedCollections` exposes
+  component-owned collection runs, and `/component/e/:id` renders their status,
+  scope, and live `/collect` link.
+- [x] **Focused regression:** a standalone component collect run renders through
+  `forms.collectionByToken`, submits through `forms.submitCollection`, completes
+  the component run, and appends submitted field facts plus `submitted.<form>`
+  into component-owned current state.
 
 ### 2026-06-07 — component-owned form definitions
 - [x] **Goal 36 shipped:** `api.metacrdtComponent.defineOwnedForm` defines

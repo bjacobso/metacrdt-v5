@@ -121,5 +121,6 @@ export default defineSchema({
   })
     .index("by_token", ["token"])
     .index("by_target", ["subject", "form", "scope"])
+    .index("by_subject", ["subject"])
     .index("by_status", ["status"]),
 });
