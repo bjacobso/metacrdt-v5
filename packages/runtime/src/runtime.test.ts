@@ -1,14 +1,17 @@
 import { describe, expect, test } from "vitest";
 import { assert as assertEvent, fromEvents, valueOf } from "@metacrdt/core";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import {
+  DatalogQueryService,
   EventStoreService,
   ProjectionStoreService,
   RuntimeCapabilityError,
+  RuntimeOperationError,
   applyOperationEffect,
   applyOperation,
   createMemoryRuntime,
   createMemoryRuntimeLayer,
+  datalogQueryLayer,
   deltaSince,
   exchangeDeltas,
   mergeFrom,
@@ -117,6 +120,108 @@ describe("@metacrdt/runtime memory harness", () => {
     expect(result.replaced.rows).toBe(3);
     expect(result.status.map((row) => row.v)).toEqual(["terminated"]);
     expect(result.tags.map((row) => row.v).sort()).toEqual(["remote", "urgent"]);
+  });
+
+  test("DatalogQueryService queries and paginates through Layer-provided services", async () => {
+    const layer = Layer.provideMerge(
+      createMemoryRuntimeLayer({
+        replicaId: "effect:query",
+        wall: () => 100,
+      }),
+    )(datalogQueryLayer());
+
+    const program = Effect.gen(function* () {
+      yield* applyOperationEffect({
+        op: "assert",
+        e: "worker:c",
+        a: "worker.status",
+        v: "active",
+        actor: "user:1",
+      });
+      yield* applyOperationEffect({
+        op: "assert",
+        e: "worker:a",
+        a: "worker.status",
+        v: "active",
+        actor: "user:1",
+      });
+      yield* applyOperationEffect({
+        op: "assert",
+        e: "worker:b",
+        a: "worker.status",
+        v: "active",
+        actor: "user:1",
+      });
+
+      const datalog = yield* DatalogQueryService;
+      const first = yield* datalog.page({
+        where: [["?e", "worker.status", "active"]],
+        select: ["?e"],
+        coord,
+        paginationOpts: { numItems: 2 },
+      });
+      const second = yield* datalog.page({
+        where: [["?e", "worker.status", "active"]],
+        select: ["?e"],
+        coord,
+        paginationOpts: { numItems: 2, cursor: first.continueCursor },
+      });
+      return { first, second };
+    });
+
+    const result = await Effect.runPromise(Effect.provide(program, layer));
+    expect(result.first.page).toEqual([{ e: "worker:a" }, { e: "worker:b" }]);
+    expect(result.first.isDone).toBe(false);
+    expect(result.first.continueCursor).toBe("2");
+    expect(result.second.page).toEqual([{ e: "worker:c" }]);
+    expect(result.second.isDone).toBe(true);
+    expect(result.second.continueCursor).toBeNull();
+  });
+
+  test("DatalogQueryService validation and parser failures stay in the Effect error channel", async () => {
+    const layer = Layer.provideMerge(
+      createMemoryRuntimeLayer({
+        replicaId: "effect:query-errors",
+        wall: () => 100,
+      }),
+    )(datalogQueryLayer());
+
+    const program = Effect.gen(function* () {
+      const datalog = yield* DatalogQueryService;
+      const invalidArgs = yield* Effect.match(
+        datalog.query({
+          where: "not clauses",
+          select: ["?e"],
+          coord,
+        } as never),
+        {
+          onFailure: (error) => error,
+          onSuccess: () => undefined,
+        },
+      );
+      const invalidClause = yield* Effect.match(
+        datalog.query({
+          where: [["?e"]],
+          select: ["?e"],
+          coord,
+        }),
+        {
+          onFailure: (error) => error,
+          onSuccess: () => undefined,
+        },
+      );
+      return { invalidArgs, invalidClause };
+    });
+
+    const result = await Effect.runPromise(Effect.provide(program, layer));
+    expect(result.invalidArgs).toBeInstanceOf(RuntimeOperationError);
+    if (result.invalidArgs instanceof RuntimeOperationError) {
+      expect(result.invalidArgs.operation).toBe("DatalogQuery.query.args");
+    }
+    expect(result.invalidClause).toBeInstanceOf(RuntimeOperationError);
+    if (result.invalidClause instanceof RuntimeOperationError) {
+      expect(result.invalidClause.operation).toBe("DatalogQuery.parse");
+    }
   });
 
   test("Effect operation helpers fail with tagged errors", async () => {

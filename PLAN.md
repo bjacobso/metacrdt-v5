@@ -9430,6 +9430,9 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   EventStore-backed `DatalogQueryService` contract. It does not yet cover a
   second, target-optimized/materialized query implementation; that should wait
   until a target has a query engine beyond the shared EventStore-backed Layer.
+  The current `ProjectionStoreService` is a replaceable current-state read model,
+  not a complete bitemporal log, so it must not be presented as a full
+  `DatalogQueryService` provider.
 - **Zero Effect today (by current design):** `core`, `schema`, `query`, and the
   root Convex reference app stay pure/plain where appropriate. `runtime`,
   `testkit`, and Convex/Node/local/Cloudflare target packages now use Effect v3

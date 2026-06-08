@@ -102,7 +102,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [ ] **Goal 111 next: optimized/materialized query providers** — when a target
   exposes a query implementation beyond the shared EventStore-backed
   `DatalogQueryService` Layer, add provider-specific conformance proving it
-  matches the production service contract.
+  matches the production service contract. Do **not** treat the current
+  `ProjectionStoreService` as that provider: it is a replaceable current-state
+  read model, not a full bitemporal query source.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
@@ -580,8 +582,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **Routed testkit through the service.** `runRuntimeQueryConformance` now
   provides `datalogQueryLayer()` over each target's Layer and exercises the
   production service API instead of a private testkit-only adapter.
-- [x] Verification: focused runtime/testkit typechecks and tests pass; full gates
-  are run before committing this slice.
+- [x] **Added runtime-owned boundary tests.** `@metacrdt/runtime` now directly
+  tests Layer-provided `DatalogQueryService` pagination stability and proves
+  Schema/parser failures return tagged `RuntimeOperationError`s through the
+  Effect error channel.
+- [x] Verification: focused runtime typecheck/test passed; full gates passed
+  (`test:packages`, `typecheck`, `pack:packages`, `build`, root `test`,
+  `git diff --check`).
 
 ### 2026-06-08 — Goal 111 EventStore-backed query conformance
 - [x] **Added `runRuntimeQueryConformance` to `@metacrdt/testkit`.** The suite
