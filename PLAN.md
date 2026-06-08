@@ -1,9 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 12 (collection-token hardening) has shipped. The next
-active goal should be chosen from the remaining TODO candidates:
-`@metacrdt/runtime` harness groundwork, full app write authorization, or the
-next `@metacrdt/convex` function factory/component slice.
+**Current goal:** Goal 13 (`@metacrdt/runtime` harness groundwork) has shipped.
+The next active goal should be chosen from the remaining TODO candidates: full
+app write authorization or the next `@metacrdt/convex` function
+factory/component slice.
 
 This plan is the operational goal file. Read it with:
 
@@ -98,6 +98,13 @@ configured actions can now take small typed arguments.
     elaboration utilities
   - selected Open Ontology Lisp fixtures copied into package-local tests
   - no source imports from `.context/open-ontology`
+- `@metacrdt/runtime` exists in [`packages/runtime`](./packages/runtime):
+  - target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
+    `Transport`)
+  - capability metadata and operation helpers over `@metacrdt/core`
+  - an in-memory target/harness for proving convergence across runtimes
+  - package-local tests for HLC injection, G-Set exchange convergence, lifecycle
+    events, and capability checks
 - `applyConfig` now behaves as a true section-scoped reconciler:
   - configured artifact ownership is tracked on `config:default`
   - explicitly supplied config sections compute desired sets
@@ -151,6 +158,8 @@ configured actions can now take small typed arguments.
 - `@metacrdt/convex` is adapter-first. A full Convex component surface,
   mutation factories, and cardinality-one reconcile helpers remain deferred
   until the package boundary is proven against more host-app usage.
+- `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
+  reference runtime and does not implement durable transport / anti-entropy sync.
 - Multi-replica sync is specified but not implemented.
 - Full app login/write authorization is not configured; unauthenticated callers
   are treated as `anonymous`, so PII is denied by default but general public
@@ -1468,6 +1477,70 @@ form.
 
 ---
 
+## Goal 13 — `@metacrdt/runtime` Harness Groundwork
+
+**Status:** shipped as a pure workspace package.
+
+**Objective:** introduce the portable runtime harness boundary without migrating
+the Convex reference app. The goal is to make the "one feature set → many
+targets" architecture concrete: service contracts, capability metadata, operation
+helpers over `@metacrdt/core`, and a memory target that proves convergence
+without Convex.
+
+### Scope
+
+Package:
+
+```text
+packages/runtime/
+  src/types.ts       # EventStore, RuntimeClock, Scheduler, Transport, capabilities
+  src/operations.ts  # applyOperation, mergeFrom, capability checks
+  src/memory.ts      # in-memory store/clock/scheduler/transport target
+  src/index.ts       # public API
+```
+
+This is **not** a Convex migration and **not** the multi-replica sync runtime.
+Convex remains the reference target; the memory harness exists so future Convex /
+Cloudflare / local targets can share one contract and one set of convergence
+tests.
+
+### Acceptance Criteria
+
+- Add `@metacrdt/runtime` as an npm workspace package.
+- Define target-neutral service interfaces:
+  - `EventStore`
+  - `RuntimeClock`
+  - `Scheduler`
+  - `Transport`
+  - `RuntimeProfile` / capabilities
+- Add operation helpers that:
+  - author core assert/retract/tombstone/untombstone events through an injected
+    clock;
+  - append through the injected store;
+  - optionally publish through transport;
+  - check required capabilities explicitly.
+- Add an in-memory runtime target:
+  - verified event-id append;
+  - HLC clock with injected wall time;
+  - scheduler/transport fakes for tests.
+- Add tests proving:
+  - injected HLC behavior;
+  - append/publish path;
+  - two runtimes converge after exchanging G-Set events;
+  - lifecycle target operations fold correctly;
+  - capability checks fail clearly.
+- Add root `npm run test:runtime`.
+- Do **not** move `convex/` onto runtime yet.
+- Full tests/typechecks/build pass.
+
+### Verification
+
+- `npm run test:runtime` passed (4 tests).
+- Runtime package typecheck passed.
+- Full gate for this slice is recorded in the commit that shipped it.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -1478,6 +1551,14 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Arg-taking actions.
 - [x] Actions that open forms.
 - [x] Dry-run compliance: hypothetical worker + scope, no writes.
+
+### Runtime / Targets
+
+- [x] `@metacrdt/runtime` harness groundwork.
+- [ ] Durable anti-entropy transport and version vectors.
+- [ ] Full `@metacrdt/convex` component/function factory surface.
+- [ ] Cloudflare Durable Object target.
+- [ ] Browser/local-first target.
 
 ### Auth / Privacy
 
@@ -1527,12 +1608,12 @@ These remain valuable, but they should not interrupt the current goal.
 
 ---
 
-## Definition of Done for the Current Goal
+## Definition of Done for the Active Objective
 
-Goal 7 is complete when:
-
-- `typeSchemaAsOf` exposes UI-ready column definitions while preserving the old
-  attribute-name list.
+`implement PLAN.md` remains active until the open backlog above is either shipped
+or intentionally moved out of this repo's scope. Each shipped slice must update
+`PLAN.md` / `TODO.md`, pass the relevant test/typecheck/build gate, and be
+committed/pushed with the verification recorded.
 - Entity list rows render declared columns from schema-as-facts.
 - Entity detail state is ordered by declared schema first.
 - Existing form collection remains driven by `formDef`.

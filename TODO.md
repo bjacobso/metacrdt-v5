@@ -48,10 +48,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   warning. The reference app consumes it from `convex/lib/coreEvent.ts`,
   `convex/lib/visibility.ts`, and `confect/metacrdt.impl.ts`. Component/function
   factories remain deferred until the host-app API boundary is clearer.
-- [ ] `@metacrdt/runtime` (the IR + service interfaces) + targets
-  `@metacrdt/cloudflare` (DO), `@metacrdt/local` (browser), and the fuller
-  `@metacrdt/convex` component surface. Don't factor these until the harness
-  boundary is real.
+- [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
+  target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
+  `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
+  a memory target/harness proving G-Set exchange convergence. It does not yet own
+  Convex or durable sync.
+- [ ] Targets: `@metacrdt/cloudflare` (DO), `@metacrdt/local` (browser), and the
+  fuller `@metacrdt/convex` component/function factory surface.
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -109,9 +112,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   outside the hardened collection-token path.
 
 **Next goal candidates**
-- [ ] Choose the next active goal: `@metacrdt/runtime` harness groundwork,
-  full app write authorization, or the next `@metacrdt/convex` function
-  factory/component slice.
+- [ ] Choose the next active goal: full app write authorization, or the next
+  `@metacrdt/convex` function factory/component slice.
 
 **Docs**
 - [ ] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -134,6 +136,16 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — Goal 13 @metacrdt/runtime harness groundwork
+- [x] **First runtime harness package.** `packages/runtime` defines the portable
+  service boundary (`EventStore`, `RuntimeClock`, `Scheduler`, `Transport`),
+  runtime profiles/capabilities, and operation helpers (`applyOperation`,
+  `mergeFrom`) over `@metacrdt/core`.
+- [x] **Memory target proves the contract.** In-memory store/clock/scheduler/
+  transport target with tests for injected HLC behavior, append/publish,
+  cross-runtime G-Set exchange convergence, lifecycle operations, and capability
+  checks. Convex is intentionally not migrated onto it yet.
 
 ### 2026-06-07 — Goal 12 collection-token hardening
 - [x] **Collection links are now single-use and expiring.** `flowRuns` stores

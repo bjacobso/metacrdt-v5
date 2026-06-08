@@ -66,7 +66,7 @@ packages/
 ├── forms/            @metacrdt/forms      # forms, collection, prompt-response
 ├── views/            @metacrdt/views      # ViewSpec / response surfaces
 ├── agent/            @metacrdt/agent      # agent actors, proposals, skills
-├── runtime/          @metacrdt/runtime    # IR + Effect service interfaces
+├── runtime/          @metacrdt/runtime    # done: service interfaces + memory harness
 ├── convex/           @metacrdt/convex     # Convex target / component / bindings
 ├── cloudflare/       @metacrdt/cloudflare # DO/Worker target
 ├── local/            @metacrdt/local      # browser/local-first target
@@ -90,7 +90,7 @@ Keep these axes separate.
 | **Protocol kernel** | `core` | events, IDs, HLC, `≺`, G-Set merge, bitemporal fold | storage, Datalog, UI |
 | **Language** | `forma` | Lisp syntax, reader, evaluator, type system, diagnostics, LSP/editor contracts | ontology-specific runtime |
 | **Feature packages** | `schema`, `query`, `workflow`, `forms`, `views`, `agent` | portable substrate features | Convex/Cloudflare/Node APIs |
-| **Harness** | `runtime` | IR, service interfaces, Effect Layers, capability model | concrete persistence or transport |
+| **Harness** | `runtime` | service interfaces, operation helpers, memory harness, capability model | concrete persistence or durable transport |
 | **Targets** | `convex`, `cloudflare`, `local`, `node` | runtime bindings, persistence, scheduler, transport, deploy shape | feature semantics |
 | **Tools/apps** | `cli`, `sdk`, app surfaces | developer/product experience | protocol semantics |
 

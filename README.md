@@ -165,6 +165,8 @@ Built today:
 - single-use, expiring collection tokens for the public `/collect` page
 - Tailwind + React Router research-preview UI
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility
+- `@metacrdt/runtime` harness groundwork: target-neutral services plus an
+  in-memory convergence test target
 - Confect/Effect sidecar for typed compliance planning: a read-only dry-run
   planner answers collect-vs-reuse for hypothetical placements without moving
   protocol writes behind Effect
