@@ -206,6 +206,9 @@ Built today:
 - read authorization policy lookups now fold PII/sensitive schema markers and
   `grants.read` facts from protocol-shaped `factEvents` instead of reading
   `currentFacts`
+- System process compliance-obligation counts now derive enabled requirement/
+  task rule output from protocol-shaped `factEvents` instead of reading
+  `derivedFacts`
 - production fact point queries (`api.facts.queryFacts`) now fold base facts
   directly from protocol-shaped `factEvents` while preserving the old array
   return shape and read-authorization behavior; `queryFactsFromEventLog` remains

@@ -93,9 +93,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `factEvents` too. Config history/diff now folds config ownership snapshots
   from `factEvents` instead of the `facts` projection. Read authorization policy
   now folds form/attribute PII markers and principal `grants.read` facts from
-  `factEvents` instead of `currentFacts`. Remaining: closure semi-naive add still
-  receives the changed projection `factId`, system/process counts still use
-  materialized projections, and derived rows are still stored in `derivedFacts`.
+  `factEvents` instead of `currentFacts`. System process compliance-obligation
+  counts now derive enabled requirement/task output from `factEvents` instead of
+  materialized `derivedFacts`. Remaining: closure semi-naive add still receives
+  the changed projection `factId`, flow-resumer process counts still summarize
+  host `flowRuns`, and derived rows are still stored in `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -357,6 +359,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 71 shipped:** `system.listSystemProcesses` now computes the
+  compliance reconciler's `open/required obligations` stat by solving enabled
+  `require.*` / `task.*` rules against `eventLogTripleSource` and resolving their
+  `emit` shape, instead of sampling materialized `derivedFacts`.
+- [x] **System-process derived projection proof.** `convex/appconfig.test.ts`
+  now deletes all `derivedFacts` rows and asserts the compliance reconciler
+  obligation count remains unchanged.
 - [x] **Goal 70 shipped:** read-authorization policy now reads from the event
   log. `convex/lib/readAuth.ts` loads form `formDef` PII markers,
   `attr:<name>` PII/sensitive markers, and principal `grants.read` facts through

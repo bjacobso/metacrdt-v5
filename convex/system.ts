@@ -1,10 +1,49 @@
 import { query } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
+import { LIMITS, runWhere, type Binding } from "./lib/engine";
+import { eventLogTripleSource } from "./lib/eventLogTripleSource";
+import { valueKey } from "./lib/visibility";
 
 // The intrinsic side of the product. These are the platform's own reactive
 // processes — not tenant-authored flows, but the autonomic machinery that keeps
 // projections and obligations consistent. They're real (crons + the fact-change
 // event path), so we surface them read-only with whatever live state we can
 // cheaply derive, the way a SaaS shows "system jobs" you don't configure.
+
+function resolveEmitTerm(term: unknown, binding: Binding): unknown {
+  if (typeof term === "string" && term.startsWith("?")) {
+    return binding[term.slice(1)];
+  }
+  return term;
+}
+
+async function countComplianceObligationsFromEventLog(
+  ctx: Parameters<typeof runWhere>[0],
+  rules: Doc<"rules">[],
+): Promise<number> {
+  const coord = { txTime: Date.now(), validTime: Date.now() };
+  const keys = new Set<string>();
+  for (const rule of rules) {
+    if (rule.emit === undefined) continue;
+    const bindings = await runWhere(
+      ctx,
+      (rule.where ?? []) as unknown[],
+      coord,
+      {},
+      { source: eventLogTripleSource },
+    );
+    for (const binding of bindings) {
+      const e = resolveEmitTerm(rule.emit.e, binding);
+      if (e === undefined || e === null) continue;
+      const v = resolveEmitTerm(rule.emit.v, binding);
+      const a = rule.emit.a;
+      if (!(a.startsWith("requires.") || a.startsWith("task."))) continue;
+      keys.add(`${String(e)}\u0000${a}\u0000${valueKey(v)}`);
+      if (keys.size > LIMITS.maxResultRows) return keys.size;
+    }
+  }
+  return keys.size;
+}
 
 /**
  * Descriptors for the system processes, each enriched with live counts. Mirrors
@@ -29,10 +68,8 @@ export const listSystemProcesses = query({
       await ctx.db.query("ruleInvalidations").take(500)
     ).filter((i) => i.processedAt === undefined).length;
 
-    const derivedSample = await ctx.db.query("derivedFacts").take(1000);
-    const obligationFacts = derivedSample.filter(
-      (d) => !d.stale && (d.a.startsWith("requires.") || d.a.startsWith("task.")),
-    ).length;
+    const obligationFacts =
+      await countComplianceObligationsFromEventLog(ctx, complianceRules);
 
     const waitingRuns = (
       await ctx.db

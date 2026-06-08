@@ -401,6 +401,24 @@ describe("config-as-code + origin + entity detail", () => {
       // 4 requirements → 8 compliance rules.
       const ruleStat = reconciler!.stats.find((s) => s.label === "compliance rules");
       expect(ruleStat!.value).toBe(8);
+      const obligationStat = reconciler!.stats.find(
+        (s) => s.label === "open/required obligations",
+      );
+      expect(obligationStat).toBeDefined();
+
+      await t.run(async (ctx) => {
+        const rows = await ctx.db.query("derivedFacts").collect();
+        for (const row of rows) await ctx.db.delete(row._id);
+      });
+
+      const afterWipe = await t.query(api.system.listSystemProcesses, {});
+      const afterReconciler = afterWipe.find(
+        (p) => p.name === "compliance-reconciler",
+      );
+      expect(
+        afterReconciler!.stats.find((s) => s.label === "open/required obligations")
+          ?.value,
+      ).toBe(obligationStat!.value);
     } finally {
       vi.useRealTimers();
     }

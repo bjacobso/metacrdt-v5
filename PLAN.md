@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 70 (read authorization policy reads from the event log) has
+**Current goal:** Goal 71 (system compliance obligation counts read from the event log) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -25,11 +25,13 @@ protocol-shaped `factEvents` instead of `currentFacts`. Goal 69 moved config
 manifest/history snapshots to protocol-shaped `factEvents` instead of `facts`.
 Goal 70 moved read-authorization policy lookups (PII form/schema markers and
 read grants) to protocol-shaped `factEvents` instead of `currentFacts`. The next
+slice, Goal 71, moved the System process view's compliance obligation count to a
+read-only event-log derivation instead of materialized `derivedFacts`. The next
 active goal should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
-the next projection dependency (closure/derived provenance or system/process
-counts).
+the next projection dependency (closure/derived provenance or operational
+`flowRuns` process state).
 
 This plan is the operational goal file. Read it with:
 
@@ -460,9 +462,8 @@ arguments.
 - Production `getEntity` now uses the same bounded event-log fold as
   `entityFromEventLog`; production `entityAsOf` and `entityFactsAsOf` also fold
   from protocol-shaped `factEvents`.
-- Some non-primary/support read paths still use disposable projections; for
-  example some system/process counts still summarize materialized `derivedFacts`
-  / `flowRuns`.
+- Some non-primary/support read paths still use operational/materialized state;
+  for example flow-resumer process counts summarize host `flowRuns`.
 - `entityFromEventLog` remains intentionally bounded and proof/read-model
   oriented, returning coordinate/skipped-legacy counts that production
   `getEntity` does not expose.
@@ -6849,6 +6850,76 @@ Docs:
 - `npx convex codegen` passed.
 - `npx tsc --noEmit -p convex/tsconfig.json` passed.
 - `npx vitest run convex/readAuth.test.ts` passed (1 test).
+- Full gate passed:
+  - `npm test` passed (17 backend test files, 150 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+- `git diff --check` passed.
+
+---
+
+## Goal 71 — System Compliance Obligation Counts from the Event Log
+
+**Status:** shipped for the System tab compliance-reconciler count.
+
+**Objective:** remove the System process read model's compliance-obligation
+count dependency on materialized `derivedFacts`. The System tab should still
+report live obligation pressure even if the disposable derived projection is
+missing, by recomputing enabled compliance rule output directly from
+protocol-shaped `factEvents`.
+
+### Scope
+
+Backend:
+
+- `convex/system.ts`
+
+Tests:
+
+- `convex/appconfig.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+
+### Semantics
+
+- `listSystemProcesses` still reads enabled rule definitions from `rules`.
+- The compliance reconciler's `open/required obligations` stat now iterates
+  enabled `require.*` / `task.*` rules, solves each rule body against
+  `eventLogTripleSource`, resolves the rule `emit`, dedupes emitted triples, and
+  counts them.
+- The count is a bounded live read model for the process dashboard, not a
+  replacement for production materialization.
+- Flow-resumer counts still summarize host `flowRuns`, because waiting runs are
+  operational process state.
+
+### Non-Goals
+
+- Do not remove or stop writing `derivedFacts`.
+- Do not rewrite `workerCompliance`, `entityDetail.obligations`, or other
+  user-facing obligation reads in this slice.
+- Do not migrate host `flowRuns`.
+- Do not change rule materialization behavior.
+
+### Acceptance Criteria
+
+- `convex/system.ts` no longer queries `derivedFacts`.
+- The compliance reconciler's obligation count is unchanged after wiping
+  `derivedFacts`.
+- Focused appconfig tests and Convex typecheck pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/appconfig.test.ts` passed (16 tests).
 - Full gate passed:
   - `npm test` passed (17 backend test files, 150 tests).
   - `npm run test:convex-package` passed (33 tests).
