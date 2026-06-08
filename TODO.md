@@ -121,6 +121,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   writes `type = Form` and `formDef` facts into component-owned state, and
   component-target collection links render from that component-owned `formDef`
   without a host `forms.defineForm` row.
+- [ ] **Component-owned collection run/token storage** — next active goal:
+  move component-owned action-issued collection capability rows from host
+  `flowRuns` into the installed `@metacrdt/convex` component, while preserving
+  legacy host token dispatch through `/collect`.
 - [x] **Datalog disjunction** — Datalog `where` bodies now support bounded
   `{ or: [[...clauses], ...] }` branches. Branches run from the current binding,
   union/dedupe their bindings with provenance merged, and continue into later
