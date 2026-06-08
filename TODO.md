@@ -515,8 +515,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Choose the next Node slice: packaged dev-server CLI.
 - [x] Choose the next Node slice: Postgres runtime services.
 - [x] Choose the next Node slice: shared SQL lifecycle plan.
-- [ ] Choose between production provider wiring, Node SDK helpers, Cloudflare
-  DO+SQLite parity, or another parked Query/Rules item.
+- [x] Choose the next Node slice: sync SDK client over the shipped HTTP/SSE
+  surface.
+- [ ] Choose between production provider wiring, Node production deployment
+  guidance, Cloudflare DO+SQLite parity, or another parked Query/Rules item.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -550,6 +552,20 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — @metacrdt/node sync SDK client
+- [x] **Added the Node sync client.** `@metacrdt/node` now exports
+  `createNodeSyncClientEffect` (Effect-native, `effect/Schema`-validated
+  response boundaries, tagged `NodeSyncClientError`) and `createNodeSyncClient`
+  (Promise facade over the same client).
+- [x] **Client methods map directly to the existing sync protocol.** `health`
+  reads `/health`, `pull` reads `/events?vv=...`, `push` posts `{ events }`, and
+  `syncFrom(runtime)` performs one bidirectional version-vector exchange with a
+  local runtime.
+- [x] Tests cover health/pull, bidirectional sync through the structural handler,
+  and the Effect tagged-error path. The slice deliberately avoids retries,
+  auth, long-lived SSE state, and a premature cross-target `@metacrdt/sdk`
+  package.
 
 ### 2026-06-08 — Cloudflare relay auth boundary
 - [x] **Added optional token auth to the Cloudflare Worker relay.**
@@ -803,9 +819,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `packages/cloudflare/README.md` now link the target model and Cloudflare plan.
 - [x] Next concrete target-runtime candidate chosen: first `@metacrdt/testkit`
   conformance suite.
-- [ ] Remaining target-runtime candidates: Node SDK helpers, Cloudflare Phase
-  B/C, or expanded testkit persistence/scheduler/transport suites once a second
-  target needs them.
+- [ ] Remaining target-runtime candidates at that point: Node SDK helpers,
+  Cloudflare Phase B/C, or expanded testkit persistence/scheduler/transport
+  suites once a second target needs them. Node SDK helpers and the expanded
+  conformance suites have since shipped; Cloudflare Phase B/C remains open.
 
 ### 2026-06-08 — Node shared SQL lifecycle plan
 - [x] **Goal 110 shipped:** `@metacrdt/node` now exports

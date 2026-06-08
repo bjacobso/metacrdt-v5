@@ -29,12 +29,15 @@ import {
   createNodePostgresRuntime,
   createNodeSqlLifecyclePlan,
   createNodeSqliteRuntimeLayer,
+  createNodeSyncClient,
+  createNodeSyncClientEffect,
   createNodeSyncHttpHandler,
   createNodeSqliteRuntime,
   type NodeHttpIncomingMessageLike,
   type NodeHttpServerResponseLike,
   type NodePostgresClientLike,
   type NodePostgresQueryResultLike,
+  type NodeSyncClientFetch,
   type NodeSqliteDatabaseLike,
   type NodeSqliteStatementLike,
 } from "./index.js";
@@ -328,6 +331,22 @@ class FakeServerResponse implements NodeHttpServerResponseLike {
 
 function ascii(s: string): Uint8Array {
   return new Uint8Array([...s].map((ch) => ch.charCodeAt(0)));
+}
+
+function fetchFromHandler(
+  handler: ReturnType<typeof createNodeSyncHttpHandler>,
+): NodeSyncClientFetch {
+  return async (url, init = {}) => {
+    const response = await handler({
+      method: init.method,
+      url,
+      body: init.body,
+    });
+    return {
+      status: response.status,
+      text: async () => response.body,
+    };
+  };
 }
 
 const memoryTarget: RuntimeLayerConformanceTarget = {
@@ -912,6 +931,98 @@ describe("@metacrdt/node target", () => {
     expect(response.body).toContain("event: delta\n");
     expect(response.body).toContain('"from":"node:sse"');
     expect(response.body).toContain('"events":[');
+  });
+
+  test("Node sync client pulls, pushes, and performs bidirectional sync", async () => {
+    const remote = createNodeMemoryRuntime({
+      replicaId: "node:remote",
+      wall: () => 7_000,
+    });
+    const local = createNodeMemoryRuntime({
+      replicaId: "node:local",
+      wall: () => 8_000,
+    });
+    const remoteEvent = await applyOperation(remote, {
+      op: "assert",
+      e: "case:remote",
+      a: "case.status",
+      v: "open",
+      actor: "user:1",
+    });
+    const localEvent = await applyOperation(local, {
+      op: "assert",
+      e: "case:local",
+      a: "case.status",
+      v: "draft",
+      actor: "user:2",
+    });
+    const client = createNodeSyncClient({
+      baseUrl: "https://node.test/sync",
+      fetch: fetchFromHandler(createNodeSyncHttpHandler(remote, { basePath: "/sync" })),
+    });
+
+    await expect(client.health()).resolves.toMatchObject({
+      ok: true,
+      protocol: "metacrdt.node.http.v1",
+      profile: { replicaId: "node:remote" },
+      vv: { "node:remote": 1 },
+    });
+
+    const pulled = await client.pull({});
+    expect(pulled.from).toBe("node:remote");
+    expect(pulled.events.map((event) => event.id)).toEqual([remoteEvent.id]);
+
+    const sync = await client.syncFrom(local);
+    expect(sync).toMatchObject({
+      pulled: 1,
+      pushed: 1,
+      insertedLocal: 1,
+      insertedRemote: 1,
+      localVv: { "node:local": 1, "node:remote": 1 },
+      remoteVv: { "node:local": 1, "node:remote": 1 },
+    });
+    expect(await local.store.get(remoteEvent.id)).toEqual(remoteEvent);
+    expect(await remote.store.get(localEvent.id)).toEqual(localEvent);
+  });
+
+  test("Node sync client Effect facade returns tagged errors", async () => {
+    const client = createNodeSyncClientEffect({
+      baseUrl: "https://node.test/sync",
+      fetch: async () => ({
+        status: 500,
+        text: async () => JSON.stringify({ error: "boom" }),
+      }),
+    });
+
+    const result = await Effect.runPromise(Effect.either(client.health()));
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left).toMatchObject({
+        _tag: "NodeSyncClientError",
+        operation: "health",
+        status: 500,
+        message: "boom",
+      });
+    }
+
+    const malformed = createNodeSyncClientEffect({
+      baseUrl: "https://node.test/sync",
+      fetch: async () => ({
+        status: 200,
+        text: async () => JSON.stringify({ ok: true, protocol: "wrong" }),
+      }),
+    });
+
+    const malformedResult = await Effect.runPromise(
+      Effect.either(malformed.health()),
+    );
+    expect(malformedResult._tag).toBe("Left");
+    if (malformedResult._tag === "Left") {
+      expect(malformedResult.left).toMatchObject({
+        _tag: "NodeSyncClientError",
+        operation: "health",
+      });
+    }
   });
 
   test("node:http-style listener writes status, headers, and body", async () => {

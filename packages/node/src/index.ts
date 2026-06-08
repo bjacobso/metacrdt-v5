@@ -31,7 +31,8 @@ import {
   type VersionVector,
   versionVector,
 } from "@metacrdt/runtime";
-import { Effect, Layer } from "effect";
+import { Data, Effect, Layer } from "effect";
+import * as Schema from "effect/Schema";
 
 export type NodeSqliteStatementLike = {
   get?(...params: readonly unknown[]): unknown | Promise<unknown>;
@@ -156,7 +157,125 @@ export type NodeHttpRequestListener = (
   res: NodeHttpServerResponseLike,
 ) => Promise<NodeSyncHttpResponse>;
 
+export type NodeSyncClientFetchRequest = {
+  method?: string;
+  headers?: Readonly<Record<string, string>>;
+  body?: string;
+};
+
+export type NodeSyncClientFetchResponse = {
+  status: number;
+  text(): Promise<string>;
+};
+
+export type NodeSyncClientFetch = (
+  url: string,
+  init?: NodeSyncClientFetchRequest,
+) => Promise<NodeSyncClientFetchResponse>;
+
+export type NodeSyncClientOptions = {
+  /** Full sync base URL, e.g. http://127.0.0.1:8787/sync. */
+  baseUrl: string;
+  fetch?: NodeSyncClientFetch;
+  headers?: Readonly<Record<string, string>>;
+  protocol?: string;
+};
+
+export type NodeSyncHealthResponse = {
+  ok: true;
+  protocol: string;
+  profile: {
+    name: string;
+    replicaId: string;
+    capabilities: readonly string[];
+  };
+  vv: VersionVector;
+};
+
+export type NodeSyncDeltaResponse = {
+  protocol: string;
+  from: string;
+  vv: VersionVector;
+  since: VersionVector;
+  events: readonly Event[];
+};
+
+export type NodeSyncPushResponse = {
+  protocol: string;
+  inserted: number;
+  seen: number;
+  vv: VersionVector;
+};
+
+export type NodeSyncClientSyncResult = {
+  pulled: number;
+  pushed: number;
+  insertedLocal: number;
+  insertedRemote: number;
+  localVv: VersionVector;
+  remoteVv: VersionVector;
+};
+
+export class NodeSyncClientError extends Data.TaggedError("NodeSyncClientError")<{
+  readonly operation: string;
+  readonly message: string;
+  readonly status?: number;
+  readonly cause?: unknown;
+}> {}
+
+export type NodeSyncClientEffect = {
+  health(): Effect.Effect<NodeSyncHealthResponse, NodeSyncClientError>;
+  pull(
+    vv?: VersionVector,
+  ): Effect.Effect<NodeSyncDeltaResponse, NodeSyncClientError>;
+  push(
+    events: readonly Event[],
+  ): Effect.Effect<NodeSyncPushResponse, NodeSyncClientError>;
+  syncFrom(
+    runtime: RuntimeServices,
+  ): Effect.Effect<NodeSyncClientSyncResult, NodeSyncClientError>;
+};
+
+export type NodeSyncClient = {
+  health(): Promise<NodeSyncHealthResponse>;
+  pull(vv?: VersionVector): Promise<NodeSyncDeltaResponse>;
+  push(events: readonly Event[]): Promise<NodeSyncPushResponse>;
+  syncFrom(runtime: RuntimeServices): Promise<NodeSyncClientSyncResult>;
+  effect: NodeSyncClientEffect;
+};
+
 const DEFAULT_SYNC_PROTOCOL = "metacrdt.node.http.v1";
+
+const VersionVectorSchema = Schema.Record({
+  key: Schema.String,
+  value: Schema.Number,
+});
+
+const NodeSyncHealthResponseSchema = Schema.Struct({
+  ok: Schema.Literal(true),
+  protocol: Schema.String,
+  profile: Schema.Struct({
+    name: Schema.String,
+    replicaId: Schema.String,
+    capabilities: Schema.Array(Schema.String),
+  }),
+  vv: VersionVectorSchema,
+});
+
+const NodeSyncDeltaResponseSchema = Schema.Struct({
+  protocol: Schema.String,
+  from: Schema.String,
+  vv: VersionVectorSchema,
+  since: VersionVectorSchema,
+  events: Schema.Array(Schema.Any),
+});
+
+const NodeSyncPushResponseSchema = Schema.Struct({
+  protocol: Schema.String,
+  inserted: Schema.Number,
+  seen: Schema.Number,
+  vv: VersionVectorSchema,
+});
 
 function identifier(name: string): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
@@ -388,6 +507,16 @@ function parseVersionVector(raw: string | undefined): VersionVector {
   return vv;
 }
 
+function eventArrayFromUnknown(value: unknown, message: string): Event[] {
+  if (!Array.isArray(value)) throw new Error(message);
+  for (const event of value) {
+    if (!verifyId(event as Event)) {
+      throw new Error("body contains invalid event id");
+    }
+  }
+  return value as Event[];
+}
+
 async function requestBody(request: NodeSyncHttpRequestLike): Promise<unknown> {
   const raw = typeof request.body === "function" ? await request.body() : request.body;
   return typeof raw === "string" ? (JSON.parse(raw) as unknown) : raw;
@@ -399,13 +528,7 @@ function eventsFromBody(body: unknown): Event[] {
     : typeof body === "object" && body !== null
       ? (body as { events?: unknown }).events
       : undefined;
-  if (!Array.isArray(events)) throw new Error("expected body { events: Event[] }");
-  for (const event of events) {
-    if (!verifyId(event as Event)) {
-      throw new Error("body contains invalid event id");
-    }
-  }
-  return events as Event[];
+  return eventArrayFromUnknown(events, "expected body { events: Event[] }");
 }
 
 function sseFrame(event: string, data: unknown): string {
@@ -591,6 +714,224 @@ export function createNodeHttpRequestListener(
     });
     writeNodeResponse(res, response, req.method);
     return response;
+  };
+}
+
+function globalFetch(): NodeSyncClientFetch | undefined {
+  return (globalThis as { fetch?: NodeSyncClientFetch }).fetch;
+}
+
+function normalizeClientBaseUrl(baseUrl: string): string {
+  return baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+}
+
+function clientUrl(baseUrl: string, path: string, params?: Readonly<Record<string, string>>): string {
+  const query = params
+    ? Object.entries(params)
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join("&")
+    : "";
+  return `${baseUrl}${path}${query === "" ? "" : `?${query}`}`;
+}
+
+function clientError(
+  operation: string,
+  cause: unknown,
+  status?: number,
+): NodeSyncClientError {
+  if (cause instanceof NodeSyncClientError) return cause;
+  return new NodeSyncClientError({
+    operation,
+    status,
+    message: cause instanceof Error ? cause.message : String(cause),
+    cause,
+  });
+}
+
+function decodeClient<A, I>(
+  operation: string,
+  schema: Schema.Schema<A, I>,
+  input: unknown,
+): Effect.Effect<A, NodeSyncClientError> {
+  return Effect.try({
+    try: () => Schema.decodeUnknownSync(schema)(input),
+    catch: (cause) => clientError(operation, cause),
+  });
+}
+
+function jsonClientRequest(
+  operation: string,
+  fetch: NodeSyncClientFetch,
+  baseUrl: string,
+  path: string,
+  init: NodeSyncClientFetchRequest = {},
+  params?: Readonly<Record<string, string>>,
+): Effect.Effect<unknown, NodeSyncClientError> {
+  return Effect.tryPromise({
+    try: async () => {
+      const response = await fetch(clientUrl(baseUrl, path, params), init);
+      const raw = await response.text();
+      const parsed = raw === "" ? null : (JSON.parse(raw) as unknown);
+      if (response.status < 200 || response.status >= 300) {
+        const message =
+          typeof parsed === "object" &&
+          parsed !== null &&
+          typeof (parsed as { error?: unknown }).error === "string"
+            ? (parsed as { error: string }).error
+            : `HTTP ${response.status}`;
+        throw new NodeSyncClientError({ operation, status: response.status, message });
+      }
+      return parsed;
+    },
+    catch: (cause) => clientError(operation, cause),
+  });
+}
+
+function assertProtocol(
+  operation: string,
+  expected: string,
+  actual: string,
+): Effect.Effect<void, NodeSyncClientError> {
+  return actual === expected
+    ? Effect.void
+    : Effect.fail(
+        new NodeSyncClientError({
+          operation,
+          message: `unexpected protocol ${actual}; expected ${expected}`,
+        }),
+      );
+}
+
+function decodeDeltaEvents(
+  operation: string,
+  response: typeof NodeSyncDeltaResponseSchema.Type,
+): Effect.Effect<NodeSyncDeltaResponse, NodeSyncClientError> {
+  return Effect.try({
+    try: () => ({
+      ...response,
+      events: eventArrayFromUnknown(response.events, "expected response events"),
+    }),
+    catch: (cause) => clientError(operation, cause),
+  });
+}
+
+export function createNodeSyncClientEffect(
+  options: NodeSyncClientOptions,
+): NodeSyncClientEffect {
+  const fetch = options.fetch ?? globalFetch();
+  const baseUrl = normalizeClientBaseUrl(options.baseUrl);
+  const protocol = options.protocol ?? DEFAULT_SYNC_PROTOCOL;
+  const headers = {
+    "content-type": "application/json",
+    ...(options.headers ?? {}),
+  };
+
+  if (!fetch) {
+    const missingFetch = (operation: string) =>
+      Effect.fail(
+        new NodeSyncClientError({
+          operation,
+          message: "no fetch implementation supplied",
+        }),
+      );
+    return {
+      health: () => missingFetch("health"),
+      pull: () => missingFetch("pull"),
+      push: () => missingFetch("push"),
+      syncFrom: () => missingFetch("syncFrom"),
+    };
+  }
+
+  const health = () =>
+    jsonClientRequest("health", fetch, baseUrl, "/health", { method: "GET", headers }).pipe(
+      Effect.flatMap((json) =>
+        decodeClient("health", NodeSyncHealthResponseSchema, json),
+      ),
+      Effect.tap((response) => assertProtocol("health", protocol, response.protocol)),
+    );
+
+  const pull = (vv: VersionVector = {}) =>
+    jsonClientRequest(
+      "pull",
+      fetch,
+      baseUrl,
+      "/events",
+      { method: "GET", headers },
+      { vv: JSON.stringify(vv) },
+    ).pipe(
+      Effect.flatMap((json) =>
+        decodeClient("pull", NodeSyncDeltaResponseSchema, json),
+      ),
+      Effect.flatMap((response) =>
+        decodeDeltaEvents("pull", response),
+      ),
+      Effect.tap((response) => assertProtocol("pull", protocol, response.protocol)),
+    );
+
+  const push = (events: readonly Event[]) =>
+    jsonClientRequest("push", fetch, baseUrl, "/events", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ events }),
+    }).pipe(
+      Effect.flatMap((json) =>
+        decodeClient("push", NodeSyncPushResponseSchema, json),
+      ),
+      Effect.tap((response) => assertProtocol("push", protocol, response.protocol)),
+    );
+
+  const syncFrom = (runtime: RuntimeServices) =>
+    Effect.tryPromise({
+      try: async () => {
+        const localBefore = await runtime.store.scan();
+        return {
+          localBefore,
+          localVvBefore: versionVector(localBefore),
+        };
+      },
+      catch: (cause) => clientError("syncFrom", cause),
+    }).pipe(
+      Effect.flatMap(({ localVvBefore }) =>
+        pull(localVvBefore).pipe(
+          Effect.map((remoteDelta) => ({ localVvBefore, remoteDelta })),
+        ),
+      ),
+      Effect.flatMap(({ remoteDelta }) =>
+        Effect.tryPromise({
+          try: async () => {
+            const insertedLocal = await mergeFrom(runtime, remoteDelta.events);
+            const localAfterMerge = await runtime.store.scan();
+            const outbound = deltaSince(localAfterMerge, remoteDelta.vv).events;
+            return { remoteDelta, insertedLocal, localAfterMerge, outbound };
+          },
+          catch: (cause) => clientError("syncFrom", cause),
+        }),
+      ),
+      Effect.flatMap(({ remoteDelta, insertedLocal, localAfterMerge, outbound }) =>
+        push(outbound).pipe(
+          Effect.map((pushed) => ({
+            pulled: remoteDelta.events.length,
+            pushed: outbound.length,
+            insertedLocal,
+            insertedRemote: pushed.inserted,
+            localVv: versionVector(localAfterMerge),
+            remoteVv: pushed.vv,
+          })),
+        ),
+      ),
+    );
+
+  return { health, pull, push, syncFrom };
+}
+
+export function createNodeSyncClient(options: NodeSyncClientOptions): NodeSyncClient {
+  const effect = createNodeSyncClientEffect(options);
+  return {
+    effect,
+    health: () => Effect.runPromise(effect.health()),
+    pull: (vv) => Effect.runPromise(effect.pull(vv)),
+    push: (events) => Effect.runPromise(effect.push(events)),
+    syncFrom: (runtime) => Effect.runPromise(effect.syncFrom(runtime)),
   };
 }
 

@@ -69,7 +69,8 @@ On open hosts the adapter is a selectable dependency.
   HTTP/SSE sync handler, native `node:http`-style request listener, and packaged
   in-memory dev-server CLI. It also exposes a shared SQL lifecycle plan for the
   SQLite/Postgres runtime tables and Effect Layers for memory, SQLite, and
-  Postgres. SDK integration remains a future slice.
+  Postgres. A dependency-free sync SDK client now talks to the same HTTP/SSE
+  routes through an Effect-native facade plus Promise wrapper.
 - `@metacrdt/runtime`'s in-memory target/Layer — the reference harness.
 - `@metacrdt/testkit` — Effect Layer-backed conformance helpers for EventStore,
   anti-entropy, deterministic fold convergence, EventStore-backed projection,
@@ -94,10 +95,9 @@ On open hosts the adapter is a selectable dependency.
 
 ### Should exist next
 
-- **`@metacrdt/node` next slices** — add SDK/client integration and production
-  database lifecycle guidance on top of the memory/SQLite/Postgres host,
-  lifecycle DDL plan, HTTP/SSE sync surface, and packaged dev server now in
-  place.
+- **`@metacrdt/node` next slices** — add production database/deployment guidance
+  on top of the memory/SQLite/Postgres host, lifecycle DDL plan, HTTP/SSE sync
+  surface, sync client, and packaged dev server now in place.
 
 ### Defer until a real need justifies them
 

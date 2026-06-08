@@ -40,6 +40,11 @@ different storage adapters behind the same runtime contracts.
   objects. It consumes streamed request bodies, calls the structural sync
   handler, and writes status/headers/body back to the response without importing
   Node types.
+- **Sync SDK client** — `createNodeSyncClientEffect` and `createNodeSyncClient`,
+  dependency-free clients over the same HTTP/SSE sync routes. The Effect-native
+  client validates response boundaries with `effect/Schema` and reports
+  `NodeSyncClientError` in the Effect error channel; the Promise facade is for
+  ordinary Node consumers.
 - **Packaged dev server CLI** — `metacrdt-node-dev`, an in-memory local sync
   server over native `node:http`. It is a convenience wrapper over
   `createNodeMemoryRuntime` + `createNodeHttpRequestListener`, with configurable
@@ -68,8 +73,9 @@ conformance. Package-specific tests still cover concrete persistence regressions
 and the shared SQL lifecycle plan used by both SQL adapters. It also tests the
 HTTP/SSE handler's health, delta pull, event push, SSE response paths, and the
 native-style listener adapter's response writing and streamed POST body merge.
-The dev-server CLI is tested by starting a real ephemeral `node:http` server and
-querying its health route.
+The sync SDK client is tested for health/pull/push/bidirectional sync and tagged
+Effect error behavior. The dev-server CLI is tested by starting a real ephemeral
+`node:http` server and querying its health route.
 
 ## Usage
 
@@ -77,6 +83,8 @@ querying its health route.
 import {
   createNodeMemoryRuntimeLayer,
   createNodeHttpRequestListener,
+  createNodeSyncClient,
+  createNodeSyncClientEffect,
   createNodePostgresRuntimeLayer,
   createNodePostgresRuntime,
   createNodeSqlLifecyclePlan,
@@ -99,6 +107,28 @@ const response = await handleSync({
 // Native node:http-style adapter:
 const listener = createNodeHttpRequestListener(runtime, { basePath: "/sync" });
 // http.createServer((req, res) => void listener(req, res)).listen(8787)
+```
+
+Client sync against another Node runtime:
+
+```ts
+const client = createNodeSyncClient({
+  baseUrl: "http://127.0.0.1:8787/sync",
+});
+
+const health = await client.health();
+const result = await client.syncFrom(runtime);
+```
+
+Effect-native callers can use the same client without leaving the Effect error
+channel:
+
+```ts
+const client = createNodeSyncClientEffect({
+  baseUrl: "http://127.0.0.1:8787/sync",
+});
+
+const program = client.syncFrom(runtime);
 ```
 
 Effect-native hosts can provide the same targets as Layers:

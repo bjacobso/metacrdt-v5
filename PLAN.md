@@ -171,13 +171,8 @@ routes without binding the package to a concrete Node framework. Goal 106 adds a
 native `node:http`-style request-listener adapter that consumes streamed request
 bodies, delegates to the structural sync handler, and writes status/headers/body
 back to structural response objects while still importing no Node framework or
-Node type package. The next active goal
-should be chosen from the remaining TODO candidates:
-choosing/wiring the provider-specific React wrapper/JWT flow, adding Node SDK
-helpers, Cloudflare DO+SQLite parity, another carefully scoped Confect/domain
-wrapper, or the next projection dependency
-(closure/derived provenance or remaining operational process state). Goal 108
-adds the packaged Node dev-server CLI (`metacrdt-node-dev`) as an in-memory
+Node type package. Goal 108 adds the packaged Node dev-server CLI
+(`metacrdt-node-dev`) as an in-memory
 local sync process over the existing native listener, proving the Node target can
 now be run directly from an installed package. Goal 109 adds the durable Node
 storage slice: a driver-neutral Postgres runtime over a structural
@@ -186,7 +181,15 @@ conformance suite as memory and SQLite. Goal 110 adds the first shared SQL
 lifecycle seam inside `@metacrdt/node`: a public, driver-neutral
 `createNodeSqlLifecyclePlan` that owns validated table/index names plus
 events/meta DDL for both SQLite and Postgres, consumed by both adapters without
-extracting a premature `@metacrdt/sql` package.
+extracting a premature `@metacrdt/sql` package. Goal 112 adds the Node sync SDK
+helper: a dependency-free client for the existing HTTP/SSE sync routes, with an
+Effect-native facade (`effect/Schema` response validation and tagged
+`NodeSyncClientError`) plus a Promise wrapper for ordinary Node consumers. The
+next active goal should be chosen from the remaining TODO candidates:
+choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
+production deployment guidance, Cloudflare DO+SQLite parity, another carefully
+scoped Confect/domain wrapper, or the next projection dependency
+(closure/derived provenance or remaining operational process state).
 
 This plan is the operational goal file. Read it with:
 
@@ -9336,6 +9339,55 @@ event/meta tables and indexes.
 - `npm run typecheck --workspace @metacrdt/node` passes.
 - `npm run test:packages`, `npm run build:packages`, `npm run pack:packages`,
   `npm run typecheck`, and `npm run build` pass.
+
+---
+
+## Goal 112 — @metacrdt/node Sync SDK Client
+
+**Status:** shipped.
+
+**Objective:** make the already-shipped Node HTTP/SSE sync surface convenient to
+consume from host applications without adding a framework dependency or creating
+a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
+105's structural routes, not a second sync protocol.
+
+### What Shipped
+
+- Added `createNodeSyncClientEffect(options)`:
+  - accepts a full sync base URL (`http://host/sync`);
+  - accepts a structural `fetch` implementation and otherwise uses global
+    `fetch` when available;
+  - exposes `health`, `pull`, `push`, and `syncFrom`;
+  - validates response boundaries with `effect/Schema`;
+  - reports `NodeSyncClientError` in the Effect error channel.
+- Added `createNodeSyncClient(options)`:
+  - wraps the Effect client in Promise-returning methods for ordinary Node
+    consumers;
+  - keeps the Effect client available as `.effect`.
+- `syncFrom(runtime)` performs one bidirectional version-vector anti-entropy
+  exchange against a remote Node sync endpoint:
+  - compute local `vv`;
+  - pull the remote delta;
+  - merge remote events into the local runtime;
+  - push local events the remote has not seen;
+  - report pulled/pushed/inserted counts and resulting vectors.
+
+### Non-Goals
+
+- Do not create a new `@metacrdt/sdk` package yet. The Node client lives in the
+  Node target until other hosts reveal a shared cross-target client boundary.
+- Do not add auth, retries, reconnect loops, long-lived SSE subscription state,
+  or production process supervision in this slice.
+- Do not change the HTTP/SSE wire routes.
+
+### Verification
+
+- `npm test --workspace @metacrdt/node` passes, now with twenty-seven Node tests.
+- New tests prove:
+  - the client reads health and pulls remote deltas;
+  - `syncFrom` performs a bidirectional exchange through the structural handler;
+  - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
+- `npm run typecheck --workspace @metacrdt/node` passes.
 
 ---
 

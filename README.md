@@ -179,9 +179,11 @@ Current packages:
   `createNodeSyncHttpHandler` exposing health, delta pull, event push, and
   one-shot SSE sync over any `RuntimeServices`, and a
   `createNodeHttpRequestListener` adapter for native `node:http`-style
-  request/response objects. It also ships `metacrdt-node-dev`, an in-memory
-  local sync server CLI over native `node:http`. Memory, SQLite, and Postgres
-  runtimes expose Effect Layer providers and pass `@metacrdt/testkit`.
+  request/response objects, plus `createNodeSyncClientEffect` /
+  `createNodeSyncClient` for consuming those same routes from Effect or ordinary
+  Promise-based Node code. It also ships `metacrdt-node-dev`, an in-memory local
+  sync server CLI over native `node:http`. Memory, SQLite, and Postgres runtimes
+  expose Effect Layer providers and pass `@metacrdt/testkit`.
 - **`@metacrdt/testkit`** (`packages/testkit`) — target conformance helpers:
   Effect Layer-backed checks for EventStore idempotency/filtering/content-id
   verification, version-vector anti-entropy, deterministic fold convergence, and
@@ -229,7 +231,7 @@ Planned package graph:
 @metacrdt/cloudflare  Durable Object / Worker target
 @metacrdt/local       browser/local-first target
 @metacrdt/testkit     target conformance checks
-@metacrdt/node        Node target (memory + structural SQLite/Postgres + SQL lifecycle plan + HTTP/SSE + listener + dev-server CLI shipped)
+@metacrdt/node        Node target (memory + structural SQLite/Postgres + SQL lifecycle plan + HTTP/SSE + listener + sync client + dev-server CLI shipped)
 ```
 
 Open Ontology is vendored as a context submodule at
