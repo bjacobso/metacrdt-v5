@@ -31,6 +31,20 @@ export default defineSchema({
   factEvents: defineTable({
     txId: v.id("transactions"),
     txTime: v.number(),
+    // MetaCRDT protocol metadata. Optional while legacy dev data exists; all new
+    // writes should stamp it. `eventId` is the content address of the core event.
+    eventId: v.optional(v.string()),
+    hlc: v.optional(
+      v.object({
+        pt: v.number(),
+        l: v.number(),
+        r: v.string(),
+      }),
+    ),
+    replicaId: v.optional(v.string()),
+    seq: v.optional(v.number()),
+    targetEventId: v.optional(v.string()),
+    causalRefs: v.optional(v.array(v.string())),
     kind: v.union(
       v.literal("assert"),
       v.literal("retract"),
@@ -48,6 +62,7 @@ export default defineSchema({
     metadata: v.optional(v.any()),
   })
     .index("by_tx", ["txId"])
+    .index("by_eventId", ["eventId"])
     .index("by_e", ["e"])
     .index("by_e_a_tx", ["e", "a", "txTime"])
     .index("by_a_tx", ["a", "txTime"]),
@@ -79,6 +94,7 @@ export default defineSchema({
     tombstoneReason: v.optional(v.string()),
 
     // Correction lineage.
+    assertEventId: v.optional(v.string()),
     supersededBy: v.optional(v.id("facts")),
     supersedes: v.optional(v.id("facts")),
 

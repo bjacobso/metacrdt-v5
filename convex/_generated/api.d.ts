@@ -19,6 +19,7 @@ import type * as facts from "../facts.js";
 import type * as flows from "../flows.js";
 import type * as forms from "../forms.js";
 import type * as http from "../http.js";
+import type * as lib_coreEvent from "../lib/coreEvent.js";
 import type * as lib_engine from "../lib/engine.js";
 import type * as lib_meta from "../lib/meta.js";
 import type * as lib_origin from "../lib/origin.js";
@@ -48,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   flows: typeof flows;
   forms: typeof forms;
   http: typeof http;
+  "lib/coreEvent": typeof lib_coreEvent;
   "lib/engine": typeof lib_engine;
   "lib/meta": typeof lib_meta;
   "lib/origin": typeof lib_origin;

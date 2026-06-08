@@ -4,6 +4,14 @@ import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { isVisible, valueKey } from "./lib/visibility";
 import { attrId, BUILTIN_CARDINALITY } from "./lib/meta";
+import {
+  assertEvent,
+  eventPatch,
+  retractEvent,
+  tombstoneEvent,
+  type ProtocolEventPatch,
+} from "./lib/coreEvent";
+import { maxByOrder, type Event, type Value } from "@metacrdt/core";
 
 // --- internal helpers (exported for the schema-as-facts module) -------------
 
@@ -24,6 +32,147 @@ export async function createTransaction(
     source: args.source,
     txTime: args.now,
   });
+}
+
+async function getTx(
+  ctx: MutationCtx,
+  txId: Id<"transactions">,
+): Promise<Doc<"transactions">> {
+  const tx = await ctx.db.get(txId);
+  if (!tx) throw new Error(`transaction ${txId} not found`);
+  return tx;
+}
+
+function targetEventId(fact: Doc<"facts">): string {
+  // Legacy facts created before protocol metadata do not have assertEventId.
+  // Keep them readable/actionable with a deterministic compatibility target.
+  return fact.assertEventId ?? `legacy:${fact._id}`;
+}
+
+async function insertFactEvent(
+  ctx: MutationCtx,
+  row: {
+    txId: Id<"transactions">;
+    txTime: number;
+    kind: "assert" | "retract" | "tombstone" | "untombstone" | "correction";
+    factId?: Id<"facts">;
+    e: string;
+    a: string;
+    v: unknown;
+    validFrom?: number;
+    validTo?: number;
+    reason?: string;
+    metadata?: unknown;
+  },
+  protocol?: ProtocolEventPatch,
+): Promise<Id<"factEvents">> {
+  return await ctx.db.insert("factEvents", {
+    ...row,
+    ...(protocol ?? {}),
+  });
+}
+
+async function assertEventForFact(
+  ctx: MutationCtx,
+  fact: Doc<"facts">,
+): Promise<Event> {
+  if (fact.assertEventId !== undefined) {
+    const row = await ctx.db
+      .query("factEvents")
+      .withIndex("by_eventId", (q) => q.eq("eventId", fact.assertEventId))
+      .unique();
+    if (row) {
+      const tx = await getTx(ctx, row.txId);
+      return assertEvent(tx, {
+        e: row.e,
+        a: row.a,
+        v: row.v,
+        validFrom: row.validFrom ?? row.txTime,
+        validTo: row.validTo,
+        reason: row.reason,
+        causalRefs: row.causalRefs,
+      });
+    }
+  }
+  // Legacy fallback for facts created before protocol metadata. This preserves a
+  // deterministic order without rewriting historical event rows.
+  return {
+    id: targetEventId(fact),
+    kind: "assert",
+    actor: "system",
+    actorType: "system",
+    hlc: { pt: fact.assertedAt, l: 0, r: "convex:legacy" },
+    e: fact.e,
+    a: fact.a,
+    v: fact.v as Value,
+    validFrom: fact.validFrom,
+    validTo: fact.validTo ?? null,
+    causalRefs: [],
+  };
+}
+
+async function reconcileCardinalityOneCurrent(
+  ctx: MutationCtx,
+  tx: Doc<"transactions">,
+  now: number,
+  e: string,
+  a: string,
+  candidates: Doc<"facts">[],
+): Promise<Doc<"facts">> {
+  const pairs = await Promise.all(
+    candidates
+      .filter((f) => f.retractedAt === undefined && f.tombstonedAt === undefined)
+      .map(async (fact) => ({ fact, event: await assertEventForFact(ctx, fact) })),
+  );
+  if (pairs.length === 0) throw new Error(`no candidates for ${e}/${a}`);
+  const winnerEvent = maxByOrder(pairs.map((p) => p.event));
+  const winner = pairs.find((p) => p.event.id === winnerEvent?.id)?.fact;
+  if (!winner) throw new Error(`no ≺ winner for ${e}/${a}`);
+
+  for (const { fact, event } of pairs) {
+    if (fact._id === winner._id) continue;
+    await ctx.db.patch("facts", fact._id, {
+      retractedAt: now,
+      lastTxId: tx._id,
+    });
+    const ev = retractEvent(
+      tx,
+      event.id,
+      "superseded by ≺-max cardinality-one assertion",
+    );
+    await insertFactEvent(
+      ctx,
+      {
+        txId: tx._id,
+        txTime: now,
+        kind: "retract",
+        factId: fact._id,
+        e: fact.e,
+        a: fact.a,
+        v: fact.v,
+        reason: "superseded by ≺-max cardinality-one assertion",
+      },
+      eventPatch(ev),
+    );
+  }
+
+  const existing = await ctx.db
+    .query("currentFacts")
+    .withIndex("by_e_a", (q) => q.eq("e", e).eq("a", a))
+    .collect();
+  for (const row of existing) await ctx.db.delete("currentFacts", row._id);
+
+  await ctx.db.insert("currentFacts", {
+    e: winner.e,
+    a: winner.a,
+    v: winner.v,
+    factId: winner._id,
+    validFrom: winner.validFrom,
+    txTime: now,
+    updatedAt: now,
+  });
+
+  return winner;
 }
 
 /**
@@ -125,35 +274,23 @@ export async function assertInTx(
 ): Promise<Id<"facts">> {
   const validFrom = args.validFrom ?? now;
   const cardinality = await cardinalityOf(ctx, args.a);
+  const tx = await getTx(ctx, txId);
+  const priorCurrent =
+    cardinality === "one"
+      ? await ctx.db
+          .query("currentFacts")
+          .withIndex("by_e_a", (q) => q.eq("e", args.e).eq("a", args.a))
+          .collect()
+      : [];
 
-  // Cardinality-one: retract any currently-true fact for this (e, a) first, so
-  // transaction-time history stays consistent.
-  if (cardinality === "one") {
-    const current = await ctx.db
-      .query("currentFacts")
-      .withIndex("by_e_a", (q) => q.eq("e", args.e).eq("a", args.a))
-      .collect();
-    for (const row of current) {
-      const old = await ctx.db.get("facts", row.factId);
-      if (old && old.retractedAt === undefined) {
-        await ctx.db.patch("facts", old._id, {
-          retractedAt: now,
-          lastTxId: txId,
-        });
-        await ctx.db.insert("factEvents", {
-          txId,
-          txTime: now,
-          kind: "retract",
-          factId: old._id,
-          e: old.e,
-          a: old.a,
-          v: old.v,
-          reason: "superseded by new cardinality-one assertion",
-        });
-      }
-    }
-  }
-
+  const ev = assertEvent(tx, {
+    e: args.e,
+    a: args.a,
+    v: args.value,
+    validFrom,
+    validTo: args.validTo,
+    reason: args.reason,
+  });
   const factId = await ctx.db.insert("facts", {
     e: args.e,
     a: args.a,
@@ -162,24 +299,38 @@ export async function assertInTx(
     assertedAt: now,
     validFrom,
     validTo: args.validTo,
+    assertEventId: ev.id,
     source: args.source,
   });
 
-  await ctx.db.insert("factEvents", {
-    txId,
-    txTime: now,
-    kind: "assert",
-    factId,
-    e: args.e,
-    a: args.a,
-    v: args.value,
-    validFrom,
-    validTo: args.validTo,
-    reason: args.reason,
-  });
+  await insertFactEvent(
+    ctx,
+    {
+      txId,
+      txTime: now,
+      kind: "assert",
+      factId,
+      e: args.e,
+      a: args.a,
+      v: args.value,
+      validFrom,
+      validTo: args.validTo,
+      reason: args.reason,
+    },
+    eventPatch(ev),
+  );
 
   const fact = (await ctx.db.get("facts", factId))!;
-  await upsertCurrentFact(ctx, fact, cardinality, now);
+  if (cardinality === "one") {
+    const candidates: Doc<"facts">[] = [fact];
+    for (const row of priorCurrent) {
+      const old = await ctx.db.get("facts", row.factId);
+      if (old) candidates.push(old);
+    }
+    await reconcileCardinalityOneCurrent(ctx, tx, now, args.e, args.a, candidates);
+  } else {
+    await upsertCurrentFact(ctx, fact, cardinality, now);
+  }
 
   await ctx.scheduler.runAfter(0, internal.materialize.processFactChange, {
     e: args.e,
@@ -202,17 +353,23 @@ export async function retractInTx(
 ): Promise<void> {
   const fact = await ctx.db.get("facts", factId);
   if (!fact || fact.retractedAt !== undefined) return;
+  const tx = await getTx(ctx, txId);
   await ctx.db.patch("facts", fact._id, { retractedAt: now, lastTxId: txId });
-  await ctx.db.insert("factEvents", {
-    txId,
-    txTime: now,
-    kind: "retract",
-    factId: fact._id,
-    e: fact.e,
-    a: fact.a,
-    v: fact.v,
-    reason,
-  });
+  const ev = retractEvent(tx, targetEventId(fact), reason);
+  await insertFactEvent(
+    ctx,
+    {
+      txId,
+      txTime: now,
+      kind: "retract",
+      factId: fact._id,
+      e: fact.e,
+      a: fact.a,
+      v: fact.v,
+      reason,
+    },
+    eventPatch(ev),
+  );
   await removeCurrentFact(ctx, fact._id, fact.e, fact.a);
   await ctx.scheduler.runAfter(0, internal.materialize.processFactChange, {
     e: fact.e,
@@ -277,6 +434,7 @@ export const retractFact = mutation({
       reason: args.reason,
       now,
     });
+    const tx = await getTx(ctx, txId);
 
     await ctx.db.patch("facts", fact._id, {
       retractedAt: now,
@@ -284,17 +442,22 @@ export const retractFact = mutation({
       lastTxId: txId,
     });
 
-    await ctx.db.insert("factEvents", {
-      txId,
-      txTime: now,
-      kind: "retract",
-      factId: fact._id,
-      e: fact.e,
-      a: fact.a,
-      v: fact.v,
-      validTo: args.validTo ?? fact.validTo,
-      reason: args.reason,
-    });
+    const ev = retractEvent(tx, targetEventId(fact), args.reason);
+    await insertFactEvent(
+      ctx,
+      {
+        txId,
+        txTime: now,
+        kind: "retract",
+        factId: fact._id,
+        e: fact.e,
+        a: fact.a,
+        v: fact.v,
+        validTo: args.validTo ?? fact.validTo,
+        reason: args.reason,
+      },
+      eventPatch(ev),
+    );
 
     await removeCurrentFact(ctx, fact._id, fact.e, fact.a);
 
@@ -326,6 +489,7 @@ export const tombstoneFact = mutation({
       reason: args.reason,
       now,
     });
+    const tx = await getTx(ctx, txId);
 
     await ctx.db.patch("facts", fact._id, {
       tombstonedAt: now,
@@ -334,16 +498,21 @@ export const tombstoneFact = mutation({
       lastTxId: txId,
     });
 
-    await ctx.db.insert("factEvents", {
-      txId,
-      txTime: now,
-      kind: "tombstone",
-      factId: fact._id,
-      e: fact.e,
-      a: fact.a,
-      v: fact.v,
-      reason: args.reason,
-    });
+    const ev = tombstoneEvent(tx, targetEventId(fact), args.reason);
+    await insertFactEvent(
+      ctx,
+      {
+        txId,
+        txTime: now,
+        kind: "tombstone",
+        factId: fact._id,
+        e: fact.e,
+        a: fact.a,
+        v: fact.v,
+        reason: args.reason,
+      },
+      eventPatch(ev),
+    );
 
     await removeCurrentFact(ctx, fact._id, fact.e, fact.a);
 
@@ -378,6 +547,9 @@ export const correctFact = mutation({
       reason: args.reason,
       now,
     });
+    const tx = await getTx(ctx, txId);
+    const oldTarget = targetEventId(old);
+    const tombEv = tombstoneEvent(tx, oldTarget, args.reason);
 
     // Tombstone the old assertion.
     await ctx.db.patch("facts", old._id, {
@@ -386,21 +558,34 @@ export const correctFact = mutation({
       tombstoneReason: args.reason,
       lastTxId: txId,
     });
-    await ctx.db.insert("factEvents", {
-      txId,
-      txTime: now,
-      kind: "correction",
-      factId: old._id,
-      e: old.e,
-      a: old.a,
-      v: old.v,
-      reason: args.reason,
-    });
+    await insertFactEvent(
+      ctx,
+      {
+        txId,
+        txTime: now,
+        kind: "tombstone",
+        factId: old._id,
+        e: old.e,
+        a: old.a,
+        v: old.v,
+        reason: args.reason,
+      },
+      eventPatch(tombEv),
+    );
     await removeCurrentFact(ctx, old._id, old.e, old.a);
 
     // Assert the corrected fact, linked to the old one.
     const value = args.newValue ?? old.v;
     const validFrom = args.newValidFrom ?? old.validFrom;
+    const assertEv = assertEvent(tx, {
+      e: old.e,
+      a: old.a,
+      v: value,
+      validFrom,
+      validTo: args.newValidTo ?? old.validTo,
+      reason: args.reason,
+      causalRefs: [tombEv.id, oldTarget],
+    });
     const newFactId = await ctx.db.insert("facts", {
       e: old.e,
       a: old.a,
@@ -409,23 +594,28 @@ export const correctFact = mutation({
       assertedAt: now,
       validFrom,
       validTo: args.newValidTo ?? old.validTo,
+      assertEventId: assertEv.id,
       supersedes: old._id,
       source: old.source,
     });
     await ctx.db.patch("facts", old._id, { supersededBy: newFactId });
 
-    await ctx.db.insert("factEvents", {
-      txId,
-      txTime: now,
-      kind: "assert",
-      factId: newFactId,
-      e: old.e,
-      a: old.a,
-      v: value,
-      validFrom,
-      validTo: args.newValidTo ?? old.validTo,
-      reason: args.reason,
-    });
+    await insertFactEvent(
+      ctx,
+      {
+        txId,
+        txTime: now,
+        kind: "assert",
+        factId: newFactId,
+        e: old.e,
+        a: old.a,
+        v: value,
+        validFrom,
+        validTo: args.newValidTo ?? old.validTo,
+        reason: args.reason,
+      },
+      eventPatch(assertEv),
+    );
 
     const newFact = (await ctx.db.get("facts", newFactId))!;
     const cardinality = await cardinalityOf(ctx, old.a);

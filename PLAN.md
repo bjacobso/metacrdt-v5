@@ -63,6 +63,15 @@ projection logic and arrival-order cardinality-one supersession.
   - bitemporal visibility quadrants
 - Convex read path delegates visibility to core via
   [`convex/lib/visibility.ts`](./convex/lib/visibility.ts).
+- New Convex writes stamp protocol metadata on `factEvents`:
+  `eventId`, HLC, `replicaId`, `targetEventId`, and `causalRefs` where
+  applicable.
+- `facts.assertEventId` stores the protocol assert event id for lifecycle
+  targeting.
+- `correctFact` is represented in new event history as tombstone-old + assert-new
+  with causal refs, not as a new core event kind.
+- Cardinality-one current projection reconciles candidates by `@metacrdt/core`
+  `≺` order and retracts projection losers.
 - Convex backend tests are green: 66 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
@@ -71,13 +80,9 @@ projection logic and arrival-order cardinality-one supersession.
 
 ### Not Yet True
 
-- `factEvents` do not yet carry core `eventId` / HLC / replica sequence metadata.
-- Cardinality-one write conflict resolution is still arrival-order, not the
-  protocol `≺` order.
-- Convex still has a `correction` event kind, while the protocol/core event model
-  has only `assert`, `retract`, `tombstone`, and `untombstone`. Correction must be
-  treated as a convenience operation that expands into protocol events, not as a
-  fifth core event kind.
+- Legacy `factEvents` may still lack core `eventId` / HLC / replica metadata.
+- Convex schema still permits the legacy `correction` event kind for historical
+  rows, while new corrections write protocol primitives.
 - `facts` and `currentFacts` are still maintained as imperative projections,
   not folded directly from raw core-shaped events.
 - Multi-replica sync is specified but not implemented.
@@ -160,10 +165,10 @@ This is the next implementation goal.
   - `convex/lib/visibility.ts`
   - `convex/internal/materialize.ts`
   - tests that assert/retract/tombstone/correct facts
-- [ ] Identify where each event kind is appended.
-- [ ] Identify where `facts` and `currentFacts` are patched.
-- [ ] Identify where cardinality-one supersession is decided.
-- [ ] Identify how `correctFact` currently records `correction` and patches
+- [x] Identify where each event kind is appended.
+- [x] Identify where `facts` and `currentFacts` are patched.
+- [x] Identify where cardinality-one supersession is decided.
+- [x] Identify how `correctFact` currently records `correction` and patches
   `supersedes` / `supersededBy`, then decide which fields become causal metadata
   on the protocol tombstone/assert pair.
 
@@ -171,14 +176,14 @@ This is the next implementation goal.
 
 Create local Convex adapters first; extract to `@metacrdt/convex` later.
 
-- [ ] Add adapter module, likely `convex/lib/coreEvent.ts`.
-- [ ] Implement:
+- [x] Add adapter module, likely `convex/lib/coreEvent.ts`.
+- [x] Implement:
   - Convex event row → core `Event`
   - core `Event` → Convex event row fields
   - transaction actor/source → core actor fields
   - timestamp → HLC fallback
   - missing legacy metadata fallback
-- [ ] Keep conversion deterministic and testable.
+- [x] Keep conversion deterministic and testable.
 
 Recommended shape:
 
@@ -190,40 +195,40 @@ sealEventForConvex(body, seq): { eventId, hlc, ...rowFields }
 
 #### 4. Extend Schema
 
-- [ ] Add fields to `factEvents`:
+- [x] Add fields to `factEvents`:
   - `eventId?: string`
   - `hlc?: { pt: number; l: number; r: string }` or flattened fields
   - `replicaId?: string`
   - `seq?: number`
   - `targetEventId?: string` / lifecycle refs if needed
   - `causes?: string[]`
-- [ ] Add indexes only if needed by the implementation:
+- [x] Add indexes only if needed by the implementation:
   - by `eventId`
   - by `replicaId, seq` only after a real `seq` source exists
-- [ ] Keep old fields in place for compatibility with current tests and UI.
+- [x] Keep old fields in place for compatibility with current tests and UI.
 
 #### 5. Stamp New Events
 
-- [ ] In `assertFact`, build a core assert event body and seal it.
-- [ ] In `retractFact`, build a core retract event targeting the asserted event.
-- [ ] In `tombstoneFact`, build a core tombstone event.
-- [ ] In `correctFact`, express correction as tombstone-old + assert-new, linked
+- [x] In `assertFact`, build a core assert event body and seal it.
+- [x] In `retractFact`, build a core retract event targeting the asserted event.
+- [x] In `tombstoneFact`, build a core tombstone event.
+- [x] In `correctFact`, express correction as tombstone-old + assert-new, linked
   by causal metadata.
-- [ ] Decide whether the existing Convex `correction` event row remains:
+- [x] Decide whether the existing Convex `correction` event row remains:
   - preferred: stop writing new `correction` rows once the protocol pair is in
     place, and derive "correction" for UI/audit from causal links;
   - acceptable transition: continue writing a `correction` summary row, but mark
     it Convex-only and ensure the core adapter ignores or expands it.
-- [ ] Preserve transaction rows and existing event semantics.
+- [x] Preserve transaction rows and existing event semantics.
 
 #### 6. Implement HLC / Replica Metadata
 
 For the centralized Convex runtime, this can be minimal but protocol-shaped.
 
-- [ ] Define a stable replica ID for the deployment / runtime.
+- [x] Define a stable replica ID for the deployment / runtime.
   - Initial pragmatic value can be `"convex:<deployment>"` or `"convex:dev"`.
   - Avoid reading browser/client state.
-- [ ] Do **not** add a global transactional counter in this phase.
+- [x] Do **not** add a global transactional counter in this phase.
   - A single counter row would serialize every write and create avoidable
     contention.
   - For the centralized Convex runtime, leave `seq` optional or derive a
@@ -233,19 +238,21 @@ For the centralized Convex runtime, this can be minimal but protocol-shaped.
     runtime, where it can be owned by the replica/target (for example a Durable
     Object or local replica), not by one global Convex document.
 - [ ] HLC physical time can start from transaction time.
-- [ ] HLC logical component can be `0` for normal single-writer writes.
-- [ ] Tests should hand-construct same-physical-time / same-valid-time events to
-  exercise `≺` conflict resolution, because normal centralized Convex operation
-  will rarely produce true concurrent coordinates.
+- [x] HLC physical time starts from transaction time.
+- [x] HLC logical component is derived from Convex transaction document
+  `_creationTime`, preserving rapid same-millisecond centralized write order
+  without a global counter.
+- [x] Tests freeze wall-clock time to exercise `≺` conflict resolution in the
+  Convex projection.
 
 #### 7. Switch Cardinality-One Supersession
 
-- [ ] Replace "current arrival-order prior fact wins/loses" logic with a
+- [x] Replace "current arrival-order prior fact wins/loses" logic with a
   core-order comparison among visible candidate assertions for `(e, a)`.
-- [ ] Surviving value for `cardinality: "one"` is the `≺`-max visible assert.
-- [ ] Non-surviving visible asserts should be represented as superseded/retracted
+- [x] Surviving value for `cardinality: "one"` is the `≺`-max visible assert.
+- [x] Non-surviving visible asserts should be represented as superseded/retracted
   in the projection without pretending their events never existed.
-- [ ] Preserve user-facing current state for ordinary sequential writes.
+- [x] Preserve user-facing current state for ordinary sequential writes.
 
 Important distinction:
 
@@ -266,13 +273,13 @@ Important distinction:
 
 #### 8.5. Legacy Metadata Policy
 
-- [ ] Choose and document one policy before deployment:
+- [x] Choose and document one policy before deployment:
   - **Permanent tolerant adapter:** legacy `factEvents` without `eventId` / HLC
     remain readable forever; only new events are protocol-shaped.
   - **Backfill mutation:** add an internal one-shot/self-continuing migration that
     stamps deterministic compatibility metadata onto existing events in
     `chatty-hare-94`.
-- [ ] Preferred initial policy: permanent tolerant adapter. It is lower risk for
+- [x] Preferred initial policy: permanent tolerant adapter. It is lower risk for
   the dev deployment, avoids rewriting audit history, and still lets all new
   writes be protocol-shaped. A backfill can be added later if sync/export needs
   every historical row stamped.
@@ -282,15 +289,15 @@ Important distinction:
 Add focused tests before broader refactors.
 
 - [ ] Core adapter tests:
-  - Event row round-trips to core event.
-  - `eventId` verifies.
-  - Legacy event row can still be adapted.
-- [ ] Write-path tests:
+  - [x] New event rows carry metadata that reconstructs a core event whose
+    `eventId` verifies.
+  - [ ] Legacy event row can still be adapted explicitly.
+- [x] Write-path tests:
   - `assertFact` writes `eventId` and HLC metadata.
   - retract/tombstone/correct events reference the target event/fact correctly.
   - `correctFact` either emits tombstone+assert protocol events or its Convex-only
     summary row expands/ignores cleanly in the adapter.
-- [ ] Cardinality tests:
+- [x] Cardinality tests:
   - two same-coordinate cardinality-one assertions converge to the `≺`-max.
   - insertion order does not change final `currentFacts`.
   - losing assertion remains in history/provenance.

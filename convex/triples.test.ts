@@ -3,6 +3,7 @@ import { convexTest } from "convex-test";
 import { describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
 import schema from "./schema";
+import { maxByOrder, verifyId, type Event } from "@metacrdt/core";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -53,6 +54,69 @@ describe("cardinality-one", () => {
     expect(all.map((f) => f.v).sort()).toEqual(["active", "inactive"]);
   });
 
+  test("same-time cardinality-one assertions choose the core ≺-max winner", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000);
+      const t = convexTest(schema, modules);
+      await t.mutation(api.attributes.defineAttribute, {
+        name: "status.sameTime",
+        valueType: "string",
+        cardinality: "one",
+      });
+
+      await t.mutation(api.facts.assertFact, {
+        e: "e:same-time",
+        a: "status.sameTime",
+        value: "first",
+      });
+      await t.mutation(api.facts.assertFact, {
+        e: "e:same-time",
+        a: "status.sameTime",
+        value: "second",
+      });
+
+      const events = (await t.query(api.facts.history, {
+        e: "e:same-time",
+        a: "status.sameTime",
+      })) as Array<{
+        kind: "assert" | "retract";
+        eventId?: string;
+        targetEventId?: string;
+        hlc?: { pt: number; l: number; r: string };
+        e: string;
+        a: string;
+        v: string;
+        validFrom?: number;
+        validTo?: number;
+      }>;
+      const assertEvents: Event[] = events
+        .filter((e) => e.kind === "assert")
+        .map((e) => ({
+          id: e.eventId!,
+          kind: "assert",
+          actor: "system",
+          actorType: "system",
+          hlc: e.hlc!,
+          e: e.e,
+          a: e.a,
+          v: e.v,
+          validFrom: e.validFrom!,
+          validTo: e.validTo ?? null,
+          causalRefs: [],
+        }));
+      const expected = maxByOrder(assertEvents)!;
+
+      const entity = await t.query(api.facts.getEntity, { e: "e:same-time" });
+      expect(entity.attributes["status.sameTime"]).toEqual([expected.v]);
+      const retract = events.find((e) => e.kind === "retract")!;
+      const loser = assertEvents.find((e) => e.id !== expected.id)!;
+      expect(retract.targetEventId).toBe(loser.id);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("cardinality-many keeps multiple values", async () => {
     const t = convexTest(schema, modules);
     // No attribute registered → defaults to many.
@@ -64,6 +128,72 @@ describe("cardinality-one", () => {
 });
 
 describe("event log is append-only", () => {
+  test("new factEvents carry verifiable MetaCRDT protocol metadata", async () => {
+    const t = convexTest(schema, modules);
+    const { factId } = await t.mutation(api.facts.assertFact, {
+      e: "e:proto",
+      a: "status",
+      value: "active",
+      validFrom: 100,
+      reason: "initial",
+    });
+    await t.mutation(api.facts.retractFact, { factId, reason: "done" });
+
+    const events = (await t.query(api.facts.history, {
+      e: "e:proto",
+      a: "status",
+    })) as Array<{
+      kind: "assert" | "retract";
+      eventId?: string;
+      targetEventId?: string;
+      hlc?: { pt: number; l: number; r: string };
+      replicaId?: string;
+      causalRefs?: string[];
+      e: string;
+      a: string;
+      v: unknown;
+      validFrom?: number;
+      validTo?: number;
+      reason?: string;
+    }>;
+
+    const assertEv = events.find((e) => e.kind === "assert")!;
+    const retractEv = events.find((e) => e.kind === "retract")!;
+    expect(assertEv.eventId).toMatch(/^e_/);
+    expect(retractEv.eventId).toMatch(/^e_/);
+    expect(retractEv.targetEventId).toBe(assertEv.eventId);
+    expect(assertEv.replicaId).toBe("convex:reference");
+    expect(retractEv.replicaId).toBe("convex:reference");
+    expect(assertEv.hlc?.l).toEqual(expect.any(Number));
+
+    const assertCore: Event = {
+      id: assertEv.eventId!,
+      kind: "assert",
+      actor: "system",
+      actorType: "system",
+      hlc: assertEv.hlc!,
+      e: assertEv.e,
+      a: assertEv.a,
+      v: assertEv.v as Event["v"],
+      validFrom: assertEv.validFrom!,
+      validTo: assertEv.validTo ?? null,
+      causalRefs: [],
+      reason: assertEv.reason,
+    };
+    const retractCore: Event = {
+      id: retractEv.eventId!,
+      kind: "retract",
+      actor: "system",
+      actorType: "system",
+      hlc: retractEv.hlc!,
+      target: retractEv.targetEventId!,
+      causalRefs: [],
+      reason: retractEv.reason,
+    };
+    expect(verifyId(assertCore)).toBe(true);
+    expect(verifyId(retractCore)).toBe(true);
+  });
+
   test("assert + cardinality-one replace produces assert, retract, assert", async () => {
     const t = convexTest(schema, modules);
     await t.mutation(api.attributes.defineAttribute, {
@@ -85,6 +215,47 @@ describe("event log is append-only", () => {
       "assert",
       "retract",
     ]);
+  });
+
+  test("correctFact is represented as tombstone + assert protocol events", async () => {
+    const t = convexTest(schema, modules);
+    const { factId } = await t.mutation(api.facts.assertFact, {
+      e: "e:correct",
+      a: "i9.completed",
+      value: false,
+    });
+
+    await t.mutation(api.facts.correctFact, {
+      factId,
+      newValue: true,
+      reason: "actually completed",
+    });
+
+    const events = (await t.query(api.facts.history, {
+      e: "e:correct",
+      a: "i9.completed",
+    })) as Array<{
+      kind: string;
+      eventId?: string;
+      targetEventId?: string;
+      causalRefs?: string[];
+    }>;
+    expect(events.map((e) => e.kind).sort()).toEqual([
+      "assert",
+      "assert",
+      "tombstone",
+    ]);
+    expect(events.some((e) => e.kind === "correction")).toBe(false);
+    const originalAssert = events.find(
+      (e) => e.kind === "assert" && !(e.causalRefs ?? []).length,
+    )!;
+    const tombstone = events.find((e) => e.kind === "tombstone")!;
+    const replacement = events.find(
+      (e) => e.kind === "assert" && (e.causalRefs ?? []).length > 0,
+    )!;
+    expect(tombstone.targetEventId).toBe(originalAssert.eventId);
+    expect(replacement.causalRefs).toContain(tombstone.eventId);
+    expect(replacement.causalRefs).toContain(originalAssert.eventId);
   });
 
   test("replaying events reconstructs the current entity view", async () => {

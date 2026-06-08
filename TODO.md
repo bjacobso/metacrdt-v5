@@ -31,10 +31,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   read query + `rebuildProjections` uses it. Confirmed Convex's esbuild bundles
   the workspace `.ts` directly (no dist build needed). All 66 convex + 46 core
   tests green; verified live.
-- [ ] **Write path on core** — stamp `eventId` + `hlc` onto `factEvents`, and
-  switch cardinality-one supersession from arrival-order to `≺`-max (the
-  commutative rule, SPEC §5.2). Then fold raw `factEvents` through core directly
-  (toward retiring the hand-maintained `facts` projection).
+- [ ] **Write path on core** — partially shipped: new `factEvents` now carry
+  `eventId` + HLC + target/causal metadata, `facts.assertEventId` stores the core
+  assert id, `correctFact` writes tombstone+assert protocol events, and
+  cardinality-one current projection reconciles by `≺`-max. Remaining: make
+  `rebuildProjections` prefer raw core-shaped `factEvents` directly, add explicit
+  legacy-adapter coverage, and continue toward retiring the hand-maintained
+  `facts` projection.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [ ] **Extract `@metacrdt/forma`** from Open Ontology's language packages
@@ -80,6 +83,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-07 — PLAN.md becomes the executable goal file
+- [x] **Goal 1 implementation slice shipped:** additive protocol metadata on
+  `factEvents` (`eventId`, HLC, replica, target, causal refs), `facts.assertEventId`
+  for lifecycle targeting, local Convex/core adapter (`convex/lib/coreEvent.ts`),
+  new writes sealed/verified through `@metacrdt/core`, `correctFact` now emits
+  tombstone+assert protocol events instead of new `correction` rows, and
+  cardinality-one current projection chooses the `≺`-max candidate. Verified with
+  69 Convex tests + 46 core tests + both typechecks; functions pushed to
+  `chatty-hare-94`.
 - [x] Rewrote `PLAN.md` from the old triple-store milestone backlog into a
   goal-oriented MetaCRDT execution plan: Goal 1 is core-shaped Convex writes
   (`eventId`/HLC/replica metadata, `≺`-max cardinality-one supersession,
