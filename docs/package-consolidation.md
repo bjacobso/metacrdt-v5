@@ -61,7 +61,7 @@ packages/
 ├── core/              @metacrdt/core       # done: SPEC §4-5 kernel
 ├── forma/            @metacrdt/forma      # Lisp reader/evaluator/types/tooling
 ├── schema/           @metacrdt/schema     # done: ids, cardinality, meta attrs, definition lowering
-├── query/            @metacrdt/query      # done slices: parser, operators, rows, aggregation, emit shaping, planner, dedupe, source inputs, join expansion, negation/state helpers
+├── query/            @metacrdt/query      # done slices: parser, operators, rows, aggregation, emit shaping, planner, dedupe, source inputs, join expansion, negation/state/limit helpers
 ├── workflow/         @metacrdt/workflow   # durable steps, processes, obligations
 ├── forms/            @metacrdt/forms      # forms, collection, prompt-response
 ├── views/            @metacrdt/views      # ViewSpec / response surfaces
@@ -204,7 +204,7 @@ are one representation of facts inside a convergent event log.
   pattern-input construction for target triple sources, provenanced pattern
   extension/candidate expansion for positive joins, negation candidate checking
   over already-fetched triples, and compare/compute state transitions over
-  provenanced solved bindings.
+  provenanced solved bindings, plus the shared intermediate-row limit guard.
 - `@metacrdt/workflow` — processes, flows, obligations.
 - `@metacrdt/forms` — collection surfaces and prompt-response forms.
 - `@metacrdt/views` — ViewSpec and generated response surfaces.
@@ -331,7 +331,8 @@ Extract only when each package has a concrete use in the current reference app:
    `extendPatternCandidates`) now live in the package too. Negation candidate
    checking (`passesNegationCandidates`) and local compare/compute state
    transitions (`filterCompareStates`, `applyComputeStates`) have shipped as pure
-   helpers.
+   helpers. The shared intermediate-row limit guard
+   (`assertIntermediateRowsWithinLimit`) has shipped too.
    Convex-specific triple fetching, read authorization, provenance
    interpretation, solving, async join execution, negation IO, and branch
    recursion remain in the reference runtime.

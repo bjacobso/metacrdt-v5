@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 93 (`@metacrdt/query` Pattern Candidate Expansion) has
+**Current goal:** Goal 94 (`@metacrdt/query` Intermediate Row Limit Guard) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -106,8 +106,12 @@ pattern candidate expansion into `@metacrdt/query`: `extendPatternCandidates`
 expands one solved state across already-fetched candidate triples, rejects
 non-unifying candidates, and preserves merged fact/event provenance, while
 Convex still owns fetching candidate batches, read authorization, intermediate
-row limits, async scheduling, and source semantics. The next active goal should
-be chosen from the remaining TODO candidates:
+row limits, async scheduling, and source semantics. Goal 94 extracts the shared
+intermediate-row limit guard into `@metacrdt/query`:
+`assertIntermediateRowsWithinLimit` owns the package-wide limit comparison and
+error text, while Convex still owns where the guard is applied in the positive
+pattern and disjunction branches. The next active goal should be chosen from the
+remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
 the next projection dependency (closure/derived provenance or remaining
@@ -204,6 +208,7 @@ arguments.
   - positive pattern candidate expansion for already-fetched triples
   - negation candidate checking over fetched triples
   - compare/compute state transitions over provenanced solved bindings
+  - shared intermediate-row limit guard
   - Convex compatibility re-export through `convex/lib/engine.ts`
 - New Convex writes stamp protocol metadata on `factEvents`:
   `eventId`, HLC, `replicaId`, `targetEventId`, and `causalRefs` where
@@ -8433,6 +8438,52 @@ async scheduling, and source semantics in Convex.
   `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
 - A live `datalog:datalog` query with two positive pattern clauses returned rows
   through the deployed package-backed positive candidate expansion path.
+
+---
+
+## Goal 94 — `@metacrdt/query` Intermediate Row Limit Guard
+
+**Status:** shipped as the shared limit-guard boundary.
+
+**Objective:** move the target-neutral intermediate-row count check and error
+message from the Convex solver into `@metacrdt/query`, while keeping the solver
+loop, the choice of where to check, source fetching, read authorization, branch
+recursion, and source semantics in Convex.
+
+### Semantics
+
+- `packages/query` now owns `assertIntermediateRowsWithinLimit`.
+- The helper accepts a row count and an optional limit.
+- It preserves the existing behavior:
+  - counts equal to the limit pass;
+  - counts above the limit throw
+    `query exceeded maxIntermediateRows=<limit>`.
+- `convex/lib/engine.ts` now calls the helper at the same two points as before:
+  after positive-pattern candidate expansion for each input state and after each
+  input state's disjunction branches have appended their solved output.
+
+### Non-Goals
+
+- Do not move `solveParsedWhere`, branch recursion, positive/negative source IO,
+  read authorization, candidate fetching, or scheduling into the package.
+- Do not change `LIMITS.maxIntermediateRows`, when the guard runs, the thrown
+  error text, query syntax, or result shapes.
+
+### Verification
+
+- `npm run test:query` passed (19 package tests).
+- `npx tsc --noEmit -p packages/query/tsconfig.json` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npm run test:core` passed (46 core tests).
+- `npm run test:schema` passed (8 schema tests).
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
+- A live `datalog:datalog` positive-join query returned rows through the
+  deployed solver path that now calls the package-owned row-limit guard.
 
 ---
 

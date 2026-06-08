@@ -3,6 +3,7 @@ import {
   aggregateBindings,
   applyCompute,
   applyComputeStates,
+  assertIntermediateRowsWithinLimit,
   bindingKey,
   chooseNextClausePosition,
   dedupeProvenancedBindings,
@@ -389,6 +390,13 @@ describe("@metacrdt/query rows", () => {
         eventSources: ["event:1"],
       },
     ]);
+  });
+
+  test("guards intermediate row counts with the shared error", () => {
+    expect(() => assertIntermediateRowsWithinLimit(5, 5)).not.toThrow();
+    expect(() => assertIntermediateRowsWithinLimit(6, 5)).toThrow(
+      "query exceeded maxIntermediateRows=5",
+    );
   });
 
   test("paginates deterministic rows with bounded page size", () => {

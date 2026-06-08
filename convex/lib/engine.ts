@@ -3,6 +3,7 @@ import { QueryCtx, MutationCtx } from "../_generated/server";
 import {
   LIMITS,
   applyComputeStates,
+  assertIntermediateRowsWithinLimit,
   chooseNextClausePosition,
   clauseBoundVars,
   dedupeProvenancedBindings,
@@ -30,6 +31,7 @@ export {
   LIMITS,
   aggregateBindings,
   applyComputeStates,
+  assertIntermediateRowsWithinLimit,
   chooseNextClausePosition,
   dedupeProvenancedBindings,
   derivedRowsFromBindings,
@@ -308,11 +310,7 @@ async function solveParsedWhere(
           source,
         );
         next.push(...extendPatternCandidates(clause, st, candidates));
-        if (next.length > LIMITS.maxIntermediateRows) {
-          throw new Error(
-            `query exceeded maxIntermediateRows=${LIMITS.maxIntermediateRows}`,
-          );
-        }
+        assertIntermediateRowsWithinLimit(next.length);
       }
       for (const vn of patternVars(clause)) bound.add(vn);
       states = next;
@@ -354,11 +352,7 @@ async function solveParsedWhere(
           );
           next.push(...solved);
         }
-        if (next.length > LIMITS.maxIntermediateRows) {
-          throw new Error(
-            `query exceeded maxIntermediateRows=${LIMITS.maxIntermediateRows}`,
-          );
-        }
+        assertIntermediateRowsWithinLimit(next.length);
       }
       states = dedupeProvenancedBindings(next);
       for (const vn of clauseBoundVars(clause)) bound.add(vn);

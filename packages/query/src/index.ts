@@ -714,6 +714,15 @@ export function applyComputeStates<
   return next;
 }
 
+export function assertIntermediateRowsWithinLimit(
+  count: number,
+  limit: number = LIMITS.maxIntermediateRows,
+): void {
+  if (count > limit) {
+    throw new Error(`query exceeded maxIntermediateRows=${limit}`);
+  }
+}
+
 export type ResultPage<T> = {
   page: T[];
   isDone: boolean;

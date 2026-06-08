@@ -167,6 +167,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   clauses to provenanced solved bindings while preserving source/event
   provenance. Convex still owns the async solver loop, source fetching, read auth,
   negation IO, and branch recursion.
+- [x] **`@metacrdt/query` intermediate row guard extracted** — the package now
+  owns `assertIntermediateRowsWithinLimit`, the shared `maxIntermediateRows`
+  comparison and error text. Convex still owns when the guard runs in the
+  positive-pattern and disjunction branches.
 - [ ] Then peel off, as they stabilize: more `@metacrdt/query` solver/rule AST
   seams, then `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/views`, and
   `@metacrdt/agent`.
@@ -436,6 +440,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 94 shipped:** `@metacrdt/query` intermediate row limit guard. Added
+  `assertIntermediateRowsWithinLimit`; Convex pattern/disjunction branches call
+  it at the same points as before, preserving the limit and error text while
+  moving the target-neutral guard into the package.
 - [x] **Goal 93 shipped:** `@metacrdt/query` positive pattern candidate
   expansion. Added `extendPatternCandidates`; Convex positive-pattern branches
   still fetch candidates through the injected source/read-auth path and enforce
