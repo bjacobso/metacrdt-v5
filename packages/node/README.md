@@ -61,12 +61,12 @@ The memory, SQLite, and Postgres runtime services pass the shared
 suite through their Effect Layer providers. SQLite and Postgres also pass
 `@metacrdt/testkit` restart-persistence conformance for the event log, HLC, and
 per-replica `seq`; the memory target also runs shared scheduler service-boundary
-conformance. Package-specific tests still cover concrete persistence regressions
-and the shared SQL lifecycle plan used by both SQL adapters. It also tests the
-HTTP/SSE handler's health, delta pull, event push, SSE response paths, and the
-native-style listener adapter's response writing and streamed POST body merge.
-The dev-server CLI is tested by starting a real ephemeral `node:http` server and
-querying its health route.
+and transport publish-boundary conformance. Package-specific tests still cover
+concrete persistence regressions and the shared SQL lifecycle plan used by both
+SQL adapters. It also tests the HTTP/SSE handler's health, delta pull, event
+push, SSE response paths, and the native-style listener adapter's response
+writing and streamed POST body merge. The dev-server CLI is tested by starting a
+real ephemeral `node:http` server and querying its health route.
 
 ## Usage
 

@@ -78,6 +78,16 @@ export interface RuntimeSchedulerConformanceTarget
   resetScheduler?(): void | Promise<void>;
 }
 
+export interface RuntimeTransportConformanceTarget
+  extends RuntimeLayerConformanceTarget {
+  /**
+   * Return the event batches the target's transport has published. This verifies
+   * the Effect transport service boundary, not network delivery semantics.
+   */
+  readPublished(): readonly (readonly Event[])[];
+  resetTransport?(): void | Promise<void>;
+}
+
 export type AnyRuntimeConformanceTarget =
   | RuntimeConformanceTarget
   | RuntimeLayerConformanceTarget;
@@ -578,6 +588,53 @@ export async function runRuntimeSchedulerConformance(
     "scheduler should preserve operation payloads",
   );
   checks.push("scheduler-preserves-payloads");
+
+  return { target: target.name, checks };
+}
+
+export async function runRuntimeTransportConformance(
+  target: RuntimeTransportConformanceTarget,
+): Promise<ConformanceReport> {
+  await target.resetTransport?.();
+  const checks: string[] = [];
+  const first = sampleAssert("testkit:transport", 1);
+  const second = sampleAssert("testkit:transport", 2);
+
+  await runWithTargetLayer(
+    target,
+    { replicaId: "testkit:transport", wall: () => 1_000 },
+    Effect.gen(function* () {
+      const profile = yield* RuntimeProfileService;
+      const transport = yield* TransportService;
+      expect(
+        target,
+        profile.replicaId === "testkit:transport",
+        "runtime profile replicaId mismatch",
+      );
+      yield* transport.publish([first]);
+      yield* transport.publish([first, second]);
+    }),
+  );
+
+  const published = target.readPublished();
+  expect(target, published.length === 2, "transport should publish two batches");
+  checks.push("transport-accepts-batches");
+
+  expect(
+    target,
+    published[0]?.length === 1 && published[1]?.length === 2,
+    "transport should preserve batch boundaries",
+  );
+  checks.push("transport-preserves-batches");
+
+  expect(
+    target,
+    published[0]?.[0]?.id === first.id &&
+      published[1]?.[0]?.id === first.id &&
+      published[1]?.[1]?.id === second.id,
+    "transport should preserve event payload order",
+  );
+  checks.push("transport-preserves-event-order");
 
   return { target: target.name, checks };
 }

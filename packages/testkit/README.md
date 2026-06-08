@@ -50,6 +50,15 @@ verified to behave identically at the boundaries that matter.
   - `scheduler-preserves-payloads` — operation names and payloads are preserved.
   This is intentionally **not** durable wakeup conformance; target-specific host
   schedulers still need their own execution tests.
+- **`runRuntimeTransportConformance`** — that a Layer target's `Transport`
+  service boundary accepts event batches:
+  - `transport-accepts-batches` — calls through `TransportService.publish` are
+    observed by the target transport.
+  - `transport-preserves-batches` — batch boundaries are preserved.
+  - `transport-preserves-event-order` — events are published in the requested
+    order. This is intentionally **not** network delivery conformance;
+    BroadcastChannel, p2p, WebSocket, and HTTP relay behavior still need
+    transport-specific suites.
 
 ## What Testkit Does Not Own
 
@@ -76,6 +85,8 @@ sections define. If a durable target also passes
 re-creation over the same backing store. `runRuntimeSchedulerConformance` proves
 the Effect scheduler service boundary for targets that expose an observable
 scheduler; it does not claim host wakeup durability.
+`runRuntimeTransportConformance` proves the Effect transport publish boundary;
+it does not claim peer discovery, delivery, retries, or relay semantics.
 
 ## Usage
 
@@ -97,14 +108,16 @@ const report = await runRuntimeConformance({
 through their Effect Layer providers in their own `conformance`/index tests.
 Durable targets that preserve storage across runtime re-creation also run
 `runRuntimePersistenceConformance`. Targets with observable schedulers can add
-`runRuntimeSchedulerConformance`.
+`runRuntimeSchedulerConformance`. Targets with observable transports can add
+`runRuntimeTransportConformance`.
 
 ## Scope Today, and What's Next
 
-The suite covers the **log + sync plane**, durable restart semantics, and the
-basic scheduler service boundary: event-store semantics, anti-entropy, the
-in-log fold, persistence of the event log/HLC/seq across re-creation, and
-payload-preserving scheduler submission. It does **not yet** cover **transport
+The suite covers the **log + sync plane**, durable restart semantics, scheduler
+submission, and the basic transport publish boundary: event-store semantics,
+anti-entropy, the in-log fold, persistence of the event log/HLC/seq across
+re-creation, payload-preserving scheduler submission, and event-batch preserving
+transport publication. It does **not yet** cover **network transport
 conformance** or **projection conformance** — proving that two targets fold the
 same events into the same *bitemporal projection* and resolve the same
 cardinality-one winner through the shared projection path. Projection checks

@@ -64,8 +64,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   payload-preserving `SchedulerService.after` submission for observable
   schedulers. Wired into testkit memory and Node memory targets. Durable host
   wakeup execution remains target-specific for now.
-- [ ] **Goal 111 next: expanded suites** — expand conformance to transport and
-  query/projection capabilities as second implementations expose them.
+- [x] **Goal 111 transport publish conformance started** —
+  `@metacrdt/testkit` now has `runRuntimeTransportConformance`, proving
+  batch- and order-preserving `TransportService.publish` submission for
+  observable transports. Wired into testkit memory and Node memory targets.
+  Network delivery/relay behavior remains target-specific for now.
+- [ ] **Goal 111 next: expanded suites** — expand conformance to network
+  transport and query/projection capabilities as second implementations expose
+  them.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
@@ -528,6 +534,16 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   Node memory target run the shared suite. This intentionally proves scheduler
   submission only; durable wakeup execution is still target-specific until a
   second durable scheduler host exists.
+
+### 2026-06-08 — Goal 111 transport publish conformance
+- [x] **Expanded `@metacrdt/testkit` with
+  `runRuntimeTransportConformance`.** Observable transport targets now prove that
+  `TransportService.publish` accepts event batches and preserves batch
+  boundaries plus event order through the Effect service boundary.
+- [x] **Wired transport targets:** testkit's memory transport self-test and the
+  Node memory target run the shared suite. This intentionally proves transport
+  publication only; network delivery, peer discovery, retry, and relay behavior
+  remain target-specific until a shared transport harness is worth extracting.
 
 ### 2026-06-08 — Goal 111 Convex target Layer
 - [x] **`@metacrdt/convex` now exposes a runtime Layer.** Added component-owned

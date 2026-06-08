@@ -11,9 +11,11 @@ import { Effect } from "effect";
 import {
   runRuntimePersistenceConformance,
   runRuntimeSchedulerConformance,
+  runRuntimeTransportConformance,
   runRuntimeConformance,
   type RuntimePersistenceConformanceTarget,
   type RuntimeSchedulerConformanceTarget,
+  type RuntimeTransportConformanceTarget,
   type RuntimeLayerConformanceTarget,
   type RuntimeFactoryOptions,
 } from "@metacrdt/testkit";
@@ -256,6 +258,26 @@ const memorySchedulerTarget = (): RuntimeSchedulerConformanceTarget => {
   };
 };
 
+const memoryTransportTarget = (): RuntimeTransportConformanceTarget => {
+  let runtime: ReturnType<typeof createNodeMemoryRuntime> | undefined;
+  return {
+    name: "node-memory-transport",
+    resetTransport() {
+      runtime = undefined;
+    },
+    createLayer(options: RuntimeFactoryOptions) {
+      runtime = createNodeMemoryRuntime({
+        replicaId: options.replicaId,
+        wall: options.wall,
+      });
+      return runtimeServicesLayer(runtime);
+    },
+    readPublished() {
+      return runtime?.transport.published ?? [];
+    },
+  };
+};
+
 const sqliteTarget: RuntimeLayerConformanceTarget = {
   name: "node-sqlite",
   createLayer(options: RuntimeFactoryOptions) {
@@ -399,6 +421,19 @@ describe("@metacrdt/node target", () => {
         "scheduler-accepts-operations",
         "scheduler-preserves-delay-order",
         "scheduler-preserves-payloads",
+      ],
+    });
+  });
+
+  test("node memory transport passes shared transport conformance", async () => {
+    await expect(
+      runRuntimeTransportConformance(memoryTransportTarget()),
+    ).resolves.toEqual({
+      target: "node-memory-transport",
+      checks: [
+        "transport-accepts-batches",
+        "transport-preserves-batches",
+        "transport-preserves-event-order",
       ],
     });
   });

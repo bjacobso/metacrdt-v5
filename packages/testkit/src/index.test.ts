@@ -12,8 +12,10 @@ import {
   runRuntimeConvergenceConformance,
   runRuntimePersistenceConformance,
   runRuntimeSchedulerConformance,
+  runRuntimeTransportConformance,
   type RuntimePersistenceConformanceTarget,
   type RuntimeSchedulerConformanceTarget,
+  type RuntimeTransportConformanceTarget,
   type RuntimeLayerConformanceTarget,
   type RuntimeFactoryOptions,
 } from "./index.js";
@@ -108,6 +110,26 @@ const schedulerTarget = (): RuntimeSchedulerConformanceTarget => {
   };
 };
 
+const transportTarget = (): RuntimeTransportConformanceTarget => {
+  let runtime: ReturnType<typeof createMemoryRuntime> | undefined;
+  return {
+    name: "memory-transport",
+    resetTransport() {
+      runtime = undefined;
+    },
+    createLayer(options: RuntimeFactoryOptions) {
+      runtime = createMemoryRuntime({
+        replicaId: options.replicaId,
+        wall: options.wall,
+      });
+      return runtimeServicesLayer(runtime);
+    },
+    readPublished() {
+      return runtime?.transport.published ?? [];
+    },
+  };
+};
+
 describe("@metacrdt/testkit", () => {
   test("event-store conformance passes for the in-memory target", async () => {
     await expect(runEventStoreConformance(memoryTarget)).resolves.toEqual({
@@ -158,6 +180,17 @@ describe("@metacrdt/testkit", () => {
         "scheduler-accepts-operations",
         "scheduler-preserves-delay-order",
         "scheduler-preserves-payloads",
+      ],
+    });
+  });
+
+  test("transport conformance passes for the memory transport target", async () => {
+    await expect(runRuntimeTransportConformance(transportTarget())).resolves.toEqual({
+      target: "memory-transport",
+      checks: [
+        "transport-accepts-batches",
+        "transport-preserves-batches",
+        "transport-preserves-event-order",
       ],
     });
   });

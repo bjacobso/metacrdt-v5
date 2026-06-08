@@ -9387,8 +9387,13 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   `SchedulerService.after` submission for observable schedulers. It is wired into
   the runtime/testkit memory scheduler and Node memory target. This is boundary
   conformance, not durable host wakeup execution.
-- **Remaining keystone work:** conformance still does not cover transport or
-  query/projection behavior.
+- **Transport publish conformance started:** `@metacrdt/testkit` also has
+  `runRuntimeTransportConformance`, proving batch- and order-preserving
+  `TransportService.publish` submission for observable transports. It is wired
+  into runtime/testkit memory transport and Node memory target. This is boundary
+  conformance, not network delivery / relay conformance.
+- **Remaining keystone work:** conformance still does not cover network transport
+  behavior or query/projection behavior.
 - **Zero Effect today (by current design):** `core`, `schema`, `query`, and the
   root Convex reference app stay pure/plain where appropriate. `runtime`,
   `testkit`, and Convex/Node/local/Cloudflare target packages now use Effect v3
