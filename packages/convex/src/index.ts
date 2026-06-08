@@ -27,5 +27,11 @@ export {
   isFactVisible,
   valueKey,
 } from "./visibility";
+export {
+  CARDINALITY_ONE_SUPERSESSION_REASON,
+  reconcileCardinalityOneCandidates,
+  type CardinalityOneReconcileResult,
+  type ReconcileCandidate,
+} from "./reconcile";
 export { hlcValidator, protocolMetadataValidators } from "./validators";
 export { confectSidecarWarning, type ManualConfectMountDecision } from "./confect";

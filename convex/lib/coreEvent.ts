@@ -1,8 +1,10 @@
 import {
   CONVEX_REPLICA_ID,
   assertEvent as adapterAssertEvent,
+  CARDINALITY_ONE_SUPERSESSION_REASON,
   eventPatch,
   hlcFromTransaction,
+  reconcileCardinalityOneCandidates,
   retractEvent as adapterRetractEvent,
   tombstoneEvent as adapterTombstoneEvent,
   untombstoneEvent as adapterUntombstoneEvent,
@@ -17,7 +19,13 @@ type Tx = Pick<
   "_creationTime" | "actorId" | "actorType" | "txTime" | "reason"
 >;
 
-export { CONVEX_REPLICA_ID, eventPatch, type ProtocolEventPatch };
+export {
+  CARDINALITY_ONE_SUPERSESSION_REASON,
+  CONVEX_REPLICA_ID,
+  eventPatch,
+  reconcileCardinalityOneCandidates,
+  type ProtocolEventPatch,
+};
 
 export function hlcFromTx(tx: Pick<Tx, "_creationTime" | "txTime">) {
   return hlcFromTransaction(tx);

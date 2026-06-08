@@ -11,12 +11,14 @@ import {
 } from "./lib/readAuth";
 import {
   assertEvent,
+  CARDINALITY_ONE_SUPERSESSION_REASON,
   eventPatch,
+  reconcileCardinalityOneCandidates,
   retractEvent,
   tombstoneEvent,
   type ProtocolEventPatch,
 } from "./lib/coreEvent";
-import { maxByOrder, type Event, type Value } from "@metacrdt/core";
+import { type Event, type Value } from "@metacrdt/core";
 
 // --- internal helpers (exported for the schema-as-facts module) -------------
 
@@ -127,24 +129,19 @@ async function reconcileCardinalityOneCurrent(
   const pairs = await Promise.all(
     candidates
       .filter((f) => f.retractedAt === undefined && f.tombstonedAt === undefined)
-      .map(async (fact) => ({ fact, event: await assertEventForFact(ctx, fact) })),
+      .map(async (fact) => ({
+        item: fact,
+        event: await assertEventForFact(ctx, fact),
+      })),
   );
-  if (pairs.length === 0) throw new Error(`no candidates for ${e}/${a}`);
-  const winnerEvent = maxByOrder(pairs.map((p) => p.event));
-  const winner = pairs.find((p) => p.event.id === winnerEvent?.id)?.fact;
-  if (!winner) throw new Error(`no ≺ winner for ${e}/${a}`);
+  const { winner, losers } = reconcileCardinalityOneCandidates(pairs, `${e}/${a}`);
 
-  for (const { fact, event } of pairs) {
-    if (fact._id === winner._id) continue;
+  for (const { item: fact, event } of losers) {
     await ctx.db.patch("facts", fact._id, {
       retractedAt: now,
       lastTxId: tx._id,
     });
-    const ev = retractEvent(
-      tx,
-      event.id,
-      "superseded by ≺-max cardinality-one assertion",
-    );
+    const ev = retractEvent(tx, event.id, CARDINALITY_ONE_SUPERSESSION_REASON);
     await insertFactEvent(
       ctx,
       {
@@ -155,7 +152,7 @@ async function reconcileCardinalityOneCurrent(
         e: fact.e,
         a: fact.a,
         v: fact.v,
-        reason: "superseded by ≺-max cardinality-one assertion",
+        reason: CARDINALITY_ONE_SUPERSESSION_REASON,
       },
       eventPatch(ev),
     );
@@ -168,16 +165,16 @@ async function reconcileCardinalityOneCurrent(
   for (const row of existing) await ctx.db.delete("currentFacts", row._id);
 
   await ctx.db.insert("currentFacts", {
-    e: winner.e,
-    a: winner.a,
-    v: winner.v,
-    factId: winner._id,
-    validFrom: winner.validFrom,
+    e: winner.item.e,
+    a: winner.item.a,
+    v: winner.item.v,
+    factId: winner.item._id,
+    validFrom: winner.item.validFrom,
     txTime: now,
     updatedAt: now,
   });
 
-  return winner;
+  return winner.item;
 }
 
 /**

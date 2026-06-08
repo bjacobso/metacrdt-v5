@@ -44,10 +44,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   authoring language; runtime lowering stays out until the IR boundary proves it.
 - [x] **`@metacrdt/convex` adapter package extracted** — `packages/convex` owns
   Convex/core event construction, row reconstruction/verification summaries,
-  visibility mapping, protocol metadata validators, and the Confect sidecar
-  warning. The reference app consumes it from `convex/lib/coreEvent.ts`,
-  `convex/lib/visibility.ts`, and `confect/metacrdt.impl.ts`. Component/function
-  factories remain deferred until the host-app API boundary is clearer.
+  visibility mapping, protocol metadata validators, pure cardinality-one
+  reconcile selection by `≺`, and the Confect sidecar warning. The reference app
+  consumes it from `convex/lib/coreEvent.ts`, `convex/lib/visibility.ts`, and
+  `confect/metacrdt.impl.ts`. Component/function factories remain deferred until
+  the host-app API boundary is clearer.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
@@ -267,6 +268,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   goal moves to true `applyConfig` reconcile.
 
 ### 2026-06-07 — @metacrdt/convex adapter package extraction
+- [x] **Cardinality-one reconcile helper moved into `@metacrdt/convex`.**
+  `packages/convex/src/reconcile.ts` now exports a pure
+  `reconcileCardinalityOneCandidates` helper and shared supersession reason; the
+  Convex reference app uses it while retaining host-owned DB/projection writes.
+  Package tests cover `≺` winner selection, order independence, empty input, and
+  the shared lifecycle reason. Current verification: `npm run test:convex-package`
+  is 13 tests.
 - [x] **Goal 3 shipped adapter-first:** `packages/convex` now publishes
   `@metacrdt/convex` with package-owned Convex/core event adapters, HLC fallback,
   `eventPatch`, protocol row reconstruction/summarization, bitemporal visibility

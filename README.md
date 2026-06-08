@@ -105,8 +105,8 @@ Current packages:
   the bitemporal fold.
 - **`@metacrdt/convex`** (`packages/convex`) — Convex target adapters:
   protocol metadata validators, Convex/core event construction, row
-  reconstruction/verification, projected-row visibility, and Confect sidecar
-  guidance.
+  reconstruction/verification, projected-row visibility, cardinality-one
+  reconcile selection by `≺`, and Confect sidecar guidance.
 - **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
   authoring language extracted from Open Ontology: reader, formatter, evaluator,
   VM, type inference, and language-owned elaboration utilities.

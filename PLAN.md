@@ -155,9 +155,10 @@ configured actions can now take small typed arguments.
   rows, while new corrections write protocol primitives.
 - `facts` and `currentFacts` are still maintained as imperative projections,
   not folded directly from raw core-shaped events.
-- `@metacrdt/convex` is adapter-first. A full Convex component surface,
-  mutation factories, and cardinality-one reconcile helpers remain deferred
-  until the package boundary is proven against more host-app usage.
+- `@metacrdt/convex` is adapter-first. It now owns cardinality-one reconcile
+  selection by `≺`, but the host app still owns database writes/projection rows.
+  A full Convex component surface and mutation factories remain deferred until
+  the package boundary is proven against more host-app usage.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime and does not implement durable transport / anti-entropy sync.
 - Multi-replica sync is specified but not implemented.
@@ -747,17 +748,17 @@ packages/convex/
 #### 3. Schema and function bindings
 
 - [x] Export validators/schema fragments for protocol metadata fields.
+- [x] Export pure cardinality-one reconcile selection by `≺`.
 - [ ] Export function factories for:
   - append protocol assert event
   - append lifecycle event
   - verify event rows
-  - cardinality-one reconcile by `≺`
 - [ ] Keep host apps free to mount functions under their own names.
 
-Deferred rationale: Goal 3 shipped the reusable adapter boundary first. Function
-factories and a full component surface should come after one more host-app usage
-or the component API shape is clear; otherwise they risk fossilizing the current
-reference app's projection choices as public API.
+Deferred rationale: Goal 3 ships reusable, target-shaped helpers before
+mountable functions. Function factories and a full component surface should come
+after one more host-app usage or the component API shape is clear; otherwise they
+risk fossilizing the current reference app's projection choices as public API.
 
 #### 4. Confect integration decision
 
@@ -1281,7 +1282,7 @@ After Goal 8, Confect can expand only if all are true:
 Likely next Confect candidates if Goal 8 succeeds:
 
 1. `@metacrdt/convex` function factories for read-only event verification and
-   cardinality-one reconcile helpers.
+   append helpers.
 2. Config diff/history read model.
 3. Arg-taking action planning.
 4. Only later: protocol writes.
