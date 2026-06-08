@@ -121,8 +121,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   pure attribute/type/meta-schema fact lowering and attribute-shape reconstruction
   from visible schema rows; `convex/attributes.ts` keeps storage, transactions,
   authorization, validators, and query execution.
-- [ ] Then peel off, as they stabilize: `@metacrdt/query`, `@metacrdt/workflow`,
-  `@metacrdt/forms`, `@metacrdt/views`, and `@metacrdt/agent`.
+- [x] **`@metacrdt/query` first slice extracted** — `packages/query` owns pure
+  clause/term types, bounded Datalog parser, operator sets, compute/comparison
+  helpers, pattern unification, projection, pagination, aggregation, explain
+  descriptions, value keys, and entity-local rule analysis. `convex/lib/engine.ts`
+  imports/re-exports those helpers while keeping triple fetching, read auth,
+  provenance, and async join scheduling.
+- [ ] Then peel off, as they stabilize: more `@metacrdt/query` solver/rule AST
+  seams, then `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/views`, and
+  `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
   (`language-ts`, selected `language-host` / docs / tests). Forma owns the Lisp
   authoring language; runtime lowering stays out until the IR boundary proves it.
@@ -389,6 +396,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 85 shipped:** first `@metacrdt/query` slice. Added `packages/query`
+  with pure Datalog/query clause parsing, operators, compute/comparison helpers,
+  pattern unification, projection, pagination, aggregation, explain descriptions,
+  value keys, and entity-local rule analysis; `convex/lib/engine.ts` now consumes
+  and re-exports the package while keeping Convex-owned triple fetching, read
+  authorization, provenance, and async join scheduling.
 - [x] **Goal 84 shipped:** `@metacrdt/schema` definition lowering. Added pure
   helpers for lowering attribute definitions, entity-type definitions, and
   meta-schema bootstrap definitions into canonical schema facts; added

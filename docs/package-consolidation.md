@@ -61,7 +61,7 @@ packages/
 ├── core/              @metacrdt/core       # done: SPEC §4-5 kernel
 ├── forma/            @metacrdt/forma      # Lisp reader/evaluator/types/tooling
 ├── schema/           @metacrdt/schema     # done: ids, cardinality, meta attrs, definition lowering
-├── query/            @metacrdt/query      # Datalog, rules, derived coherence
+├── query/            @metacrdt/query      # done first slice: parser, operators, rows, aggregation
 ├── workflow/         @metacrdt/workflow   # durable steps, processes, obligations
 ├── forms/            @metacrdt/forms      # forms, collection, prompt-response
 ├── views/            @metacrdt/views      # ViewSpec / response surfaces
@@ -196,7 +196,9 @@ are one representation of facts inside a convergent event log.
   carrier ids, bootstrap cardinality rules, value/cardinality guards, and
   meta-attribute definitions. Definition fact lowering and attribute-shape
   reconstruction have also shipped.
-- `@metacrdt/query` — Datalog/rules/derivation.
+- `@metacrdt/query` — Datalog/rules/derivation. First pure slice shipped:
+  clause/term types, parser, operators, compute/comparison helpers, projection,
+  pagination, aggregation, explain descriptions, and rule-locality analysis.
 - `@metacrdt/workflow` — processes, flows, obligations.
 - `@metacrdt/forms` — collection surfaces and prompt-response forms.
 - `@metacrdt/views` — ViewSpec and generated response surfaces.
@@ -311,7 +313,10 @@ Extract only when each package has a concrete use in the current reference app:
    lives in the package. Convex storage, authorization, transactions, and query
    execution remain in the reference runtime.
 2. `@metacrdt/query` from current Datalog engine plus Open Ontology `logic-ast`
-   and database query material.
+   and database query material. The first pure slice from `convex/lib/engine.ts`
+   has shipped (syntax, operators, projection, pagination, aggregation,
+   descriptions, locality). Convex-specific triple fetching, read authorization,
+   provenance, and async join scheduling remain in the reference runtime.
 3. `@metacrdt/forms` from current `convex/forms.ts` and `/collect`.
 4. `@metacrdt/workflow` from current `convex/flows.ts`.
 5. `@metacrdt/views` from Open Ontology `view-protocol` only after schema-driven

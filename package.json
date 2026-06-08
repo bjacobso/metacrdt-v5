@@ -22,6 +22,7 @@
     "test:convex-package": "npm test --workspace @metacrdt/convex",
     "test:forma": "npm test --workspace @metacrdt/forma",
     "test:local": "npm test --workspace @metacrdt/local",
+    "test:query": "npm test --workspace @metacrdt/query",
     "test:runtime": "npm test --workspace @metacrdt/runtime",
     "test:schema": "npm test --workspace @metacrdt/schema",
     "test:confect": "vitest run convex/confect.test.ts convex/complianceConfect.test.ts"

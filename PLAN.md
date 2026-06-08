@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 84 (`@metacrdt/schema` Definition Lowering) has
+**Current goal:** Goal 85 (`@metacrdt/query` First Slice) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -65,7 +65,13 @@ attribute read-model shaping semantics from `convex/attributes.ts` into
 `@metacrdt/schema`: attribute definitions, entity-type definitions, and
 meta-schema bootstrap facts are lowered by the pure package, and Convex consumes
 the package helper for attribute schema shapes while retaining transaction and
-storage ownership. The next
+storage ownership. Goal 85 extracts the first pure `@metacrdt/query` package
+slice from `convex/lib/engine.ts`: Datalog clause/query types, parser,
+operator sets, deterministic compute/comparison helpers, pattern unification,
+projection, pagination, aggregation, explain descriptions, value keys, and
+entity-local rule analysis. The Convex engine now imports/re-exports those
+helpers while retaining triple fetching, read authorization, provenance, and the
+async join scheduler. The next
 active goal should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
@@ -146,6 +152,15 @@ arguments.
     lowering
   - attribute-shape reconstruction from visible schema fact rows
   - Convex compatibility re-export through `convex/lib/meta.ts`
+- `@metacrdt/query` exists in [`packages/query`](./packages/query) as the first
+  pure query package slice:
+  - Datalog clause and term types
+  - bounded parser for pattern / comparison / compute / negation / disjunction
+  - deterministic compute and comparison helpers
+  - pattern unification and variable analysis
+  - projection, cursor pagination, aggregation, and explain descriptions
+  - entity-local rule analysis
+  - Convex compatibility re-export through `convex/lib/engine.ts`
 - New Convex writes stamp protocol metadata on `factEvents`:
   `eventId`, HLC, `replicaId`, `targetEventId`, and `causalRefs` where
   applicable.
@@ -7910,6 +7925,65 @@ or query execution.
   `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
 - A live `attributes:typeSchemaAsOf` query returned schema columns through the
   package-backed definition-shaping path.
+
+---
+
+## Goal 85 — `@metacrdt/query` First Slice
+
+**Status:** shipped as the first pure query package boundary.
+
+**Objective:** continue package consolidation by extracting stable,
+target-neutral Datalog/query semantics from `convex/lib/engine.ts` into
+`@metacrdt/query`, without moving Convex triple fetching, read authorization,
+provenance, or async join scheduling.
+
+### Semantics
+
+- `packages/query` publishes `@metacrdt/query`.
+- The package owns:
+  - `LIMITS`, `COMPARISON_OPS`, and `COMPUTE_OPS`;
+  - `Binding`, `Term`, `PatternClause`, `CompareClause`, `ComputeClause`,
+    `NotClause`, `OrClause`, `AnyClause`, and `ClauseDescription` types;
+  - `parseTerm`, `parsePattern`, `parseClause`, and `parseClauses`;
+  - `valueKey`, `resolveTerm`, variable-analysis helpers, and
+    `dynamicSelectivity`;
+  - `unifyPattern`, `compareValues`, `satisfiesCompare`, `computeValue`, and
+    `applyCompute`;
+  - `project`, `paginateRows`, `aggregateBindings`, `describeClauses`,
+    `entityVarOf`, and `isEntityLocalRule`.
+- `convex/lib/engine.ts` remains the Convex runtime adapter:
+  - it still owns `SolvedBinding`, `Triple`, `PatternInput`, `TripleSource`,
+    `solveWhere`, `runWhere`, provenance merging, projected triple fetching,
+    read authorization, and the async join scheduler;
+  - it imports and re-exports the pure query helpers so existing Convex callers
+    keep their `./lib/engine` import path.
+
+### Non-Goals
+
+- Do not move `solveWhere` or `runWhere` into the package in this slice; those
+  still depend on Convex contexts, indexes, read auth, and source provenance.
+- Do not move `convex/datalog.ts`, rules, materialization, or derived storage.
+- Do not change query syntax, limits, result shapes, aggregation semantics, or
+  rule-locality behavior.
+- Do not port Open Ontology `logic-ast` yet; this slice extracts proven code from
+  the current reference app first.
+
+### Verification
+
+- `npm install` passed and registered the new workspace.
+- `npm run test:query` passed (9 package tests).
+- `npx tsc --noEmit -p packages/query/tsconfig.json` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npm run test:core` passed (46 core tests).
+- `npm run test:schema` passed (8 schema tests).
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
+- A live `datalog:datalog` query returned type rows through the deployed
+  package-backed engine.
 
 ---
 
