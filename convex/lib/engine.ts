@@ -8,16 +8,16 @@ import {
   dedupeProvenancedBindings,
   mergeUniqueSources,
   parseClauses,
+  patternInputForBinding,
   patternVars,
   project,
-  requiredVars,
-  resolveTerm,
   satisfiesCompare,
   unifyPattern,
   valueKey,
   type AnyClause,
   type Binding,
   type NotClause,
+  type PatternInput,
   type PatternClause,
 } from "@metacrdt/query";
 import { BitemporalCoord, isVisible } from "./visibility";
@@ -35,6 +35,7 @@ export {
   entityVarOf,
   isEntityLocalRule,
   paginateRows,
+  patternInputForBinding,
   project,
   valueKey,
   type AggOp,
@@ -42,6 +43,7 @@ export {
   type Binding,
   type DerivedRow,
   type EmitSpec,
+  type PatternInput,
   type ResultPage,
 } from "@metacrdt/query";
 
@@ -67,12 +69,6 @@ export type Triple = {
 
 type Ctx = QueryCtx | MutationCtx;
 type ReadFilter = { principal: string } | null;
-export type PatternInput = {
-  eConst?: unknown;
-  aConst?: unknown;
-  vConst?: unknown;
-  vIsConst: boolean;
-};
 export type TripleSource = (
   ctx: Ctx,
   input: PatternInput,
@@ -215,17 +211,9 @@ async function fetchPattern(
   readFilter: ReadFilter,
   source: TripleSource,
 ): Promise<Triple[]> {
-  const e = resolveTerm(clause.e, binding);
-  const a = resolveTerm(clause.a, binding);
-  const vv = resolveTerm(clause.v, binding);
   return await source(
     ctx,
-    {
-      eConst: e.kind === "const" ? e.value : undefined,
-      aConst: a.kind === "const" ? a.value : undefined,
-      vConst: vv.kind === "const" ? (vv as { value: unknown }).value : undefined,
-      vIsConst: vv.kind === "const",
-    },
+    patternInputForBinding(clause, binding),
     coord,
     readFilter,
   );

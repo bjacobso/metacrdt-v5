@@ -53,6 +53,12 @@ export type ProvenancedBinding<
   sources: SourceId[];
   eventSources?: EventSourceId[];
 };
+export type PatternInput = {
+  eConst?: unknown;
+  aConst?: unknown;
+  vConst?: unknown;
+  vIsConst: boolean;
+};
 
 export type Term =
   | { kind: "var"; name: string }
@@ -325,6 +331,21 @@ export function unifyPattern(
     }
   }
   return next;
+}
+
+export function patternInputForBinding(
+  clause: PatternClause,
+  binding: Binding,
+): PatternInput {
+  const e = resolveTerm(clause.e, binding);
+  const a = resolveTerm(clause.a, binding);
+  const v = resolveTerm(clause.v, binding);
+  return {
+    eConst: e.kind === "const" ? e.value : undefined,
+    aConst: a.kind === "const" ? a.value : undefined,
+    vConst: v.kind === "const" ? v.value : undefined,
+    vIsConst: v.kind === "const",
+  };
 }
 
 export function compareValues(left: unknown, op: string, right: unknown): boolean {

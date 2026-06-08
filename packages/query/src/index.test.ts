@@ -12,6 +12,7 @@ import {
   paginateRows,
   parseClause,
   parseClauses,
+  patternInputForBinding,
   project,
   requiredVars,
   resolveEmitTerm,
@@ -87,6 +88,31 @@ describe("@metacrdt/query term and filter helpers", () => {
       v: 1,
     });
     expect(unifyPattern(pattern, { v: "1" }, { e: "x", a: "n", v: 1 })).toBeNull();
+  });
+
+  test("builds pattern inputs from constants and bound variables", () => {
+    const pattern = parseClause(["?e", "worker.status", "?status"]);
+    expect(pattern.kind).toBe("pattern");
+    if (pattern.kind !== "pattern") return;
+
+    expect(patternInputForBinding(pattern, { e: "worker:maria" })).toEqual({
+      eConst: "worker:maria",
+      aConst: "worker.status",
+      vConst: undefined,
+      vIsConst: false,
+    });
+
+    expect(
+      patternInputForBinding(pattern, {
+        e: "worker:maria",
+        status: "active",
+      }),
+    ).toEqual({
+      eConst: "worker:maria",
+      aConst: "worker.status",
+      vConst: "active",
+      vIsConst: true,
+    });
   });
 
   test("compares and computes against existing bindings", () => {

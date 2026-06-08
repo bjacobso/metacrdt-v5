@@ -61,7 +61,7 @@ packages/
 ├── core/              @metacrdt/core       # done: SPEC §4-5 kernel
 ├── forma/            @metacrdt/forma      # Lisp reader/evaluator/types/tooling
 ├── schema/           @metacrdt/schema     # done: ids, cardinality, meta attrs, definition lowering
-├── query/            @metacrdt/query      # done slices: parser, operators, rows, aggregation, emit shaping, planner, dedupe
+├── query/            @metacrdt/query      # done slices: parser, operators, rows, aggregation, emit shaping, planner, dedupe, source inputs
 ├── workflow/         @metacrdt/workflow   # durable steps, processes, obligations
 ├── forms/            @metacrdt/forms      # forms, collection, prompt-response
 ├── views/            @metacrdt/views      # ViewSpec / response surfaces
@@ -200,7 +200,8 @@ are one representation of facts inside a convergent event log.
   clause/term types, parser, operators, compute/comparison helpers, projection,
   pagination, aggregation, explain descriptions, rule-locality analysis, and
   read-only rule emit shaping. Clause-pick planning for the Datalog scheduler
-  and provenanced binding dedupe/source merging have also shipped.
+  and provenanced binding dedupe/source merging have also shipped, as has
+  pattern-input construction for target triple sources.
 - `@metacrdt/workflow` — processes, flows, obligations.
 - `@metacrdt/forms` — collection surfaces and prompt-response forms.
 - `@metacrdt/views` — ViewSpec and generated response surfaces.
@@ -321,9 +322,11 @@ Extract only when each package has a concrete use in the current reference app:
    `EmitSpec`, `DerivedRow`, emit-term resolution, deterministic dedupe, and
    stable derived-row sorting. The pure clause-pick planner
    (`chooseNextClausePosition`) and provenanced solved-binding dedupe/source
-   merging (`dedupeProvenancedBindings`) have shipped as well. Convex-specific
-   triple fetching, read authorization, provenance interpretation, solving,
-   async join execution, and branch recursion remain in the reference runtime.
+   merging (`dedupeProvenancedBindings`) have shipped as well. Pattern-input
+   construction (`patternInputForBinding`) now lives in the package too.
+   Convex-specific triple fetching, read authorization, provenance
+   interpretation, solving, async join execution, and branch recursion remain in
+   the reference runtime.
 3. `@metacrdt/forms` from current `convex/forms.ts` and `/collect`.
 4. `@metacrdt/workflow` from current `convex/flows.ts`.
 5. `@metacrdt/views` from Open Ontology `view-protocol` only after schema-driven

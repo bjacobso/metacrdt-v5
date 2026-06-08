@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 88 (`@metacrdt/query` Provenanced Binding Dedupe) has
+**Current goal:** Goal 89 (`@metacrdt/query` Pattern Input Construction) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -85,7 +85,11 @@ binding dedupe into `@metacrdt/query`: generic source-list merging,
 typed-value binding keys, and `dedupeProvenancedBindings` now handle duplicate
 bindings from disjunction branches while preserving fact/event provenance. Convex
 still owns branch recursion, source fetching, read authorization, and provenance
-interpretation. The next active goal should be chosen from the
+interpretation. Goal 89 extracts pattern-input construction into
+`@metacrdt/query`: `patternInputForBinding` resolves a parsed pattern against a
+binding into `PatternInput` constants for target sources, while Convex still owns
+the source lookup, indexes, read authorization, and provenance. The next active
+goal should be chosen from the
 remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
@@ -178,6 +182,7 @@ arguments.
     read-only rule previews
   - pure clause-pick planning for the Datalog scheduler
   - provenance-preserving solved-binding dedupe and source-list merging
+  - pattern input construction for target triple sources
   - Convex compatibility re-export through `convex/lib/engine.ts`
 - New Convex writes stamp protocol metadata on `factEvents`:
   `eventId`, HLC, `replicaId`, `targetEventId`, and `causalRefs` where
@@ -8158,6 +8163,56 @@ async execution in the reference runtime.
   `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
 - A live `datalog:datalog` disjunction query returned rows through the deployed
   package-backed provenanced binding dedupe path.
+
+---
+
+## Goal 89 — `@metacrdt/query` Pattern Input Construction
+
+**Status:** shipped as a pure source-planning helper.
+
+**Objective:** move pattern-to-source-input construction from the Convex
+`fetchPattern` adapter into `@metacrdt/query`, while keeping target source
+lookup, indexes, read authorization, provenance, and async execution in Convex.
+
+### Semantics
+
+- `packages/query` now owns `PatternInput` and `patternInputForBinding`.
+- `patternInputForBinding` resolves a parsed `PatternClause` against the current
+  binding:
+  - bound or literal entity terms become `eConst`;
+  - bound or literal attribute terms become `aConst`;
+  - bound or literal value terms become `vConst`;
+  - `vIsConst` reports whether the value term is currently constant.
+- Unbound variables stay omitted from the source input, preserving the existing
+  bounded-query behavior in the target source.
+- `convex/lib/engine.ts` imports and re-exports the type/helper for
+  compatibility.
+- Convex `fetchPattern` now delegates source-input construction to the package
+  helper before calling its injected `TripleSource`.
+
+### Non-Goals
+
+- Do not move `fetchPattern`, `TripleSource`, projected triple fetching, event-log
+  triple sources, read authorization, or provenance interpretation into the
+  package.
+- Do not change index selection, query safety behavior, result shapes, or source
+  APIs.
+
+### Verification
+
+- `npm run test:query` passed (13 package tests).
+- `npx tsc --noEmit -p packages/query/tsconfig.json` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npm run test:core` passed (46 core tests).
+- `npm run test:schema` passed (8 schema tests).
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
+- A live `datalog:datalog` joined-pattern query returned rows through the
+  deployed package-backed pattern-input construction path.
 
 ---
 

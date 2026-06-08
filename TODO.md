@@ -145,6 +145,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `dedupeProvenancedBindings` for disjunction branch output. Duplicate bindings
   collapse while preserving fact/event provenance; Convex still owns branch
   recursion, source fetching, read auth, and provenance interpretation.
+- [x] **`@metacrdt/query` pattern input construction extracted** — the package now
+  owns `PatternInput` and `patternInputForBinding`, resolving parsed pattern
+  terms against the current binding into source constants. Convex still owns
+  `TripleSource` lookup, indexes, read auth, provenance, and async execution.
 - [ ] Then peel off, as they stabilize: more `@metacrdt/query` solver/rule AST
   seams, then `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/views`, and
   `@metacrdt/agent`.
@@ -414,6 +418,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 89 shipped:** `@metacrdt/query` pattern input construction. Added
+  `PatternInput` and `patternInputForBinding`; Convex `fetchPattern` now asks the
+  package to resolve a parsed pattern + binding into source constants before
+  calling the injected `TripleSource`. Target lookup, indexes, read authorization,
+  provenance, and async execution remain in Convex.
 - [x] **Goal 88 shipped:** `@metacrdt/query` provenanced binding dedupe. Added
   `ProvenancedBinding`, `bindingKey`, `mergeUniqueSources`, and
   `dedupeProvenancedBindings`; Convex now uses them for pattern provenance
