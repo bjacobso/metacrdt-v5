@@ -2,7 +2,7 @@ import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
-import { isVisible, valueKey } from "./lib/visibility";
+import { valueKey } from "./lib/visibility";
 import { attrId, BUILTIN_CARDINALITY } from "./lib/meta";
 import {
   canReadAttribute,
@@ -1209,25 +1209,32 @@ export const compareFacts = query({
     includeTombstoned: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const rows = await ctx.db
-      .query("facts")
-      .withIndex("by_e_a", (q) => q.eq("e", args.e).eq("a", args.a))
-      .take(2000);
+    const queryArgs = {
+      e: args.e,
+      a: args.a,
+      includeTombstoned: args.includeTombstoned,
+    };
+    const [beforeResult, afterResult] = await Promise.all([
+      queryFactRowsFromEventLog(ctx, {
+        ...queryArgs,
+        txTime: args.before.txTime,
+        validTime: args.before.validTime,
+      }),
+      queryFactRowsFromEventLog(ctx, {
+        ...queryArgs,
+        txTime: args.after.txTime,
+        validTime: args.after.validTime,
+      }),
+    ]);
+    const visibleValues = (rows: QueryFactRow[]) =>
+      rows.map((f) => f.v).sort((x, y) => valueKey(x).localeCompare(valueKey(y)));
 
-    const principal = await readPrincipal(ctx);
-    const readable = await canReadAttribute(ctx, principal, args.e, args.a);
-    const opts = { includeTombstoned: args.includeTombstoned };
-    const visibleValues = (coord: { txTime: number; validTime: number }) =>
-      rows
-        .filter((f) => readable && isVisible(f, coord, opts))
-        .map((f) => f.v)
-        .sort((x, y) => valueKey(x).localeCompare(valueKey(y)));
-
-    const before = visibleValues(args.before);
-    const after = visibleValues(args.after);
+    const before = visibleValues(beforeResult.rows);
+    const after = visibleValues(afterResult.rows);
     const changed =
       JSON.stringify(before.map(valueKey)) !==
       JSON.stringify(after.map(valueKey));
+    const denied = beforeResult.denied[0] ?? afterResult.denied[0] ?? null;
 
     return {
       e: args.e,
@@ -1235,7 +1242,7 @@ export const compareFacts = query({
       before,
       after,
       changed,
-      denied: readable ? null : { a: args.a, reason: "pii" as const },
+      denied,
     };
   },
 });

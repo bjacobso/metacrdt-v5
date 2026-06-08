@@ -185,6 +185,9 @@ Built today:
 - production bitemporal entity reads (`entityAsOf`, `entityFactsAsOf`) now fold
   from protocol-shaped `factEvents`, preserving read authorization and provenance
   annotations for the time-travel UI
+- production fact comparison reads (`api.facts.compareFacts`) now compare two
+  bitemporal coordinates by folding protocol-shaped `factEvents`, preserving
+  read authorization and the existing `{ before, after, changed, denied }` shape
 - production fact point queries (`api.facts.queryFacts`) now fold base facts
   directly from protocol-shaped `factEvents` while preserving the old array
   return shape and read-authorization behavior; `queryFactsFromEventLog` remains

@@ -80,10 +80,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `api.facts.getEntity` now folds current object state from protocol-shaped
   `factEvents` instead of reading `currentFacts`. Production `entityAsOf` and
   `entityFactsAsOf` now fold bitemporal entity state from protocol-shaped
-  `factEvents` instead of reading `facts`. Remaining: `compareFacts` and
-  production typed/listing reads still use the hand-maintained `facts` /
-  `currentFacts` projections; closure semi-naive add still receives the changed
-  projection `factId`; derived rows are still stored in `derivedFacts`.
+  `factEvents` instead of reading `facts`. Production `compareFacts` now runs the
+  event-log point fold at both requested coordinates. Remaining: production
+  typed/listing reads still use the hand-maintained `facts` / `currentFacts`
+  projections; closure semi-naive add still receives the changed projection
+  `factId`; derived rows are still stored in `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -341,6 +342,17 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 63 shipped:** production `api.facts.compareFacts` now compares
+  `before` and `after` by folding protocol-shaped `factEvents` at each
+  coordinate, not by scanning the `facts` projection. It preserves the existing
+  `{ e, a, before, after, changed, denied }` shape and value sorting.
+- [x] **Fact comparison projection-corruption proof.** `convex/triples.test.ts`
+  now corrupts the `facts` projection for a compared `(e, a)` and asserts
+  production `compareFacts` still reconstructs interval-specific values from
+  `factEvents`.
+- [x] **Fact comparison read-auth proof.** `convex/readAuth.test.ts` now checks
+  `compareFacts` returns empty sides + `{ reason: "pii" }` before a read grant and
+  returns the sensitive value after the grant.
 - [x] **Goal 62 shipped:** production `api.facts.entityAsOf` and
   `api.facts.entityFactsAsOf` now read bitemporal entity state by folding
   protocol-shaped `factEvents`, not by scanning the `facts` projection.

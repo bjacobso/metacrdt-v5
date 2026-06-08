@@ -68,11 +68,37 @@ describe("attribute-level read authorization", () => {
       });
       expect(publicFacts).toEqual([]);
 
+      const compareCoord = {
+        txTime: Date.now() + 1000,
+        validTime: Date.now() + 1000,
+      };
+      const publicCompare = await t.query(api.facts.compareFacts, {
+        e: "worker:t1",
+        a: "i9/ssn",
+        before: compareCoord,
+        after: compareCoord,
+      });
+      expect(publicCompare.before).toEqual([]);
+      expect(publicCompare.after).toEqual([]);
+      expect(publicCompare.changed).toBe(false);
+      expect(publicCompare.denied).toEqual({ a: "i9/ssn", reason: "pii" });
+
       const grantedFacts = await noGrant.query(api.facts.queryFacts, {
         e: "worker:t1",
         a: "i9/ssn",
       });
       expect(grantedFacts.map((f) => f.v)).toEqual(["123-45-6789"]);
+
+      const grantedCompare = await noGrant.query(api.facts.compareFacts, {
+        e: "worker:t1",
+        a: "i9/ssn",
+        before: compareCoord,
+        after: compareCoord,
+      });
+      expect(grantedCompare.before).toEqual(["123-45-6789"]);
+      expect(grantedCompare.after).toEqual(["123-45-6789"]);
+      expect(grantedCompare.changed).toBe(false);
+      expect(grantedCompare.denied).toBeNull();
 
       const publicDatalog = await t.query(api.datalog.datalog, {
         where: [["worker:t1", "i9/ssn", "?ssn"]],

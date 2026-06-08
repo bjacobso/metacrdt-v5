@@ -741,4 +741,49 @@ describe("bitemporal comparison", () => {
     expect(cmp.after).toEqual(["active"]);
     expect(cmp.changed).toBe(true);
   });
+
+  test("compareFacts survives a corrupted facts projection", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await t.mutation(api.facts.assertFact, {
+      e: "e:compare-log-only",
+      a: "phase.compareLogOnly",
+      value: "onboarding",
+      validFrom: 100,
+      validTo: 200,
+      reason: "compare source event stays authoritative",
+    });
+    await t.mutation(api.facts.assertFact, {
+      e: "e:compare-log-only",
+      a: "phase.compareLogOnly",
+      value: "active",
+      validFrom: 200,
+      reason: "compare source event stays authoritative",
+    });
+
+    await t.run(async (ctx) => {
+      const rows = await ctx.db
+        .query("facts")
+        .withIndex("by_e_a", (q) =>
+          q.eq("e", "e:compare-log-only").eq("a", "phase.compareLogOnly"),
+        )
+        .collect();
+      for (const row of rows) {
+        await ctx.db.patch(row._id, {
+          retractedAt: Date.now(),
+          tombstonedAt: Date.now(),
+        });
+      }
+    });
+
+    const cmp = await t.query(api.facts.compareFacts, {
+      e: "e:compare-log-only",
+      a: "phase.compareLogOnly",
+      before: { txTime: Date.now() + 1000, validTime: 150 },
+      after: { txTime: Date.now() + 1000, validTime: 250 },
+    });
+    expect(cmp.before).toEqual(["onboarding"]);
+    expect(cmp.after).toEqual(["active"]);
+    expect(cmp.changed).toBe(true);
+    expect(cmp.denied).toBeNull();
+  });
 });

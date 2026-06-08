@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 62 (production bitemporal entity reads from the event log) has
+**Current goal:** Goal 63 (production fact comparison reads from the event log) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -8,13 +8,14 @@ Goal 59 shipped production Datalog base reads from protocol-shaped
 point-query path into production `api.facts.queryFacts`. Goal 61 promoted the
 already-proven `entityFromEventLog` object fold into production
 `api.facts.getEntity`. Goal 62 moved production bitemporal entity reads
-(`entityAsOf`, `entityFactsAsOf`) to protocol-shaped `factEvents`, while leaving
-typed/listing reads on `facts` / `currentFacts` until a later goal. The next
-active goal should be chosen from the remaining TODO candidates: typed entity
-list/search reads (`queryEntities`), `compareFacts`, provider-backed login UI /
-production auth, live Cloudflare deployment/auth, or a carefully scoped Confect
-wrapper now that the main production base fact reads have moved to event-log
-folds.
+(`entityAsOf`, `entityFactsAsOf`) to protocol-shaped `factEvents`. Goal 63 moved
+production fact comparisons (`api.facts.compareFacts`) to the same event-log
+point fold, while leaving typed/listing reads on `facts` / `currentFacts` until a
+later goal. The next active goal should be chosen from the remaining TODO
+candidates: typed entity list/search reads (`queryEntities`), provider-backed
+login UI / production auth, live Cloudflare deployment/auth, or a carefully
+scoped Confect wrapper now that the main production base fact reads have moved
+to event-log folds.
 
 This plan is the operational goal file. Read it with:
 
@@ -96,6 +97,10 @@ arguments.
 - Production `api.facts.entityAsOf` and `api.facts.entityFactsAsOf` fold
   bitemporal entity state directly from protocol-shaped `factEvents`, preserving
   read authorization and the time-travel fact annotations used by the UI.
+- Production `api.facts.compareFacts` compares the visible values at two
+  bitemporal coordinates by running the same event-log point fold twice,
+  preserving read authorization and the existing `{ before, after, changed,
+  denied }` response shape.
 - `api.facts.entityFromEventLog` folds a host entity directly from
   protocol-shaped `factEvents` with `@metacrdt/core`, including schema
   cardinality facts from the same log, and redacts through the same read-auth
@@ -416,8 +421,7 @@ arguments.
 - Production `getEntity` now uses the same bounded event-log fold as
   `entityFromEventLog`; production `entityAsOf` and `entityFactsAsOf` also fold
   from protocol-shaped `factEvents`.
-- `compareFacts` and typed entity list/search reads still use `facts` /
-  `currentFacts`.
+- Typed entity list/search reads still use `facts` / `currentFacts`.
 - `entityFromEventLog` remains intentionally bounded and proof/read-model
   oriented, returning coordinate/skipped-legacy counts that production
   `getEntity` does not expose.
@@ -5281,6 +5285,106 @@ TODO.md
   - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
   - `npx tsc --noEmit -p tsconfig.json` passed.
 - `npm run build` passed.
+
+---
+
+## Goal 63 — Production Fact Comparison Reads from the Event Log
+
+**Status:** shipped in the Convex reference runtime.
+
+**Objective:** make production `api.facts.compareFacts` compare visible values at
+two bitemporal coordinates from protocol-shaped `factEvents` instead of from the
+`facts` projection.
+
+This continues the host read-path migration after Goals 60-62. Point fact reads,
+current entity reads, and bitemporal entity reads are already event-log backed;
+the point comparison helper should use the same source of truth before broader
+typed/list/search reads move off projections.
+
+### Scope
+
+Backend:
+
+```text
+convex/facts.ts
+  compareFacts
+  queryFactRowsFromEventLog
+```
+
+Tests:
+
+```text
+convex/triples.test.ts
+convex/readAuth.test.ts
+```
+
+Docs:
+
+```text
+README.md
+PLAN.md
+TODO.md
+```
+
+### Semantics
+
+- `compareFacts` keeps its existing public shape:
+  `{ e, a, before, after, changed, denied }`.
+- The `before` coordinate is answered by `queryFactRowsFromEventLog` with
+  `before.txTime` / `before.validTime`.
+- The `after` coordinate is answered by the same helper with `after.txTime` /
+  `after.validTime`.
+- Values on both sides are sorted by `valueKey`, as before.
+- Attribute-level read authorization remains server-derived. If the caller cannot
+  read the attribute, both sides are empty, `changed` is false, and `denied`
+  reports `{ a, reason: "pii" }`.
+- The optional `includeTombstoned` flag is passed through to the event-log fold.
+
+### Non-Goals
+
+- Do not replace `queryEntities` / typed list/search reads in this slice.
+- Do not remove or stop maintaining `facts` / `currentFacts`.
+- Do not backfill legacy `factEvents` without protocol metadata.
+- Do not migrate this code to Confect in this slice.
+
+### Implementation
+
+- [x] Route `compareFacts` through two calls to `queryFactRowsFromEventLog`.
+- [x] Preserve the old response shape and value sorting.
+- [x] Preserve PII denial behavior.
+- [x] Leave projection maintenance and rebuild unchanged.
+
+### Acceptance Criteria
+
+- For ordinary protocol-shaped writes, `compareFacts` distinguishes valid-time
+  intervals just as the old projection-backed query did.
+- If the `facts` projection is corrupted for the compared `(e, a)`, production
+  `compareFacts` still returns the visible `before` / `after` values from
+  `factEvents`.
+- PII/read-grant behavior remains unchanged: ungranted sensitive attributes are
+  omitted and reported in `denied`; granted reads return values.
+
+### Verification
+
+- `npx vitest run convex/triples.test.ts convex/readAuth.test.ts` passed (21
+  tests).
+- Broader gate passed:
+  - `npx convex codegen` passed.
+  - `npm test` passed.
+  - `npm run test:convex-package` passed.
+  - `npm run test:core` passed.
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+  - `git diff --check` passed.
+
+### Definition of Done
+
+Goal 63 is complete when production `api.facts.compareFacts` no longer reads the
+`facts` projection, compatibility/read-auth tests pass, docs record that typed
+entity list/search reads remain projection-backed, and the change is committed
+and pushed.
 
 ---
 
