@@ -25,6 +25,7 @@ import type * as lib_meta from "../lib/meta.js";
 import type * as lib_origin from "../lib/origin.js";
 import type * as lib_visibility from "../lib/visibility.js";
 import type * as materialize from "../materialize.js";
+import type * as metacrdtConfect from "../metacrdtConfect.js";
 import type * as overview from "../overview.js";
 import type * as rebuild from "../rebuild.js";
 import type * as rules from "../rules.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   "lib/origin": typeof lib_origin;
   "lib/visibility": typeof lib_visibility;
   materialize: typeof materialize;
+  metacrdtConfect: typeof metacrdtConfect;
   overview: typeof overview;
   rebuild: typeof rebuild;
   rules: typeof rules;

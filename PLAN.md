@@ -1,7 +1,8 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** evaluate Confect as the typed Effect layer for the Convex
-target, now that the Convex write path emits MetaCRDT protocol-shaped events.
+**Current goal:** extract the reusable `@metacrdt/convex` target package, using
+the completed Confect spike as input rather than converting the reference app
+wholesale.
 
 This plan is the operational goal file. Read it with:
 
@@ -85,7 +86,13 @@ projection logic and arrival-order cardinality-one supersession.
 - `facts` and `currentFacts` are still maintained as imperative projections,
   not folded directly from raw core-shaped events.
 - Multi-replica sync is specified but not implemented.
-- Confect is documented as a direction, not integrated.
+- Confect is integrated as a narrow sidecar spike:
+  - `confect/` defines a typed Effect Schema function group.
+  - `convex/metacrdtConfect.ts` manually mounts the generated registered
+    function beside the existing hand-written Convex backend.
+  - `api.metacrdtConfect.verifyEvents` verifies protocol-shaped `factEvents`
+    with `@metacrdt/core`.
+  - The spike result is recorded in [docs/confect.md](./docs/confect.md).
 
 ---
 
@@ -442,9 +449,9 @@ Explicit non-scope:
 
 #### 1. Re-read project and Convex constraints
 
-- [ ] Read `convex/_generated/ai/guidelines.md`.
-- [ ] Re-read this Goal 2 section.
-- [ ] Confirm the working tree is clean before installing dependencies.
+- [x] Read `convex/_generated/ai/guidelines.md`.
+- [x] Re-read this Goal 2 section.
+- [x] Confirm the working tree is clean before installing dependencies.
 
 #### 2. Verify Confect current API
 
@@ -458,16 +465,17 @@ Explicit non-scope:
   - testing
   - incremental migration
   - plain Convex function interop
-- [ ] Capture any API differences from `docs/confect.md` before coding.
+- [x] Capture any API differences from `docs/confect.md` before coding.
 
 #### 3. Install and generate
 
-- [ ] Install the minimal Confect dependencies.
-- [ ] Add npm scripts:
+- [x] Install the minimal Confect dependencies.
+- [x] Add npm scripts:
   - `confect:codegen`
-  - `confect:dev` only if needed
-  - `test:confect` if Confect has a separate test harness
-- [ ] Create the minimal Confect file tree:
+  - `test:confect`
+  - `confect:dev` intentionally omitted; this repo should not let Confect watch
+    and rewrite the existing hand-written `convex/` tree.
+- [x] Create the minimal Confect file tree:
 
 ```text
 confect/
@@ -478,13 +486,17 @@ confect/
   metacrdt.impl.ts
 ```
 
-- [ ] Run Confect codegen.
-- [ ] Inspect generated files and commit only source/generated files that Confect
+- [x] Run Confect codegen.
+- [x] Inspect generated files and commit only source/generated files that Confect
   expects to be checked in.
+- [x] Add a safe sidecar codegen wrapper:
+  `scripts/confect-codegen-sidecar.mjs` temporarily points Confect at a throwaway
+  functions target so codegen can update `confect/_generated/*` without
+  overwriting this repo's real `convex/` tree.
 
 #### 4. Sidecar function group
 
-- [ ] Define a small Effect Schema for protocol event output:
+- [x] Define a small Effect Schema for protocol event output:
   - `eventId`
   - `kind`
   - `e`, `a`, `v`
@@ -492,29 +504,29 @@ confect/
   - `hlc`
   - `actor`, `actorType`
   - `targetEventId`, `causalRefs`
-- [ ] Implement one Confect public query that reads existing Convex tables.
-- [ ] Keep it read-only unless the first query proves too small to evaluate the
+- [x] Implement one Confect public query that reads existing Convex tables.
+- [x] Keep it read-only unless the first query proves too small to evaluate the
   write ergonomics.
-- [ ] If adding a write, use a separate probe table or a no-op validation write;
+- [x] If adding a write, use a separate probe table or a no-op validation write;
   do not route production `assertFact` through Confect in this spike.
-- [ ] Import `@metacrdt/core.verifyId` and expose a validation result for events
+- [x] Import `@metacrdt/core.verifyId` and expose a validation result for events
   with metadata.
 
 #### 5. Typed errors
 
-- [ ] Define at least two Effect tagged errors.
-- [ ] Verify how Confect serializes or exposes those errors to callers.
-- [ ] Decide whether the error surface is appropriate for:
+- [x] Define at least two Effect tagged errors.
+- [x] Verify how Confect serializes or exposes those errors to callers.
+- [x] Decide whether the error surface is appropriate for:
   - Datalog `QueryTooComplex`
   - PII/auth `Denied`
   - protocol `InvalidEvent`
 
 #### 6. Testing and deploy compatibility
 
-- [ ] Add a focused test for the Confect sidecar function, using whichever harness
+- [x] Add a focused test for the Confect sidecar function, using whichever harness
   Confect recommends.
-- [ ] Keep existing `convex-test` tests green.
-- [ ] Run:
+- [x] Keep existing `convex-test` tests green.
+- [x] Run:
 
 ```bash
 npm run confect:codegen
@@ -525,13 +537,13 @@ npx tsc --noEmit -p tsconfig.json
 npx convex dev --once
 ```
 
-- [ ] If Confect generates Convex functions under `convex/`, verify they deploy
+- [x] If Confect generates Convex functions under `convex/`, verify they deploy
   alongside the existing functions without changing current API refs.
 
 #### 7. Decision record
 
-- [ ] Update `docs/confect.md` with a dated "Spike Result" section.
-- [ ] Record:
+- [x] Update `docs/confect.md` with a dated "Spike Result" section.
+- [x] Record:
   - exact versions installed
   - generated file layout
   - what worked
@@ -539,7 +551,34 @@ npx convex dev --once
   - bundle/codegen/deploy friction
   - test friction
   - recommendation
-- [ ] Update `TODO.md` with the decision and the next action.
+- [x] Update `TODO.md` with the decision and the next action.
+
+### Spike Result
+
+**Decision:** adopt Confect narrowly for `@metacrdt/convex` internals and typed
+boundary experiments; do **not** convert the current reference app wholesale.
+
+Evidence:
+
+- Confect/Effect functions run inside the Convex isolate.
+- Effect Schema args/returns work for a real protocol function.
+- Typed errors are transported as `ConvexError.data` and are visible through
+  `convex-test`.
+- The generated registered function can be manually mounted beside the existing
+  plain Convex backend.
+- Confect's CLI is not sidecar-safe by default: `confect codegen` treats
+  `convex/` as a generated target, rewrites `schema.ts`, and removes function
+  modules not represented in the Confect spec. The safe wrapper avoids this for
+  the spike, but a reusable package should not depend on that workaround forever.
+
+Recommendation:
+
+- Use the Confect source/spec/impl style as an option inside `@metacrdt/convex`.
+- Keep `@metacrdt/core` pure and Effect-free.
+- Keep the current reference app's production API in plain Convex until
+  `@metacrdt/convex` has a clean package boundary.
+- Do not run raw `confect dev` in this repo unless the entire `convex/` tree has
+  been intentionally moved under Confect ownership.
 
 ### Decision Gates
 
@@ -587,6 +626,7 @@ packages/convex/
     component/        # Convex component surface, if used
     bindings/         # lower-level function/schema factories
     adapters/         # Convex row ↔ core event
+    confect/          # optional Confect mounting helpers, informed by Goal 2
 ```
 
 ### Surfaces
@@ -596,6 +636,61 @@ packages/convex/
 - Schema fragments / validators.
 - Rebuild/materialization helpers.
 - Testkit utilities.
+- Optional Confect adapter helpers that expose generated registered functions
+  without requiring Confect to own a host app's entire `convex/` tree.
+
+### Goal 3 Work Breakdown
+
+#### 1. Package boundary
+
+- [ ] Create `packages/convex` as `@metacrdt/convex`.
+- [ ] Keep it dependent on `@metacrdt/core`.
+- [ ] Do not depend on app `convex/_generated/*` types.
+- [ ] Keep Confect optional unless the package boundary proves it should be a
+  peer dependency.
+
+#### 2. Move adapters first
+
+- [ ] Move or duplicate the stable adapter logic from:
+  - `convex/lib/coreEvent.ts`
+  - `convex/lib/visibility.ts`
+  - Confect spike reconstruction helpers in `confect/metacrdt.impl.ts`
+- [ ] Expose pure Convex-row adapter helpers:
+  - assert row → core `Event`
+  - lifecycle row → core `Event`
+  - core event → Convex insert patch
+  - legacy fallback event
+- [ ] Add package-local tests with fixtures, not live Convex tables.
+
+#### 3. Schema and function bindings
+
+- [ ] Export validators/schema fragments for protocol metadata fields.
+- [ ] Export function factories for:
+  - append protocol assert event
+  - append lifecycle event
+  - verify event rows
+  - cardinality-one reconcile by `≺`
+- [ ] Keep host apps free to mount functions under their own names.
+
+#### 4. Confect integration decision
+
+- [ ] Extract the safe parts of the spike:
+  - Effect Schema event summary
+  - typed protocol errors
+  - generated-function manual mount pattern
+- [ ] Do not expose a helper that runs raw `confect codegen` against a host app's
+  `convex/` tree.
+- [ ] Decide whether Confect support is:
+  - `@metacrdt/convex/confect`
+  - docs-only recipe
+  - deferred until Confect supports a true sidecar target.
+
+#### 5. Verification
+
+- [ ] Package tests pass.
+- [ ] Existing Convex reference tests pass after importing from package.
+- [ ] `npx convex dev --once` still deploys the reference app.
+- [ ] Docs/TODO updated with the extraction result.
 
 ### Non-Goals
 
@@ -698,21 +793,16 @@ These remain valuable, but they should not interrupt Goal 1.
 
 ## Definition of Done for the Current Goal
 
-Goal 2 is complete when:
+Goal 3 is complete when:
 
-- The current Confect API is verified against docs/source and reflected in
-  `docs/confect.md`.
-- Minimal Confect dependencies are installed, or the plan records why no install
-  was needed.
-- A small Confect sidecar function group exists and deploys beside the existing
-  Convex backend.
-- The sidecar imports `@metacrdt/core` and exercises a real MetaCRDT protocol
-  concern, not a toy notes app.
-- Effect Schema is used for args/returns and at least two typed errors are
-  modeled.
-- Existing plain Convex APIs still work.
-- Core tests, Convex tests, typechecks, Confect codegen, and `npx convex dev
-  --once` pass, or any blocker is documented with a precise failure.
-- `docs/confect.md` records the spike result and recommendation.
-- `TODO.md` records the result and next action.
+- `packages/convex` exists as `@metacrdt/convex`.
+- Stable Convex/core adapter logic is package-owned.
+- The reference `convex/` app consumes at least one adapter from the package.
+- The package has focused tests proving adapter determinism and legacy fallback.
+- The Confect spike's safe/manual-mount lesson is either represented as an
+  optional helper or explicitly deferred with rationale.
+- Existing plain Convex API behavior is preserved.
+- `npm run test:core`, package tests, `npm test`, both typechecks, and
+  `npx convex dev --once` pass.
+- `PLAN.md`, `TODO.md`, and relevant docs record the extraction result.
 - The change is committed and pushed.

@@ -46,13 +46,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   (today), `@metacrdt/cloudflare` (DO), `@metacrdt/local` (browser). Don't factor
   these until the harness boundary is real.
 
-**Current goal — Confect spike (see [PLAN.md](./PLAN.md#goal-2--confect-spike-for-the-convex-target))**
-- [ ] Build a sidecar `confect/` function group against current Confect v8
-  (`@confect/core`, `@confect/server`, `@confect/cli`) that reads real
-  protocol-shaped `factEvents`, imports `@metacrdt/core`, models typed errors,
-  and deploys beside the existing plain Convex backend.
-- [ ] Record the result in `docs/confect.md`: adopt broadly, adopt only for
-  `@metacrdt/convex`, adopt only at app boundaries, defer, or reject.
+**Current goal — extract `@metacrdt/convex` (see [PLAN.md](./PLAN.md#goal-3--extract-metacrdtconvex))**
+- [ ] Create `packages/convex` as `@metacrdt/convex` and move stable Convex/core
+  adapter logic there first (`coreEvent`, visibility mapping, event-row
+  verification, legacy fallbacks).
+- [ ] Represent the Confect spike lesson as either an optional
+  `@metacrdt/convex/confect` helper or a docs recipe; do not require host apps to
+  let raw Confect codegen own their entire `convex/` tree.
 
 **Product / engine**
 - [ ] `applyConfig` true reconcile — retract config facts dropped from the blueprint
@@ -90,6 +90,20 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-07 — PLAN.md becomes the executable goal file
+- [x] **Goal 2 Confect spike shipped:** `confect/` now defines a Confect v8
+  sidecar group over real MetaCRDT `factEvents`; `metacrdt.verifyEvents` uses
+  Effect Schema args/returns, typed `UnknownEntity` / `InvalidProtocolEvent`
+  errors, generated `DatabaseReader`, and `@metacrdt/core.verifyId`.
+  `convex/metacrdtConfect.ts` manually mounts the generated registered function
+  beside the existing plain Convex backend. Verification: `npm run
+  confect:codegen`, `npm run test:core`, `npm run test:confect`, `npm test` (72
+  Convex tests), both typechecks, `npx convex dev --once`, and a live
+  `metacrdtConfect:verifyEvents` call returning `validEventId: true`.
+- [x] **Confect decision:** adopt narrowly for `@metacrdt/convex` internals /
+  typed boundary experiments, not as a wholesale reference-app migration. Raw
+  Confect codegen rewrites/removes files in the configured Convex functions
+  directory, so this repo uses `scripts/confect-codegen-sidecar.mjs` to generate
+  `confect/_generated/*` safely against a throwaway target.
 - [x] **Expanded Goal 2 into an executable Confect spike plan** after finishing
   the protocol write-path work: current Confect v8 API baseline, sidecar-not-
   migration scope, exact dependencies, generated file layout, typed-error
