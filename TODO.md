@@ -516,6 +516,20 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   first → `@metacrdt/views-react` when proven); query-binding resolution is an
   edge concern (never inside views). Dropped the views→`@metacrdt/query`
   dependency from the plan.
+- [x] **Phase 3 — inline ViewSpec→React renderer.** `src/views/ViewRenderer.tsx`
+  (minimal switch on `node.type`: rows/columns/heading/text/table/empty-state)
+  and `src/views/entitiesView.ts` (`buildEntitiesViewSpec` from schema columns +
+  `flattenEntityRows` as the edge). `src/pages/Entities.tsx` now renders the
+  Entities list as a ViewSpec (`<ViewRenderer>`) instead of the bespoke
+  `typeSchemaAsOf` table, fed by `queryEntities` + `typeSchemaAsOf`; row click
+  navigates. Verified by app `tsc`, full `npm run build`, and a `react-dom/server`
+  smoke (status badges, denied handling, mono ids, empty-state). App gained
+  `@metacrdt/views` as a dep.
+- [ ] **Follow-up (gates Phase 4):** importing `@metacrdt/views` pulls the full
+  Effect `Schema` IR into the app bundle (~+260 kB pre-gzip; Schema consts are
+  side-effectful, don't tree-shake). Add a **runtime-only entry** to
+  `@metacrdt/views` (types + runtime fns, no Schema consts) before extracting
+  `@metacrdt/views-react`.
 
 ### 2026-06-08 — package build tooling
 - [x] **Goal 107 shipped:** centralized package build config. Added root

@@ -238,20 +238,43 @@ execution, no ontology coupling**:
 
 `@metacrdt/views` stays `effect`-only. 32 tests total in the package.
 
-### Phase 3 — Inline React renderer in `src/` (the renderer target, prototyped)
+### Phase 3 — Inline React renderer in `src/` — SHIPPED ✅
 
-Build a minimal ViewSpec → React renderer **inline in the app** (`src/`):
-a switch on `node.type` covering the nodes the Entities view needs (table, rows,
-text/heading), driven by a normalized ViewSpec and a host-provided scope. Render
-the Entities ViewSpec from Phase 2 in `src/pages/Entities.tsx`, fed by the
-existing `queryEntities` + `typeSchemaAsOf` data (the edge wires the scope; views
-stays query-agnostic). First *visible* proof.
+Minimal ViewSpec → React renderer, inline in the app:
+
+- `src/views/ViewRenderer.tsx` — a switch on `node.type` covering the nodes the
+  Entities view needs (`rows`, `columns`, `heading`, `text`, `table`,
+  `empty-state`). Reads a normalized ViewSpec node + a host-provided
+  `ViewRenderContext` (the eval scope + an `onRowActivate` host action). It is a
+  render *target*; it never queries — data comes from `ctx.query`.
+- `src/views/entitiesView.ts` — `buildEntitiesViewSpec(type, columns)` builds the
+  Entities ViewSpec dynamically from the type's schema columns;
+  `flattenEntityRows(...)` is the **edge** that flattens backend
+  `queryEntities` rows into renderer-friendly scope rows.
+- `src/pages/Entities.tsx` — the bespoke `typeSchemaAsOf` table is replaced by
+  `<ViewRenderer node={spec.root} ctx={ctx} />`, fed by `queryEntities` +
+  `typeSchemaAsOf`; row click navigates to the entity. First *visible* proof.
+
+Verified: app `tsc --noEmit`, full `npm run build` (packages + vite app), and a
+`react-dom/server` smoke render (table with status badges, denied-attribute
+handling, mono ids, clickable rows; empty-state path). Package stays
+`effect`-only; the app gained `@metacrdt/views` as a dependency.
+
+**Finding (for Phase 4 extraction):** importing `@metacrdt/views` pulls the full
+Effect `Schema` IR into the app bundle (~+260 kB pre-gzip) because the generated
+Schema consts are side-effectful and don't tree-shake. The renderer only needs
+the plain TS types + `evaluateViewExpression`/`normalize` — not the Schema
+objects. `@metacrdt/views` should grow a **runtime-only entry** (types + runtime
+fns, no Schema consts) so `@metacrdt/views-react` and hosts can avoid the Schema
+weight. Track this with the Phase 4 extraction.
 
 ### Phase 4 (later) — Extract `@metacrdt/views-react`
 
 Once the inline renderer is real and stable, extract it to `@metacrdt/views-react`
 (deps: views + react) so the React boundary is hard-enforced. Extract-when-proven,
-not before.
+not before. **Prerequisite:** add a runtime-only entry to `@metacrdt/views` (types
++ runtime fns, no Schema consts) so the renderer doesn't drag the Effect Schema IR
+into host bundles (see the Phase 3 finding).
 
 ### Phase 5 (later) — Edge binding layer
 

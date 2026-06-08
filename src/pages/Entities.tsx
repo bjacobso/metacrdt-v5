@@ -5,6 +5,12 @@ import { api } from "../../convex/_generated/api";
 import { ChevronRight, ChevronDown } from "lucide-react";
 import { Card, Button, Mono, shortId } from "../ui";
 import { useWriteGate } from "../auth";
+import { ViewRenderer, type ViewRenderContext } from "../views/ViewRenderer";
+import {
+  buildEntitiesViewSpec,
+  flattenEntityRows,
+  type RawEntityRow,
+} from "../views/entitiesView";
 
 function displayValue(v: unknown): string {
   return typeof v === "string" ? v : JSON.stringify(v);
@@ -43,6 +49,22 @@ export default function Entities() {
   }, [types]);
 
   const empty = types && types.length === 0;
+
+  // Phase 3: the Entities list is now a ViewSpec rendered by the inline
+  // ViewSpec->React renderer. The spec is built from the type's schema columns;
+  // the edge flattens backend rows into the runtime scope (views never queries).
+  const columnNames = (schema?.columns ?? []).map((c) => c.name);
+  const entitiesSpec = type ? buildEntitiesViewSpec(type, columnNames) : null;
+  const entitiesCtx: ViewRenderContext = {
+    state: {},
+    input: { type: type ?? "" },
+    query: {
+      entities: {
+        page: entities ? flattenEntityRows(entities.page as RawEntityRow[], columnNames) : [],
+      },
+    },
+    onRowActivate: (row) => navigate(`/e/${encodeURIComponent(String(row["id"]))}`),
+  };
 
   async function bootstrap() {
     setBusy(true);
@@ -145,64 +167,10 @@ export default function Entities() {
                 {entities ? `${entities.total}` : "…"}
               </span>
             </div>
-            {entities === undefined ? (
+            {entities === undefined || !entitiesSpec ? (
               <p className="px-5 py-4 text-[13px] text-muted">Loading…</p>
-            ) : entities.page.length === 0 ? (
-              <p className="px-5 py-4 text-[13px] text-muted">
-                No entities of this type.
-              </p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-[13px]">
-                  <thead>
-                    <tr className="border-b border-line-soft text-[11px] uppercase tracking-wide text-muted">
-                      <th className="px-5 py-2.5 font-semibold">entity</th>
-                      {(schema?.columns ?? []).slice(0, 5).map((c) => (
-                        <th key={c.name} className="px-3 py-2.5 font-semibold">
-                          {c.name}
-                        </th>
-                      ))}
-                      <th className="px-5 py-2.5" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-line-soft">
-                    {entities.page.map((e) => (
-                      <tr
-                        key={e.id}
-                        onClick={() => navigate(`/e/${encodeURIComponent(e.id)}`)}
-                        className="cursor-pointer hover:bg-line-soft"
-                      >
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-ink">
-                              {displayValue(e.attributes.name?.[0] ?? shortId(e.id))}
-                            </span>
-                            <Mono>{e.id}</Mono>
-                          </div>
-                        </td>
-                        {(schema?.columns ?? []).slice(0, 5).map((c) => {
-                          const denied = (e.denied ?? []).some((d) => d.a === c.name);
-                          const vals = e.attributes[c.name] ?? [];
-                          return (
-                            <td key={c.name} className="max-w-56 truncate px-3 py-3 text-ink-2">
-                              {denied ? (
-                                <span className="text-red-ink">Denied</span>
-                              ) : vals.length === 0 ? (
-                                <span className="text-faint">—</span>
-                              ) : (
-                                vals.map(displayValue).join(", ")
-                              )}
-                            </td>
-                          );
-                        })}
-                        <td className="px-5 py-3 text-right">
-                          <ChevronRight className="ml-auto h-4 w-4 text-faint" />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ViewRenderer node={entitiesSpec.root} ctx={entitiesCtx} />
             )}
           </Card>
         )}
