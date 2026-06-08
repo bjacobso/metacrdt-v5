@@ -58,9 +58,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   cardinality-one current projection reconciles by `≺`-max; `rebuildProjections`
   now prefers HLC/eventId ordering while retaining legacy fallback.
   `api.facts.entityFromEventLog` now folds a single host entity directly from
-  protocol-shaped `factEvents` + schema cardinality events. Remaining: continue
-  toward retiring the hand-maintained `facts` projection for broader query/rule
-  reads.
+  protocol-shaped `factEvents` + schema cardinality events, and
+  `api.facts.queryFactsFromEventLog` answers bounded bitemporal point queries
+  directly from protocol-shaped `factEvents`. Remaining: continue toward retiring
+  the hand-maintained `facts` projection for Datalog/rule reads.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -318,6 +319,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 51 shipped:** `api.facts.queryFactsFromEventLog` is the event-log
+  counterpart to `queryFacts`: it reconstructs protocol rows, applies
+  `@metacrdt/core.visibleAsserts`, preserves `includeRetracted` history
+  semantics, filters by attribute/value, and redacts through the same read-auth
+  checks.
+- [x] **Facts projection bypass proof.** Tests deliberately corrupt `facts` for
+  an entity; `queryFacts` returns no visible rows while `queryFactsFromEventLog`
+  still reconstructs the live assertion from `factEvents`.
 - [x] **Goal 50 shipped:** `api.facts.entityFromEventLog` reconstructs one host
   entity directly from protocol-shaped `factEvents` using `@metacrdt/core.entity`
   instead of trusting `currentFacts`.

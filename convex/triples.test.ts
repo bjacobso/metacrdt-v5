@@ -233,6 +233,85 @@ describe("cardinality-one", () => {
     expect(projected.attributes["status.fromLogOnly"]).toBeUndefined();
     expect(fromLog.attributes["status.fromLogOnly"]).toEqual(["current"]);
   });
+
+  test("event-log fact query matches projection query for visible facts", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await t.mutation(api.attributes.defineAttribute, {
+      name: "status.queryLog",
+      valueType: "string",
+      cardinality: "one",
+    });
+    await t.mutation(api.facts.assertFact, {
+      e: "e:query-log",
+      a: "status.queryLog",
+      value: "draft",
+    });
+    await t.mutation(api.facts.assertFact, {
+      e: "e:query-log",
+      a: "status.queryLog",
+      value: "active",
+    });
+    await t.mutation(api.facts.assertFact, {
+      e: "e:query-log",
+      a: "tag",
+      value: "blue",
+    });
+
+    const projected = await t.query(api.facts.queryFacts, {
+      e: "e:query-log",
+    });
+    const fromLog = await t.query(api.facts.queryFactsFromEventLog, {
+      e: "e:query-log",
+    });
+
+    expect(fromLog.skippedLegacyEvents).toBe(0);
+    expect(fromLog.facts.map((f) => [f.a, f.v]).sort()).toEqual(
+      projected.map((f) => [f.a, f.v]).sort(),
+    );
+    expect(
+      (
+        await t.query(api.facts.queryFactsFromEventLog, {
+          a: "tag",
+          value: "blue",
+        })
+      ).facts.some((f) => f.e === "e:query-log" && f.v === "blue"),
+    ).toBe(true);
+    const allStatus = await t.query(api.facts.queryFactsFromEventLog, {
+      e: "e:query-log",
+      a: "status.queryLog",
+      includeRetracted: true,
+    });
+    expect(allStatus.facts.map((f) => f.v).sort()).toEqual(["active", "draft"]);
+  });
+
+  test("event-log fact query survives a corrupted facts projection", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await t.mutation(api.facts.assertFact, {
+      e: "e:query-log-only",
+      a: "status",
+      value: "live",
+    });
+
+    await t.run(async (ctx) => {
+      const rows = await ctx.db
+        .query("facts")
+        .withIndex("by_e", (q) => q.eq("e", "e:query-log-only"))
+        .collect();
+      for (const row of rows) {
+        await ctx.db.patch(row._id, { retractedAt: Date.now() });
+      }
+    });
+
+    const projected = await t.query(api.facts.queryFacts, {
+      e: "e:query-log-only",
+    });
+    const fromLog = await t.query(api.facts.queryFactsFromEventLog, {
+      e: "e:query-log-only",
+    });
+
+    expect(projected).toEqual([]);
+    expect(fromLog.facts.map((f) => [f.a, f.v])).toEqual([["status", "live"]]);
+  });
 });
 
 describe("event log is append-only", () => {

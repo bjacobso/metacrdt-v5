@@ -23,6 +23,7 @@ import {
   entity as coreEntity,
   fromEvents,
   valueOf as coreValueOf,
+  visibleAsserts,
   type Event,
   type Log,
   type Value,
@@ -743,6 +744,28 @@ async function eventsForEntity(
     .take(limit);
 }
 
+async function fetchCandidateFactEvents(
+  ctx: QueryCtx,
+  args: { e?: string; a?: string },
+  scanLimit: number,
+): Promise<Doc<"factEvents">[]> {
+  const { e, a } = args;
+  if (e !== undefined && a !== undefined) {
+    return await ctx.db
+      .query("factEvents")
+      .withIndex("by_e_a_tx", (q) => q.eq("e", e).eq("a", a))
+      .take(scanLimit);
+  }
+  if (e !== undefined) return await eventsForEntity(ctx, e, scanLimit);
+  if (a !== undefined) {
+    return await ctx.db
+      .query("factEvents")
+      .withIndex("by_a_tx", (q) => q.eq("a", a))
+      .take(scanLimit);
+  }
+  throw new Error("event-log fact queries require at least one of `e` or `a`");
+}
+
 async function cardinalityEventsForAttributes(
   ctx: QueryCtx,
   attrs: Iterable<string>,
@@ -855,6 +878,89 @@ export const queryFacts = query({
       out.push(f);
     }
     return out;
+  },
+});
+
+/**
+ * Bounded bitemporal point query over the append-only protocol event log. This is
+ * the event-log counterpart to `queryFacts`: it folds protocol-shaped
+ * `factEvents` directly with @metacrdt/core instead of reading the folded
+ * `facts` projection. Legacy/non-verifiable rows are skipped and reported.
+ */
+export const queryFactsFromEventLog = query({
+  args: {
+    e: v.optional(v.string()),
+    a: v.optional(v.string()),
+    value: v.optional(v.any()),
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+    includeTombstoned: v.optional(v.boolean()),
+    includeRetracted: v.optional(v.boolean()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const scanLimit = Math.min(args.limit ?? 1000, 2000);
+    const eventRows = await fetchCandidateFactEvents(ctx, args, scanLimit);
+    const protocol = await protocolEventsForRows(ctx, eventRows);
+    const log = fromEvents(protocol.events);
+    const principal = await readPrincipal(ctx);
+    const out: Array<{
+      eventId: string;
+      e: string;
+      a: string;
+      v: unknown;
+      assertedAt: number;
+      validFrom: number;
+      validTo?: number;
+      actor: string;
+      actorType: string;
+      reason?: string;
+    }> = [];
+    const keys =
+      args.e !== undefined && args.a !== undefined
+        ? [[args.e, args.a] as const]
+        : [...new Set(protocol.events.flatMap((ev) =>
+            ev.kind === "assert" && ev.e !== undefined && ev.a !== undefined
+              ? [`${ev.e}\u0000${ev.a}`]
+              : [],
+          ))].map((k) => k.split("\u0000") as [string, string]);
+
+    for (const [e, a] of keys) {
+      const evs = visibleAsserts(e, a, coord, log, {
+        includeRetracted: args.includeRetracted,
+        includeTombstoned: args.includeTombstoned,
+      });
+      for (const ev of evs) {
+        if (args.value !== undefined && valueKey(ev.v) !== valueKey(args.value)) {
+          continue;
+        }
+        if (!(await canReadAttribute(ctx, principal, ev.e!, ev.a!))) continue;
+        out.push({
+          eventId: ev.id,
+          e: ev.e!,
+          a: ev.a!,
+          v: ev.v,
+          assertedAt: ev.hlc.pt,
+          validFrom: ev.validFrom!,
+          ...(ev.validTo === undefined || ev.validTo === null
+            ? {}
+            : { validTo: ev.validTo }),
+          actor: ev.actor,
+          actorType: ev.actorType,
+          ...(ev.reason === undefined ? {} : { reason: ev.reason }),
+        });
+      }
+    }
+    out.sort((x, y) => x.e.localeCompare(y.e) || x.a.localeCompare(y.a));
+    return {
+      coord,
+      skippedLegacyEvents: protocol.skipped,
+      facts: out,
+    };
   },
 });
 

@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 50 (host event-log entity fold)
+**Current goal:** Goal 51 (host event-log fact query)
 has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth, or
@@ -84,7 +84,11 @@ arguments.
   protocol-shaped `factEvents` with `@metacrdt/core`, including schema
   cardinality facts from the same log, and redacts through the same read-auth
   path as projection-backed entity reads.
-- Convex backend tests are green: 130 tests at last verification.
+- `api.facts.queryFactsFromEventLog` runs bounded bitemporal fact point queries
+  directly over protocol-shaped `factEvents`, preserving `queryFacts`-style
+  include-retracted/include-tombstoned semantics without reading the `facts`
+  projection.
+- Convex backend tests are green: 132 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -365,6 +369,8 @@ arguments.
   not folded directly from raw core-shaped events.
 - `entityFromEventLog` is intentionally bounded and proof/read-model oriented;
   production Datalog/materialization still read the `facts` projection.
+- `queryFactsFromEventLog` is also bounded and proof/read-model oriented; Datalog
+  and rules have not moved to direct event-log solving.
 - `@metacrdt/convex` now has adapter helpers, stateless protocol helpers, a
   component-owned protocol transaction/event log, and component-owned
   `facts`/`currentFacts` projections with opt-in cardinality-one reconciliation
@@ -4970,6 +4976,83 @@ TODO.md
 - `npx vitest run convex/triples.test.ts` passed (16 tests).
 - Broader gate passed:
   - `npm test` passed (17 backend test files, 130 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+
+---
+
+## Goal 51 — Host Event-Log Fact Query
+
+**Status:** shipped as a bounded proof/read-model query in the Convex reference
+runtime.
+
+**Objective:** continue the host read-path migration by adding a direct
+event-log counterpart to `queryFacts`. This proves bitemporal point queries can
+be answered from protocol-shaped `factEvents` without reading the folded `facts`
+projection.
+
+### Scope
+
+Backend:
+
+```text
+convex/facts.ts
+  queryFactsFromEventLog
+```
+
+Tests:
+
+```text
+convex/triples.test.ts
+```
+
+Docs:
+
+```text
+README.md
+PLAN.md
+TODO.md
+```
+
+### Semantics
+
+- `queryFactsFromEventLog` accepts the same bound terms as `queryFacts` (`e`,
+  `a`, optional `value`, bitemporal coordinate, tombstone/retract flags, limit).
+- It fetches bounded candidate `factEvents`, reconstructs protocol `Event`s
+  through `@metacrdt/convex`, then uses `@metacrdt/core.visibleAsserts`.
+- It returns fact-like summaries for visible assert events, not folded current
+  values. This preserves `queryFacts` semantics: `includeRetracted` can return
+  retracted historical assertions.
+- Read authorization is checked per returned `(e, a)` just like `queryFacts`.
+- Legacy/non-verifiable rows are skipped and counted as `skippedLegacyEvents`.
+
+### Non-Goals
+
+- Do not move Datalog/rules/materialization to direct event-log reads yet.
+- Do not replace `queryFacts` in production call sites in this slice.
+- Do not scan unbounded logs or add global query indexes beyond the existing
+  event indexes.
+
+### Acceptance Criteria
+
+- For normal protocol-shaped writes, `queryFactsFromEventLog` matches
+  `queryFacts` for visible values.
+- Attribute/value filtering works over the event-log read path.
+- `includeRetracted` returns retracted historical assertions.
+- If `facts` is corrupted for an entity, `queryFactsFromEventLog` still returns
+  the visible assertion from `factEvents`.
+- Convex typecheck and focused backend tests pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/triples.test.ts` passed (18 tests).
+- Broader gate passed:
+  - `npm test` passed (17 backend test files, 132 tests).
   - `npm run test:convex-package` passed (33 tests).
   - `npm run test:core` passed (46 tests).
   - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
