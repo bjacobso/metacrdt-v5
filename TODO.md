@@ -42,17 +42,25 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [ ] **Extract `@metacrdt/forma`** from Open Ontology's language packages
   (`language-ts`, selected `language-host` / docs / tests). Forma owns the Lisp
   authoring language; runtime lowering stays out until the IR boundary proves it.
-- [ ] `@metacrdt/runtime` (the IR + service interfaces) + targets `@metacrdt/convex`
-  (today), `@metacrdt/cloudflare` (DO), `@metacrdt/local` (browser). Don't factor
-  these until the harness boundary is real.
+- [x] **`@metacrdt/convex` adapter package extracted** — `packages/convex` owns
+  Convex/core event construction, row reconstruction/verification summaries,
+  visibility mapping, protocol metadata validators, and the Confect sidecar
+  warning. The reference app consumes it from `convex/lib/coreEvent.ts`,
+  `convex/lib/visibility.ts`, and `confect/metacrdt.impl.ts`. Component/function
+  factories remain deferred until the host-app API boundary is clearer.
+- [ ] `@metacrdt/runtime` (the IR + service interfaces) + targets
+  `@metacrdt/cloudflare` (DO), `@metacrdt/local` (browser), and the fuller
+  `@metacrdt/convex` component surface. Don't factor these until the harness
+  boundary is real.
 
-**Current goal — extract `@metacrdt/convex` (see [PLAN.md](./PLAN.md#goal-3--extract-metacrdtconvex))**
-- [ ] Create `packages/convex` as `@metacrdt/convex` and move stable Convex/core
-  adapter logic there first (`coreEvent`, visibility mapping, event-row
-  verification, legacy fallbacks).
-- [ ] Represent the Confect spike lesson as either an optional
-  `@metacrdt/convex/confect` helper or a docs recipe; do not require host apps to
-  let raw Confect codegen own their entire `convex/` tree.
+**Current goal — extract `@metacrdt/forma` (see [PLAN.md](./PLAN.md#goal-4--extract-metacrdtforma))**
+- [ ] Create `packages/forma` as `@metacrdt/forma` from the pinned Open Ontology
+  language packages (`language-ts`, selected `language-host` / docs / tests).
+- [ ] Keep Forma runtime-neutral: parser / printer / AST or IR boundary and
+  selected evaluator/typechecking utilities only; no Convex, runtime target, or
+  product UI dependencies.
+- [ ] Port selected language fixtures into package-local tests and document any
+  Onlang naming as legacy alias or remove it.
 
 **Product / engine**
 - [ ] `applyConfig` true reconcile — retract config facts dropped from the blueprint
@@ -88,6 +96,20 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — @metacrdt/convex adapter package extraction
+- [x] **Goal 3 shipped adapter-first:** `packages/convex` now publishes
+  `@metacrdt/convex` with package-owned Convex/core event adapters, HLC fallback,
+  `eventPatch`, protocol row reconstruction/summarization, bitemporal visibility
+  mapping, protocol metadata validators, and a Confect sidecar warning/helper.
+- [x] **Reference app consumes the package:** `convex/lib/coreEvent.ts` delegates
+  event construction/patching to `@metacrdt/convex`; `convex/lib/visibility.ts`
+  delegates projected-row visibility to the package; `confect/metacrdt.impl.ts`
+  uses the package event-summary helper instead of duplicating reconstruction.
+- [x] Verification: `npm run test:convex-package` (9 tests), `npm run test:core`
+  (46 tests), `npm test` (72 tests), package/Convex/app typechecks, and
+  `npx convex dev --once` all pass. Goal 4 (`@metacrdt/forma`) is now current in
+  `PLAN.md`.
 
 ### 2026-06-07 — PLAN.md becomes the executable goal file
 - [x] **Goal 2 Confect spike shipped:** `confect/` now defines a Confect v8

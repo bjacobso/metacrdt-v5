@@ -18,6 +18,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:core": "npm test --workspace @metacrdt/core",
+    "test:convex-package": "npm test --workspace @metacrdt/convex",
     "test:confect": "vitest run convex/confect.test.ts"
   },
   "license": "MIT",

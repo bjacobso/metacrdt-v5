@@ -91,7 +91,8 @@ not invented:
 
 | This repo (`convex-triples`) | Package |
 | --- | --- |
-| `convex/lib/visibility.ts` + the fold + `factEvents` semantics | `@metacrdt/core` |
+| `packages/core` (`@metacrdt/core`) | pure protocol kernel: events, order, G-Set merge, fold |
+| `packages/convex` (`@metacrdt/convex`) | Convex/core adapters, validators, Confect sidecar warning |
 | `convex/attributes.ts`, `convex/lib/meta.ts` | `@metacrdt/schema` |
 | `convex/datalog.ts`, `convex/lib/engine.ts` | `@metacrdt/query` |
 | `convex/flows.ts` | `@metacrdt/workflow` |
@@ -109,8 +110,9 @@ not invented:
    premature-coupling trap. **`@metacrdt/core` is published first** — it exists now
    at `packages/core`: pure, dependency-free, and tested (SPEC §4–5; the events,
    `≺` order, G-Set merge, and deterministic bitemporal fold). It's the determinism
-   guarantee and the most reusable; everything else extracts as it stabilizes, and
-   `convex/` will be rewired to depend on it next. (Tracked in [TODO.md](../TODO.md).)
+   guarantee and the most reusable. **`@metacrdt/convex` is now the second package**:
+   adapter-first, package-owned, and consumed by the reference app. Everything else
+   extracts as it stabilizes. (Tracked in [TODO.md](../TODO.md).)
 2. **The name is the thesis — so protect what makes it true.** *Databases store
    facts; CRDTs synchronize facts; MetaCRDT synchronizes facts, logic, workflows,
    permissions, agents, and interfaces.* That sentence is only true because the log

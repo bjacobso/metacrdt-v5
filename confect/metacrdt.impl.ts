@@ -1,12 +1,6 @@
 import { FunctionImpl, GroupImpl } from "@confect/server";
 import { Effect, Layer } from "effect";
-import {
-  type ActorType,
-  type Event,
-  type EventKind,
-  type Value,
-  verifyId,
-} from "@metacrdt/core";
+import { summarizeProtocolEvent } from "@metacrdt/convex";
 
 import api from "./_generated/api";
 import { DatabaseReader } from "./_generated/services";
@@ -22,63 +16,8 @@ type FactEventDoc = typeof FactEvents.Doc.Type;
 type TransactionDoc = typeof Transactions.Doc.Type;
 type ProtocolEventSummary = typeof ProtocolEventSummarySchema.Type;
 
-function actorType(t: TransactionDoc["actorType"]): ActorType {
-  return t === "user" ? "human" : t;
-}
-
-function protocolEvent(row: FactEventDoc, tx: TransactionDoc): Event | null {
-  if (row.eventId === undefined || row.hlc === undefined) return null;
-  if (row.kind === "correction") return null;
-
-  const base = {
-    id: row.eventId,
-    kind: row.kind as EventKind,
-    actor: tx.actorId,
-    actorType: actorType(tx.actorType),
-    hlc: row.hlc,
-    causalRefs: row.causalRefs ?? [],
-    reason: row.reason ?? tx.reason,
-  };
-
-  if (row.kind === "assert") {
-    return {
-      ...base,
-      e: row.e,
-      a: row.a,
-      v: row.v as Value,
-      validFrom: row.validFrom ?? row.txTime,
-      validTo: row.validTo ?? null,
-    };
-  }
-
-  if (row.targetEventId === undefined) return null;
-  return { ...base, target: row.targetEventId };
-}
-
 function summary(row: FactEventDoc, tx: TransactionDoc): ProtocolEventSummary {
-  const ev = protocolEvent(row, tx);
-  const reason = row.reason ?? tx.reason;
-  return {
-    kind: row.kind,
-    e: row.e,
-    a: row.a,
-    v: row.v,
-    txTime: row.txTime,
-    actor: tx.actorId,
-    actorType: actorType(tx.actorType),
-    causalRefs: row.causalRefs ?? [],
-    hasProtocolMetadata: row.eventId !== undefined && row.hlc !== undefined,
-    verifiable: ev !== null,
-    validEventId: ev === null ? false : verifyId(ev),
-    ...(row.eventId === undefined ? {} : { eventId: row.eventId }),
-    ...(row.validFrom === undefined ? {} : { validFrom: row.validFrom }),
-    ...(row.validTo === undefined ? {} : { validTo: row.validTo }),
-    ...(row.hlc === undefined ? {} : { hlc: row.hlc }),
-    ...(row.targetEventId === undefined
-      ? {}
-      : { targetEventId: row.targetEventId }),
-    ...(reason === undefined ? {} : { reason }),
-  };
+  return summarizeProtocolEvent(row, tx) as ProtocolEventSummary;
 }
 
 function typedError(err: unknown): UnknownEntity | InvalidProtocolEvent {

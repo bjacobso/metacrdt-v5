@@ -1,8 +1,8 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** extract the reusable `@metacrdt/convex` target package, using
-the completed Confect spike as input rather than converting the reference app
-wholesale.
+**Current goal:** extract `@metacrdt/forma` from the pinned Open Ontology
+language packages, after the reusable `@metacrdt/convex` adapter package has
+landed as an adapter-first target package.
 
 This plan is the operational goal file. Read it with:
 
@@ -36,9 +36,9 @@ The repository should make that statement true in code:
 5. Confect/Effect improves the Convex target's schema, error, and service
    boundaries without becoming the protocol.
 
-The immediate technical gap is the write path: reads already delegate bitemporal
-visibility to `@metacrdt/core`, but writes still use the older Convex-specific
-projection logic and arrival-order cardinality-one supersession.
+The immediate technical gap has moved up a layer: the protocol kernel and Convex
+adapters now exist, so the next extraction is the authoring language that can
+describe MetaCRDT shapes without depending on a runtime target.
 
 ---
 
@@ -77,6 +77,16 @@ projection logic and arrival-order cardinality-one supersession.
   live elaboration.
 - Open Ontology is a pinned submodule under
   [`.context/open-ontology`](./.context/open-ontology).
+- `@metacrdt/convex` exists in [`packages/convex`](./packages/convex) as the
+  first reusable Convex target package:
+  - package-owned Convex/core event adapters
+  - package-owned bitemporal visibility adapter
+  - protocol metadata validators
+  - event-row verification/summarization helpers used by the Confect sidecar
+  - an explicit Confect sidecar warning/helper documenting the manual-mount
+    lesson from Goal 2
+  - package-local tests for deterministic event reconstruction and legacy
+    fallback behavior
 
 ### Not Yet True
 
@@ -85,6 +95,9 @@ projection logic and arrival-order cardinality-one supersession.
   rows, while new corrections write protocol primitives.
 - `facts` and `currentFacts` are still maintained as imperative projections,
   not folded directly from raw core-shaped events.
+- `@metacrdt/convex` is adapter-first. A full Convex component surface,
+  mutation factories, and cardinality-one reconcile helpers remain deferred
+  until the package boundary is proven against more host-app usage.
 - Multi-replica sync is specified but not implemented.
 - Confect is integrated as a narrow sidecar spike:
   - `confect/` defines a typed Effect Schema function group.
@@ -643,28 +656,28 @@ packages/convex/
 
 #### 1. Package boundary
 
-- [ ] Create `packages/convex` as `@metacrdt/convex`.
-- [ ] Keep it dependent on `@metacrdt/core`.
-- [ ] Do not depend on app `convex/_generated/*` types.
-- [ ] Keep Confect optional unless the package boundary proves it should be a
+- [x] Create `packages/convex` as `@metacrdt/convex`.
+- [x] Keep it dependent on `@metacrdt/core`.
+- [x] Do not depend on app `convex/_generated/*` types.
+- [x] Keep Confect optional unless the package boundary proves it should be a
   peer dependency.
 
 #### 2. Move adapters first
 
-- [ ] Move or duplicate the stable adapter logic from:
+- [x] Move or duplicate the stable adapter logic from:
   - `convex/lib/coreEvent.ts`
   - `convex/lib/visibility.ts`
   - Confect spike reconstruction helpers in `confect/metacrdt.impl.ts`
-- [ ] Expose pure Convex-row adapter helpers:
+- [x] Expose pure Convex-row adapter helpers:
   - assert row → core `Event`
   - lifecycle row → core `Event`
   - core event → Convex insert patch
   - legacy fallback event
-- [ ] Add package-local tests with fixtures, not live Convex tables.
+- [x] Add package-local tests with fixtures, not live Convex tables.
 
 #### 3. Schema and function bindings
 
-- [ ] Export validators/schema fragments for protocol metadata fields.
+- [x] Export validators/schema fragments for protocol metadata fields.
 - [ ] Export function factories for:
   - append protocol assert event
   - append lifecycle event
@@ -672,25 +685,33 @@ packages/convex/
   - cardinality-one reconcile by `≺`
 - [ ] Keep host apps free to mount functions under their own names.
 
+Deferred rationale: Goal 3 shipped the reusable adapter boundary first. Function
+factories and a full component surface should come after one more host-app usage
+or the component API shape is clear; otherwise they risk fossilizing the current
+reference app's projection choices as public API.
+
 #### 4. Confect integration decision
 
-- [ ] Extract the safe parts of the spike:
+- [x] Extract the safe parts of the spike:
   - Effect Schema event summary
   - typed protocol errors
   - generated-function manual mount pattern
-- [ ] Do not expose a helper that runs raw `confect codegen` against a host app's
+- [x] Do not expose a helper that runs raw `confect codegen` against a host app's
   `convex/` tree.
-- [ ] Decide whether Confect support is:
+- [x] Decide whether Confect support is:
   - `@metacrdt/convex/confect`
   - docs-only recipe
   - deferred until Confect supports a true sidecar target.
 
+Decision: `@metacrdt/convex` exposes a small `confectSidecarWarning()` helper and
+keeps Confect optional/docs-first. The package does not run codegen for host apps.
+
 #### 5. Verification
 
-- [ ] Package tests pass.
-- [ ] Existing Convex reference tests pass after importing from package.
-- [ ] `npx convex dev --once` still deploys the reference app.
-- [ ] Docs/TODO updated with the extraction result.
+- [x] Package tests pass.
+- [x] Existing Convex reference tests pass after importing from package.
+- [x] `npx convex dev --once` still deploys the reference app.
+- [x] Docs/TODO updated with the extraction result.
 
 ### Non-Goals
 
@@ -793,16 +814,25 @@ These remain valuable, but they should not interrupt Goal 1.
 
 ## Definition of Done for the Current Goal
 
-Goal 3 is complete when:
+Goal 4 is complete when:
 
-- `packages/convex` exists as `@metacrdt/convex`.
-- Stable Convex/core adapter logic is package-owned.
-- The reference `convex/` app consumes at least one adapter from the package.
-- The package has focused tests proving adapter determinism and legacy fallback.
-- The Confect spike's safe/manual-mount lesson is either represented as an
-  optional helper or explicitly deferred with rationale.
-- Existing plain Convex API behavior is preserved.
-- `npm run test:core`, package tests, `npm test`, both typechecks, and
-  `npx convex dev --once` pass.
+- `packages/forma` exists as `@metacrdt/forma`.
+- Forma is extracted from the pinned Open Ontology language packages without
+  importing from `.context/open-ontology` at runtime.
+- The package README states what Forma owns:
+  - the Lisp/sexpr authoring language
+  - parser / printer / AST or IR boundary
+  - selected evaluator/typechecking utilities that are language-owned
+- The package README states what Forma does **not** own:
+  - Convex bindings
+  - protocol event storage
+  - Datalog/runtime execution
+  - product UI
+- Selected Open Ontology language fixtures are copied or ported into package-local
+  tests.
+- Any old Onlang naming is either removed or documented as a legacy alias.
+- `npm run test:forma` passes.
+- `npm run test:core`, `npm run test:convex-package`, `npm test`, both
+  typechecks, and `npx convex dev --once` still pass.
 - `PLAN.md`, `TODO.md`, and relevant docs record the extraction result.
 - The change is committed and pushed.
