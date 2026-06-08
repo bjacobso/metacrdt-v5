@@ -213,6 +213,9 @@ Built today:
   `entityDetail.obligations`, and `flows.issueAllOpen`) derive enabled
   requirement/task rule output from protocol-shaped `factEvents` instead of
   reading materialized `derivedFacts`
+- Confect compliance dry-run planning (`api.complianceConfect.dryRunWorkerCompliance`)
+  now folds current worker/placement/submission state from protocol-shaped
+  `factEvents`, not `currentFacts`
 - System process flow-resumer counts now read mirrored `flow.run.status` facts
   from protocol-shaped `factEvents` instead of scanning host `flowRuns`
 - production fact point queries (`api.facts.queryFacts`) now fold base facts
@@ -293,8 +296,8 @@ Built today:
   in-memory convergence test target
 - Confect/Effect sidecars for typed read/planning/protocol inspection:
   `metacrdt.verifyEvents`, `metacrdt.explainDerived`, and a read-only compliance
-  dry-run planner run beside the hand-written Convex API without moving protocol
-  writes behind Effect
+  dry-run planner. The dry-run planner is now event-log-backed and
+  projection-wipe tested, while protocol writes remain plain Convex.
 
 The demo elaboration is **datarooms**: compliance/onboarding as a mergeable fact
 log. That product surface is intentionally just one physics over the substrate,

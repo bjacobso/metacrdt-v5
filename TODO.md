@@ -104,7 +104,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `explainDerived` resolves event ids first for protocol-backed explanations.
   The Confect `metacrdt` sidecar now also exposes
   `api.metacrdtConfect.explainDerived` as a typed protocol-inspection wrapper
-  over those event-backed derived explanations.
+  over those event-backed derived explanations. The Confect compliance dry-run
+  sidecar now folds current planning state from protocol-shaped `factEvents`
+  instead of reading `currentFacts`, and `npm run test:confect` covers both
+  Confect sidecar test files.
   User-facing compliance obligation reads (`workerCompliance`,
   `entityDetail.obligations`, Overview required/open counts, and
   `flows.issueAllOpen`) now derive enabled `require.*` / `task.*` rule output
@@ -381,6 +384,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `api.metacrdtConfect.explainDerived` returns event-id-backed "because" rows and
   surfaces typed missing-derived errors. This keeps Confect in the
   read/planning/protocol-inspection lane, not the write path.
+- [x] **Goal 78 shipped:** `api.complianceConfect.dryRunWorkerCompliance` no
+  longer reads `currentFacts`; it folds current worker, placement, guard, and
+  submitted-form state from protocol-shaped `factEvents` with shared core
+  visibility semantics, retaining a legacy reconstruction fallback for old rows.
+- [x] **Confect compliance projection-wipe proof.**
+  `convex/complianceConfect.test.ts` now deletes all host `currentFacts` before
+  running the dry-run and still gets the expected reuse/collect plan.
+  `npm run test:confect` now runs both Confect sidecar test files.
 - [x] **Goal 76 shipped:** `api.rules.explainDerived` now resolves
   `derivedFacts.sourceEventIds` through `factEvents.by_eventId` before falling
   back to compatibility `sourceFactIds` for legacy rows. The public "because"

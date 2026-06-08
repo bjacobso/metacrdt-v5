@@ -82,6 +82,40 @@ describe("Confect compliance planner", () => {
     }
   });
 
+  test("dry-run survives a wiped currentFacts projection", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await setup(t);
+      await t.mutation(api.compliance.submitForm, {
+        worker: "worker:maria",
+        form: "i9",
+        scope: "employer:acme",
+      });
+      await flush(t);
+
+      await t.run(async (ctx) => {
+        const rows = await ctx.db.query("currentFacts").collect();
+        for (const row of rows) await ctx.db.delete(row._id);
+      });
+
+      const dry = await t.query(api.complianceConfect.dryRunWorkerCompliance, {
+        worker: "worker:maria",
+        placement: {
+          employer: "employer:acme",
+          client: "client:globex",
+          job: "job:forklift1",
+          venue: "venue:stadium7",
+        },
+      });
+
+      expect(dry.summary).toEqual({ reuse: 1, collect: 4, total: 5 });
+      expect(byKey(dry.items).get("i9@employer:acme")?.decision).toBe("reuse");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("hypothetical non-forklift placement omits the forklift requirement", async () => {
     vi.useFakeTimers();
     try {

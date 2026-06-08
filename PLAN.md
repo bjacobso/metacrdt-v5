@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 77 (Confect derived-provenance sidecar) has
+**Current goal:** Goal 78 (Confect compliance dry-run from event log) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -43,7 +43,10 @@ falling back to compatibility `sourceFactIds` only for legacy derived rows. Goal
 77 extends the narrow Confect sidecar with `metacrdt.explainDerived`, a typed
 Effect Schema query that reads derived rows, resolves protocol source event ids,
 and surfaces typed provenance errors without moving protocol writes behind
-Effect. The next
+Effect. Goal 78 moves the earlier Confect compliance dry-run planner off the
+`currentFacts` projection: `api.complianceConfect.dryRunWorkerCompliance` now
+folds worker, placement, guard, and submitted-form state from protocol-shaped
+`factEvents` and is projection-wipe tested. The next
 active goal should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
@@ -211,7 +214,11 @@ arguments.
   explanation path as a typed Confect/Effect sidecar query with shaped
   `DerivedExplanation` returns and `UnknownDerivedFact` /
   `InvalidProtocolEvent` tagged errors.
-- Convex backend tests are green: 154 tests at last verification.
+- `api.complianceConfect.dryRunWorkerCompliance` now uses its own event-log
+  current-state fold over protocol-shaped `factEvents` instead of reading the
+  disposable `currentFacts` projection, while preserving the same typed
+  reuse/collect plan and domain errors.
+- Convex backend tests are green: 155 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -561,6 +568,8 @@ arguments.
     with `@metacrdt/core`.
   - `api.metacrdtConfect.explainDerived` resolves materialized derived-row
     `sourceEventIds` into a typed protocol provenance explanation.
+  - `api.complianceConfect.dryRunWorkerCompliance` reads planning state from
+    protocol-shaped `factEvents`, not `currentFacts`.
   - The spike result is recorded in [docs/confect.md](./docs/confect.md).
 
 ---
@@ -1354,6 +1363,10 @@ present on current data rows.
 ## Goal 8 — Confect-First Compliance Planning
 
 **Status:** shipped in the Convex reference runtime.
+
+**Follow-up:** Goal 78 keeps this API but changes its backing read model from
+`currentFacts` to protocol-shaped `factEvents`; the original Goal 8 notes below
+describe the first shipped planner slice.
 
 **Objective:** answer the question "should we first convert current Convex logic
 to Confect/Effect?" by converting one real production domain boundary, not the
@@ -5464,6 +5477,7 @@ TODO.md
   - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
   - `npx tsc --noEmit -p tsconfig.json` passed.
   - `npm run build` passed.
+  - `npx convex dev --once` passed and pushed functions to `chatty-hare-94`.
   - `git diff --check` passed.
 
 ### Definition of Done
@@ -7461,6 +7475,82 @@ Docs:
 - `npm run test:confect` passed (4 tests).
 - Full gate passed:
   - `npm test` passed (17 backend test files, 154 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+  - `git diff --check` passed.
+
+---
+
+## Goal 78 — Confect Compliance Dry-Run Reads from the Event Log
+
+**Status:** shipped for the typed compliance-planning sidecar.
+
+**Objective:** keep the Confect compliance dry-run planner aligned with the
+protocol migration by removing its dependency on the disposable `currentFacts`
+projection. The public sidecar API and typed Effect Schema surface stay the
+same; only the backing read model changes.
+
+### Scope
+
+Confect sidecar:
+
+- `confect/compliance.impl.ts`
+- `confect/schema.ts`
+- `confect/tables/CurrentFacts.ts`
+
+Tests:
+
+- `convex/complianceConfect.test.ts`
+
+Tooling/docs:
+
+- `package.json`
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+- `docs/confect.md`
+
+### Semantics
+
+- `api.complianceConfect.dryRunWorkerCompliance` still returns the same
+  `DryRunComplianceResult` shape and the same typed domain errors.
+- The planner no longer reads `currentFacts`.
+- It folds current entity state from protocol-shaped `factEvents`, using
+  `@metacrdt/core.visibleAsserts` and `@metacrdt/convex.protocolEventFromRows`.
+- It retains a legacy fallback for historical non-protocol rows that can still be
+  reconstructed from row/transaction data.
+- Existing placement discovery, hypothetical placement merging, rule parsing,
+  guard checks, `submitted.<form>` reuse detection, dedupe, and deterministic
+  ordering are preserved.
+- The Confect sidecar schema no longer includes the host `currentFacts` table.
+
+### Non-Goals
+
+- Do not convert host `api.compliance.workerCompliance` to Confect.
+- Do not move protocol writes, materializers, or `@metacrdt/core` behind Effect.
+- Do not replace the host event-log helpers with Confect helpers.
+- Do not remove the host `currentFacts` projection; it is still maintained for
+  compatibility and rebuild tests.
+
+### Acceptance Criteria
+
+- `api.complianceConfect.dryRunWorkerCompliance` returns the same reuse/collect
+  decisions as before.
+- A regression wipes host `currentFacts` and proves the Confect dry-run still
+  returns the expected plan.
+- `npm run test:confect` covers both Confect sidecar test files.
+- Confect codegen and the full verification gate pass.
+
+### Verification
+
+- `npm run confect:codegen` passed.
+- `npm run test:confect` passed (2 test files, 8 tests).
+- Full gate passed:
+  - `npm test` passed (17 backend test files, 155 tests).
   - `npm run test:convex-package` passed (33 tests).
   - `npm run test:core` passed (46 tests).
   - `npx tsc --noEmit -p convex/tsconfig.json` passed.

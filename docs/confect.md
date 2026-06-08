@@ -211,6 +211,34 @@ Decision:
 
 ---
 
+## Goal 78 result — Confect compliance planning from the event log
+
+Implemented:
+
+- `confect/compliance.impl.ts` no longer reads host `currentFacts`.
+- The dry-run planner now reconstructs current facts from protocol-shaped
+  `factEvents` using `@metacrdt/convex.protocolEventFromRows` and
+  `@metacrdt/core.visibleAsserts`.
+- The helper keeps a legacy fallback for historical rows that can be
+  reconstructed from row/transaction data.
+- `confect/schema.ts` drops the sidecar `currentFacts` table binding, and the
+  unused `confect/tables/CurrentFacts.ts` file is removed.
+- `convex/complianceConfect.test.ts` now wipes all host `currentFacts` before a
+  dry-run and still proves the expected reuse/collect plan.
+- `npm run test:confect` now runs both sidecar test files:
+  `convex/confect.test.ts` and `convex/complianceConfect.test.ts`.
+
+Decision:
+
+- Keep Confect in the read/planning/protocol-inspection lane, but make those
+  reads protocol-backed wherever possible.
+- A Confect sidecar can import the same shared core/package helpers as plain
+  Convex code; it does not need a parallel interpretation of the fold.
+- This still does not justify moving protocol writes or materializers behind
+  Effect.
+
+---
+
 ## The thesis
 
 Confect's premise is that Effect can run in the Convex V8 isolate. If true, three

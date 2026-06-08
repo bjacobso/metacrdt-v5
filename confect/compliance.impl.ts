@@ -1,4 +1,10 @@
 import { FunctionImpl, GroupImpl } from "@confect/server";
+import { fromEvents, visibleAsserts, type Event } from "@metacrdt/core";
+import {
+  protocolEventFromRows,
+  type ConvexTransactionRow,
+  type ProtocolFactEventRow,
+} from "@metacrdt/convex";
 import { Effect, Layer } from "effect";
 
 import api from "./_generated/api";
@@ -9,11 +15,13 @@ import {
   UnknownWorker,
   type DryRunComplianceResult,
 } from "./compliance.spec";
-import type { CurrentFacts } from "./tables/CurrentFacts";
+import type { FactEvents } from "./tables/FactEvents";
 import type { Rules } from "./tables/Rules";
+import type { Transactions } from "./tables/Transactions";
 
-type CurrentFactDoc = typeof CurrentFacts.Doc.Type;
+type FactEventDoc = typeof FactEvents.Doc.Type;
 type RuleDoc = typeof Rules.Doc.Type;
+type TransactionDoc = typeof Transactions.Doc.Type;
 type DryRunResult = typeof DryRunComplianceResult.Type;
 
 type PlacementInput = {
@@ -35,12 +43,97 @@ type Requirement = {
   guard?: { attr: string; value: unknown };
 };
 
+type CurrentAssert = {
+  e: string;
+  a: string;
+  v: unknown;
+  eventId: string;
+};
+
 function isPattern(x: unknown): x is [unknown, unknown, unknown] {
   return Array.isArray(x) && x.length === 3;
 }
 
 function sameValue(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function txForCore(tx: TransactionDoc): ConvexTransactionRow {
+  return {
+    _creationTime: tx._creationTime,
+    actorId: tx.actorId,
+    actorType: tx.actorType,
+    txTime: tx.txTime,
+    ...(tx.reason === undefined ? {} : { reason: tx.reason }),
+  };
+}
+
+function rowForCore(row: FactEventDoc): ProtocolFactEventRow {
+  return {
+    txTime: row.txTime,
+    kind: row.kind,
+    e: row.e,
+    a: row.a,
+    v: row.v,
+    ...(row.eventId === undefined ? {} : { eventId: row.eventId }),
+    ...(row.hlc === undefined ? {} : { hlc: row.hlc }),
+    ...(row.replicaId === undefined ? {} : { replicaId: row.replicaId }),
+    ...(row.seq === undefined ? {} : { seq: row.seq }),
+    ...(row.targetEventId === undefined ? {} : { targetEventId: row.targetEventId }),
+    ...(row.causalRefs === undefined ? {} : { causalRefs: row.causalRefs }),
+    ...(row.validFrom === undefined ? {} : { validFrom: row.validFrom }),
+    ...(row.validTo === undefined ? {} : { validTo: row.validTo }),
+    ...(row.reason === undefined ? {} : { reason: row.reason }),
+  };
+}
+
+function legacyEventId(row: FactEventDoc): string {
+  return `legacy:${row._id}`;
+}
+
+function legacyEventFromRow(
+  row: FactEventDoc,
+  tx: TransactionDoc,
+  legacyTargetByFactId: Map<string, string>,
+): Event | null {
+  if (row.kind === "correction") return null;
+  const base = {
+    id: legacyEventId(row),
+    kind: row.kind,
+    actor: tx.actorId,
+    actorType: tx.actorType === "user" ? ("human" as const) : tx.actorType,
+    hlc: {
+      pt: row.txTime,
+      l: Math.max(0, Math.floor(row._creationTime * 1000)),
+      r: "convex:legacy",
+    },
+    ...(row.reason === undefined && tx.reason === undefined
+      ? {}
+      : { reason: row.reason ?? tx.reason }),
+    causalRefs: [...(row.causalRefs ?? [])],
+  };
+  if (row.kind === "assert") {
+    return {
+      ...base,
+      kind: "assert",
+      e: row.e,
+      a: row.a,
+      v: row.v as Event["v"],
+      validFrom: row.validFrom ?? row.txTime,
+      validTo: row.validTo ?? null,
+    };
+  }
+  const target =
+    row.targetEventId ??
+    (row.factId === undefined
+      ? undefined
+      : legacyTargetByFactId.get(String(row.factId)));
+  if (target === undefined) return null;
+  return {
+    ...base,
+    kind: row.kind,
+    target,
+  };
 }
 
 function typedError(
@@ -140,7 +233,7 @@ function parseRequirement(rule: RuleDoc): Requirement | UnsupportedRequirement {
 
 function placementFromRows(
   id: string,
-  rows: ReadonlyArray<CurrentFactDoc>,
+  rows: ReadonlyArray<CurrentAssert>,
 ): PlacementContext {
   const attrs: Record<string, string> = {};
   for (const r of rows) {
@@ -165,26 +258,85 @@ const dryRunWorkerCompliance = FunctionImpl.make(
   ({ worker, placement }) =>
     Effect.gen(function* () {
       const reader = yield* DatabaseReader;
+      const currentAsserts = (e: string, a?: string, limit = 2000) =>
+        Effect.gen(function* () {
+          const rows: ReadonlyArray<FactEventDoc> =
+            a === undefined
+              ? yield* reader
+                  .table("factEvents")
+                  .index("by_e", (q) => q.eq("e", e))
+                  .take(limit)
+              : yield* reader
+                  .table("factEvents")
+                  .index("by_e_a_tx", (q) => q.eq("e", e).eq("a", a))
+                  .take(limit);
+          const coordTime = Math.max(
+            Date.now(),
+            ...rows.map((row) => row.txTime),
+          );
 
-      const workerRows = yield* reader
-        .table("currentFacts")
-        .index("by_e", (q) => q.eq("e", worker))
-        .take(1000);
+          const legacyTargetByFactId = new Map<string, string>();
+          for (const row of rows) {
+            if (row.kind === "assert" && row.factId !== undefined) {
+              legacyTargetByFactId.set(
+                String(row.factId),
+                row.eventId ?? legacyEventId(row),
+              );
+            }
+          }
+
+          const events: Event[] = [];
+          for (const row of rows) {
+            const tx = yield* reader.table("transactions").get(row.txId);
+            const protocol = protocolEventFromRows(rowForCore(row), txForCore(tx));
+            const ev = protocol ?? legacyEventFromRow(row, tx, legacyTargetByFactId);
+            if (ev !== null) events.push(ev);
+          }
+
+          const log = fromEvents(events);
+          const keys =
+            a === undefined
+              ? [...new Set(events.flatMap((ev) =>
+                  ev.kind === "assert" && ev.e === e && ev.a !== undefined
+                    ? [ev.a]
+                    : [],
+                ))].map((attr) => [e, attr] as const)
+              : ([[e, a]] as const);
+
+          const out: CurrentAssert[] = [];
+          for (const [entity, attr] of keys) {
+            for (const ev of visibleAsserts(
+              entity,
+              attr,
+              { txTime: coordTime, validTime: coordTime },
+              log,
+            )) {
+              out.push({ e: ev.e!, a: ev.a!, v: ev.v, eventId: ev.id });
+            }
+          }
+          return out;
+        });
+
+      const workerRows = yield* currentAsserts(worker);
       if (workerRows.length === 0) {
         return yield* Effect.fail(new UnknownWorker({ worker }));
       }
 
       const placements: PlacementContext[] = [];
-      const existingPlacementRows = yield* reader
-        .table("currentFacts")
-        .index("by_a_v", (q) => q.eq("a", "worker").eq("v", worker))
-        .take(500);
-      const placementIds = [...new Set(existingPlacementRows.map((r) => r.e))].sort();
+      const workerAssertRows = yield* reader
+        .table("factEvents")
+        .index("by_a_tx", (q) => q.eq("a", "worker"))
+        .take(1000);
+      const placementCandidates = [
+        ...new Set(workerAssertRows.filter((r) => sameValue(r.v, worker)).map((r) => r.e)),
+      ].sort();
+      const placementIds: string[] = [];
+      for (const id of placementCandidates) {
+        const rows = yield* currentAsserts(id, "worker");
+        if (rows.some((row) => sameValue(row.v, worker))) placementIds.push(id);
+      }
       for (const id of placementIds) {
-        const rows = yield* reader
-          .table("currentFacts")
-          .index("by_e", (q) => q.eq("e", id))
-          .take(1000);
+        const rows = yield* currentAsserts(id);
         placements.push(placementFromRows(id, rows));
       }
 
@@ -216,15 +368,12 @@ const dryRunWorkerCompliance = FunctionImpl.make(
       }
       requirements.sort((a, b) => a.form.localeCompare(b.form));
 
-      const entityRows = new Map<string, ReadonlyArray<CurrentFactDoc>>();
+      const entityRows = new Map<string, ReadonlyArray<CurrentAssert>>();
       const rowsForEntity = (e: string) =>
         Effect.gen(function* () {
           const cached = entityRows.get(e);
           if (cached !== undefined) return cached;
-          const rows = yield* reader
-            .table("currentFacts")
-            .index("by_e", (q) => q.eq("e", e))
-            .take(1000);
+          const rows = yield* currentAsserts(e);
           entityRows.set(e, rows);
           return rows;
         });
@@ -237,13 +386,8 @@ const dryRunWorkerCompliance = FunctionImpl.make(
 
       const hasSubmission = (form: string, scope: string) =>
         Effect.gen(function* () {
-          const rows = yield* reader
-            .table("currentFacts")
-            .index("by_e_a_v", (q) =>
-              q.eq("e", worker).eq("a", `submitted.${form}`).eq("v", scope),
-            )
-            .take(1);
-          return rows.length > 0;
+          const rows = yield* currentAsserts(worker, `submitted.${form}`);
+          return rows.some((row) => sameValue(row.v, scope));
         });
 
       const items = new Map<string, DryRunResult["items"][number]>();
