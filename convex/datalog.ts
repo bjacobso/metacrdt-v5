@@ -4,14 +4,13 @@ import { paginationOptsValidator } from "convex/server";
 import {
   LIMITS,
   aggregateBindings,
+  derivedRowsFromBindings,
   describeClauses,
   paginateRows,
   project,
   runWhere,
   solveWhere,
-  type Binding,
 } from "./lib/engine";
-import { valueKey } from "./lib/visibility";
 import {
   eventLogBaseWithDerivedTripleSource,
   eventLogTripleSource,
@@ -23,34 +22,6 @@ import {
 // so clauses are heterogeneous (array | object).
 const whereValidator = v.array(v.any());
 const emitValidator = v.object({ e: v.string(), a: v.string(), v: v.any() });
-
-function resolveEmitTerm(term: unknown, binding: Binding): unknown {
-  if (typeof term === "string" && term.startsWith("?")) {
-    return binding[term.slice(1)];
-  }
-  return term;
-}
-
-function derivedRowsFromBindings(
-  bindings: Binding[],
-  emit: { e: string; a: string; v: unknown },
-) {
-  const byKey = new Map<string, { e: string; a: string; v: unknown }>();
-  for (const binding of bindings) {
-    const e = resolveEmitTerm(emit.e, binding);
-    if (e === undefined || e === null) continue;
-    const value = resolveEmitTerm(emit.v, binding);
-    const row = { e: String(e), a: emit.a, v: value };
-    byKey.set(`${row.e}\u0000${row.a}\u0000${valueKey(row.v)}`, row);
-  }
-  return [...byKey.values()].sort((a, b) => {
-    const e = a.e.localeCompare(b.e);
-    if (e !== 0) return e;
-    const attr = a.a.localeCompare(b.a);
-    if (attr !== 0) return attr;
-    return valueKey(a.v).localeCompare(valueKey(b.v));
-  });
-}
 
 /**
  * Bounded, non-recursive Datalog over base facts folded from protocol-shaped

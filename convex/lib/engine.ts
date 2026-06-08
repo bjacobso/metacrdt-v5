@@ -26,6 +26,7 @@ export {
   COMPUTE_OPS,
   LIMITS,
   aggregateBindings,
+  derivedRowsFromBindings,
   describeClauses,
   entityVarOf,
   isEntityLocalRule,
@@ -35,6 +36,8 @@ export {
   type AggOp,
   type AggSpec,
   type Binding,
+  type DerivedRow,
+  type EmitSpec,
   type ResultPage,
 } from "@metacrdt/query";
 

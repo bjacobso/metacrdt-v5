@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 85 (`@metacrdt/query` First Slice) has
+**Current goal:** Goal 86 (`@metacrdt/query` Rule Emit Shaping) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -71,8 +71,12 @@ operator sets, deterministic compute/comparison helpers, pattern unification,
 projection, pagination, aggregation, explain descriptions, value keys, and
 entity-local rule analysis. The Convex engine now imports/re-exports those
 helpers while retaining triple fetching, read authorization, provenance, and the
-async join scheduler. The next
-active goal should be chosen from the remaining TODO candidates:
+async join scheduler. Goal 86 moves read-only rule emit shaping into
+`@metacrdt/query`: emit-term resolution and deterministic derived-row shaping
+for `deriveFromEventLog`, consumed by `convex/datalog.ts` through
+`convex/lib/engine.ts`, while Convex still owns solving, triple sources, read
+authorization, provenance, and materialized derived storage. The next active
+goal should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
 the next projection dependency (closure/derived provenance or remaining
@@ -160,6 +164,8 @@ arguments.
   - pattern unification and variable analysis
   - projection, cursor pagination, aggregation, and explain descriptions
   - entity-local rule analysis
+  - rule emit-term resolution and deterministic derived-row shaping for
+    read-only rule previews
   - Convex compatibility re-export through `convex/lib/engine.ts`
 - New Convex writes stamp protocol metadata on `factEvents`:
   `eventId`, HLC, `replicaId`, `targetEventId`, and `causalRefs` where
@@ -7984,6 +7990,59 @@ provenance, or async join scheduling.
   `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
 - A live `datalog:datalog` query returned type rows through the deployed
   package-backed engine.
+
+---
+
+## Goal 86 — `@metacrdt/query` Rule Emit Shaping
+
+**Status:** shipped as the next small query-package boundary.
+
+**Objective:** move the stable, read-only rule emit shaping used by
+`api.datalog.deriveFromEventLog` into `@metacrdt/query`, without moving Convex's
+solver, triple-source loading, read authorization, provenance, or
+materialization lifecycle.
+
+### Semantics
+
+- `packages/query` now owns `EmitSpec`, `DerivedRow`, `resolveEmitTerm`, and
+  `derivedRowsFromBindings`.
+- `resolveEmitTerm` resolves variable placeholders such as `"?e"` against a
+  binding and preserves literal terms unchanged.
+- `derivedRowsFromBindings` preserves the previous Convex read-only derivation
+  behavior:
+  - resolve `emit.e` and `emit.v` per binding;
+  - skip rows whose emitted entity is `undefined` or `null`;
+  - coerce emitted entity ids to strings;
+  - dedupe rows by `e`, `a`, and typed `valueKey(v)`;
+  - sort deterministically by `e`, then `a`, then `valueKey(v)`.
+- `convex/lib/engine.ts` imports and re-exports the helper and types for
+  compatibility.
+- `convex/datalog.ts` consumes the package helper for `deriveFromEventLog`,
+  removing its local emit-term and row-shaping implementation.
+
+### Non-Goals
+
+- Do not move `solveWhere` or `runWhere`; they still depend on Convex contexts,
+  indexes, source provenance, read authorization, and the async join scheduler.
+- Do not move triple fetching or source construction out of Convex.
+- Do not write `derivedFacts`; `deriveFromEventLog` remains a read-only preview.
+- Do not move rule materialization or the `derivedFacts` storage lifecycle.
+
+### Verification
+
+- `npm run test:query` passed (10 package tests).
+- `npx tsc --noEmit -p packages/query/tsconfig.json` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npm run test:core` passed (46 core tests).
+- `npm run test:schema` passed (8 schema tests).
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
+- A live `datalog:deriveFromEventLog` query returned deterministic derived rows
+  through the deployed package helper.
 
 ---
 

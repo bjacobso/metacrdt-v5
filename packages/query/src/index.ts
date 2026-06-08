@@ -43,6 +43,8 @@ export const COMPUTE_OPS = new Set([
 ]);
 
 export type Binding = Record<string, unknown>;
+export type EmitSpec = { e: string; a: string; v: unknown };
+export type DerivedRow = { e: string; a: string; v: unknown };
 
 export type Term =
   | { kind: "var"; name: string }
@@ -619,6 +621,34 @@ export function aggregateBindings(
     out.push(row);
   }
   return out;
+}
+
+export function resolveEmitTerm(term: unknown, binding: Binding): unknown {
+  if (typeof term === "string" && term.startsWith("?")) {
+    return binding[term.slice(1)];
+  }
+  return term;
+}
+
+export function derivedRowsFromBindings(
+  bindings: Binding[],
+  emit: EmitSpec,
+): DerivedRow[] {
+  const byKey = new Map<string, DerivedRow>();
+  for (const binding of bindings) {
+    const e = resolveEmitTerm(emit.e, binding);
+    if (e === undefined || e === null) continue;
+    const value = resolveEmitTerm(emit.v, binding);
+    const row = { e: String(e), a: emit.a, v: value };
+    byKey.set(`${row.e}\u0000${row.a}\u0000${valueKey(row.v)}`, row);
+  }
+  return [...byKey.values()].sort((a, b) => {
+    const e = a.e.localeCompare(b.e);
+    if (e !== 0) return e;
+    const attr = a.a.localeCompare(b.a);
+    if (attr !== 0) return attr;
+    return valueKey(a.v).localeCompare(valueKey(b.v));
+  });
 }
 
 export function describeClauses(where: unknown[]): ClauseDescription[] {

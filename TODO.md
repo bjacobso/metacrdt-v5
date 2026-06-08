@@ -127,6 +127,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   descriptions, value keys, and entity-local rule analysis. `convex/lib/engine.ts`
   imports/re-exports those helpers while keeping triple fetching, read auth,
   provenance, and async join scheduling.
+- [x] **`@metacrdt/query` rule emit shaping extracted** — the package now owns
+  read-only rule emit-term resolution and deterministic derived-row shaping
+  (`EmitSpec`, `DerivedRow`, `resolveEmitTerm`, `derivedRowsFromBindings`):
+  placeholder resolution, null/undefined entity skipping, entity string coercion,
+  typed-value dedupe, and stable sort. `deriveFromEventLog` consumes it through
+  `convex/lib/engine.ts`; Convex still owns solving, triple sources, read auth,
+  provenance, and materialized derived storage.
 - [ ] Then peel off, as they stabilize: more `@metacrdt/query` solver/rule AST
   seams, then `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/views`, and
   `@metacrdt/agent`.
@@ -396,6 +403,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 86 shipped:** `@metacrdt/query` rule emit shaping. Added pure
+  helpers for resolving emit placeholders and shaping deterministic derived rows
+  from solved bindings: skip unbound/null emitted entities, coerce entity ids to
+  strings, dedupe by `e`/`a`/typed value key, and sort stably. `deriveFromEventLog`
+  now consumes this package helper through `convex/lib/engine.ts` while keeping
+  Convex-owned solving, triple-source loading, read authorization, provenance,
+  and materialized derived storage. Verified with 10 query-package tests, 156
+  backend tests, frontend build, Convex push, and a live `datalog:deriveFromEventLog`
+  query on `chatty-hare-94`.
 - [x] **Goal 85 shipped:** first `@metacrdt/query` slice. Added `packages/query`
   with pure Datalog/query clause parsing, operators, compute/comparison helpers,
   pattern unification, projection, pagination, aggregation, explain descriptions,

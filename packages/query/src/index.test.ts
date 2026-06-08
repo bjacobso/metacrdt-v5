@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   aggregateBindings,
   applyCompute,
+  derivedRowsFromBindings,
   describeClauses,
   dynamicSelectivity,
   isEntityLocalRule,
@@ -10,6 +11,7 @@ import {
   parseClauses,
   project,
   requiredVars,
+  resolveEmitTerm,
   satisfiesCompare,
   unifyPattern,
   valueKey,
@@ -149,6 +151,26 @@ describe("@metacrdt/query rows", () => {
     ).toEqual([
       { dept: "Ops", headcount: 2, payroll: 30, avgSalary: 15 },
       { dept: "Field", headcount: 1, payroll: 5, avgSalary: 5 },
+    ]);
+  });
+
+  test("resolves emit terms and shapes deterministic derived rows", () => {
+    expect(resolveEmitTerm("?entity", { entity: "w:1" })).toBe("w:1");
+    expect(resolveEmitTerm("literal", { entity: "w:1" })).toBe("literal");
+
+    expect(
+      derivedRowsFromBindings(
+        [
+          { entity: "w:2", region: "north" },
+          { entity: "w:1", region: "south" },
+          { entity: "w:1", region: "south" },
+          { region: "ignored" },
+        ],
+        { e: "?entity", a: "derived.region", v: "?region" },
+      ),
+    ).toEqual([
+      { e: "w:1", a: "derived.region", v: "south" },
+      { e: "w:2", a: "derived.region", v: "north" },
     ]);
   });
 });

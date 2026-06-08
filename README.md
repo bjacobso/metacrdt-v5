@@ -115,9 +115,10 @@ Current packages:
   clause and term types, bounded parser for pattern/comparison/compute/negation/
   disjunction, deterministic compute/comparison helpers, pattern unification,
   projection, cursor pagination, aggregation, explain descriptions, and
-  entity-local rule analysis. The Convex engine consumes and re-exports it while
-  keeping triple fetching, read authorization, provenance, and async join
-  scheduling in `convex/lib/engine.ts`.
+  entity-local rule analysis, plus rule emit-term resolution and deterministic
+  derived-row shaping for read-only rule previews. The Convex engine consumes and
+  re-exports it while keeping triple fetching, read authorization, provenance,
+  and async join scheduling in `convex/lib/engine.ts`.
 - **`@metacrdt/convex`** (`packages/convex`) — Convex target adapters:
   protocol metadata validators, Convex/core event construction, row
   reconstruction/verification, projected-row visibility, cardinality-one
@@ -157,7 +158,7 @@ Planned package graph:
 @metacrdt/core        protocol kernel: events, ids, order, fold
 @metacrdt/forma       Lisp authoring language
 @metacrdt/schema      schema-as-facts, types, attributes (definition lowering shipped)
-@metacrdt/query       Datalog, rules, derivation (first pure slice shipped)
+@metacrdt/query       Datalog, rules, derivation (query helpers + emit shaping shipped)
 @metacrdt/workflow    processes, flows, obligations
 @metacrdt/forms       forms, collection, prompt-response
 @metacrdt/views       ViewSpec / generated response surfaces
