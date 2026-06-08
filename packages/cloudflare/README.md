@@ -50,6 +50,14 @@ implements them on Cloudflare.
   sockets and broadcast current-projection change summaries to matching
   subscribers. This is invalidation transport, not query result caching or query
   execution.
+- **Durable Object SQLite live current-query fanout** —
+  `DurableObjectSqliteLiveCurrentQueryFanout` accepts bounded
+  projection-backed current Datalog query subscriptions over structural
+  WebSocket sockets, sends initial `query.subscribed` snapshots, and refreshes
+  matching subscriptions with `query.updated` results when projection-change
+  summaries overlap derived `e` / `a` dependencies. This is snapshot/update
+  plumbing, not persisted subscriptions, query auth, Worker routing, reconnects,
+  result diffs, or a frontend SDK.
 - **WebSocket relay** — `DurableObjectWebSocketRelay` / `attachDurableObjectRelay`
   (`RelayConnection`, `RelayOptions`, `WebSocketLike`): accepts server sockets,
   answers version-vector hellos with deltas, merges client events through the
@@ -73,6 +81,7 @@ implements them on Cloudflare.
 ## Dependencies
 
 - `@metacrdt/core`
+- `@metacrdt/query`
 - `@metacrdt/runtime`
 - `effect` v3 (`^3.21.3`) for Layer providers.
 
@@ -89,6 +98,7 @@ to the same projections as any other target.
 import {
   createDurableObjectRuntime,
   createDurableObjectSqliteCurrentSurface,
+  DurableObjectSqliteLiveCurrentQueryFanout,
   DurableObjectSqliteLiveInvalidationFanout,
   createDurableObjectRuntimeLayer,
   createDurableObjectSqliteRuntimeLayer,
@@ -150,8 +160,8 @@ runtime, and the same facade now exposes protocol event reads (`getEvent` /
 (`queryCurrent`, `pageCurrent`, `aggregateCurrent`, `derivedRowsCurrent`) and
 deterministic `changed` summaries for current-projection rebuilds. The remaining
 parity plan — full historical SQL-indexed query optimization, full flow
-interpreter/action execution, and live frontend query result handling over DO
-WebSockets — is
+interpreter/action execution, and persisted/authenticated live frontend query
+plumbing over DO WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth

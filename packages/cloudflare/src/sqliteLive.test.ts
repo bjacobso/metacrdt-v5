@@ -1,11 +1,19 @@
 import { describe, expect, test } from "vitest";
 import {
+  DurableObjectSqliteLiveCurrentQueryFanout,
   DurableObjectSqliteLiveInvalidationFanout,
+  durableObjectSqliteLiveQueryDependencies,
+  publishDurableObjectSqliteLiveCurrentQueryChanges,
   publishDurableObjectSqliteLiveInvalidations,
   type DurableObjectSqliteProjectionChange,
+  type DurableObjectSqliteLiveQueryServerMessage,
   type DurableObjectSqliteLiveServerMessage,
   type WebSocketLike,
 } from "./index.js";
+import type {
+  DatalogQueryArgsType,
+  DatalogQueryResult,
+} from "@metacrdt/runtime";
 
 class FakeSocket implements WebSocketLike {
   accepted = false;
@@ -66,6 +74,12 @@ class FakeSocket implements WebSocketLike {
       JSON.parse(message) as DurableObjectSqliteLiveServerMessage
     );
   }
+
+  queryMessages(): DurableObjectSqliteLiveQueryServerMessage[] {
+    return this.sent.map((message) =>
+      JSON.parse(message) as DurableObjectSqliteLiveQueryServerMessage
+    );
+  }
 }
 
 async function flush(): Promise<void> {
@@ -94,6 +108,20 @@ const otherChange: DurableObjectSqliteProjectionChange = {
   beforeEventIds: [],
   afterEventIds: ["event:other"],
 };
+
+const liveQueryArgs: DatalogQueryArgsType = {
+  where: [["task:1", "status", "?status"]],
+  select: ["?status"],
+  coord: { txTime: 10, validTime: 10 },
+};
+
+function queryResult(status: string): DatalogQueryResult {
+  return {
+    states: [],
+    rows: [{ status }],
+    eventSourceIds: [`event:${status}`],
+  };
+}
 
 describe("@metacrdt/cloudflare SQLite live invalidation fanout", () => {
   test("publishes projection changes only to matching coordinate subscriptions", async () => {
@@ -259,5 +287,179 @@ describe("@metacrdt/cloudflare SQLite live invalidation fanout", () => {
         filter: { e: "task:missing" },
       },
     ]);
+  });
+
+  test("subscribes current queries and refreshes on matching changes", async () => {
+    const calls: DatalogQueryArgsType[] = [];
+    const fanout = new DurableObjectSqliteLiveCurrentQueryFanout({
+      from: "do:room",
+      queryCurrent: async (args) => {
+        calls.push(args);
+        return queryResult(`run-${calls.length}`);
+      },
+    });
+    const socket = new FakeSocket();
+    fanout.connect(socket, "client:1");
+
+    await fanout.subscribeQuery("client:1", liveQueryArgs, "query:status");
+    expect(calls).toHaveLength(1);
+    expect(socket.queryMessages()).toEqual([
+      {
+        protocol: "metacrdt.cloudflare.sqlite.live-query.v1",
+        type: "query.subscribed",
+        from: "do:room",
+        id: "query:status",
+        dependencies: [{ e: "task:1", a: "status" }],
+        result: queryResult("run-1"),
+      },
+    ]);
+
+    await expect(
+      publishDurableObjectSqliteLiveCurrentQueryChanges(fanout, [ownerChange]),
+    ).resolves.toEqual({
+      changed: [ownerChange],
+      delivered: 0,
+      subscriptions: [],
+    });
+    expect(socket.queryMessages()).toHaveLength(1);
+    expect(calls).toHaveLength(1);
+
+    await expect(
+      publishDurableObjectSqliteLiveCurrentQueryChanges(fanout, [
+        otherChange,
+        statusChange,
+      ]),
+    ).resolves.toEqual({
+      changed: [otherChange, statusChange],
+      delivered: 1,
+      subscriptions: ["query:status"],
+    });
+    expect(calls).toHaveLength(2);
+    expect(socket.queryMessages()[1]).toEqual({
+      protocol: "metacrdt.cloudflare.sqlite.live-query.v1",
+      type: "query.updated",
+      from: "do:room",
+      id: "query:status",
+      changed: [statusChange],
+      result: queryResult("run-2"),
+    });
+  });
+
+  test("handles socket current-query subscribe and unsubscribe messages", async () => {
+    let runs = 0;
+    const fanout = new DurableObjectSqliteLiveCurrentQueryFanout({
+      from: "do:room",
+      protocol: "live-query.test",
+      queryCurrent: async () => queryResult(`socket-${++runs}`),
+    });
+    const socket = new FakeSocket();
+    fanout.connect(socket, "client:1");
+
+    socket.receive(
+      JSON.stringify({
+        protocol: "live-query.test",
+        type: "query.subscribe",
+        id: "query:open",
+        query: {
+          where: [["?task", "status", "open"]],
+          select: ["?task"],
+          coord: { txTime: 10, validTime: 10 },
+        },
+      }),
+    );
+    await flush();
+    expect(socket.queryMessages()).toEqual([
+      {
+        protocol: "live-query.test",
+        type: "query.subscribed",
+        from: "do:room",
+        id: "query:open",
+        dependencies: [{ a: "status" }],
+        result: queryResult("socket-1"),
+      },
+    ]);
+
+    await fanout.publishChanges([statusChange]);
+    expect(socket.queryMessages()[1]).toEqual({
+      protocol: "live-query.test",
+      type: "query.updated",
+      from: "do:room",
+      id: "query:open",
+      changed: [statusChange],
+      result: queryResult("socket-2"),
+    });
+
+    socket.receive(
+      JSON.stringify({
+        protocol: "live-query.test",
+        type: "query.unsubscribe",
+        id: "query:open",
+      }),
+    );
+    await flush();
+    expect(socket.queryMessages()[2]).toEqual({
+      protocol: "live-query.test",
+      type: "query.unsubscribed",
+      from: "do:room",
+      id: "query:open",
+    });
+
+    await fanout.publishChanges([statusChange]);
+    expect(socket.queryMessages()).toHaveLength(3);
+  });
+
+  test("derives bounded query dependencies and rejects unbounded live queries", async () => {
+    await expect(
+      durableObjectSqliteLiveQueryDependencies({
+        where: [
+          ["task:1", "status", "?status"],
+          { not: ["task:1", "blocked", true] },
+          {
+            or: [
+              [["task:2", "status", "?status"]],
+              [["?task", "kind", "Task"]],
+            ],
+          },
+        ],
+        select: ["?status"],
+        coord: { txTime: 10, validTime: 10 },
+      }),
+    ).resolves.toEqual([
+      { a: "kind" },
+      { e: "task:1", a: "blocked" },
+      { e: "task:1", a: "status" },
+      { e: "task:2", a: "status" },
+    ]);
+
+    const unboundedQuery: DatalogQueryArgsType = {
+      where: [["?e", "?a", "?v"]],
+      select: ["?e"],
+      coord: { txTime: 10, validTime: 10 },
+    };
+    const fanout = new DurableObjectSqliteLiveCurrentQueryFanout({
+      from: "do:room",
+      queryCurrent: async () => queryResult("unused"),
+    });
+    const socket = new FakeSocket();
+    fanout.connect(socket, "client:1");
+
+    await expect(
+      fanout.subscribeQuery("client:1", unboundedQuery, "query:all"),
+    ).rejects.toThrow(/requires at least one bounded e or a pattern/);
+
+    socket.receive(
+      JSON.stringify({
+        protocol: fanout.protocol,
+        type: "query.subscribe",
+        id: "query:bad",
+        query: unboundedQuery,
+      }),
+    );
+    await flush();
+    expect(socket.closed).toEqual({
+      code: 1003,
+      reason: "invalid live query subscription",
+    });
+    expect(fanout.subscriptionCount).toBe(0);
   });
 });

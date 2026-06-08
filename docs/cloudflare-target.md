@@ -15,9 +15,11 @@ projection-backed `queryCurrent` / `pageCurrent` / `aggregateCurrent` /
 `listCollections` / `submitCollection`, DAG `recordDagRun` / `getDagRun` /
 `listDagRuns` / `resumeDagRun`, flow-wait timer rows, an operational timer alarm
 multiplexer, deterministic projection change summaries for touched `(e, a)`
-coordinates, and a live invalidation fanout helper for those coordinates).
-Full historical SQL query-provider parity/conformance and full Cloudflare flow
-interpreter/action-execution parity are still ahead.
+coordinates, a live invalidation fanout helper for those coordinates, and a
+bounded live current-query snapshot/update helper).
+Full historical SQL query-provider parity/conformance, full Cloudflare flow
+interpreter/action-execution parity, and persisted/authenticated live frontend
+subscription plumbing are still ahead.
 
 **Scope:** Grow `@metacrdt/cloudflare` from a sync-plane shell into a full
 MetaCRDT target at parity with the `@metacrdt/convex` component — an indexed,
@@ -63,9 +65,12 @@ Historical Datalog queries now use a Cloudflare-specific indexed SQLite
 candidate source for bounded assertion patterns and target-indexed lifecycle
 visibility checks. SQLite projection changes can now be broadcast to matching
 bounded WebSocket subscriptions through
-`DurableObjectSqliteLiveInvalidationFanout`. It still has no full SQL
-query-provider conformance/parity, no live-query result cache/execution surface,
-and no Cloudflare DAG interpreter/action execution surface.
+`DurableObjectSqliteLiveInvalidationFanout`, and bounded current Datalog query
+subscriptions can be snapshotted/refreshed through
+`DurableObjectSqliteLiveCurrentQueryFanout`. It still has no full SQL
+query-provider conformance/parity, no persisted/authenticated live frontend
+subscription surface, and no Cloudflare DAG interpreter/action execution
+surface.
 
 This doc defines what it takes to bring Cloudflare to parity, in what order, and
 which decisions must be settled first — and it makes **live frontend queries an
@@ -134,6 +139,7 @@ function surface — backed by Durable Object SQLite instead of the Convex DB.
 | `durableObjectSqliteIndexedHistoricalDatalogQueryService` | Cloudflare-specific historical Datalog source: reuses the shared runtime solver, scans bounded assertion candidates through SQLite `e` / `a` indexes, and checks lifecycle visibility through target-indexed rows |
 | `createDurableObjectSqliteAlarmMultiplexer` | Structural single-alarm helper: arms `ctx.storage.setAlarm` to the earliest pending collection or flow-wait timer row, drains due ticks through the corresponding firing path, and re-arms or deletes the alarm |
 | `DurableObjectSqliteLiveInvalidationFanout` | Structural WebSocket invalidation helper: accepts bounded `e` / `a` subscriptions and broadcasts current-projection change summaries to matching sockets |
+| `DurableObjectSqliteLiveCurrentQueryFanout` | Structural WebSocket live-query helper: accepts bounded projection-backed current Datalog query subscriptions, sends initial snapshots, and refreshes matching subscriptions from projection-change summaries |
 | `DurableObjectWebSocketRelay` | version-vector hello/delta sync + event fan-out |
 | `MetaCrdtRelayDurableObject` / `relayWorker` | Worker/DO example shell |
 
@@ -232,9 +238,9 @@ lifecycle events discovered through the SQLite `target` index. Explicit
 `rebuildCurrent` remains the full truncate/replay recovery path.
 
 **Still ahead for parity:** richer append function surface, full SQL-indexed
-query-provider parity/conformance for historical bitemporal queries, full
-live-query result execution/caching over the invalidation helper, and the full
-flow interpreter/action-execution surface.
+query-provider parity/conformance for historical bitemporal queries,
+persisted/authenticated live frontend query plumbing, and the full flow
+interpreter/action-execution surface.
 
 ### Phase D — Operational surface + alarms
 
@@ -286,8 +292,17 @@ projection change summaries can be published as deterministic `invalidate`
 messages to matching subscriptions. This is invalidation fanout only, not query
 execution, result caching, persisted subscriptions, or Worker routing.
 
+Cloudflare DO SQLite also now exports
+`DurableObjectSqliteLiveCurrentQueryFanout` for the first live-query result
+surface. Clients subscribe to bounded projection-backed current Datalog queries,
+receive an initial `query.subscribed` snapshot, and receive `query.updated`
+refreshes when later current-projection change summaries overlap the query's
+derived static `e` / `a` dependencies. This remains structural snapshot/update
+plumbing only: no persisted subscriptions, query auth, Worker routing,
+reconnect protocol, result diffing, or frontend SDK is included.
+
 **Still ahead for Phase D parity:** full flow interpreter/action execution and
-full WebSocket live-query result surface.
+persisted/authenticated WebSocket live-query frontend plumbing.
 
 ### Phase E — Sharding + real multi-replica sync
 
@@ -375,8 +390,8 @@ The Phase B adapters (~600–800 LOC) get **shared, not rewritten**. The
 Cloudflare-specific work is comparable to the existing Convex component: the
 runtime-service SQLite seed and first log/current/query facade are now present;
 the remaining work is full SQL-indexed query-provider parity/conformance, full
-flow interpreter/action execution, and live-query result execution/caching over
-the invalidation fanout.
+flow interpreter/action execution, and persisted/authenticated live frontend
+query plumbing over the snapshot/update helper.
 Roughly 2–4 focused sessions remain, gated on shared fold/reconcile reuse. The
 live-query stretch goal is a separate later increment on top.
 

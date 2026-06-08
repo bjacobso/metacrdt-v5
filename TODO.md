@@ -8,11 +8,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ### Current pulse
 
-- [x] Goal 131 shipped: Cloudflare DO SQLite live invalidation fanout seed.
+- [x] Goal 132 shipped: Cloudflare DO SQLite live current-query result seed.
 - [ ] Choose the next active slice from remaining Cloudflare parity (full flow
-  interpreter/action execution, full live-query result surface, or full
-  historical SQL query conformance), Node production hardening,
-  provider-specific auth/UI wrapping, or a scoped Confect/domain wrapper.
+  interpreter/action execution, persisted/authenticated live-query frontend
+  plumbing, or full historical SQL query conformance), Node production
+  hardening, provider-specific auth/UI wrapping, or a scoped Confect/domain
+  wrapper.
 
 ### Handoff: continue MetaCRDT on `main` from commit `c6c4379`
 
@@ -181,10 +182,17 @@ After implementation:
   invalidation messages from current-projection change summaries. This is
   invalidation transport only, not query execution, result caching, persisted
   subscriptions, or a Worker route.
+- [x] **Goal 132 shipped: live current-query result seed** —
+  `DurableObjectSqliteLiveCurrentQueryFanout` accepts bounded projection-backed
+  current Datalog query subscriptions, sends initial `query.subscribed`
+  snapshots, and refreshes matching subscriptions with `query.updated` results
+  when changed `(e, a)` coordinates overlap derived static dependencies. This is
+  snapshot/update plumbing only, not persisted subscriptions, auth, Worker
+  routing, reconnects, result diffs, or a frontend SDK.
 - [ ] **Remaining Cloudflare Phase D parity** — full flow interpreter/action
-  execution, full live-query result surface, and full historical SQL
-  query-provider parity/conformance remain open; do not claim full parity until
-  those are implemented.
+  execution, persisted/authenticated live-query frontend plumbing, and full
+  historical SQL query-provider parity/conformance remain open; do not claim
+  full parity until those are implemented.
 
 **Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
 - [x] Commutative supersession — centralized Convex writes now stamp
@@ -267,6 +275,10 @@ After implementation:
 - [x] Cloudflare Durable Object SQLite live invalidation fanout seed —
   `DurableObjectSqliteLiveInvalidationFanout` broadcasts current-projection
   `(e, a)` change summaries to matching bounded WebSocket subscriptions.
+- [x] Cloudflare Durable Object SQLite live current-query result seed —
+  `DurableObjectSqliteLiveCurrentQueryFanout` sends bounded current Datalog
+  query snapshots and refreshes matching subscriptions from projection-change
+  summaries.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -277,7 +289,7 @@ After implementation:
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — full
   SQL-indexed query-provider parity/conformance, full flow interpreter/action
-  execution, and full live-query result surface over WebSocket invalidations (see
+  execution, and persisted/authenticated live-query frontend plumbing (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).

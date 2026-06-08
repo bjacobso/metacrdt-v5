@@ -253,13 +253,17 @@ first Cloudflare live-query fanout seed: a structural SQLite live invalidation
 helper accepts coordinate subscriptions over WebSocket-shaped sockets and
 publishes deterministic invalidation messages from current-projection change
 summaries, without caching query results or executing queries on behalf of
-clients. The next active goal should be chosen from the remaining TODO
-candidates:
+clients. Goal 132 adds a first Cloudflare live current-query result seed:
+bounded current Datalog query subscriptions receive an initial snapshot and are
+refreshed when later projection changes overlap their static `e` / `a`
+dependencies, without persisted subscriptions, Worker routing, auth, result
+diffing, or full frontend live-query parity. The next active goal should be
+chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (full SQL query-provider
-conformance, full flow interpreter/action execution, full live-query result
-surface),
+conformance, full flow interpreter/action execution, persisted/authenticated
+live-query frontend plumbing),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9474,6 +9478,53 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 132 — Cloudflare DO SQLite Live Current Query Result Seed
+
+**Status:** shipped.
+
+**Objective:** add the first live-query result surface for Cloudflare DO SQLite
+by pairing projection invalidation summaries with bounded projection-backed
+current Datalog query subscriptions.
+
+### What Shipped
+
+- Added `DurableObjectSqliteLiveCurrentQueryFanout`, a structural
+  WebSocket-shaped helper that accepts `query.subscribe` /
+  `query.unsubscribe` messages on a separate live-query protocol.
+- Query subscriptions validate `DatalogQueryArgs` through `effect/Schema`,
+  derive conservative static dependencies from bounded `e` and/or `a` pattern
+  clauses (including `not` and `or` branches), and reject fully unbounded live
+  queries for this seed.
+- Subscribing runs the caller-provided `queryCurrent` executor and sends a
+  deterministic `query.subscribed` message with the initial current-query
+  result and derived dependencies.
+- Publishing current-projection changes refreshes only subscriptions whose
+  dependencies overlap the changed `(e, a)` coordinates and sends
+  `query.updated` messages with fresh current-query results.
+- Added Effect and Promise helpers for dependency extraction and live-query
+  change publishing.
+- Focused Cloudflare tests prove direct and socket-driven current-query
+  subscriptions, initial snapshots, dependency-triggered refreshes,
+  unsubscribe behavior, dependency extraction, and unbounded query rejection.
+
+### Non-Goals
+
+- Do not claim full Cloudflare live-query parity: this slice does not persist
+  subscriptions, maintain result caches, compute diffs, authorize queries, wire
+  Worker routes, reconnect clients, or integrate with a frontend SDK.
+- Do not replace the raw invalidation fanout; this helper layers query result
+  refreshes over the same projection-change summaries.
+- Do not implement full historical SQL query-provider conformance or a
+  Cloudflare flow interpreter/action executor.
+- Do not touch root `convex/`.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 47 Cloudflare tests.
 
 ---
 
