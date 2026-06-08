@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 69 (config history reads from the event log) has
+**Current goal:** Goal 70 (read authorization policy reads from the event log) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -23,11 +23,12 @@ controls through a shared auth-required UX instead of raw mutation failures.
 Goal 68 moved the Overview dashboard's base-fact summary counts to
 protocol-shaped `factEvents` instead of `currentFacts`. Goal 69 moved config
 manifest/history snapshots to protocol-shaped `factEvents` instead of `facts`.
-The next active goal
-should be chosen from the remaining TODO candidates: choosing/wiring the real
-auth provider and `convex/auth.config.ts`, live Cloudflare deployment/auth,
-another carefully scoped Confect/domain wrapper, or the next projection
-dependency (read-grant lookup, closure/derived provenance, or system/process
+Goal 70 moved read-authorization policy lookups (PII form/schema markers and
+read grants) to protocol-shaped `factEvents` instead of `currentFacts`. The next
+active goal should be chosen from the remaining TODO candidates:
+choosing/wiring the real auth provider and `convex/auth.config.ts`, live
+Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
+the next projection dependency (closure/derived provenance or system/process
 counts).
 
 This plan is the operational goal file. Read it with:
@@ -459,9 +460,9 @@ arguments.
 - Production `getEntity` now uses the same bounded event-log fold as
   `entityFromEventLog`; production `entityAsOf` and `entityFactsAsOf` also fold
   from protocol-shaped `factEvents`.
-- Some non-primary/support read paths still use disposable projections, for
-  example read-grant / schema PII lookup uses `currentFacts`, and some
-  system/process counts still summarize materialized `derivedFacts` / `flowRuns`.
+- Some non-primary/support read paths still use disposable projections; for
+  example some system/process counts still summarize materialized `derivedFacts`
+  / `flowRuns`.
 - `entityFromEventLog` remains intentionally bounded and proof/read-model
   oriented, returning coordinate/skipped-legacy counts that production
   `getEntity` does not expose.
@@ -6776,6 +6777,78 @@ Docs:
 - `npx convex codegen` passed.
 - `npx tsc --noEmit -p convex/tsconfig.json` passed.
 - `npx vitest run convex/appconfig.test.ts` passed (16 tests).
+- Full gate passed:
+  - `npm test` passed (17 backend test files, 150 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+- `git diff --check` passed.
+
+---
+
+## Goal 70 — Read Authorization Policy Reads from the Event Log
+
+**Status:** shipped for host read-authorization policy lookups.
+
+**Objective:** remove the attribute-level read-authorization policy path's
+dependency on the disposable `currentFacts` projection. PII/sensitive detection
+and explicit read grants should be reconstructed from protocol-shaped
+`factEvents`, so redaction remains correct even when the current projection is
+missing or corrupted.
+
+### Scope
+
+Backend:
+
+- `convex/lib/eventLogCurrent.ts`
+- `convex/lib/readAuth.ts`
+
+Tests:
+
+- `convex/readAuth.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+
+### Semantics
+
+- `formFieldPolicy` reads current `(form:<name>, formDef, ?)` facts from
+  `factEvents` instead of `currentFacts`.
+- `isSensitiveAttribute` reads current `attr:<name>` PII/sensitive markers from
+  `factEvents` instead of `currentFacts`.
+- `canReadAttribute` reads principal-owned `grants.read` facts from `factEvents`
+  instead of `currentFacts`.
+- `convex/lib/eventLogCurrent.ts` is intentionally read-auth-free so
+  authorization policy can use event-log folds without creating a dependency
+  cycle with `eventLogTripleSource`.
+- The helper tolerates legacy rows by synthesizing deterministic compatibility
+  event IDs when protocol metadata is absent.
+
+### Non-Goals
+
+- Do not remove or stop maintaining `currentFacts`.
+- Do not rewrite `forms.collectionByToken`; host-target collection tokens still
+  read host `formDef` facts through their existing path.
+- Do not remove materialized `derivedFacts` or component-owned projections.
+
+### Acceptance Criteria
+
+- `convex/lib/readAuth.ts` does not query `currentFacts` or `facts`.
+- PII denial still works after wiping `currentFacts`.
+- Explicit read grants still work after wiping `currentFacts`.
+- Focused read-auth tests and Convex typecheck pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/readAuth.test.ts` passed (1 test).
 - Full gate passed:
   - `npm test` passed (17 backend test files, 150 tests).
   - `npm run test:convex-package` passed (33 tests).

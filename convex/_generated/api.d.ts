@@ -25,6 +25,7 @@ import type * as lib_actionDefs from "../lib/actionDefs.js";
 import type * as lib_collectRuns from "../lib/collectRuns.js";
 import type * as lib_coreEvent from "../lib/coreEvent.js";
 import type * as lib_engine from "../lib/engine.js";
+import type * as lib_eventLogCurrent from "../lib/eventLogCurrent.js";
 import type * as lib_eventLogTripleSource from "../lib/eventLogTripleSource.js";
 import type * as lib_meta from "../lib/meta.js";
 import type * as lib_origin from "../lib/origin.js";
@@ -64,6 +65,7 @@ declare const fullApi: ApiFromModules<{
   "lib/collectRuns": typeof lib_collectRuns;
   "lib/coreEvent": typeof lib_coreEvent;
   "lib/engine": typeof lib_engine;
+  "lib/eventLogCurrent": typeof lib_eventLogCurrent;
   "lib/eventLogTripleSource": typeof lib_eventLogTripleSource;
   "lib/meta": typeof lib_meta;
   "lib/origin": typeof lib_origin;

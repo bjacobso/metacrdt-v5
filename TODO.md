@@ -91,10 +91,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   definition loading) now read action definition facts from `factEvents`.
   Overview dashboard base-fact summary counts now read current facts from
   `factEvents` too. Config history/diff now folds config ownership snapshots
-  from `factEvents` instead of the `facts` projection. Remaining: support reads
-  such as read-grant / schema PII lookup over `currentFacts`, closure semi-naive
-  add still receives the changed projection `factId`, and derived rows are still
-  stored in `derivedFacts`.
+  from `factEvents` instead of the `facts` projection. Read authorization policy
+  now folds form/attribute PII markers and principal `grants.read` facts from
+  `factEvents` instead of `currentFacts`. Remaining: closure semi-naive add still
+  receives the changed projection `factId`, system/process counts still use
+  materialized projections, and derived rows are still stored in `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -356,6 +357,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 70 shipped:** read-authorization policy now reads from the event
+  log. `convex/lib/readAuth.ts` loads form `formDef` PII markers,
+  `attr:<name>` PII/sensitive markers, and principal `grants.read` facts through
+  `convex/lib/eventLogCurrent.ts` instead of scanning `currentFacts`.
+- [x] **Read-auth projection-corruption proof.** `convex/readAuth.test.ts` now
+  wipes `currentFacts` before denied reads and again after granting access,
+  proving both PII detection and grants survive from protocol-shaped
+  `factEvents`.
 - [x] **Goal 69 shipped:** `configHistory.currentManifest` and
   `configHistory.history` now reconstruct the `config:default` ownership
   manifest through `runWhere(..., { source: eventLogTripleSource })` at the

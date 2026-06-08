@@ -1,5 +1,6 @@
 import { Doc } from "../_generated/dataModel";
 import { QueryCtx } from "../_generated/server";
+import { currentEventLogAsserts } from "./eventLogCurrent";
 
 export const READ_GRANT_ATTR = "grants.read";
 export const ANONYMOUS_PRINCIPAL = "anonymous";
@@ -44,10 +45,11 @@ async function formFieldPolicy(
   form: string,
   field: string,
 ): Promise<FormField | null> {
-  const row = await ctx.db
-    .query("currentFacts")
-    .withIndex("by_e_a", (q) => q.eq("e", formEntity(form)).eq("a", "formDef"))
-    .first();
+  const [row] = await currentEventLogAsserts(ctx, {
+    e: formEntity(form),
+    a: "formDef",
+    limit: 200,
+  });
   if (!row) return null;
   const def = row.v as FormDef;
   const fields = Array.isArray(def.fields) ? def.fields : [];
@@ -71,10 +73,10 @@ export async function isSensitiveAttribute(
     if (policy?.pii === true || policy?.sensitive === true) return true;
   }
 
-  const rows = await ctx.db
-    .query("currentFacts")
-    .withIndex("by_e", (q) => q.eq("e", `attr:${a}`))
-    .take(50);
+  const rows = await currentEventLogAsserts(ctx, {
+    e: `attr:${a}`,
+    limit: 200,
+  });
   return rows.some(
     (r) =>
       (r.a === "pii" || r.a === "sensitive") &&
@@ -100,12 +102,11 @@ export async function canReadAttribute(
 ): Promise<boolean> {
   if (!(await isSensitiveAttribute(ctx, a))) return true;
 
-  const grants = await ctx.db
-    .query("currentFacts")
-    .withIndex("by_e_a", (q) =>
-      q.eq("e", principal).eq("a", READ_GRANT_ATTR),
-    )
-    .take(500);
+  const grants = await currentEventLogAsserts(ctx, {
+    e: principal,
+    a: READ_GRANT_ATTR,
+    limit: 500,
+  });
   return grants.some((g) => grantMatches(g.v as ReadGrant, e, a));
 }
 
@@ -135,4 +136,3 @@ export async function readableFact(
 ): Promise<boolean> {
   return await canReadAttribute(ctx, await readPrincipal(ctx), fact.e, fact.a);
 }
-

@@ -40,6 +40,10 @@ describe("attribute-level read authorization", () => {
         a: "type",
         value: "Worker",
       });
+      await t.run(async (ctx) => {
+        const rows = await ctx.db.query("currentFacts").collect();
+        for (const row of rows) await ctx.db.delete(row._id);
+      });
 
       const anon = await t.query(api.facts.getEntity, { e: "worker:t1" });
       expect(anon.attributes["i9/ssn"]).toBeUndefined();
@@ -68,6 +72,10 @@ describe("attribute-level read authorization", () => {
         reason: "grant HR read access to worker I-9 SSN",
       });
       await writer.finishAllScheduledFunctions(vi.runAllTimers);
+      await t.run(async (ctx) => {
+        const rows = await ctx.db.query("currentFacts").collect();
+        for (const row of rows) await ctx.db.delete(row._id);
+      });
 
       const allowed = await noGrant.query(api.facts.getEntity, {
         e: "worker:t1",
