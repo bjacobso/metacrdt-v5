@@ -1,18 +1,24 @@
 import { describe, expect, test } from "vitest";
 import {
+  attachBroadcastTransport,
+  attachPeerDataChannelTransport,
   createMemoryRuntime,
   createMemoryRuntimeLayer,
   createLocalRuntimeLayer,
   runtimeServicesLayer,
+  type BroadcastChannelLike,
+  type DataChannelLike,
   type LocalRuntimeStorage,
 } from "@metacrdt/runtime";
 import {
   runEventStoreConformance,
   runRuntimeConformance,
   runRuntimeConvergenceConformance,
+  runRuntimeNetworkTransportConformance,
   runRuntimePersistenceConformance,
   runRuntimeSchedulerConformance,
   runRuntimeTransportConformance,
+  type RuntimeNetworkTransportConformanceTarget,
   type RuntimePersistenceConformanceTarget,
   type RuntimeSchedulerConformanceTarget,
   type RuntimeTransportConformanceTarget,
@@ -130,6 +136,201 @@ const transportTarget = (): RuntimeTransportConformanceTarget => {
   };
 };
 
+class BroadcastBus {
+  readonly channels = new Set<FakeBroadcastChannel>();
+}
+
+class FakeBroadcastChannel implements BroadcastChannelLike {
+  readonly listeners = new Set<(event: { data: unknown }) => void>();
+  onmessage: ((event: { data: unknown }) => void) | null = null;
+  closed = false;
+
+  constructor(private readonly bus: BroadcastBus) {
+    bus.channels.add(this);
+  }
+
+  postMessage(message: unknown): void {
+    for (const channel of this.bus.channels) {
+      if (channel === this || channel.closed) continue;
+      void Promise.resolve().then(() => channel.deliver(message));
+    }
+  }
+
+  addEventListener(
+    type: "message",
+    listener: (event: { data: unknown }) => void,
+  ): void {
+    if (type === "message") this.listeners.add(listener);
+  }
+
+  removeEventListener(
+    type: "message",
+    listener: (event: { data: unknown }) => void,
+  ): void {
+    if (type === "message") this.listeners.delete(listener);
+  }
+
+  close(): void {
+    this.closed = true;
+    this.bus.channels.delete(this);
+  }
+
+  deliver(data: unknown): void {
+    const event = { data };
+    this.onmessage?.(event);
+    for (const listener of this.listeners) listener(event);
+  }
+}
+
+class FakeDataChannel implements DataChannelLike {
+  readyState = "open";
+  peer?: FakeDataChannel;
+  readonly listeners = {
+    message: new Set<(event: { data: unknown }) => void>(),
+    open: new Set<(event?: unknown) => void>(),
+    close: new Set<(event?: unknown) => void>(),
+  };
+  onmessage: ((event: { data: unknown }) => void) | null = null;
+  onopen: ((event?: unknown) => void) | null = null;
+  onclose: ((event?: unknown) => void) | null = null;
+
+  send(data: string): void {
+    if (this.readyState !== "open") throw new Error("channel is not open");
+    void Promise.resolve().then(() => this.peer?.deliver(data));
+  }
+
+  addEventListener(
+    type: "message" | "open" | "close",
+    listener:
+      | ((event: { data: unknown }) => void)
+      | ((event?: unknown) => void),
+  ): void {
+    if (type === "message") {
+      this.listeners.message.add(listener as (event: { data: unknown }) => void);
+    } else {
+      this.listeners[type].add(listener as (event?: unknown) => void);
+    }
+  }
+
+  removeEventListener(
+    type: "message" | "open" | "close",
+    listener:
+      | ((event: { data: unknown }) => void)
+      | ((event?: unknown) => void),
+  ): void {
+    if (type === "message") {
+      this.listeners.message.delete(listener as (event: { data: unknown }) => void);
+    } else {
+      this.listeners[type].delete(listener as (event?: unknown) => void);
+    }
+  }
+
+  deliver(data: unknown): void {
+    const event = { data };
+    this.onmessage?.(event);
+    for (const listener of this.listeners.message) listener(event);
+  }
+
+  close(): void {
+    this.readyState = "closed";
+    this.onclose?.();
+    for (const listener of this.listeners.close) listener();
+  }
+}
+
+function dataChannelPair(): [FakeDataChannel, FakeDataChannel] {
+  const left = new FakeDataChannel();
+  const right = new FakeDataChannel();
+  left.peer = right;
+  right.peer = left;
+  return [left, right];
+}
+
+async function flushNetwork(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+const broadcastNetworkTarget = (): RuntimeNetworkTransportConformanceTarget => ({
+  name: "broadcast-network",
+  createPair(options) {
+    const bus = new BroadcastBus();
+    const left = attachBroadcastTransport(
+      createMemoryRuntime({
+        replicaId: options.leftReplicaId,
+        wall: options.wall,
+      }),
+      new FakeBroadcastChannel(bus),
+      { announceOnStart: false },
+    );
+    const right = attachBroadcastTransport(
+      createMemoryRuntime({
+        replicaId: options.rightReplicaId,
+        wall: options.wall,
+      }),
+      new FakeBroadcastChannel(bus),
+      { announceOnStart: false },
+    );
+    return {
+      left,
+      right,
+      startLeft: () => left.transport.start(),
+      startRight: () => right.transport.start(),
+      announceRight: () => right.transport.announce(),
+      flush: flushNetwork,
+      stop() {
+        left.transport.stop();
+        right.transport.stop();
+      },
+    };
+  },
+});
+
+const p2pNetworkTarget = (): RuntimeNetworkTransportConformanceTarget => ({
+  name: "p2p-network",
+  createPair(options) {
+    const [leftChannel, rightChannel] = dataChannelPair();
+    const left = attachPeerDataChannelTransport(
+      createMemoryRuntime({
+        replicaId: options.leftReplicaId,
+        wall: options.wall,
+      }),
+      { announceOnStart: false },
+    );
+    const right = attachPeerDataChannelTransport(
+      createMemoryRuntime({
+        replicaId: options.rightReplicaId,
+        wall: options.wall,
+      }),
+      { announceOnStart: false },
+    );
+    let rightConnected = false;
+    const connectRight = () => {
+      if (rightConnected) return;
+      rightConnected = true;
+      right.transport.connect(rightChannel, options.leftReplicaId);
+    };
+    left.transport.connect(leftChannel, options.rightReplicaId);
+    return {
+      left,
+      right,
+      startLeft: () => left.transport.start(),
+      startRight: async () => {
+        connectRight();
+        await right.transport.start();
+      },
+      connectRight,
+      announceRight: () => right.transport.announce(),
+      flush: flushNetwork,
+      stop() {
+        left.transport.stop();
+        right.transport.stop();
+      },
+    };
+  },
+});
+
 describe("@metacrdt/testkit", () => {
   test("event-store conformance passes for the in-memory target", async () => {
     await expect(runEventStoreConformance(memoryTarget)).resolves.toEqual({
@@ -191,6 +392,32 @@ describe("@metacrdt/testkit", () => {
         "transport-accepts-batches",
         "transport-preserves-batches",
         "transport-preserves-event-order",
+      ],
+    });
+  });
+
+  test("network transport conformance passes for BroadcastChannel transport", async () => {
+    await expect(
+      runRuntimeNetworkTransportConformance(broadcastNetworkTarget()),
+    ).resolves.toEqual({
+      target: "broadcast-network",
+      checks: [
+        "network-delivers-local-events",
+        "network-catches-up-late-peer",
+        "network-sync-is-idempotent",
+      ],
+    });
+  });
+
+  test("network transport conformance passes for p2p DataChannel transport", async () => {
+    await expect(
+      runRuntimeNetworkTransportConformance(p2pNetworkTarget()),
+    ).resolves.toEqual({
+      target: "p2p-network",
+      checks: [
+        "network-delivers-local-events",
+        "network-catches-up-late-peer",
+        "network-sync-is-idempotent",
       ],
     });
   });

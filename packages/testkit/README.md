@@ -59,6 +59,15 @@ verified to behave identically at the boundaries that matter.
     order. This is intentionally **not** network delivery conformance;
     BroadcastChannel, p2p, WebSocket, and HTTP relay behavior still need
     transport-specific suites.
+- **`runRuntimeNetworkTransportConformance`** — that a target-provided network
+  harness actually delivers G-Set events between peers:
+  - `network-delivers-local-events` — a local write on one started peer reaches a
+    connected peer.
+  - `network-catches-up-late-peer` — a peer that joins after a write announces
+    its version vector and receives the missing delta.
+  - `network-sync-is-idempotent` — after catch-up, a second anti-entropy
+    exchange sends and inserts nothing. This proves delivery/catch-up for the
+    provided harness, not production relay auth, retry policy, or host durability.
 
 ## What Testkit Does Not Own
 
@@ -87,6 +96,9 @@ the Effect scheduler service boundary for targets that expose an observable
 scheduler; it does not claim host wakeup durability.
 `runRuntimeTransportConformance` proves the Effect transport publish boundary;
 it does not claim peer discovery, delivery, retries, or relay semantics.
+`runRuntimeNetworkTransportConformance` proves the first peer delivery and
+late-join catch-up behaviors from SPEC §8 for a target-provided network harness;
+relay auth, retries, and durability remain target-specific.
 
 ## Usage
 
@@ -109,19 +121,21 @@ through their Effect Layer providers in their own `conformance`/index tests.
 Durable targets that preserve storage across runtime re-creation also run
 `runRuntimePersistenceConformance`. Targets with observable schedulers can add
 `runRuntimeSchedulerConformance`. Targets with observable transports can add
-`runRuntimeTransportConformance`.
+`runRuntimeTransportConformance`. Targets with observable peer/network harnesses
+can add `runRuntimeNetworkTransportConformance`.
 
 ## Scope Today, and What's Next
 
 The suite covers the **log + sync plane**, durable restart semantics, scheduler
-submission, and the basic transport publish boundary: event-store semantics,
-anti-entropy, the in-log fold, persistence of the event log/HLC/seq across
-re-creation, payload-preserving scheduler submission, and event-batch preserving
-transport publication. It does **not yet** cover **network transport
-conformance** or **projection conformance** — proving that two targets fold the
-same events into the same *bitemporal projection* and resolve the same
-cardinality-one winner through the shared projection path. Projection checks
-should be added once the fold/reconcile logic is shared out of
+submission, the basic transport publish boundary, and the first network-delivery
+checks: event-store semantics, anti-entropy, the in-log fold, persistence of the
+event log/HLC/seq across re-creation, payload-preserving scheduler submission,
+event-batch preserving transport publication, and peer delivery/catch-up for the
+BroadcastChannel and p2p DataChannel harnesses. It does **not yet** cover
+Cloudflare relay production behavior or **projection conformance** — proving
+that two targets fold the same events into the same *bitemporal projection* and
+resolve the same cardinality-one winner through the shared projection path.
+Projection checks should be added once the fold/reconcile logic is shared out of
 `@metacrdt/convex` into `@metacrdt/core` (the keystone in
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md) and
 [docs/targets.md](../../docs/targets.md)). Until then, the cross-target guarantee

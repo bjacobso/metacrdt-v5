@@ -9392,8 +9392,14 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   `TransportService.publish` submission for observable transports. It is wired
   into runtime/testkit memory transport and Node memory target. This is boundary
   conformance, not network delivery / relay conformance.
-- **Remaining keystone work:** conformance still does not cover network transport
-  behavior or query/projection behavior.
+- **Network transport conformance started:** `@metacrdt/testkit` also has
+  `runRuntimeNetworkTransportConformance`, proving local event delivery,
+  late-peer version-vector catch-up, and idempotent post-catch-up sync for a
+  target-provided network harness. It is proven against the runtime
+  BroadcastChannel and p2p DataChannel harnesses. This is peer delivery/catch-up
+  conformance, not production relay auth/retry/durability conformance.
+- **Remaining keystone work:** conformance still does not cover Cloudflare relay
+  network behavior or query/projection behavior.
 - **Zero Effect today (by current design):** `core`, `schema`, `query`, and the
   root Convex reference app stay pure/plain where appropriate. `runtime`,
   `testkit`, and Convex/Node/local/Cloudflare target packages now use Effect v3

@@ -88,6 +88,39 @@ export interface RuntimeTransportConformanceTarget
   resetTransport?(): void | Promise<void>;
 }
 
+export interface RuntimeNetworkTransportPair {
+  readonly left: RuntimeServices;
+  readonly right: RuntimeServices;
+  startLeft(): void | Promise<void>;
+  startRight(): void | Promise<void>;
+  /**
+   * Optional hook for transports where mere construction/connectivity can receive
+   * messages (for example DataChannel listeners attached at connect time). When
+   * present, the conformance suite calls it after left writes the seed event and
+   * before starting/announcing right, so late-peer catch-up tests a real network
+   * join rather than a local runtime object that was already connected.
+   */
+  connectRight?(): void | Promise<void>;
+  announceRight(): void | Promise<void>;
+  flush(): void | Promise<void>;
+  stop(): void | Promise<void>;
+}
+
+export interface RuntimeNetworkTransportConformanceTarget {
+  readonly name: string;
+  /**
+   * Return two connected replicas. The lifecycle is explicit because network
+   * transport behavior lives outside the pure Effect service boundary: targets
+   * attach concrete channels, start listeners, announce peers, and flush their
+   * own async delivery mechanism.
+   */
+  createPair(options: {
+    readonly leftReplicaId: string;
+    readonly rightReplicaId: string;
+    readonly wall?: () => number;
+  }): RuntimeNetworkTransportPair | Promise<RuntimeNetworkTransportPair>;
+}
+
 export type AnyRuntimeConformanceTarget =
   | RuntimeConformanceTarget
   | RuntimeLayerConformanceTarget;
@@ -101,12 +134,14 @@ const MANY = () => "many" as const;
 const ONE = () => "one" as const;
 const COORD = { txTime: 10_000, validTime: 1_000 };
 
-function fail(target: AnyRuntimeConformanceTarget, message: string): never {
+type NamedTarget = { readonly name: string };
+
+function fail(target: NamedTarget, message: string): never {
   throw new Error(`@metacrdt/testkit(${target.name}): ${message}`);
 }
 
 function expect(
-  target: AnyRuntimeConformanceTarget,
+  target: NamedTarget,
   condition: unknown,
   message: string,
 ): asserts condition {
@@ -126,13 +161,23 @@ function hasLayerTarget(
 }
 
 function requireSequencer(
-  target: RuntimeConformanceTarget,
+  target: NamedTarget,
   rt: RuntimeServices,
 ) {
   if (rt.sequencer === undefined) {
     fail(target, "runtime target must provide a sequencer for Effect conformance");
   }
   return { ...rt, sequencer: rt.sequencer };
+}
+
+function sessionForRuntime(
+  target: NamedTarget,
+  runtime: RuntimeServices,
+): TargetLayerSession {
+  return {
+    layer: runtimeServicesLayer(requireSequencer(target, runtime)),
+    async dispose() {},
+  };
 }
 
 async function runWithTargetLayer<A>(
@@ -639,6 +684,102 @@ export async function runRuntimeTransportConformance(
   return { target: target.name, checks };
 }
 
+export async function runRuntimeNetworkTransportConformance(
+  target: RuntimeNetworkTransportConformanceTarget,
+): Promise<ConformanceReport> {
+  const checks: string[] = [];
+
+  const delivery = await target.createPair({
+    leftReplicaId: "testkit:net:left",
+    rightReplicaId: "testkit:net:right",
+    wall: () => 1_000,
+  });
+  const deliveryLeft = sessionForRuntime(target, delivery.left);
+  const deliveryRight = sessionForRuntime(target, delivery.right);
+  try {
+    await delivery.startLeft();
+    await delivery.startRight();
+    const event = await runWithSession(
+      deliveryLeft,
+      applyOperationEffect({
+        op: "assert",
+        e: "network:delivery",
+        a: "status",
+        v: "sent",
+        actor: "alice",
+      }),
+    );
+    await delivery.flush();
+    expect(
+      target,
+      (await eventFor(deliveryRight, event.id))?.id === event.id,
+      "right replica should receive left's local event",
+    );
+    checks.push("network-delivers-local-events");
+  } finally {
+    await delivery.stop();
+  }
+
+  const catchup = await target.createPair({
+    leftReplicaId: "testkit:net:left",
+    rightReplicaId: "testkit:net:right",
+    wall: () => 2_000,
+  });
+  const catchupLeft = sessionForRuntime(target, catchup.left);
+  const catchupRight = sessionForRuntime(target, catchup.right);
+  try {
+    await catchup.startLeft();
+    const existing = await runWithSession(
+      catchupLeft,
+      applyOperationEffect({
+        op: "assert",
+        e: "network:late-peer",
+        a: "status",
+        v: "ready",
+        actor: "alice",
+      }),
+    );
+    await catchup.flush();
+    await catchup.connectRight?.();
+    await catchup.startRight();
+    await catchup.announceRight();
+    await catchup.flush();
+
+    expect(
+      target,
+      (await eventFor(catchupRight, existing.id))?.id === existing.id,
+      "late peer should receive version-vector delta on announce",
+    );
+    expect(
+      target,
+      JSON.stringify(versionVector(await eventsFor(catchupRight))) ===
+        JSON.stringify({ "testkit:net:left": 1 }),
+      "late peer version vector mismatch after catch-up",
+    );
+    checks.push("network-catches-up-late-peer");
+
+    const second = await exchangeDeltasEffect(catchupLeft, catchupRight);
+    expect(
+      target,
+      second.sentFromA === 0 &&
+        second.sentFromB === 0 &&
+        second.insertedIntoA === 0 &&
+        second.insertedIntoB === 0,
+      "network catch-up should leave no delta for a second sync",
+    );
+    expect(
+      target,
+      JSON.stringify(second.vvA) === JSON.stringify(second.vvB),
+      "version vectors should match after network catch-up",
+    );
+    checks.push("network-sync-is-idempotent");
+  } finally {
+    await catchup.stop();
+  }
+
+  return { target: target.name, checks };
+}
+
 async function eventsFor(
   session: TargetLayerSession,
 ): Promise<Event[]> {
@@ -647,6 +788,19 @@ async function eventsFor(
     Effect.gen(function* () {
       const store = yield* EventStoreService;
       return yield* store.scan();
+    }),
+  );
+}
+
+async function eventFor(
+  session: TargetLayerSession,
+  id: Event["id"],
+): Promise<Event | undefined> {
+  return await runWithSession(
+    session,
+    Effect.gen(function* () {
+      const store = yield* EventStoreService;
+      return yield* store.get(id);
     }),
   );
 }

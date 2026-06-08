@@ -69,8 +69,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   batch- and order-preserving `TransportService.publish` submission for
   observable transports. Wired into testkit memory and Node memory targets.
   Network delivery/relay behavior remains target-specific for now.
-- [ ] **Goal 111 next: expanded suites** — expand conformance to network
-  transport and query/projection capabilities as second implementations expose
+- [x] **Goal 111 network transport conformance started** —
+  `@metacrdt/testkit` now has `runRuntimeNetworkTransportConformance`, proving
+  peer delivery, late-peer version-vector catch-up, and idempotent post-catch-up
+  sync for target-provided network harnesses. Proven against runtime
+  BroadcastChannel and p2p DataChannel harnesses.
+- [ ] **Goal 111 next: expanded suites** — add Cloudflare relay network
+  conformance and query/projection capabilities as second implementations expose
   them.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
@@ -514,6 +519,17 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — Goal 111 network transport conformance
+- [x] **Expanded `@metacrdt/testkit` with
+  `runRuntimeNetworkTransportConformance`.** Target-provided network harnesses now
+  prove local event delivery between peers, late-peer version-vector catch-up via
+  announce/delta, and idempotent second sync after catch-up.
+- [x] **Wired runtime network styles:** BroadcastChannel and p2p DataChannel
+  harnesses both pass the same shared checks. This intentionally proves peer
+  delivery/catch-up only; Cloudflare relay auth, retry behavior, and relay
+  durability remain target-specific until the relay exposes a conformance
+  harness.
 
 ### 2026-06-08 — Goal 111 restart-persistence conformance
 - [x] **Expanded `@metacrdt/testkit` with

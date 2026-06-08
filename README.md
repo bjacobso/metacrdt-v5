@@ -181,9 +181,11 @@ Current packages:
   verification, version-vector anti-entropy, and deterministic fold convergence.
   It also includes restart-persistence conformance for durable targets, checking
   event-log/HLC/seq continuity across runtime re-creation, plus scheduler
-  service-boundary and transport publish-boundary conformance for observable
-  services. The package proves itself against runtime Layers and is consumed by
-  Convex/Node/local/Cloudflare target Layer tests.
+  service-boundary, transport publish-boundary, and peer network
+  delivery/catch-up conformance for observable services/harnesses. The package
+  proves itself against runtime Layers (including BroadcastChannel and p2p
+  network harnesses) and is consumed by Convex/Node/local/Cloudflare target
+  Layer tests.
 
 Package build policy:
 
@@ -685,7 +687,7 @@ Frontier:
 - HLC + version-vector sync across replicas
 - Durable Object + SQLite triple-store parity
 - production database lifecycle/migrations beyond the current Node SQL DDL plan
-- expanded conformance suites for persistence, scheduler, transport, and queries
+- Cloudflare relay conformance and query/projection conformance suites
 
 See [TODO.md](./TODO.md) for the running pulse.
 
