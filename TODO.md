@@ -101,6 +101,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   typed component-owned entities from current `type` facts, the host wrapper
   exposes that list, and the Entities page shows component-owned rows separately
   with links to `/component/e/:id`.
+- [x] **Component-owned Worker status actions** — the reference app now changes
+  component-owned `worker.status` through `api.metacrdtComponent.setOwnedWorkerStatus`,
+  preserving component-owned cardinality-one reconciliation and append-only event
+  history.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
@@ -312,6 +316,17 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   the Entities route renders a separate component-owned section linked to
   `/component/e/:id`.
 - [x] Tests cover the package query and mounted wrapper behavior.
+
+### 2026-06-07 — component-owned Worker status actions
+- [x] **First post-create component-owned object mutation.**
+  `api.metacrdtComponent.setOwnedWorkerStatus` accepts only `active` /
+  `terminated`, derives actor context server-side, and appends a
+  cardinality-one `worker.status` assertion into the component-owned log.
+- [x] **Component detail page can mutate component-owned state.**
+  Worker component entities now show Reactivate / Terminate buttons that update
+  the current fold and append-only event log through the host wrapper.
+- [x] Wrapper test proves status current-state winner and protocol history
+  (`assert`, `assert`, `retract`).
 
 ### 2026-06-07 — @metacrdt/runtime p2p DataChannel transport
 - [x] **Added structural p2p transport.** `packages/runtime/src/p2p.ts` defines

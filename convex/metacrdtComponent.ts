@@ -50,6 +50,7 @@ const ownedProtocolKind = v.union(
 );
 
 const cardinality = v.union(v.literal("many"), v.literal("one"));
+const workerStatus = v.union(v.literal("active"), v.literal("terminated"));
 
 const ownedEventSummaryValidator = v.object({
   rowId: v.string(),
@@ -313,6 +314,29 @@ export const createOwnedEntity = mutation({
     }
 
     return { e: args.e, asserted };
+  },
+});
+
+export const setOwnedWorkerStatus = mutation({
+  args: {
+    e: v.string(),
+    status: workerStatus,
+  },
+  returns: appendOwnedResultValidator,
+  handler: async (ctx, args) => {
+    const actor = await actorContext(ctx);
+    return await ctx.runMutation(
+      components.metacrdt.log.appendAssert,
+      withoutUndefined({
+        ...actor,
+        e: args.e,
+        a: "worker.status",
+        v: args.status,
+        reason: `set component-owned worker status to ${args.status}`,
+        source: "metacrdtComponent.setOwnedWorkerStatus",
+        cardinality: "one" as const,
+      }),
+    );
   },
 });
 

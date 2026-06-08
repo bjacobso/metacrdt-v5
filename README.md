@@ -114,8 +114,8 @@ Current packages:
   cardinality-one reconciliation, projection rebuild from the component log, and
   grouped entity current-state reads plus typed entity lists. The reference UI
   now has a component-backed New Entity path that writes through the host wrapper
-  and an Entities-page component-owned browser that reads the component
-  projection/event log. Includes Confect sidecar guidance.
+  and an Entities-page component-owned browser/detail/action path that reads and
+  mutates the component projection/event log. Includes Confect sidecar guidance.
 - **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
   authoring language extracted from Open Ontology: reader, formatter, evaluator,
   VM, type inference, and language-owned elaboration utilities.

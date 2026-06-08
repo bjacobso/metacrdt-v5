@@ -1,8 +1,9 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { ArrowLeft } from "lucide-react";
-import { Card, CardHeader, Chip, Mono, shortId } from "../ui";
+import { Button, Card, CardHeader, Chip, Mono, shortId } from "../ui";
+import { useState } from "react";
 
 function val(v: unknown): string {
   return typeof v === "string" ? v : JSON.stringify(v);
@@ -12,6 +13,8 @@ export default function ComponentEntity() {
   const { id: raw } = useParams();
   const id = decodeURIComponent(raw ?? "");
   const navigate = useNavigate();
+  const [busy, setBusy] = useState<string | null>(null);
+  const setWorkerStatus = useMutation(api.metacrdtComponent.setOwnedWorkerStatus);
   const entity = useQuery(api.metacrdtComponent.getOwnedCurrentEntity, {
     e: id,
   });
@@ -23,6 +26,19 @@ export default function ComponentEntity() {
     entity?.attributes.find((attr) => attr.a === "type")?.values.map(String) ?? [];
   const name =
     entity?.attributes.find((attr) => attr.a === "name")?.values[0] ?? undefined;
+  const status =
+    entity?.attributes.find((attr) => attr.a === "worker.status")?.values[0] ??
+    undefined;
+  const isWorker = types.includes("Worker");
+
+  async function setStatus(status: "active" | "terminated") {
+    setBusy(`status:${status}`);
+    try {
+      await setWorkerStatus({ e: id, status });
+    } finally {
+      setBusy(null);
+    }
+  }
 
   if (entity === undefined || events === undefined) {
     return <p className="text-[13px] text-muted">Loading…</p>;
@@ -79,6 +95,39 @@ export default function ComponentEntity() {
           </table>
         )}
       </Card>
+
+      {isWorker && (
+        <Card>
+          <CardHeader title="Component actions" hint="host wrapper writes" />
+          <div className="flex flex-wrap items-center justify-between gap-3 p-5 text-[13px]">
+            <div>
+              <div className="font-medium text-ink">Worker status</div>
+              <div className="text-muted">
+                current:{" "}
+                <span className="font-medium text-ink">
+                  {status === undefined ? "unknown" : val(status)}
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="reuse"
+                disabled={busy !== null || status === "active"}
+                onClick={() => setStatus("active")}
+              >
+                Reactivate
+              </Button>
+              <Button
+                variant="collect"
+                disabled={busy !== null || status === "terminated"}
+                onClick={() => setStatus("terminated")}
+              >
+                Terminate
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <Card>
         <CardHeader title="Component event log" hint="append-only protocol rows" />

@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 29 (component-owned entity browser surface) has shipped. The
+**Current goal:** Goal 30 (component-owned Worker status actions) has shipped. The
 next active goal should be chosen from the remaining TODO candidates: full app
 write authorization, live Cloudflare deployment/auth, or migrating more of the
 reference runtime onto component-owned state.
@@ -78,7 +78,7 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 95 tests at last verification.
+- Convex backend tests are green: 96 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -113,7 +113,8 @@ arguments.
     public API naming in the host app
   - reference-app wrappers for app-auth-derived writes into the component-owned
     protocol log, current projection/entity reads, typed entity lists, rebuild,
-    and bounded component-owned entity creation
+    bounded component-owned entity creation, and component-owned Worker status
+    actions
   - an explicit Confect sidecar warning/helper documenting the manual-mount
     lesson from Goal 2
   - package-local tests for deterministic event reconstruction, legacy fallback
@@ -205,6 +206,11 @@ arguments.
   - the host wrapper exposes `api.metacrdtComponent.listOwnedCurrentEntities`
   - the Entities route shows component-owned entities separately and links them
     to `/component/e/:id`
+- Component-owned Worker status actions exist:
+  - `api.metacrdtComponent.setOwnedWorkerStatus` writes `worker.status` through
+    the component-owned protocol log with `cardinality: "one"`
+  - `/component/e/:id` surfaces Reactivate / Terminate buttons for
+    component-owned Worker entities
 - Config history/diff exists:
   - `configHistory.currentManifest` reconstructs the current owned-artifact
     manifest from `config:default`
@@ -2651,6 +2657,72 @@ src/pages/Entities.tsx
 
 ---
 
+## Goal 30 — Component-Owned Worker Status Actions
+
+**Status:** shipped as the first component-owned object mutation after creation.
+
+**Objective:** move one real object-level business behavior from the host-owned
+runtime shape onto component-owned state. Component-owned Workers can now be
+created, discovered, read, and have their `worker.status` changed through the
+component log from the component detail page.
+
+### Scope
+
+Reference app wrapper:
+
+```text
+convex/metacrdtComponent.ts
+  setOwnedWorkerStatus({ e, status })
+```
+
+Frontend:
+
+```text
+src/pages/ComponentEntity.tsx
+  Component actions card for Worker status
+```
+
+### Acceptance Criteria
+
+- `api.metacrdtComponent.setOwnedWorkerStatus`:
+  - derives actor identity server-side;
+  - accepts only `"active"` or `"terminated"`;
+  - writes `worker.status` into component-owned state;
+  - uses component-owned cardinality-one reconciliation.
+- `/component/e/:id`:
+  - detects component-owned `Worker` type;
+  - shows current status;
+  - exposes Reactivate / Terminate buttons;
+  - writes through the wrapper, not component functions directly;
+  - updates current state and append-only event history.
+
+### Non-Goals
+
+- Do not generalize configured host actions onto component-owned state yet.
+- Do not make component-owned status changes trigger host-owned compliance/rules
+  yet.
+- Do not merge component-owned and host-owned entity detail pages.
+
+### Verification
+
+- `npx vitest run convex/metacrdtComponent.test.ts` passed (10 tests).
+- `npm test` passed (16 backend test files, 96 tests).
+- `npm run test:core` passed (46 tests).
+- `npm run test:convex-package` passed (31 tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex dev --once` deployed backend functions to `chatty-hare-94`.
+- `npx @convex-dev/static-hosting upload` deployed the frontend to
+  `https://chatty-hare-94.convex.site`.
+- Live smoke on
+  `/component/e/worker%3Aava-reed-mq4ph0h7`: Terminate changed
+  `worker.status` from `active` to `terminated` and appended a replacement
+  assert plus retract; Reactivate changed it back to `active` and appended the
+  symmetric replacement/retract chain.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -2685,6 +2757,7 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] First component-backed frontend write/read path (`New entity` →
   `/component/e/:id`).
 - [x] Component-owned typed entity browser/list surface.
+- [x] Component-owned Worker status mutation/action path.
 - [ ] Migrate more reference runtime business logic onto component-owned state.
 
 ### Auth / Privacy

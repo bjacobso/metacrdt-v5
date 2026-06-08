@@ -221,6 +221,46 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     ]);
   });
 
+  test("sets component-owned worker status through app wrapper", async () => {
+    const t = convexTest(schema, modules);
+    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-status:worker",
+      type: "Worker",
+      name: "Status Worker",
+      attributes: [{ a: "worker.status", value: "active" }],
+    });
+    const updated = await t.mutation(api.metacrdtComponent.setOwnedWorkerStatus, {
+      e: "component-status:worker",
+      status: "terminated",
+    });
+
+    const entity = await t.query(api.metacrdtComponent.getOwnedCurrentEntity, {
+      e: "component-status:worker",
+    });
+    expect(entity?.attributes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          a: "worker.status",
+          values: ["terminated"],
+          facts: [expect.objectContaining({ assertEventId: updated.eventId })],
+        }),
+      ]),
+    );
+
+    const events = await t.query(api.metacrdtComponent.listOwnedEvents, {
+      e: "component-status:worker",
+      a: "worker.status",
+      limit: 10,
+    });
+    expect(events.map((event) => event.kind).sort()).toEqual([
+      "assert",
+      "assert",
+      "retract",
+    ]);
+  });
+
   test("component-owned missing current entity returns null", async () => {
     const t = convexTest(schema, modules);
     t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
