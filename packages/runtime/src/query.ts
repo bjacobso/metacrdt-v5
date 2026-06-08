@@ -214,7 +214,7 @@ function visibleAssertCandidates(
     .sort((a, b) => a.prov[0]!.localeCompare(b.prov[0]!));
 }
 
-type PatternCandidateSource = (
+export type DatalogPatternCandidateSource = (
   clause: PatternClause,
   binding: Binding,
   coord: DatalogQueryCoord,
@@ -223,7 +223,7 @@ type PatternCandidateSource = (
 function eventStorePatternSource(
   store: EventStoreEffect,
   fullLog: Log,
-): PatternCandidateSource {
+): DatalogPatternCandidateSource {
   return (clause, binding, coord) => {
     const filter = scanFilterForPattern(clause, binding);
     if (filter === null) return Effect.succeed([]);
@@ -264,7 +264,7 @@ function projectionCandidates(
 
 function projectionStorePatternSource(
   projection: ProjectionStoreEffect,
-): PatternCandidateSource {
+): DatalogPatternCandidateSource {
   return (clause, binding) => {
     const filter = scanFilterForPattern(clause, binding);
     if (filter === null) return Effect.succeed([]);
@@ -278,7 +278,7 @@ function solveParsedQuery(
   clauses: AnyClause[],
   seed: QueryState,
   coord: DatalogQueryCoord,
-  source: PatternCandidateSource,
+  source: DatalogPatternCandidateSource,
 ): Effect.Effect<QueryState[], RuntimeError> {
   return Effect.gen(function* () {
     let frame = initialSolverFrame<string, string>(
@@ -351,7 +351,7 @@ function solveParsedQuery(
 
 function runQueryWithSource(
   args: DatalogQueryArgs,
-  source: PatternCandidateSource,
+  source: DatalogPatternCandidateSource,
 ): Effect.Effect<DatalogQueryResult, RuntimeError> {
   return Effect.gen(function* () {
     const clauses = yield* Effect.try({
@@ -389,15 +389,32 @@ function runEventStoreQuery(
   });
 }
 
-function datalogQueryServiceFromSource(
+export type DatalogPatternCandidateSourceFactory = (
+  args: DatalogQueryArgs,
+) => Effect.Effect<DatalogPatternCandidateSource, RuntimeError>;
+
+export function datalogQueryServiceFromSource(
   operationPrefix: string,
-  source: PatternCandidateSource,
+  source: DatalogPatternCandidateSource,
 ): DatalogQueryEffect {
+  return datalogQueryServiceFromSourceFactory(operationPrefix, () =>
+    Effect.succeed(source),
+  );
+}
+
+export function datalogQueryServiceFromSourceFactory(
+  operationPrefix: string,
+  sourceFactory: DatalogPatternCandidateSourceFactory,
+): DatalogQueryEffect {
+  const run = (args: DatalogQueryArgs) =>
+    Effect.flatMap(sourceFactory(args), (source) =>
+      runQueryWithSource(args, source),
+    );
   return {
     query: (input) =>
       Effect.flatMap(
         decode(`${operationPrefix}.query.args`, DatalogQueryArgs, input),
-        (args) => runQueryWithSource(args, source),
+        run,
       ),
     page: (input) =>
       Effect.gen(function* () {
@@ -406,7 +423,7 @@ function datalogQueryServiceFromSource(
           DatalogQueryPageArgs,
           input,
         );
-        const result = yield* runQueryWithSource(args, source);
+        const result = yield* run(args);
         return yield* Effect.try({
           try: () => paginateRows(sortRows(result.rows), args.paginationOpts),
           catch: (cause) => operationError(`${operationPrefix}.page`, cause),
@@ -419,13 +436,12 @@ function datalogQueryServiceFromSource(
           DatalogAggregateArgs,
           input,
         );
-        const result = yield* runQueryWithSource(
+        const result = yield* run(
           {
             where: args.where,
             select: [],
             coord: args.coord,
           },
-          source,
         );
         return yield* Effect.try({
           try: () =>
@@ -444,13 +460,12 @@ function datalogQueryServiceFromSource(
           DatalogDerivedRowsArgs,
           input,
         );
-        const result = yield* runQueryWithSource(
+        const result = yield* run(
           {
             where: args.where,
             select: [],
             coord: args.coord,
           },
-          source,
         );
         return yield* Effect.try({
           try: () =>

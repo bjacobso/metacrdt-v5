@@ -16,7 +16,6 @@ import {
   RuntimeSequencerService,
   TransportService,
   applyOperationEffect,
-  datalogQueryLayer,
   projectionDatalogQueryLayer,
   projectionRowsFromLog,
   runtimeServicesLayer,
@@ -48,6 +47,7 @@ import type {
   DurableObjectSqliteRuntime,
   DurableObjectSqliteTimerStore,
 } from "./durableObjectSqlite.js";
+import { durableObjectSqliteIndexedHistoricalDatalogQueryService } from "./sqliteQuery.js";
 
 export class DurableObjectSqliteCurrentSurfaceError extends Data.TaggedError(
   "DurableObjectSqliteCurrentSurfaceError",
@@ -1573,7 +1573,15 @@ function runtimeLayer(runtime: DurableObjectSqliteRuntime) {
     scheduler: runtime.scheduler,
     transport: runtime.transport,
   });
-  return Layer.provideMerge(services)(datalogQueryLayer());
+  return Layer.provideMerge(services)(
+    Layer.effect(
+      DatalogQueryService,
+      Effect.map(
+        EventStoreService,
+        durableObjectSqliteIndexedHistoricalDatalogQueryService,
+      ),
+    ),
+  );
 }
 
 function currentQueryRuntimeLayer(runtime: DurableObjectSqliteRuntime) {

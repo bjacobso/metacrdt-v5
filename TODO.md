@@ -156,8 +156,14 @@ After implementation:
   Firing a still-waiting DAG run records a deterministic wakeup timeline event,
   moves the run back to `running`, and the alarm multiplexer now chooses the
   earliest pending collection or flow-wait timer row.
+- [x] **Goal 129 shipped: SQL-indexed historical Datalog provider seed** —
+  Cloudflare historical `query` / `page` / `aggregate` / `derivedRows` now use a
+  target-specific `DatalogQueryService` source that keeps the shared runtime
+  solver and core visibility semantics while fetching bounded assertion
+  candidates through indexed SQLite `e` / `a` scans and lifecycle rows through
+  the existing `target` index.
 - [ ] **Remaining Cloudflare Phase D parity** — flow execution/resume semantics,
-  live-query fanout, and historical SQL-indexed query-provider optimization
+  live-query fanout, and full historical SQL query-provider parity/conformance
   remain open; do not claim full parity until those are implemented.
 
 **Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
@@ -230,6 +236,10 @@ After implementation:
   records a `timer` / `flow-wait` timeline event and returns the run to
   `running`, and the DO alarm multiplexer now drains collection and flow-wait
   ticks in earliest-fire order.
+- [x] Cloudflare Durable Object SQLite indexed historical query seed —
+  historical facade queries now use a Cloudflare-specific Datalog candidate
+  source over indexed SQLite `e` / `a` and lifecycle `target` scans, preserving
+  shared `@metacrdt/query` solving and `@metacrdt/core` visibility semantics.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -238,9 +248,9 @@ After implementation:
   dependency-free structural SQLite key/value adapter and local-first runtime.
 - [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
   DataChannel anti-entropy transport with multi-hop gossip.
-- [ ] Cloudflare remaining component-equivalent SQLite surface — historical
-  SQL-indexed query-provider optimization, flow execution/resume semantics,
-  and live-query WebSocket fanout/plumbing (see
+- [ ] Cloudflare remaining component-equivalent SQLite surface — full
+  SQL-indexed query-provider parity/conformance, flow execution/resume
+  semantics, and live-query WebSocket fanout/plumbing (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).

@@ -522,6 +522,81 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
     expect(sql.projectionDeleteMatchingCount).toBeGreaterThan(0);
   });
 
+  test("historical Datalog queries use indexed SQLite event scans with lifecycle visibility", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:indexed-query",
+      wall: () => 550,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.appendAssert({
+      e: "worker:indexed",
+      a: "type",
+      v: "Worker",
+      actor: "user:1",
+    });
+    const active = await surface.appendAssert({
+      e: "worker:indexed",
+      a: "worker.status",
+      v: "active",
+      actor: "user:1",
+    });
+    await surface.appendLifecycle({
+      kind: "retract",
+      target: active.event.id,
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:indexed",
+      a: "worker.status",
+      v: "terminated",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "task:indexed",
+      a: "type",
+      v: "Task",
+      actor: "user:1",
+    });
+
+    const fullScansBefore = sql.eventFullScanCount;
+    const attributeScansBefore = sql.eventAttributeScanCount;
+    const entityAttributeScansBefore = sql.eventEntityAttributeScanCount;
+    const targetScansBefore = sql.eventTargetScanCount;
+
+    await expect(
+      surface.query({
+        where: [
+          ["?w", "type", "Worker"],
+          ["?w", "worker.status", "terminated"],
+        ],
+        select: ["?w"],
+        coord,
+      }),
+    ).resolves.toMatchObject({
+      rows: [{ w: "worker:indexed" }],
+    });
+    await expect(
+      surface.query({
+        where: [["?w", "worker.status", "active"]],
+        select: ["?w"],
+        coord,
+      }),
+    ).resolves.toMatchObject({ rows: [] });
+
+    expect(sql.eventFullScanCount).toBe(fullScansBefore);
+    expect(sql.eventAttributeScanCount).toBeGreaterThan(attributeScansBefore);
+    expect(sql.eventEntityAttributeScanCount).toBeGreaterThan(
+      entityAttributeScansBefore,
+    );
+    expect(sql.eventTargetScanCount).toBeGreaterThan(targetScansBefore);
+  });
+
   test("current surface persists collection capabilities over SQLite rows", async () => {
     const sql = new FakeDurableObjectSqlStorage();
     const runtime = await createDurableObjectSqliteRuntime({

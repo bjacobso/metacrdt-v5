@@ -282,8 +282,8 @@ a sibling target.
    Datalog reads, current-projection change summaries, and scoped
    current-coordinate projection replacement. Target-event lookup is now part of
    the EventStore contract and DO SQLite uses it for bounded coordinate folds;
-   next is the optimized historical SQL-indexed query provider plus
-  flow execution/resume and live-query surface over SQLite
+   historical queries now have an indexed provider seed; next is full SQL query
+   provider parity/conformance plus flow execution/resume and live-query surface over SQLite
    ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal
    enough repeated DDL/query-generation logic beyond the current Node lifecycle

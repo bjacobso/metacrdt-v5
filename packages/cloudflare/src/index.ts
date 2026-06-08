@@ -163,6 +163,10 @@ export {
 } from "./sqliteAlarm.js";
 
 export {
+  durableObjectSqliteIndexedHistoricalDatalogQueryService,
+} from "./sqliteQuery.js";
+
+export {
   DurableObjectWebSocketRelay,
   attachDurableObjectRelay,
   type RelayConnection,

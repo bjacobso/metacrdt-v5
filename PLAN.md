@@ -238,12 +238,18 @@ Goal 128 adds flow-wait timer rows and alarm drainage: caller-identified
 `flow_wait_timers` rows can be scheduled/listed/fired, firing a waiting DAG run
 records a deterministic wakeup timeline event and moves it back to `running`,
 and the DO alarm multiplexer now chooses the earliest pending collection or
-flow-wait timer without executing flow steps/actions. The next active goal
-should be chosen from the remaining TODO candidates:
+flow-wait timer without executing flow steps/actions. Goal 129 adds the first
+Cloudflare SQL-indexed historical Datalog provider seed: the historical
+`query` / `page` / `aggregate` / `derivedRows` facade now uses a
+Cloudflare-specific `DatalogQueryService` source that fetches assertion
+candidates through indexed SQLite `e` / `a` scans and checks lifecycle
+visibility through target-indexed scans, avoiding unrelated full event-log loads
+for bounded patterns without claiming full SQL query-provider parity. The next
+active goal should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
-remaining Cloudflare DO+SQLite historical SQL-indexed-query/operational parity
-(flow execution/resume, live fanout),
+remaining Cloudflare DO+SQLite operational parity (full SQL query-provider
+conformance, flow execution/resume, live fanout),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9458,6 +9464,55 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 129 — Cloudflare DO SQLite Indexed Historical Query Provider Seed
+
+**Status:** shipped.
+
+**Objective:** replace the Cloudflare current facade's historical bitemporal
+Datalog provider with a target-specific SQLite candidate source that keeps the
+shared query solver and core visibility semantics, while avoiding unrelated full
+event-log scans for bounded historical query patterns.
+
+### What Shipped
+
+- Exported a small runtime `DatalogQueryService` source-factory hook so targets
+  can reuse the shared Datalog solver with storage-specific candidate fetching.
+- Added `sqliteQuery.ts` in `@metacrdt/cloudflare` with
+  `durableObjectSqliteIndexedHistoricalDatalogQueryService`.
+- The Cloudflare historical `query`, `page`, `aggregate`, and `derivedRows`
+  facade methods now use the indexed provider.
+- The provider:
+  - uses `@metacrdt/query` pattern-input planning and the shared runtime solver;
+  - scans SQLite event rows by indexed `e` / `a` filters for assertion
+    candidates;
+  - loads lifecycle rows through the existing `target` index for each candidate;
+  - evaluates bitemporal visibility with `@metacrdt/core.visible` over the
+    candidate plus its targeted lifecycle events.
+- Cloudflare fake SQLite support now tracks entity/attribute/target/full event
+  scans, and tests prove lifecycle retractions are honored without a full
+  event-table scan for bounded historical Datalog patterns.
+
+### Non-Goals
+
+- Do not claim complete historical SQL query-provider parity or a full SQL query
+  planner/conformance suite yet. Unbounded patterns can still require broad
+  event scans, and this slice does not add value-encoded SQL indexes.
+- Do not change current projection query semantics; `queryCurrent` and related
+  current methods still use the projection-backed provider.
+- Do not implement flow execution/resume or live-query fanout.
+- Do not touch root `convex/`.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/runtime` passes.
+- `npm run build --workspace @metacrdt/runtime` refreshes the local runtime
+  package output used by Cloudflare.
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with coverage for indexed
+  historical Datalog scans and lifecycle visibility.
 
 ---
 

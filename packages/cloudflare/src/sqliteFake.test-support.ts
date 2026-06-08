@@ -189,6 +189,9 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
   projectionDeleteAllCount = 0;
   projectionDeleteMatchingCount = 0;
   eventFullScanCount = 0;
+  eventEntityScanCount = 0;
+  eventAttributeScanCount = 0;
+  eventEntityAttributeScanCount = 0;
   eventTargetScanCount = 0;
 
   exec(query: string, ...bindings: readonly unknown[]): DurableObjectSqlCursorLike {
@@ -282,6 +285,7 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
       const target = stringBinding(bindings[2], "event target");
       rows = rows.filter((row) => row.e === e && row.a === a && row.target === target);
     } else if (sql.includes("where e = ? and a = ?")) {
+      this.eventEntityAttributeScanCount += 1;
       const e = stringBinding(bindings[0], "event e");
       const a = stringBinding(bindings[1], "event a");
       rows = rows.filter((row) => row.e === e && row.a === a);
@@ -296,9 +300,11 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
       const target = stringBinding(bindings[1], "event target");
       rows = rows.filter((row) => row.a === a && row.target === target);
     } else if (sql.includes("where e = ?")) {
+      this.eventEntityScanCount += 1;
       const e = stringBinding(bindings[0], "event e");
       rows = rows.filter((row) => row.e === e);
     } else if (sql.includes("where a = ?")) {
+      this.eventAttributeScanCount += 1;
       const a = stringBinding(bindings[0], "event a");
       rows = rows.filter((row) => row.a === a);
     } else if (sql.includes("where target = ?")) {
