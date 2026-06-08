@@ -212,12 +212,18 @@ explicit `rebuildCurrent` remains the full recovery path. Goal 122 adds
 target-indexed lifecycle lookup to the runtime `EventStore` contract and
 Cloudflare/Node SQL event tables, then uses it so Cloudflare DO SQLite append /
 lifecycle current-coordinate reconcile folds only the touched coordinate's
-asserts plus lifecycle events that target those asserts. The next active goal
+asserts plus lifecycle events that target those asserts. Goal 123 adds the
+first Cloudflare Phase D operational seed: DO SQLite collection capability rows
+with caller-provided tokens and `issueCollection` / `collectionByToken` /
+`listCollections` / `submitCollection` on the current facade, persisting
+submitted payload/status while leaving field-to-fact lowering, collection ticks,
+flow/DAG rows, alarm multiplexing, live fanout, and historical SQL-indexed query
+optimization as remaining parity work. The next active goal
 should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite historical SQL-indexed-query/operational parity
-(collection/flow, alarms, live fanout),
+(field-to-fact collection submission, flow/DAG rows, alarms, live fanout),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9432,6 +9438,56 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 123 — Cloudflare DO SQLite Collection Capability Seed
+
+**Status:** shipped.
+
+**Objective:** start Cloudflare Phase D with the first operational collection
+capability surface over Durable Object SQLite, without claiming full
+collection/flow parity.
+
+### What Shipped
+
+- Added `DurableObjectSqliteCollectionStore` and a DO SQLite `collections`
+  table:
+  - `token` primary key;
+  - `subject`, `form`, `status`;
+  - `issued_at`, `expires_at`, `submitted_at`;
+  - `data_json`;
+  - optional `run_id`, `step_id`, and `scope`;
+  - indexes by subject, status, and expiry.
+- Wired the collection store into `createDurableObjectSqliteRuntime`.
+- Added collection methods to `createDurableObjectSqliteCurrentSurface`:
+  - `issueCollection`;
+  - `collectionByToken`;
+  - `listCollections`;
+  - `submitCollection`.
+- Kept token generation deterministic by requiring caller-provided tokens; no
+  `Math.random()` and no EventStore `seq` consumption for operational token ids.
+- `submitCollection` persists submitted payload/status and intentionally rejects
+  already-submitted or expired tokens. Late submissions mark the token
+  `expired`.
+- Extended the Cloudflare SQLite fake/test support for the new table and SQL
+  statement families.
+
+### Non-Goals
+
+- Do not claim full collection/flow parity.
+- Do not lower submitted fields into protocol facts yet; field-to-fact lowering
+  through the existing append/reconcile path is the next collection slice.
+- Do not add collection ticks/reminders, `flowDagRuns`, `flowDagEvents`, DO alarm
+  multiplexing, live-query fanout, or historical SQL-indexed query-provider
+  parity in this slice.
+- Do not touch root `convex/`.
+
+### Verification
+
+- `npm test --workspace @metacrdt/cloudflare` passes, now with collection tests
+  proving issue/read/list/submit behavior plus submitted/expired-token handling.
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
 
 ---
 

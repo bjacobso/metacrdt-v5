@@ -32,7 +32,12 @@ import {
 } from "@metacrdt/runtime";
 import { Data, Effect, Layer } from "effect";
 import * as Schema from "effect/Schema";
-import type { DurableObjectSqliteRuntime } from "./durableObjectSqlite.js";
+import type {
+  DurableObjectSqliteCollection,
+  DurableObjectSqliteCollectionStatus,
+  DurableObjectSqliteCollectionStore,
+  DurableObjectSqliteRuntime,
+} from "./durableObjectSqlite.js";
 
 export class DurableObjectSqliteCurrentSurfaceError extends Data.TaggedError(
   "DurableObjectSqliteCurrentSurfaceError",
@@ -79,6 +84,43 @@ export const DurableObjectSqliteRebuildCurrentArgsSchema = Schema.Struct({
   coord: DurableObjectSqliteCoordSchema,
 });
 
+export const DurableObjectSqliteCollectionStatusSchema = Schema.Literal(
+  "issued",
+  "submitted",
+  "expired",
+);
+
+export const DurableObjectSqliteIssueCollectionArgsSchema = Schema.Struct({
+  token: Schema.String,
+  subject: Schema.String,
+  form: Schema.String,
+  issuedAt: Schema.optionalWith(Schema.Number, { exact: true }),
+  expiresAt: Schema.optionalWith(Schema.Union(Schema.Number, Schema.Null), {
+    exact: true,
+  }),
+  runId: Schema.optionalWith(Schema.String, { exact: true }),
+  stepId: Schema.optionalWith(Schema.String, { exact: true }),
+  scope: Schema.optionalWith(Schema.String, { exact: true }),
+});
+
+export const DurableObjectSqliteCollectionByTokenArgsSchema = Schema.Struct({
+  token: Schema.String,
+});
+
+export const DurableObjectSqliteListCollectionsArgsSchema = Schema.Struct({
+  subject: Schema.optionalWith(Schema.String, { exact: true }),
+  status: Schema.optionalWith(DurableObjectSqliteCollectionStatusSchema, {
+    exact: true,
+  }),
+  limit: Schema.optionalWith(Schema.Number, { exact: true }),
+});
+
+export const DurableObjectSqliteSubmitCollectionArgsSchema = Schema.Struct({
+  token: Schema.String,
+  submittedAt: Schema.optionalWith(Schema.Number, { exact: true }),
+  data: Schema.optionalWith(Schema.Any, { exact: true }),
+});
+
 export const DurableObjectSqliteAppendAssertArgsSchema = Schema.Struct({
   e: Schema.String,
   a: Schema.String,
@@ -120,6 +162,14 @@ export type DurableObjectSqliteCurrentEntitiesArgs =
   typeof DurableObjectSqliteCurrentEntitiesArgsSchema.Type;
 export type DurableObjectSqliteRebuildCurrentArgs =
   typeof DurableObjectSqliteRebuildCurrentArgsSchema.Type;
+export type DurableObjectSqliteIssueCollectionArgs =
+  typeof DurableObjectSqliteIssueCollectionArgsSchema.Type;
+export type DurableObjectSqliteCollectionByTokenArgs =
+  typeof DurableObjectSqliteCollectionByTokenArgsSchema.Type;
+export type DurableObjectSqliteListCollectionsArgs =
+  typeof DurableObjectSqliteListCollectionsArgsSchema.Type;
+export type DurableObjectSqliteSubmitCollectionArgs =
+  typeof DurableObjectSqliteSubmitCollectionArgsSchema.Type;
 export type DurableObjectSqliteAppendAssertArgs =
   typeof DurableObjectSqliteAppendAssertArgsSchema.Type;
 export type DurableObjectSqliteAppendLifecycleArgs =
@@ -187,6 +237,18 @@ export type DurableObjectSqliteCurrentSurface = {
   rebuildCurrent(
     args?: DurableObjectSqliteRebuildCurrentArgs,
   ): Promise<DurableObjectSqliteRebuildCurrentResult>;
+  issueCollection(
+    args: DurableObjectSqliteIssueCollectionArgs,
+  ): Promise<DurableObjectSqliteCollection>;
+  collectionByToken(
+    args: DurableObjectSqliteCollectionByTokenArgs,
+  ): Promise<DurableObjectSqliteCollection | undefined>;
+  listCollections(
+    args?: DurableObjectSqliteListCollectionsArgs,
+  ): Promise<DurableObjectSqliteCollection[]>;
+  submitCollection(
+    args: DurableObjectSqliteSubmitCollectionArgs,
+  ): Promise<DurableObjectSqliteCollection>;
   listCurrent(
     args?: DurableObjectSqliteCurrentFilter,
   ): Promise<ProjectionRow[]>;
@@ -470,6 +532,108 @@ export function listDurableObjectSqliteEventsEffect(
       ...(decoded.target === undefined ? {} : { target: decoded.target }),
     });
     return sortEvents(events).slice(0, limit(decoded.limit, 100, 1000));
+  });
+}
+
+export function issueDurableObjectSqliteCollectionEffect(
+  collections: DurableObjectSqliteCollectionStore,
+  args: DurableObjectSqliteIssueCollectionArgs,
+  defaultIssuedAt: number,
+): Effect.Effect<
+  DurableObjectSqliteCollection,
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "issueCollection",
+      DurableObjectSqliteIssueCollectionArgsSchema,
+      args,
+    );
+    return yield* Effect.tryPromise({
+      try: () =>
+        collections.issue({
+          token: decoded.token,
+          subject: decoded.subject,
+          form: decoded.form,
+          issuedAt: decoded.issuedAt ?? defaultIssuedAt,
+          expiresAt: decoded.expiresAt,
+          runId: decoded.runId,
+          stepId: decoded.stepId,
+          scope: decoded.scope,
+        }),
+      catch: (cause) => surfaceError("issueCollection", cause),
+    });
+  });
+}
+
+export function getDurableObjectSqliteCollectionByTokenEffect(
+  collections: DurableObjectSqliteCollectionStore,
+  args: DurableObjectSqliteCollectionByTokenArgs,
+): Effect.Effect<
+  DurableObjectSqliteCollection | undefined,
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "collectionByToken",
+      DurableObjectSqliteCollectionByTokenArgsSchema,
+      args,
+    );
+    return yield* Effect.tryPromise({
+      try: () => collections.get(decoded.token),
+      catch: (cause) => surfaceError("collectionByToken", cause),
+    });
+  });
+}
+
+export function listDurableObjectSqliteCollectionsEffect(
+  collections: DurableObjectSqliteCollectionStore,
+  args: DurableObjectSqliteListCollectionsArgs = {},
+): Effect.Effect<
+  DurableObjectSqliteCollection[],
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "listCollections",
+      DurableObjectSqliteListCollectionsArgsSchema,
+      args,
+    );
+    return yield* Effect.tryPromise({
+      try: () =>
+        collections.list({
+          subject: decoded.subject,
+          status: decoded.status as DurableObjectSqliteCollectionStatus | undefined,
+          limit: limit(decoded.limit, 100, 1000),
+        }),
+      catch: (cause) => surfaceError("listCollections", cause),
+    });
+  });
+}
+
+export function submitDurableObjectSqliteCollectionEffect(
+  collections: DurableObjectSqliteCollectionStore,
+  args: DurableObjectSqliteSubmitCollectionArgs,
+  defaultSubmittedAt: number,
+): Effect.Effect<
+  DurableObjectSqliteCollection,
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "submitCollection",
+      DurableObjectSqliteSubmitCollectionArgsSchema,
+      args,
+    );
+    return yield* Effect.tryPromise({
+      try: () =>
+        collections.submit({
+          token: decoded.token,
+          submittedAt: decoded.submittedAt ?? defaultSubmittedAt,
+          data: decoded.data,
+        }),
+      catch: (cause) => surfaceError("submitCollection", cause),
+    });
   });
 }
 
@@ -757,6 +921,8 @@ export function createDurableObjectSqliteCurrentSurface(
         never
       >,
     );
+  const runCollection = <A, E>(effect: Effect.Effect<A, E, never>) =>
+    Effect.runPromise(effect);
   return {
     appendAssert: (args) =>
       run(
@@ -793,6 +959,30 @@ export function createDurableObjectSqliteCurrentSurface(
         rebuildDurableObjectSqliteCurrentEffect(
           args ?? { coord: coord() },
           options.cardinalityOf,
+        ),
+      ),
+    issueCollection: (args) =>
+      runCollection(
+        issueDurableObjectSqliteCollectionEffect(
+          runtime.collections,
+          args,
+          coord().txTime,
+        ),
+      ),
+    collectionByToken: (args) =>
+      runCollection(
+        getDurableObjectSqliteCollectionByTokenEffect(runtime.collections, args),
+      ),
+    listCollections: (args = {}) =>
+      runCollection(
+        listDurableObjectSqliteCollectionsEffect(runtime.collections, args),
+      ),
+    submitCollection: (args) =>
+      runCollection(
+        submitDurableObjectSqliteCollectionEffect(
+          runtime.collections,
+          args,
+          coord().txTime,
         ),
       ),
     listCurrent: (args = {}) => run(listDurableObjectSqliteCurrentEffect(args)),

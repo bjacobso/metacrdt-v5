@@ -3,16 +3,17 @@
 **Status:** Active target plan. Phase A is shipped and Phase C has started:
 `@metacrdt/cloudflare` now has a structural Durable Object SQLite runtime
 adapter over `ctx.storage.sql.exec(...)`, with EventStore / ProjectionStore /
-HLC / seq services, Layer-backed conformance, and the first
+HLC / seq services, collection capability rows, Layer-backed conformance, and the first
 component-equivalent log/current/query surface (`appendAssert` /
 `appendLifecycle` helpers with scoped current-coordinate projection reconcile,
 target-indexed lifecycle lookup, `getEvent`, `listEvents`,
 EventStore-backed `query` / `page` / `aggregate` / `derivedRows`,
 projection-backed `queryCurrent` / `pageCurrent` / `aggregateCurrent` /
 `derivedRowsCurrent`, `rebuildCurrent`, `listCurrent`, `getCurrentEntity`,
-`listCurrentEntities`, and deterministic projection change summaries for touched
+`listCurrentEntities`, collection `issueCollection` / `collectionByToken` /
+`listCollections` / `submitCollection`, and deterministic projection change summaries for touched
 `(e, a)` coordinates). Full historical SQL-indexed query optimization and
-operational parity are still ahead.
+full operational flow/DAG/alarm parity are still ahead.
 
 **Scope:** Grow `@metacrdt/cloudflare` from a sync-plane shell into a full
 MetaCRDT target at parity with the `@metacrdt/convex` component — an indexed,
@@ -43,9 +44,12 @@ reads (`queryCurrent`, `pageCurrent`, `aggregateCurrent`,
 SQLite projection rows, with rebuild results reporting changed current
 projection coordinates and before/after event ids; append/lifecycle writes now
 replace only the touched current projection coordinate and fold only matching
-assertions plus lifecycle events found by target id. It still has no historical
-SQL-optimized indexed triple queries, no live invalidation fanout, and none of
-the operational (collection/flow) surface.
+assertions plus lifecycle events found by target id. It now also has the first
+operational collection capability rows over SQLite: deterministic caller-provided
+tokens can be issued, read, listed, and submitted with stored payload/status. It
+still has no historical SQL-optimized indexed triple queries, no live
+invalidation fanout, no field-to-fact lowering for submitted collection data, no
+flow/DAG run surface, and no DO alarm multiplexing.
 
 This doc defines what it takes to bring Cloudflare to parity, in what order, and
 which decisions must be settled first — and it makes **live frontend queries an
@@ -106,15 +110,16 @@ function surface — backed by Durable Object SQLite instead of the Convex DB.
 | `DurableObjectClock` / `DurableObjectSequencer` | persisted HLC + per-replica `seq` |
 | `DurableObjectSqliteEventStore` | SQLite-backed event table over `ctx.storage.sql.exec(...)`; indexed by entity, attribute, and lifecycle target |
 | `DurableObjectSqliteProjectionStore` | SQLite-backed materialized projection table; indexed by entity, attribute, and source event |
+| `DurableObjectSqliteCollectionStore` | SQLite-backed collection capability rows; indexed by subject, status, and expiry |
 | `DurableObjectSqliteClock` / `DurableObjectSqliteSequencer` | SQLite-backed HLC + per-replica `seq` metadata |
-| `createDurableObjectSqliteCurrentSurface` | First component-equivalent log/current/query facade: append helpers with scoped current-coordinate projection reconcile, get/list events, EventStore-backed bitemporal Datalog reads, projection-backed current Datalog reads, rebuild with changed `(e, a)` summaries, list current rows, read current entity, and list typed current entities |
+| `createDurableObjectSqliteCurrentSurface` | First component-equivalent log/current/query/collection facade: append helpers with scoped current-coordinate projection reconcile, get/list events, EventStore-backed bitemporal Datalog reads, projection-backed current Datalog reads, rebuild with changed `(e, a)` summaries, list current rows, read current entity, list typed current entities, and issue/read/list/submit collection tokens |
 | `DurableObjectWebSocketRelay` | version-vector hello/delta sync + event fan-out |
 | `MetaCrdtRelayDurableObject` / `relayWorker` | Worker/DO example shell |
 
 This is now the sync plane plus a SQL storage substrate. The KV store still
 linearly loads ids and filters in memory; the SQLite store adds targeted event
 and projection indexes, including lifecycle `target` lookup, plus a first
-current-state read facade. It is not yet a
+current-state and collection-token facade. It is not yet a
 full queryable component-equivalent bitemporal triple store.
 
 ---
@@ -124,9 +129,10 @@ full queryable component-equivalent bitemporal triple store.
 Cloudflare can already **converge and persist an event log**, expose protocol
 event reads, run EventStore-backed bitemporal Datalog reads, run
 projection-backed current Datalog reads over SQLite projection rows, rebuild
-SQLite-backed current projection rows, and serve current entity/list reads; it
-cannot yet expose the full historical SQL-indexed query provider or the full
-**operational collection/flow** surface.
+SQLite-backed current projection rows, serve current entity/list reads, and
+persist simple collection capability rows; it cannot yet expose the full
+historical SQL-indexed query provider or the full **operational flow/DAG/alarm**
+surface.
 
 ---
 
@@ -200,7 +206,8 @@ lifecycle events discovered through the SQLite `target` index. Explicit
 
 **Still ahead for parity:** richer append function surface, SQL-indexed query
 provider optimization/conformance for historical bitemporal queries,
-live invalidation fanout, and the collection/flow surface.
+live invalidation fanout, field-to-fact lowering for submitted collection data,
+and the full flow/DAG/alarm surface.
 
 ### Phase D — Operational surface + alarms
 
@@ -209,6 +216,19 @@ functions. Map **Convex scheduler → Durable Object `setAlarm()`**. Caveat: a D
 has a single alarm, but the operational layer has reminder + escalation + expiry
 + flow-wait timers — so introduce a `timers` table and set
 `next alarm = MIN(fire_at)`, re-arming on each wake.
+
+**Shipped seed:** Cloudflare DO SQLite now owns a `collections` table with
+deterministic caller-provided tokens, `subject`, `form`, `status`
+(`issued` / `submitted` / `expired`), issue/expiry/submission timestamps,
+submitted payload JSON, and optional `runId` / `stepId` / `scope`. The current
+facade exposes `issueCollection`, `collectionByToken`, `listCollections`, and
+`submitCollection`. `submitCollection` persists submitted payload/status and
+intentionally rejects already-submitted or expired tokens, marking late tokens as
+`expired`.
+
+**Still ahead for Phase D parity:** submitted field-to-fact lowering through the
+existing append/reconcile path, collection ticking/reminders, DAG run rows,
+timer multiplexing over DO alarms, and any WebSocket live-query fanout.
 
 ### Phase E — Sharding + real multi-replica sync
 
@@ -295,9 +315,8 @@ keeps it converged.
 The Phase B adapters (~600–800 LOC) get **shared, not rewritten**. The
 Cloudflare-specific work is comparable to the existing Convex component: the
 runtime-service SQLite seed and first log/current/query facade are now present;
-the remaining work is a richer SQL schema + migration, optimized SQL-indexed
-query-provider parity, the operational surface, and the alarm-multiplexing
-layer.
+the remaining work is optimized SQL-indexed query-provider parity, field-to-fact
+collection submission, flow/DAG rows, and the alarm-multiplexing layer.
 Roughly 2–4 focused sessions remain, gated on shared fold/reconcile reuse. The
 live-query stretch goal is a separate later increment on top.
 
@@ -310,7 +329,8 @@ live-query stretch goal is a separate later increment on top.
 - Projections are produced by the **shared** core fold; cardinality-one uses the
   **shared** `≺`-reconcile.
 - A rebuild from `fact_events` reproduces the live projection.
-- The collection/flow surface runs with DO alarms.
+- Collection tokens can be issued, read, listed, and submitted over DO SQLite.
+- The remaining collection/flow surface runs with DO alarms.
 - Cross-DO writes converge through the existing relay.
 - A convergence test proves a Cloudflare replica and a Convex/memory replica fold
   the same event set to the same projection.

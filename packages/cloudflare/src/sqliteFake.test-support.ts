@@ -21,6 +21,20 @@ type StoredProjectionRow = {
   row_json: string;
 };
 
+type StoredCollection = {
+  token: string;
+  subject: string;
+  form: string;
+  status: "issued" | "submitted" | "expired";
+  issued_at: number;
+  expires_at: number | null;
+  submitted_at: number | null;
+  data_json: string | null;
+  run_id: string | null;
+  step_id: string | null;
+  scope: string | null;
+};
+
 function cursor(rows: unknown[] = []): DurableObjectSqlCursorLike {
   return {
     toArray: () => rows,
@@ -46,6 +60,28 @@ function nullableStringBinding(value: unknown, name: string): string | null {
   return stringBinding(value, name);
 }
 
+function numberBinding(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`expected number binding for ${name}`);
+  }
+  return value;
+}
+
+function nullableNumberBinding(value: unknown, name: string): number | null {
+  if (value === null) return null;
+  return numberBinding(value, name);
+}
+
+function collectionStatusBinding(
+  value: unknown,
+  name: string,
+): StoredCollection["status"] {
+  if (value === "issued" || value === "submitted" || value === "expired") {
+    return value;
+  }
+  throw new Error(`expected collection status binding for ${name}`);
+}
+
 /**
  * Narrow fake for the structural Cloudflare DO SQLite API. It supports only the
  * exact statement families emitted by `durableObjectSqlite.ts`, which keeps tests
@@ -54,6 +90,7 @@ function nullableStringBinding(value: unknown, name: string): string | null {
 export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike {
   readonly events = new Map<string, StoredEvent>();
   readonly projection = new Map<string, StoredProjectionRow>();
+  readonly collections = new Map<string, StoredCollection>();
   readonly meta = new Map<string, string>();
   projectionDeleteAllCount = 0;
   projectionDeleteMatchingCount = 0;
@@ -66,6 +103,7 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
       return cursor();
     }
 
+    if (sql.includes("_collections")) return this.execCollections(sql, bindings);
     if (sql.includes("_events")) return this.execEvents(sql, bindings);
     if (sql.includes("_projection")) return this.execProjection(sql, bindings);
     if (sql.includes("_meta")) return this.execMeta(sql, bindings);
@@ -225,6 +263,108 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
       rows
         .sort((a, b) => a.id.localeCompare(b.id))
         .map((row) => ({ row_json: row.row_json })),
+    );
+  }
+
+  private execCollections(
+    sql: string,
+    bindings: readonly unknown[],
+  ): DurableObjectSqlCursorLike {
+    if (sql.startsWith("insert into")) {
+      const [
+        tokenRaw,
+        subjectRaw,
+        formRaw,
+        statusRaw,
+        issuedAtRaw,
+        expiresAtRaw,
+        submittedAtRaw,
+        dataJsonRaw,
+        runIdRaw,
+        stepIdRaw,
+        scopeRaw,
+      ] = bindings;
+      const token = stringBinding(tokenRaw, "collection token");
+      if (this.collections.has(token)) {
+        throw new Error(`collection token already exists: ${token}`);
+      }
+      this.collections.set(token, {
+        token,
+        subject: stringBinding(subjectRaw, "collection subject"),
+        form: stringBinding(formRaw, "collection form"),
+        status: collectionStatusBinding(statusRaw, "collection status"),
+        issued_at: numberBinding(issuedAtRaw, "collection issued_at"),
+        expires_at: nullableNumberBinding(expiresAtRaw, "collection expires_at"),
+        submitted_at: nullableNumberBinding(
+          submittedAtRaw,
+          "collection submitted_at",
+        ),
+        data_json: nullableStringBinding(dataJsonRaw, "collection data_json"),
+        run_id: nullableStringBinding(runIdRaw, "collection run_id"),
+        step_id: nullableStringBinding(stepIdRaw, "collection step_id"),
+        scope: nullableStringBinding(scopeRaw, "collection scope"),
+      });
+      return cursor();
+    }
+
+    if (sql.startsWith("update")) {
+      if (sql.includes("set status = ?, submitted_at = ?, data_json = ?")) {
+        const [statusRaw, submittedAtRaw, dataJsonRaw, tokenRaw] = bindings;
+        const token = stringBinding(tokenRaw, "collection token");
+        const existing = this.collections.get(token);
+        if (existing) {
+          this.collections.set(token, {
+            ...existing,
+            status: collectionStatusBinding(statusRaw, "collection status"),
+            submitted_at: numberBinding(
+              submittedAtRaw,
+              "collection submitted_at",
+            ),
+            data_json: nullableStringBinding(
+              dataJsonRaw,
+              "collection data_json",
+            ),
+          });
+        }
+        return cursor();
+      }
+
+      if (sql.includes("set status = ? where token = ?")) {
+        const [statusRaw, tokenRaw] = bindings;
+        const token = stringBinding(tokenRaw, "collection token");
+        const existing = this.collections.get(token);
+        if (existing) {
+          this.collections.set(token, {
+            ...existing,
+            status: collectionStatusBinding(statusRaw, "collection status"),
+          });
+        }
+        return cursor();
+      }
+    }
+
+    let rows = [...this.collections.values()];
+    if (sql.includes("where token = ?")) {
+      rows = rows.filter(
+        (row) => row.token === stringBinding(bindings[0], "collection token"),
+      );
+    } else if (sql.includes("where subject = ? and status = ?")) {
+      const subject = stringBinding(bindings[0], "collection subject");
+      const status = collectionStatusBinding(bindings[1], "collection status");
+      rows = rows.filter((row) => row.subject === subject && row.status === status);
+    } else if (sql.includes("where subject = ?")) {
+      const subject = stringBinding(bindings[0], "collection subject");
+      rows = rows.filter((row) => row.subject === subject);
+    } else if (sql.includes("where status = ?")) {
+      const status = collectionStatusBinding(bindings[0], "collection status");
+      rows = rows.filter((row) => row.status === status);
+    }
+
+    return cursor(
+      rows.sort((a, b) => {
+        const issued = a.issued_at - b.issued_at;
+        return issued !== 0 ? issued : a.token.localeCompare(b.token);
+      }),
     );
   }
 

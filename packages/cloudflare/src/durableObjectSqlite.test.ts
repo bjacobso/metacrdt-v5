@@ -501,4 +501,112 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
     expect(sql.projectionDeleteAllCount).toBe(0);
     expect(sql.projectionDeleteMatchingCount).toBeGreaterThan(0);
   });
+
+  test("current surface persists collection capabilities over SQLite rows", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:collections",
+      wall: () => 600,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const issued = await surface.issueCollection({
+      token: "collection:worker:maria:onboard",
+      subject: "worker:maria",
+      form: "forms:onboarding",
+      expiresAt: 12_000,
+      runId: "run:1",
+      stepId: "step:collect",
+      scope: "tenant:demo",
+    });
+    expect(issued).toEqual({
+      token: "collection:worker:maria:onboard",
+      subject: "worker:maria",
+      form: "forms:onboarding",
+      status: "issued",
+      issuedAt: coord.txTime,
+      expiresAt: 12_000,
+      submittedAt: null,
+      data: undefined,
+      runId: "run:1",
+      stepId: "step:collect",
+      scope: "tenant:demo",
+    });
+
+    await expect(
+      surface.collectionByToken({ token: "collection:worker:maria:onboard" }),
+    ).resolves.toEqual(issued);
+    await expect(
+      surface.listCollections({
+        subject: "worker:maria",
+        status: "issued",
+      }),
+    ).resolves.toEqual([issued]);
+
+    await surface.issueCollection({
+      token: "collection:worker:ada:onboard",
+      subject: "worker:ada",
+      form: "forms:onboarding",
+      issuedAt: 10_500,
+    });
+    await expect(
+      surface.listCollections({ status: "issued" }),
+    ).resolves.toHaveLength(2);
+
+    const submitted = await surface.submitCollection({
+      token: "collection:worker:maria:onboard",
+      submittedAt: 11_000,
+      data: { name: "Maria", acceptedPolicy: true },
+    });
+    expect(submitted).toEqual({
+      token: "collection:worker:maria:onboard",
+      subject: "worker:maria",
+      form: "forms:onboarding",
+      status: "submitted",
+      issuedAt: coord.txTime,
+      expiresAt: 12_000,
+      submittedAt: 11_000,
+      data: { name: "Maria", acceptedPolicy: true },
+      runId: "run:1",
+      stepId: "step:collect",
+      scope: "tenant:demo",
+    });
+    await expect(
+      surface.listCollections({ status: "submitted" }),
+    ).resolves.toEqual([submitted]);
+    await expect(
+      surface.submitCollection({
+        token: "collection:worker:maria:onboard",
+        submittedAt: 11_500,
+        data: { duplicate: true },
+      }),
+    ).rejects.toThrow(/already submitted/);
+
+    const expired = await surface.issueCollection({
+      token: "collection:worker:expired:onboard",
+      subject: "worker:expired",
+      form: "forms:onboarding",
+      expiresAt: 9_999,
+    });
+    expect(expired.status).toBe("issued");
+    await expect(
+      surface.submitCollection({
+        token: "collection:worker:expired:onboard",
+        submittedAt: 10_000,
+        data: { late: true },
+      }),
+    ).rejects.toThrow(/expired/);
+    await expect(
+      surface.collectionByToken({ token: "collection:worker:expired:onboard" }),
+    ).resolves.toMatchObject({
+      token: "collection:worker:expired:onboard",
+      status: "expired",
+      submittedAt: null,
+      data: undefined,
+    });
+  });
 });

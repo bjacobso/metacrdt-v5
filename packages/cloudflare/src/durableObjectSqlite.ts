@@ -56,8 +56,51 @@ export type DurableObjectSqliteRuntimeOptions = {
 export type DurableObjectSqliteRuntime = RuntimeServices & {
   store: DurableObjectSqliteEventStore;
   projection: DurableObjectSqliteProjectionStore;
+  collections: DurableObjectSqliteCollectionStore;
   clock: DurableObjectSqliteClock;
   sequencer: DurableObjectSqliteSequencer;
+};
+
+export type DurableObjectSqliteCollectionStatus =
+  | "issued"
+  | "submitted"
+  | "expired";
+
+export type DurableObjectSqliteCollection = {
+  readonly token: string;
+  readonly subject: string;
+  readonly form: string;
+  readonly status: DurableObjectSqliteCollectionStatus;
+  readonly issuedAt: number;
+  readonly expiresAt: number | null;
+  readonly submittedAt: number | null;
+  readonly data: unknown;
+  readonly runId?: string;
+  readonly stepId?: string;
+  readonly scope?: string;
+};
+
+export type DurableObjectSqliteIssueCollectionInput = {
+  readonly token: string;
+  readonly subject: string;
+  readonly form: string;
+  readonly issuedAt: number;
+  readonly expiresAt?: number | null;
+  readonly runId?: string;
+  readonly stepId?: string;
+  readonly scope?: string;
+};
+
+export type DurableObjectSqliteSubmitCollectionInput = {
+  readonly token: string;
+  readonly submittedAt: number;
+  readonly data?: unknown;
+};
+
+export type DurableObjectSqliteCollectionFilter = {
+  readonly subject?: string;
+  readonly status?: DurableObjectSqliteCollectionStatus;
+  readonly limit?: number;
 };
 
 type SqlPlan = {
@@ -66,6 +109,7 @@ type SqlPlan = {
     events: string;
     meta: string;
     projection: string;
+    collections: string;
   };
   indexes: {
     eventsByEntity: string;
@@ -74,6 +118,9 @@ type SqlPlan = {
     projectionByEntity: string;
     projectionByAttribute: string;
     projectionByEventId: string;
+    collectionsBySubject: string;
+    collectionsByStatus: string;
+    collectionsByExpiresAt: string;
   };
 };
 
@@ -91,6 +138,7 @@ function plan(prefix = "metacrdt"): SqlPlan {
       events: identifier(`${prefix}_events`),
       meta: identifier(`${prefix}_meta`),
       projection: identifier(`${prefix}_projection`),
+      collections: identifier(`${prefix}_collections`),
     },
     indexes: {
       eventsByEntity: identifier(`${prefix}_events_by_e`),
@@ -99,6 +147,9 @@ function plan(prefix = "metacrdt"): SqlPlan {
       projectionByEntity: identifier(`${prefix}_projection_by_e`),
       projectionByAttribute: identifier(`${prefix}_projection_by_a`),
       projectionByEventId: identifier(`${prefix}_projection_by_event_id`),
+      collectionsBySubject: identifier(`${prefix}_collections_by_subject`),
+      collectionsByStatus: identifier(`${prefix}_collections_by_status`),
+      collectionsByExpiresAt: identifier(`${prefix}_collections_by_expires_at`),
     },
   };
 }
@@ -132,12 +183,82 @@ function decodeProjectionRow(row: unknown): ProjectionRow | undefined {
   return raw === undefined ? undefined : (JSON.parse(raw) as ProjectionRow);
 }
 
+function textColumn(row: unknown, key: string): string | undefined {
+  if (row === undefined || row === null || typeof row !== "object") {
+    return undefined;
+  }
+  const value = (row as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function numberColumn(row: unknown, key: string): number | null | undefined {
+  if (row === undefined || row === null || typeof row !== "object") {
+    return undefined;
+  }
+  const value = (row as Record<string, unknown>)[key];
+  if (value === null) return null;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function collectionStatus(
+  value: string | undefined,
+): DurableObjectSqliteCollectionStatus | undefined {
+  return value === "issued" || value === "submitted" || value === "expired"
+    ? value
+    : undefined;
+}
+
+function decodeCollection(
+  row: unknown,
+): DurableObjectSqliteCollection | undefined {
+  const token = textColumn(row, "token");
+  const subject = textColumn(row, "subject");
+  const form = textColumn(row, "form");
+  const status = collectionStatus(textColumn(row, "status"));
+  const issuedAt = numberColumn(row, "issued_at");
+  const expiresAt = numberColumn(row, "expires_at");
+  const submittedAt = numberColumn(row, "submitted_at");
+  if (
+    token === undefined ||
+    subject === undefined ||
+    form === undefined ||
+    status === undefined ||
+    issuedAt === undefined ||
+    issuedAt === null ||
+    expiresAt === undefined ||
+    submittedAt === undefined
+  ) {
+    return undefined;
+  }
+  const dataJson = textColumn(row, "data_json");
+  const runId = textColumn(row, "run_id");
+  const stepId = textColumn(row, "step_id");
+  const scope = textColumn(row, "scope");
+  return {
+    token,
+    subject,
+    form,
+    status,
+    issuedAt,
+    expiresAt,
+    submittedAt,
+    data: dataJson === undefined ? undefined : JSON.parse(dataJson),
+    ...(runId === undefined ? {} : { runId }),
+    ...(stepId === undefined ? {} : { stepId }),
+    ...(scope === undefined ? {} : { scope }),
+  };
+}
+
 function eventJson(event: Event): string {
   return JSON.stringify(event);
 }
 
 function projectionRowJson(row: ProjectionRow): string {
   return JSON.stringify(row);
+}
+
+function collectionDataJson(data: unknown): string | null {
+  return data === undefined ? null : JSON.stringify(data);
 }
 
 function clockKey(replicaId: string): string {
@@ -431,6 +552,156 @@ export class DurableObjectSqliteProjectionStore implements ProjectionStore {
   }
 }
 
+export class DurableObjectSqliteCollectionStore {
+  private readonly plan: SqlPlan;
+
+  constructor(
+    private readonly sql: DurableObjectSqlStorageLike,
+    tablePrefix = "metacrdt",
+  ) {
+    this.plan = plan(tablePrefix);
+  }
+
+  async initialize(): Promise<void> {
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS ${this.plan.tables.collections} (` +
+        "token TEXT PRIMARY KEY NOT NULL, " +
+        "subject TEXT NOT NULL, " +
+        "form TEXT NOT NULL, " +
+        "status TEXT NOT NULL CHECK (status IN ('issued', 'submitted', 'expired')), " +
+        "issued_at REAL NOT NULL, " +
+        "expires_at REAL NULL, " +
+        "submitted_at REAL NULL, " +
+        "data_json TEXT NULL, " +
+        "run_id TEXT NULL, " +
+        "step_id TEXT NULL, " +
+        "scope TEXT NULL" +
+        ")",
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.collectionsBySubject} ` +
+        `ON ${this.plan.tables.collections} (subject)`,
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.collectionsByStatus} ` +
+        `ON ${this.plan.tables.collections} (status)`,
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.collectionsByExpiresAt} ` +
+        `ON ${this.plan.tables.collections} (expires_at)`,
+    );
+  }
+
+  async issue(
+    input: DurableObjectSqliteIssueCollectionInput,
+  ): Promise<DurableObjectSqliteCollection> {
+    const existing = await this.get(input.token);
+    if (existing !== undefined) {
+      throw new Error(`collection token already exists: ${input.token}`);
+    }
+    this.sql.exec(
+      `INSERT INTO ${this.plan.tables.collections} (` +
+        "token, subject, form, status, issued_at, expires_at, submitted_at, " +
+        "data_json, run_id, step_id, scope" +
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      input.token,
+      input.subject,
+      input.form,
+      "issued",
+      input.issuedAt,
+      input.expiresAt ?? null,
+      null,
+      null,
+      input.runId ?? null,
+      input.stepId ?? null,
+      input.scope ?? null,
+    );
+    const row = await this.get(input.token);
+    if (row === undefined) {
+      throw new Error(`failed to issue collection token: ${input.token}`);
+    }
+    return row;
+  }
+
+  async get(token: string): Promise<DurableObjectSqliteCollection | undefined> {
+    return decodeCollection(
+      rows(
+        this.sql.exec(
+          `SELECT token, subject, form, status, issued_at, expires_at, submitted_at, data_json, run_id, step_id, scope ` +
+            `FROM ${this.plan.tables.collections} WHERE token = ?`,
+          token,
+        ),
+      )[0],
+    );
+  }
+
+  async list(
+    filter: DurableObjectSqliteCollectionFilter = {},
+  ): Promise<DurableObjectSqliteCollection[]> {
+    const clauses: string[] = [];
+    const bindings: unknown[] = [];
+    if (filter.subject !== undefined) {
+      clauses.push("subject = ?");
+      bindings.push(filter.subject);
+    }
+    if (filter.status !== undefined) {
+      clauses.push("status = ?");
+      bindings.push(filter.status);
+    }
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const rowsOut = rows(
+      this.sql.exec(
+        `SELECT token, subject, form, status, issued_at, expires_at, submitted_at, data_json, run_id, step_id, scope ` +
+          `FROM ${this.plan.tables.collections}${where} ORDER BY issued_at, token`,
+        ...bindings,
+      ),
+    )
+      .map(decodeCollection)
+      .filter((row): row is DurableObjectSqliteCollection => row !== undefined);
+    return rowsOut.slice(0, Math.max(1, Math.min(filter.limit ?? 100, 1000)));
+  }
+
+  async submit(
+    input: DurableObjectSqliteSubmitCollectionInput,
+  ): Promise<DurableObjectSqliteCollection> {
+    const existing = await this.get(input.token);
+    if (existing === undefined) {
+      throw new Error(`unknown collection token: ${input.token}`);
+    }
+    if (existing.status === "submitted") {
+      throw new Error(`collection token already submitted: ${input.token}`);
+    }
+    if (
+      existing.status === "expired" ||
+      (existing.expiresAt !== null && input.submittedAt >= existing.expiresAt)
+    ) {
+      await this.markExpired(input.token);
+      throw new Error(`collection token expired: ${input.token}`);
+    }
+    this.sql.exec(
+      `UPDATE ${this.plan.tables.collections} ` +
+        "SET status = ?, submitted_at = ?, data_json = ? WHERE token = ?",
+      "submitted",
+      input.submittedAt,
+      collectionDataJson(input.data),
+      input.token,
+    );
+    const row = await this.get(input.token);
+    if (row === undefined) {
+      throw new Error(`failed to submit collection token: ${input.token}`);
+    }
+    return row;
+  }
+
+  private async markExpired(token: string): Promise<void> {
+    this.sql.exec(
+      `UPDATE ${this.plan.tables.collections} SET status = ? WHERE token = ?`,
+      "expired",
+      token,
+    );
+  }
+}
+
 class DurableObjectSqliteMetaStore {
   private readonly plan: SqlPlan;
 
@@ -549,10 +820,15 @@ export async function createDurableObjectSqliteRuntime(
   const tablePrefix = options.tablePrefix ?? "metacrdt";
   const store = new DurableObjectSqliteEventStore(options.sql, tablePrefix);
   const projection = new DurableObjectSqliteProjectionStore(options.sql, tablePrefix);
+  const collections = new DurableObjectSqliteCollectionStore(
+    options.sql,
+    tablePrefix,
+  );
   const meta = new DurableObjectSqliteMetaStore(options.sql, tablePrefix);
   if (options.initialize ?? true) {
     await store.initialize();
     await projection.initialize();
+    await collections.initialize();
     await meta.initialize();
   }
   const capabilities = new Set<RuntimeCapability>(
@@ -571,6 +847,7 @@ export async function createDurableObjectSqliteRuntime(
     profile,
     store,
     projection,
+    collections,
     clock: await DurableObjectSqliteClock.create(
       meta,
       options.replicaId,

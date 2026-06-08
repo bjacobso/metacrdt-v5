@@ -65,7 +65,8 @@ On open hosts the adapter is a selectable dependency.
   `ctx.storage.sql.exec(...)`; it now also exposes a first SQLite log/current
   surface (append helpers with scoped current-coordinate projection reconcile,
   get/list events, rebuild with changed `(e, a)` summaries, current
-  rows/entities).
+  rows/entities) plus simple collection capability rows (`issueCollection`,
+  `collectionByToken`, `listCollections`, `submitCollection`).
   Growing to a full DO + SQLite bitemporal triple store remains the active target plan
   ([cloudflare-target.md](./cloudflare-target.md)).
 - `@metacrdt/local` — browser/local-first host with localStorage / IndexedDB /
@@ -136,7 +137,7 @@ On open hosts the adapter is a selectable dependency.
 | SQLite-wasm | `local` | done |
 | SQLite (server) | `node` | done (structural driver API + shared lifecycle plan) |
 | Postgres | `node` | done (structural `query(sql, params)` adapter + shared lifecycle plan) |
-| DO SQLite | `cloudflare` | started (runtime-service substrate + projection/persistence conformance + log/current/query surface, including projection-backed current Datalog reads; full operational parity planned in [cloudflare-target.md](./cloudflare-target.md)) |
+| DO SQLite | `cloudflare` | started (runtime-service substrate + projection/persistence conformance + log/current/query surface, including projection-backed current Datalog reads and simple collection capability rows; full operational flow/DAG/alarm parity planned in [cloudflare-target.md](./cloudflare-target.md)) |
 | Convex tables | `convex` | done (managed) |
 | FoundationDB | — | archive unless a real need appears |
 
