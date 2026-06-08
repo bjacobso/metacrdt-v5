@@ -236,6 +236,60 @@ describe("comparison predicates", () => {
     }
   });
 
+  test("rule materialization solves base facts from event log", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await t.mutation(api.rules.defineRule, {
+        name: "event_log_materializer_source",
+        where: [
+          ["?e", "type", "EventLogMaterializedWorker"],
+          ["?e", "status", "active"],
+        ],
+        emit: { e: "?e", a: "derived.materializedFromLog", v: true },
+        dependsOnAttributes: ["type", "status"],
+      });
+      await assert(t, "el:materialized:1", "type", "EventLogMaterializedWorker");
+      await assert(t, "el:materialized:1", "status", "active");
+
+      await t.run(async (ctx) => {
+        const rows = await ctx.db
+          .query("facts")
+          .withIndex("by_e", (q) => q.eq("e", "el:materialized:1"))
+          .collect();
+        for (const row of rows) {
+          await ctx.db.patch(row._id, { retractedAt: Date.now() });
+        }
+      });
+      await flush(t);
+
+      expect(await t.query(api.datalog.datalog, {
+        where: [["?e", "derived.materializedFromLog", true]],
+        select: ["?e"],
+      })).toEqual([{ e: "el:materialized:1" }]);
+      expect(await t.query(api.datalog.datalog, {
+        where: [
+          ["?e", "type", "EventLogMaterializedWorker"],
+          ["?e", "derived.materializedFromLog", true],
+        ],
+        select: ["?e"],
+      })).toEqual([]);
+      await t.run(async (ctx) => {
+        const rows = await ctx.db
+          .query("derivedFacts")
+          .withIndex("by_e_a", (q) =>
+            q.eq("e", "el:materialized:1").eq("a", "derived.materializedFromLog"),
+          )
+          .collect();
+        expect(rows).toHaveLength(1);
+        expect(rows[0].sourceFactIds).toBeDefined();
+        expect(rows[0].sourceFactIds!.length).toBeGreaterThan(0);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("== and != operate on values", async () => {
     const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await assert(t, "p:1", "role", "admin");

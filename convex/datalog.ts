@@ -1,13 +1,6 @@
 import { query } from "./_generated/server";
-import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { fromEvents, visibleAsserts, type Event } from "@metacrdt/core";
-import {
-  protocolEventFromRows,
-  type ConvexTransactionRow,
-  type ProtocolFactEventRow,
-} from "@metacrdt/convex";
 import {
   LIMITS,
   aggregateBindings,
@@ -17,12 +10,12 @@ import {
   runWhere,
   solveWhere,
   type Binding,
-  type PatternInput,
-  type Triple,
-  type TripleSource,
 } from "./lib/engine";
 import { valueKey } from "./lib/visibility";
-import { canReadAttribute } from "./lib/readAuth";
+import {
+  eventLogBaseWithDerivedTripleSource,
+  eventLogTripleSource,
+} from "./lib/eventLogTripleSource";
 
 // A clause is a [e, a, v] triple, a [term, op, term] comparison,
 // { compute: [op, ...args], as?: term } deterministic computed predicate,
@@ -30,191 +23,6 @@ import { canReadAttribute } from "./lib/readAuth";
 // so clauses are heterogeneous (array | object).
 const whereValidator = v.array(v.any());
 const emitValidator = v.object({ e: v.string(), a: v.string(), v: v.any() });
-
-function txForCore(tx: Doc<"transactions">): ConvexTransactionRow {
-  return {
-    _creationTime: tx._creationTime,
-    actorId: tx.actorId,
-    actorType: tx.actorType,
-    txTime: tx.txTime,
-    reason: tx.reason,
-  };
-}
-
-function rowForCore(row: Doc<"factEvents">): ProtocolFactEventRow {
-  return {
-    txTime: row.txTime,
-    eventId: row.eventId,
-    hlc: row.hlc,
-    replicaId: row.replicaId,
-    seq: row.seq,
-    targetEventId: row.targetEventId,
-    causalRefs: row.causalRefs,
-    kind: row.kind,
-    e: row.e,
-    a: row.a,
-    v: row.v,
-    validFrom: row.validFrom,
-    validTo: row.validTo,
-    reason: row.reason,
-  };
-}
-
-async function protocolEventsForRows(
-  ctx: Parameters<TripleSource>[0],
-  rows: Doc<"factEvents">[],
-): Promise<Event[]> {
-  const events: Event[] = [];
-  for (const row of rows) {
-    const tx = await ctx.db.get(row.txId);
-    if (tx === null) continue;
-    const ev = protocolEventFromRows(rowForCore(row), txForCore(tx));
-    if (ev !== null) events.push(ev);
-  }
-  return events;
-}
-
-async function fetchCandidateFactEvents(
-  ctx: Parameters<TripleSource>[0],
-  input: PatternInput,
-): Promise<Doc<"factEvents">[]> {
-  const { eConst, aConst } = input;
-  const n = LIMITS.maxClauseScan;
-  if (eConst !== undefined && aConst !== undefined) {
-    return await ctx.db
-      .query("factEvents")
-      .withIndex("by_e_a_tx", (q) =>
-        q.eq("e", String(eConst)).eq("a", String(aConst)),
-      )
-      .take(n);
-  }
-  if (aConst !== undefined) {
-    return await ctx.db
-      .query("factEvents")
-      .withIndex("by_a_tx", (q) => q.eq("a", String(aConst)))
-      .take(n);
-  }
-  if (eConst !== undefined) {
-    return await ctx.db
-      .query("factEvents")
-      .withIndex("by_e", (q) => q.eq("e", String(eConst)))
-      .take(n);
-  }
-  throw new Error(
-    "unbounded clause: each pattern must resolve its entity or attribute to a constant (directly or via an earlier join)",
-  );
-}
-
-const eventLogTripleSource: TripleSource = async (
-  ctx,
-  input,
-  coord,
-  readFilter,
-) => {
-  const rows = await fetchCandidateFactEvents(ctx, input);
-  const events = await protocolEventsForRows(ctx, rows);
-  const log = fromEvents(events);
-  const keys =
-    input.eConst !== undefined && input.aConst !== undefined
-      ? [[String(input.eConst), String(input.aConst)] as const]
-      : [...new Set(events.flatMap((ev) =>
-          ev.kind === "assert" && ev.e !== undefined && ev.a !== undefined
-            ? [`${ev.e}\u0000${ev.a}`]
-            : [],
-        ))].map((k) => k.split("\u0000") as [string, string]);
-
-  const out: Triple[] = [];
-  for (const [e, a] of keys) {
-    for (const ev of visibleAsserts(e, a, coord, log)) {
-      if (
-        input.vIsConst &&
-        valueKey(ev.v) !== valueKey(input.vConst)
-      ) {
-        continue;
-      }
-      if (
-        readFilter !== null &&
-        !(await canReadAttribute(ctx, readFilter.principal, ev.e!, ev.a!))
-      ) {
-        continue;
-      }
-      out.push({ e: ev.e!, a: ev.a!, v: ev.v, prov: [] });
-    }
-  }
-  return out;
-};
-
-async function derivedTriplesForInput(
-  ctx: Parameters<TripleSource>[0],
-  input: PatternInput,
-): Promise<Doc<"derivedFacts">[]> {
-  const { eConst, aConst, vConst, vIsConst } = input;
-  const n = LIMITS.maxClauseScan;
-  if (eConst !== undefined && aConst !== undefined) {
-    return await ctx.db
-      .query("derivedFacts")
-      .withIndex("by_e_a", (q) =>
-        q.eq("e", String(eConst)).eq("a", String(aConst)),
-      )
-      .take(n);
-  }
-  if (aConst !== undefined && vIsConst) {
-    return await ctx.db
-      .query("derivedFacts")
-      .withIndex("by_a_v", (q) => q.eq("a", String(aConst)).eq("v", vConst))
-      .take(n);
-  }
-  if (aConst !== undefined) {
-    return await ctx.db
-      .query("derivedFacts")
-      .withIndex("by_a", (q) => q.eq("a", String(aConst)))
-      .take(n);
-  }
-  if (eConst !== undefined) {
-    return await ctx.db
-      .query("derivedFacts")
-      .withIndex("by_e", (q) => q.eq("e", String(eConst)))
-      .take(n);
-  }
-  throw new Error(
-    "unbounded clause: each pattern must resolve its entity or attribute to a constant (directly or via an earlier join)",
-  );
-}
-
-const eventLogBaseWithDerivedTripleSource: TripleSource = async (
-  ctx,
-  input,
-  coord,
-  readFilter,
-) => {
-  const base = await eventLogTripleSource(ctx, input, coord, readFilter);
-  const derivedRows = await derivedTriplesForInput(ctx, input);
-  const derived: Triple[] = [];
-  for (const row of derivedRows) {
-    if (row.stale === true) continue;
-    if (row.validFrom > coord.validTime) continue;
-    if (row.validTo !== undefined && row.validTo <= coord.validTime) continue;
-    if (
-      input.vIsConst &&
-      valueKey(row.v) !== valueKey(input.vConst)
-    ) {
-      continue;
-    }
-    if (
-      readFilter !== null &&
-      !(await canReadAttribute(ctx, readFilter.principal, row.e, row.a))
-    ) {
-      continue;
-    }
-    derived.push({
-      e: row.e,
-      a: row.a,
-      v: row.v,
-      prov: row.sourceFactIds as Id<"facts">[],
-    });
-  }
-  return [...base, ...derived];
-};
 
 function resolveEmitTerm(term: unknown, binding: Binding): unknown {
   if (typeof term === "string" && term.startsWith("?")) {

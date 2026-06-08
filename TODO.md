@@ -68,9 +68,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `datalogPageFromEventLogWithDerived`, `aggregateFromEventLogWithDerived`, and
   `aggregatePageFromEventLogWithDerived`. `api.datalog.deriveFromEventLog` now
   computes read-only rule output directly from the event log for a supplied
-  `where` + `emit`.
-  Remaining: move production rule/materialization writes and derived provenance
-  onto direct event-log folds.
+  `where` + `emit`. Production non-closure Datalog rule materialization now solves
+  base facts through the shared event-log-base + derived source while preserving
+  `sourceFactIds` from assertion `factEvents.factId`.
+  Remaining: move closure materialization and production base Datalog reads away
+  from the hand-maintained `facts` projection; derived rows are still stored in
+  `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -328,6 +331,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 57 shipped:** non-closure rule materialization now solves rule bodies
+  through the shared event-log-base + materialized-derived triple source. Base
+  facts come from protocol-shaped `factEvents`; existing `derivedFacts` remain
+  available for rules that depend on prior materialized output.
+- [x] **Materializer projection-corruption proof.** Tests corrupt base `facts`
+  before the scheduled materializer runs; the rule still emits a derived row from
+  `factEvents`, preserves source fact id provenance, and production Datalog only
+  fails when it explicitly joins the corrupted base projection.
 - [x] **Goal 56 shipped:** `api.datalog.deriveFromEventLog` solves a rule body
   against protocol-shaped `factEvents` and resolves its `emit` shape into deduped
   derived triples without writing `derivedFacts`.

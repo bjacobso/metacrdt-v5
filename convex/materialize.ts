@@ -6,6 +6,7 @@ import { v } from "convex/values";
 import { isEntityLocalRule, solveWhere, LIMITS } from "./lib/engine";
 import { isVisible, valueKey } from "./lib/visibility";
 import { SolvedBinding } from "./lib/engine";
+import { eventLogBaseWithDerivedTripleSource } from "./lib/eventLogTripleSource";
 
 type ClosureSupport = {
   from: string;
@@ -161,7 +162,9 @@ export const recomputeRule = internalMutation({
 
     const now = Date.now();
     const coord = { txTime: now, validTime: now };
-    const solved = await solveWhere(ctx, (rule.where ?? []) as unknown[], coord);
+    const solved = await solveWhere(ctx, (rule.where ?? []) as unknown[], coord, {}, {
+      source: eventLogBaseWithDerivedTripleSource,
+    });
 
     // Clear all prior output for this rule, then re-emit.
     const prior = await ctx.db
@@ -229,6 +232,7 @@ async function recomputeRuleForEntityList(
       (rule.where ?? []) as unknown[],
       coord,
       { [entityVar]: e },
+      { source: eventLogBaseWithDerivedTripleSource },
     );
 
     // Replace just this entity's derived output for this rule.
@@ -570,10 +574,16 @@ async function affectedOutputEntitiesForFact(
   }
 
   const now = Date.now();
-  const solved = await solveWhere(ctx, (rule.where ?? []) as unknown[], {
-    txTime: now,
-    validTime: now,
-  });
+  const solved = await solveWhere(
+    ctx,
+    (rule.where ?? []) as unknown[],
+    {
+      txTime: now,
+      validTime: now,
+    },
+    {},
+    { source: eventLogBaseWithDerivedTripleSource },
+  );
   for (const s of solved) {
     const sources = s.sources as unknown as string[];
     if (!sources.includes(factKey)) continue;

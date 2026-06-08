@@ -191,6 +191,9 @@ Built today:
 - read-only rule-output proof query (`api.datalog.deriveFromEventLog`) that
   solves a rule body against protocol-shaped `factEvents` and resolves its
   `emit` shape into derived triples without writing `derivedFacts`
+- non-closure Datalog rule materialization solves base facts from
+  protocol-shaped `factEvents` while still writing the existing `derivedFacts`
+  projection for production reads
 - Datalog query engine with joins, comparisons, computed arithmetic/string
   predicates, negation, aggregation, cursor-paged result APIs, and materialized
   transitive closure

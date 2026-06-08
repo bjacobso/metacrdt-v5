@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 56 (read-only rule derivation from the event log)
+**Current goal:** Goal 57 (non-closure rule materialization solves from the event log)
 has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth, or
@@ -105,7 +105,11 @@ arguments.
   `factEvents` and resolves its `emit` shape into deduped derived triples without
   writing `derivedFacts`, proving simple rule output can be computed directly
   from the source log.
-- Convex backend tests are green: 143 tests at last verification.
+- Non-closure Datalog rule materialization now solves rule bodies through the
+  shared event-log-base + materialized-derived triple source. Base facts come
+  from protocol-shaped `factEvents`; existing `derivedFacts` remain available for
+  rules that depend on already-materialized output.
+- Convex backend tests are green: 144 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -392,11 +396,12 @@ arguments.
   Datalog/rules still include materialized `derivedFacts` through the projection
   path.
 - The `*FromEventLogWithDerived` Datalog proof APIs still depend on materialized
-  `derivedFacts`; rule/materialization output has not become a direct event-log
-  fold.
-- `deriveFromEventLog` is read-only and proof-oriented. Production
-  materialization still writes `derivedFacts` from projection-backed solving, and
-  derived provenance still uses `sourceFactIds`.
+  `derivedFacts`.
+- `deriveFromEventLog` is read-only and proof-oriented.
+- Production non-closure Datalog rule materialization now solves base facts from
+  protocol-shaped `factEvents`, but still writes the `derivedFacts` projection and
+  still represents provenance as projection `sourceFactIds`.
+- Closure materialization still reads the `facts` projection for base edges.
 - `@metacrdt/convex` now has adapter helpers, stateless protocol helpers, a
   component-owned protocol transaction/event log, and component-owned
   `facts`/`currentFacts` projections with opt-in cardinality-one reconciliation
@@ -5246,6 +5251,90 @@ TODO.md
 
 ---
 
+## Goal 57 — Non-Closure Rule Materialization Solves from the Event Log
+
+**Status:** shipped for non-closure Datalog rules in the Convex reference
+runtime.
+
+**Objective:** move production Datalog rule materialization off the base
+`facts` projection for positive base facts. The materializer still writes the
+`derivedFacts` projection for production reads, but the solve that decides what
+to emit now reads protocol-shaped `factEvents` for base facts.
+
+### Scope
+
+Backend:
+
+- `convex/lib/eventLogTripleSource.ts`
+  - shared event-log base triple source
+  - shared event-log-base + materialized-derived triple source
+  - source fact provenance carried from `factEvents.factId`
+- `convex/datalog.ts`
+  - consumes the shared source instead of a local copy
+- `convex/materialize.ts`
+  - `recomputeRule`
+  - `recomputeRuleForEntityList`
+  - `affectedOutputEntitiesForFact`
+
+Tests:
+
+- `convex/datalog.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+
+### Semantics
+
+- Non-closure Datalog rule solves now pass
+  `eventLogBaseWithDerivedTripleSource` into the existing solver.
+- Positive base facts are folded from protocol-shaped `factEvents`.
+- Existing materialized `derivedFacts` remain visible to rule bodies, preserving
+  the previous production behavior for rules that depend on derived rows.
+- Assertion event rows carry `prov: [factId]` when the host assertion event has a
+  projected `factId`, so emitted `derivedFacts.sourceFactIds` remains populated
+  for existing provenance consumers.
+- Materialization still writes `derivedFacts`; this slice changes the solve
+  source, not the production read model.
+
+### Non-Goals
+
+- Do not change transitive-closure materialization; it still reads base edges
+  from `facts`.
+- Do not remove or stop writing the `derivedFacts` projection.
+- Do not rewrite derived provenance to protocol event ids yet.
+- Do not change production Datalog base reads; production Datalog still has its
+  existing projection-backed API, alongside the event-log proof APIs.
+
+### Acceptance Criteria
+
+- Scheduled non-closure rule materialization succeeds even if the base `facts`
+  projection is corrupted before the materializer runs.
+- The emitted derived row keeps source fact id provenance.
+- A production Datalog query that explicitly joins the corrupted base projection
+  still fails, proving the remaining base-read dependency is documented rather
+  than hidden.
+- Convex typecheck and focused Datalog/rebuild/triples tests pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/datalog.test.ts convex/rebuild.test.ts convex/triples.test.ts`
+  passed (54 tests).
+- Broader gate passed:
+  - `npm test` passed (17 backend test files, 144 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+
+---
+
 ## Goal 56 — Read-Only Rule Derivation from the Event Log
 
 **Status:** shipped as a bounded proof query in the Convex reference runtime.
@@ -5575,10 +5664,10 @@ or intentionally moved out of this repo's scope. Each shipped slice must update
 `PLAN.md` / `TODO.md`, pass the relevant test/typecheck/build gate, and be
 committed/pushed with the verification recorded.
 
-Goal 56 is complete: `api.datalog.deriveFromEventLog` solves a supplied rule
-body directly over protocol-shaped `factEvents`, resolves the rule-style `emit`
-shape into deterministic derived triples, and remains a read-only proof surface
-while production materialization still owns `derivedFacts`.
+Goal 57 is complete: non-closure Datalog rule materialization now solves through
+the shared event-log-base + materialized-derived triple source, preserving
+`sourceFactIds` from assertion `factEvents.factId` while still writing the
+existing `derivedFacts` projection.
 
 The next shipped slice should update this section with its own concrete
 definition of done before implementation starts.
