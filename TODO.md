@@ -74,13 +74,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   recompute now reads base edges through the shared event-log source too,
   preserving path provenance through compatibility `factId`s. Production
   `datalog`, `datalogPage`, `aggregate`, and `aggregatePage` now use the shared
-  event-log-base + materialized-derived source for base facts.
-  **Active next slice:** Goal 60 promotes production `api.facts.queryFacts` to
-  the event-log point-query path while preserving its existing return shape and
-  read-auth behavior. Remaining after that: production entity/current-state reads
-  still use the hand-maintained `facts` / `currentFacts` projections; closure
-  semi-naive add still receives the changed projection `factId`; derived rows are
-  still stored in `derivedFacts`.
+  event-log-base + materialized-derived source for base facts. Production
+  `api.facts.queryFacts` now uses the event-log point-query path while preserving
+  its existing return shape and read-auth behavior. Remaining: production
+  entity/current-state reads still use the hand-maintained `facts` /
+  `currentFacts` projections; closure semi-naive add still receives the changed
+  projection `factId`; derived rows are still stored in `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -338,6 +337,16 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 60 shipped:** production `api.facts.queryFacts` now answers bounded
+  bitemporal fact point queries by folding protocol-shaped `factEvents`, not by
+  reading the `facts` projection. It preserves the old array return shape, keeps
+  read authorization in the same helper path, and leaves
+  `queryFactsFromEventLog` as the explicit proof/debug wrapper with
+  `skippedLegacyEvents`.
+- [x] **Fact-query projection-corruption proof.** `convex/triples.test.ts` now
+  corrupts the `facts` projection for an entity and asserts production
+  `queryFacts` still returns the visible assertion from `factEvents`; the proof
+  wrapper returns the same row.
 - [x] **Goal 59 shipped:** production Datalog row/page/aggregate APIs now use the
   shared event-log-base + materialized-derived triple source. Base facts come
   from protocol-shaped `factEvents`; derived facts still come from `derivedFacts`.

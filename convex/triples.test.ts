@@ -284,7 +284,7 @@ describe("cardinality-one", () => {
     expect(allStatus.facts.map((f) => f.v).sort()).toEqual(["active", "draft"]);
   });
 
-  test("event-log fact query survives a corrupted facts projection", async () => {
+  test("production fact query survives a corrupted facts projection", async () => {
     const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.facts.assertFact, {
       e: "e:query-log-only",
@@ -302,14 +302,14 @@ describe("cardinality-one", () => {
       }
     });
 
-    const projected = await t.query(api.facts.queryFacts, {
+    const production = await t.query(api.facts.queryFacts, {
       e: "e:query-log-only",
     });
     const fromLog = await t.query(api.facts.queryFactsFromEventLog, {
       e: "e:query-log-only",
     });
 
-    expect(projected).toEqual([]);
+    expect(production.map((f) => [f.a, f.v])).toEqual([["status", "live"]]);
     expect(fromLog.facts.map((f) => [f.a, f.v])).toEqual([["status", "live"]]);
   });
 });

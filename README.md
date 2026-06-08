@@ -177,10 +177,13 @@ Built today:
 
 - append-only bitemporal fact log
 - rebuildable projections (`facts`, `currentFacts`, `derivedFacts`)
-- bounded host entity and point-query reads folded directly from protocol-shaped
-  `factEvents` (`api.facts.entityFromEventLog`,
-  `api.facts.queryFactsFromEventLog`) as the proof path for retiring current-state
+- bounded host entity reads folded directly from protocol-shaped `factEvents`
+  (`api.facts.entityFromEventLog`) as the proof path for retiring current-state
   projections
+- production fact point queries (`api.facts.queryFacts`) now fold base facts
+  directly from protocol-shaped `factEvents` while preserving the old array
+  return shape and read-authorization behavior; `queryFactsFromEventLog` remains
+  as the explicit proof/debug wrapper with skipped-legacy counts
 - event-log-backed Datalog proof queries (`api.datalog.datalogFromEventLog`,
   `datalogPageFromEventLog`, `aggregateFromEventLog`,
   `aggregatePageFromEventLog`, `datalogFromEventLogWithDerived`,

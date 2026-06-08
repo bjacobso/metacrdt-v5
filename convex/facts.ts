@@ -766,6 +766,169 @@ async function fetchCandidateFactEvents(
   throw new Error("event-log fact queries require at least one of `e` or `a`");
 }
 
+type QueryFactRow = {
+  _id?: Id<"facts">;
+  _creationTime?: number;
+  e: string;
+  a: string;
+  v: unknown;
+  firstTxId?: Id<"transactions">;
+  lastTxId?: Id<"transactions">;
+  assertedAt: number;
+  retractedAt?: number;
+  validFrom: number;
+  validTo?: number;
+  tombstonedAt?: number;
+  tombstoneTxId?: Id<"transactions">;
+  tombstoneReason?: string;
+  assertEventId: string;
+  actor: string;
+  actorType: string;
+  reason?: string;
+};
+
+type EventRow = { ev: Event; row: Doc<"factEvents"> };
+
+async function protocolEventRowsForRows(
+  ctx: QueryCtx,
+  rows: Doc<"factEvents">[],
+): Promise<{ eventRows: EventRow[]; skipped: number }> {
+  const eventRows: EventRow[] = [];
+  let skipped = 0;
+  for (const row of rows) {
+    const tx = await ctx.db.get(row.txId);
+    if (tx === null) {
+      skipped++;
+      continue;
+    }
+    const ev = protocolEventFromRows(rowForCore(row), txForCore(tx));
+    if (ev === null) {
+      skipped++;
+      continue;
+    }
+    eventRows.push({ ev, row });
+  }
+  return { eventRows, skipped };
+}
+
+function lifecycleEvents(
+  events: readonly Event[],
+  kind: "retract" | "tombstone" | "untombstone",
+  target: string,
+  txTime: number,
+): Event[] {
+  return events.filter(
+    (ev) => ev.kind === kind && ev.target === target && ev.hlc.pt <= txTime,
+  );
+}
+
+function firstLifecycleEvent(
+  events: readonly Event[],
+  kind: "retract",
+  target: string,
+  txTime: number,
+): Event | undefined {
+  return lifecycleEvents(events, kind, target, txTime).sort(
+    (a, b) => a.hlc.pt - b.hlc.pt,
+  )[0];
+}
+
+function activeTombstoneEvent(
+  events: readonly Event[],
+  target: string,
+  txTime: number,
+): Event | undefined {
+  const tombstones = lifecycleEvents(events, "tombstone", target, txTime).sort(
+    (a, b) => b.hlc.pt - a.hlc.pt,
+  );
+  const latestTombstone = tombstones[0];
+  if (latestTombstone === undefined) return undefined;
+  const laterUntombstone = lifecycleEvents(events, "untombstone", target, txTime).some(
+    (ev) => ev.hlc.pt > latestTombstone.hlc.pt,
+  );
+  return laterUntombstone ? undefined : latestTombstone;
+}
+
+async function queryFactRowsFromEventLog(
+  ctx: QueryCtx,
+  args: {
+    e?: string;
+    a?: string;
+    value?: unknown;
+    txTime?: number;
+    validTime?: number;
+    includeTombstoned?: boolean;
+    includeRetracted?: boolean;
+    limit?: number;
+  },
+): Promise<{ coord: { txTime: number; validTime: number }; skipped: number; rows: QueryFactRow[] }> {
+  const coord = {
+    txTime: args.txTime ?? Date.now(),
+    validTime: args.validTime ?? Date.now(),
+  };
+  const scanLimit = Math.min(args.limit ?? 1000, 2000);
+  const rawRows = await fetchCandidateFactEvents(ctx, args, scanLimit);
+  const protocol = await protocolEventRowsForRows(ctx, rawRows);
+  const events = protocol.eventRows.map(({ ev }) => ev);
+  const log = fromEvents(events);
+  const rowByEventId = new Map(
+    protocol.eventRows.map(({ ev, row }) => [ev.id, row] as const),
+  );
+  const principal = await readPrincipal(ctx);
+  const out: QueryFactRow[] = [];
+  const keys =
+    args.e !== undefined && args.a !== undefined
+      ? [[args.e, args.a] as const]
+      : [...new Set(events.flatMap((ev) =>
+          ev.kind === "assert" && ev.e !== undefined && ev.a !== undefined
+            ? [`${ev.e}\u0000${ev.a}`]
+            : [],
+        ))].map((k) => k.split("\u0000") as [string, string]);
+
+  for (const [e, a] of keys) {
+    const evs = visibleAsserts(e, a, coord, log, {
+      includeRetracted: args.includeRetracted,
+      includeTombstoned: args.includeTombstoned,
+    });
+    for (const ev of evs) {
+      if (args.value !== undefined && valueKey(ev.v) !== valueKey(args.value)) {
+        continue;
+      }
+      if (!(await canReadAttribute(ctx, principal, ev.e!, ev.a!))) continue;
+
+      const row = rowByEventId.get(ev.id);
+      const retraction = firstLifecycleEvent(events, "retract", ev.id, coord.txTime);
+      const retractionRow =
+        retraction === undefined ? undefined : rowByEventId.get(retraction.id);
+      const tombstone = activeTombstoneEvent(events, ev.id, coord.txTime);
+      const tombstoneRow =
+        tombstone === undefined ? undefined : rowByEventId.get(tombstone.id);
+      out.push({
+        ...(row?.factId === undefined ? {} : { _id: row.factId }),
+        ...(row === undefined ? {} : { _creationTime: row._creationTime }),
+        e: ev.e!,
+        a: ev.a!,
+        v: ev.v,
+        ...(row === undefined ? {} : { firstTxId: row.txId }),
+        ...(retractionRow === undefined ? {} : { lastTxId: retractionRow.txId }),
+        assertedAt: ev.hlc.pt,
+        ...(retraction === undefined ? {} : { retractedAt: retraction.hlc.pt }),
+        validFrom: ev.validFrom!,
+        ...(ev.validTo === undefined || ev.validTo === null ? {} : { validTo: ev.validTo }),
+        ...(tombstone === undefined ? {} : { tombstonedAt: tombstone.hlc.pt }),
+        ...(tombstoneRow === undefined ? {} : { tombstoneTxId: tombstoneRow.txId }),
+        ...(tombstone?.reason === undefined ? {} : { tombstoneReason: tombstone.reason }),
+        assertEventId: ev.id,
+        actor: ev.actor,
+        actorType: ev.actorType,
+        ...(ev.reason === undefined ? {} : { reason: ev.reason }),
+      });
+    }
+  }
+  out.sort((x, y) => x.e.localeCompare(y.e) || x.a.localeCompare(y.a));
+  return { coord, skipped: protocol.skipped, rows: out };
+}
+
 async function cardinalityEventsForAttributes(
   ctx: QueryCtx,
   attrs: Iterable<string>,
@@ -844,8 +1007,8 @@ export const entityFromEventLog = query({
 });
 
 /**
- * Bitemporal point query. Picks the most selective available index from the
- * bound terms, then filters candidates through the visibility predicate.
+ * Bitemporal point query. Production reads fold protocol-shaped `factEvents`
+ * directly instead of trusting the disposable `facts` projection.
  */
 export const queryFacts = query({
   args: {
@@ -859,25 +1022,7 @@ export const queryFacts = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const coord = {
-      txTime: args.txTime ?? Date.now(),
-      validTime: args.validTime ?? Date.now(),
-    };
-    const opts = {
-      includeTombstoned: args.includeTombstoned,
-      includeRetracted: args.includeRetracted,
-    };
-    const scanLimit = Math.min(args.limit ?? 1000, 2000);
-
-    const principal = await readPrincipal(ctx);
-    const candidates = await fetchCandidateFacts(ctx, args, scanLimit);
-    const out: Doc<"facts">[] = [];
-    for (const f of candidates) {
-      if (!isVisible(f, coord, opts)) continue;
-      if (!(await canReadAttribute(ctx, principal, f.e, f.a))) continue;
-      out.push(f);
-    }
-    return out;
+    return (await queryFactRowsFromEventLog(ctx, args)).rows;
   },
 });
 
@@ -899,67 +1044,22 @@ export const queryFactsFromEventLog = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const coord = {
-      txTime: args.txTime ?? Date.now(),
-      validTime: args.validTime ?? Date.now(),
-    };
-    const scanLimit = Math.min(args.limit ?? 1000, 2000);
-    const eventRows = await fetchCandidateFactEvents(ctx, args, scanLimit);
-    const protocol = await protocolEventsForRows(ctx, eventRows);
-    const log = fromEvents(protocol.events);
-    const principal = await readPrincipal(ctx);
-    const out: Array<{
-      eventId: string;
-      e: string;
-      a: string;
-      v: unknown;
-      assertedAt: number;
-      validFrom: number;
-      validTo?: number;
-      actor: string;
-      actorType: string;
-      reason?: string;
-    }> = [];
-    const keys =
-      args.e !== undefined && args.a !== undefined
-        ? [[args.e, args.a] as const]
-        : [...new Set(protocol.events.flatMap((ev) =>
-            ev.kind === "assert" && ev.e !== undefined && ev.a !== undefined
-              ? [`${ev.e}\u0000${ev.a}`]
-              : [],
-          ))].map((k) => k.split("\u0000") as [string, string]);
-
-    for (const [e, a] of keys) {
-      const evs = visibleAsserts(e, a, coord, log, {
-        includeRetracted: args.includeRetracted,
-        includeTombstoned: args.includeTombstoned,
-      });
-      for (const ev of evs) {
-        if (args.value !== undefined && valueKey(ev.v) !== valueKey(args.value)) {
-          continue;
-        }
-        if (!(await canReadAttribute(ctx, principal, ev.e!, ev.a!))) continue;
-        out.push({
-          eventId: ev.id,
-          e: ev.e!,
-          a: ev.a!,
-          v: ev.v,
-          assertedAt: ev.hlc.pt,
-          validFrom: ev.validFrom!,
-          ...(ev.validTo === undefined || ev.validTo === null
-            ? {}
-            : { validTo: ev.validTo }),
-          actor: ev.actor,
-          actorType: ev.actorType,
-          ...(ev.reason === undefined ? {} : { reason: ev.reason }),
-        });
-      }
-    }
-    out.sort((x, y) => x.e.localeCompare(y.e) || x.a.localeCompare(y.a));
+    const result = await queryFactRowsFromEventLog(ctx, args);
     return {
-      coord,
-      skippedLegacyEvents: protocol.skipped,
-      facts: out,
+      coord: result.coord,
+      skippedLegacyEvents: result.skipped,
+      facts: result.rows.map((row) => ({
+        eventId: row.assertEventId,
+        e: row.e,
+        a: row.a,
+        v: row.v,
+        assertedAt: row.assertedAt,
+        validFrom: row.validFrom,
+        ...(row.validTo === undefined ? {} : { validTo: row.validTo }),
+        actor: row.actor,
+        actorType: row.actorType,
+        ...(row.reason === undefined ? {} : { reason: row.reason }),
+      })),
     };
   },
 });
