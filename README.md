@@ -177,8 +177,8 @@ Built today:
 
 - append-only bitemporal fact log
 - rebuildable projections (`facts`, `currentFacts`, `derivedFacts`)
-- Datalog query engine with joins, comparisons, negation, aggregation, and
-  materialized transitive closure
+- Datalog query engine with joins, comparisons, computed arithmetic/string
+  predicates, negation, aggregation, and materialized transitive closure
 - schema-as-facts: entity types and attributes are facts too
 - rules and provenance: derived facts explain why they exist
 - compliance obligations as derived facts
@@ -352,6 +352,9 @@ queryFacts({
 datalog({
   where: [
     ["?e", "type", "Worker"],
+    ["?e", "name", "?name"],
+    { compute: ["lower", "?name"], as: "?lowerName" },
+    { compute: ["contains", "?lowerName", "maria"] },
     {
       or: [
         [["?e", "worker.status", "active"]],
@@ -360,7 +363,18 @@ datalog({
     },
     { not: ["?e", "worker.status", "terminated"] },
   ],
-  select: ["?e"],
+  select: ["?e", "?name"],
+})
+
+// Arithmetic computed predicate
+datalog({
+  where: [
+    ["?e", "salary", "?salary"],
+    ["?e", "bonus", "?bonus"],
+    { compute: ["+", "?salary", "?bonus"], as: "?totalComp" },
+    ["?totalComp", ">", 100000],
+  ],
+  select: ["?e", "?totalComp"],
 })
 
 // Writes

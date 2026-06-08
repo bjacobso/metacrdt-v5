@@ -13,6 +13,32 @@ export const LIMITS = {
 } as const;
 
 export const COMPARISON_OPS = new Set([">", "<", ">=", "<=", "==", "!="]);
+export const COMPUTE_OPS = new Set([
+  "+",
+  "-",
+  "*",
+  "/",
+  "%",
+  "add",
+  "sub",
+  "mul",
+  "div",
+  "mod",
+  "min",
+  "max",
+  "abs",
+  "floor",
+  "ceil",
+  "round",
+  "concat",
+  "lower",
+  "upper",
+  "trim",
+  "length",
+  "contains",
+  "startsWith",
+  "endsWith",
+]);
 
 export type Binding = Record<string, unknown>;
 
@@ -32,15 +58,22 @@ type Term =
 
 type PatternClause = { kind: "pattern"; e: Term; a: Term; v: Term };
 type CompareClause = { kind: "compare"; left: Term; op: string; right: Term };
+type ComputeClause = { kind: "compute"; op: string; args: Term[]; as?: Term };
 type NotClause = { kind: "not"; pattern: PatternClause };
 type OrClause = { kind: "or"; branches: AnyClause[][] };
-type AnyClause = PatternClause | CompareClause | NotClause | OrClause;
+type AnyClause =
+  | PatternClause
+  | CompareClause
+  | ComputeClause
+  | NotClause
+  | OrClause;
 
 type Ctx = QueryCtx | MutationCtx;
 type ReadFilter = { principal: string } | null;
 type ClauseDescription =
   | { kind: "pattern"; e: string; a: string; v: string }
   | { kind: "compare"; left: string; op: string; right: string }
+  | { kind: "compute"; op: string; args: string[]; as?: string }
   | { kind: "not"; e: string; a: string; v: string }
   | { kind: "or"; branches: ClauseDescription[][] };
 
@@ -99,6 +132,31 @@ export function parseClause(raw: unknown): AnyClause {
       }),
     };
   }
+  // Computed predicate/projection:
+  //   { compute: ["+", "?salary", "?bonus"], as: "?total" }
+  //   { compute: ["contains", "?lowerName", "mar"] }
+  // With `as`, the output term is bound or checked for equality if already
+  // bound. Without `as`, the computed value must be boolean true and acts as a
+  // filter. Computed clauses add no provenance; they are deterministic folds of
+  // earlier bindings.
+  if (raw && typeof raw === "object" && !Array.isArray(raw) && "compute" in raw) {
+    const spec = (raw as { compute: unknown; as?: unknown }).compute;
+    if (!Array.isArray(spec) || spec.length === 0) {
+      throw new Error("compute clause must be { compute: [op, ...args], as?: term }");
+    }
+    const op = spec[0];
+    if (typeof op !== "string" || !COMPUTE_OPS.has(op)) {
+      throw new Error(`unknown compute operator: ${String(op)}`);
+    }
+    return {
+      kind: "compute",
+      op,
+      args: spec.slice(1).map(parseTerm),
+      ...((raw as { as?: unknown }).as === undefined
+        ? {}
+        : { as: parseTerm((raw as { as?: unknown }).as) }),
+    };
+  }
   if (Array.isArray(raw) && raw.length === 3) {
     // Comparison: [term, op, term] where op is a comparison operator.
     if (typeof raw[1] === "string" && COMPARISON_OPS.has(raw[1])) {
@@ -112,7 +170,7 @@ export function parseClause(raw: unknown): AnyClause {
     return parsePattern(raw);
   }
   throw new Error(
-    "each clause must be a [e, a, v] triple, a [term, op, term] comparison, { not: [e, a, v] }, or { or: [[...], ...] }",
+    "each clause must be a [e, a, v] triple, a [term, op, term] comparison, { compute: [op, ...args], as?: term }, { not: [e, a, v] }, or { or: [[...], ...] }",
   );
 }
 
@@ -157,6 +215,9 @@ function requiredVars(clause: AnyClause): string[] {
     const p = clause.pattern;
     return [...termVars(p.e), ...termVars(p.a), ...termVars(p.v)];
   }
+  if (clause.kind === "compute") {
+    return clause.args.flatMap(termVars);
+  }
   if (clause.kind === "or") {
     const required = new Set<string>();
     for (const branch of clause.branches) {
@@ -173,6 +234,9 @@ function patternVars(p: PatternClause): string[] {
 
 function clauseBoundVars(clause: AnyClause): string[] {
   if (clause.kind === "pattern") return patternVars(clause);
+  if (clause.kind === "compute") {
+    return clause.as?.kind === "var" ? [clause.as.name] : [];
+  }
   if (clause.kind === "or") {
     return [
       ...new Set(
@@ -382,6 +446,172 @@ function satisfiesCompare(clause: CompareClause, binding: Binding): boolean {
   return compareValues(l.value, clause.op, r.value);
 }
 
+type ComputeResult = { ok: true; value: unknown } | { ok: false };
+
+function requireArity(op: string, values: unknown[], min: number, max = min) {
+  if (values.length < min || values.length > max) {
+    throw new Error(
+      `compute '${op}' expects ${min === max ? min : `${min}-${max}`} argument${
+        max === 1 ? "" : "s"
+      }, got ${values.length}`,
+    );
+  }
+}
+
+function numbers(values: unknown[]): number[] | null {
+  return values.every((v): v is number => typeof v === "number" && Number.isFinite(v))
+    ? values
+    : null;
+}
+
+function strings(values: unknown[]): string[] | null {
+  return values.every((v): v is string => typeof v === "string")
+    ? values
+    : null;
+}
+
+function computeValue(op: string, values: unknown[]): ComputeResult {
+  switch (op) {
+    case "+":
+    case "add": {
+      requireArity(op, values, 2, 16);
+      const ns = numbers(values);
+      return ns === null
+        ? { ok: false }
+        : { ok: true, value: ns.reduce((a, b) => a + b, 0) };
+    }
+    case "-":
+    case "sub": {
+      requireArity(op, values, 1, 2);
+      const ns = numbers(values);
+      if (ns === null) return { ok: false };
+      return { ok: true, value: ns.length === 1 ? -ns[0] : ns[0] - ns[1] };
+    }
+    case "*":
+    case "mul": {
+      requireArity(op, values, 2, 16);
+      const ns = numbers(values);
+      return ns === null
+        ? { ok: false }
+        : { ok: true, value: ns.reduce((a, b) => a * b, 1) };
+    }
+    case "/":
+    case "div": {
+      requireArity(op, values, 2);
+      const ns = numbers(values);
+      if (ns === null || ns[1] === 0) return { ok: false };
+      return { ok: true, value: ns[0] / ns[1] };
+    }
+    case "%":
+    case "mod": {
+      requireArity(op, values, 2);
+      const ns = numbers(values);
+      if (ns === null || ns[1] === 0) return { ok: false };
+      return { ok: true, value: ns[0] % ns[1] };
+    }
+    case "min":
+    case "max": {
+      requireArity(op, values, 2, 16);
+      const ns = numbers(values);
+      if (ns === null) return { ok: false };
+      return { ok: true, value: op === "min" ? Math.min(...ns) : Math.max(...ns) };
+    }
+    case "abs":
+    case "floor":
+    case "ceil":
+    case "round": {
+      requireArity(op, values, 1);
+      const ns = numbers(values);
+      if (ns === null) return { ok: false };
+      return {
+        ok: true,
+        value:
+          op === "abs"
+            ? Math.abs(ns[0])
+            : op === "floor"
+              ? Math.floor(ns[0])
+              : op === "ceil"
+                ? Math.ceil(ns[0])
+                : Math.round(ns[0]),
+      };
+    }
+    case "concat": {
+      requireArity(op, values, 1, 16);
+      if (values.some((v) => v === null || v === undefined)) return { ok: false };
+      return { ok: true, value: values.map((v) => String(v)).join("") };
+    }
+    case "lower":
+    case "upper":
+    case "trim": {
+      requireArity(op, values, 1);
+      const ss = strings(values);
+      if (ss === null) return { ok: false };
+      return {
+        ok: true,
+        value:
+          op === "lower"
+            ? ss[0].toLowerCase()
+            : op === "upper"
+              ? ss[0].toUpperCase()
+              : ss[0].trim(),
+      };
+    }
+    case "length": {
+      requireArity(op, values, 1);
+      return typeof values[0] === "string"
+        ? { ok: true, value: values[0].length }
+        : { ok: false };
+    }
+    case "contains":
+    case "startsWith":
+    case "endsWith": {
+      requireArity(op, values, 2);
+      const ss = strings(values);
+      if (ss === null) return { ok: false };
+      return {
+        ok: true,
+        value:
+          op === "contains"
+            ? ss[0].includes(ss[1])
+            : op === "startsWith"
+              ? ss[0].startsWith(ss[1])
+              : ss[0].endsWith(ss[1]),
+      };
+    }
+    default:
+      throw new Error(`unknown compute operator: ${op}`);
+  }
+}
+
+function applyCompute(clause: ComputeClause, binding: Binding): Binding | null {
+  const values = clause.args.map((arg) => {
+    const resolved = resolve(arg, binding);
+    if (resolved.kind !== "const") {
+      throw new Error(
+        `compute '${clause.op}' has an unbound variable — its input operands must be bound by an earlier clause`,
+      );
+    }
+    return resolved.value;
+  });
+  const result = computeValue(clause.op, values);
+  if (!result.ok) return null;
+
+  if (clause.as === undefined) {
+    if (typeof result.value !== "boolean") {
+      throw new Error(
+        `compute '${clause.op}' has no 'as' output, so it must produce a boolean predicate`,
+      );
+    }
+    return result.value ? binding : null;
+  }
+
+  const out = resolve(clause.as, binding);
+  if (out.kind === "const") {
+    return valueKey(out.value) === valueKey(result.value) ? binding : null;
+  }
+  return { ...binding, [out.name]: result.value };
+}
+
 /** A binding survives a not-clause only if NO visible triple matches its pattern. */
 async function passesNegation(
   ctx: Ctx,
@@ -461,7 +691,7 @@ async function solveParsedWhere(
       }
       if (best === -1) {
         throw new Error(
-          "query is unsafe: a comparison, negation, or disjunction clause has variables that no pattern binds",
+          "query is unsafe: a comparison, compute, negation, or disjunction clause has variables that no earlier clause can bind",
         );
       }
       pickAt = best;
@@ -499,6 +729,16 @@ async function solveParsedWhere(
       states = next;
     } else if (clause.kind === "compare") {
       states = states.filter((st) => satisfiesCompare(clause, st.binding));
+    } else if (clause.kind === "compute") {
+      const next: SolvedBinding[] = [];
+      for (const st of states) {
+        const computed = applyCompute(clause, st.binding);
+        if (computed !== null) {
+          next.push({ binding: computed, sources: st.sources });
+        }
+      }
+      states = next;
+      for (const vn of clauseBoundVars(clause)) bound.add(vn);
     } else if (clause.kind === "not") {
       const kept: SolvedBinding[] = [];
       for (const st of states) {
@@ -703,6 +943,14 @@ export function describeClauses(where: unknown[]): ClauseDescription[] {
         left: fmt(c.left),
         op: c.op,
         right: fmt(c.right),
+      };
+    }
+    if (c.kind === "compute") {
+      return {
+        kind: "compute",
+        op: c.op,
+        args: c.args.map(fmt),
+        ...(c.as === undefined ? {} : { as: fmt(c.as) }),
       };
     }
     if (c.kind === "not") {

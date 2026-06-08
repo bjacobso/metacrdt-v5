@@ -19,6 +19,9 @@ const DEFAULT_QUERY = JSON.stringify(
   {
     where: [
       ["?e", "type", "Worker"],
+      ["?e", "name", "?name"],
+      { compute: ["lower", "?name"], as: "?lowerName" },
+      { compute: ["contains", "?lowerName", "maria"] },
       {
         or: [
           [["?e", "worker.status", "active"]],
@@ -27,7 +30,7 @@ const DEFAULT_QUERY = JSON.stringify(
       },
       { not: ["?e", "worker.status", "terminated"] },
     ],
-    select: ["?e"],
+    select: ["?e", "?name"],
   },
   null,
   2,

@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 44 (component-owned collect reminder/escalation timers)
+**Current goal:** Goal 45 (Datalog computed arithmetic/string predicates)
 has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth, or
@@ -79,7 +79,7 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 117 tests at last verification.
+- Convex backend tests are green: 122 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -234,6 +234,15 @@ arguments.
     unioned/deduped with provenance preserved
   - `explainDatalog` describes nested branch clauses
   - the Data model Datalog console and README examples include `or`
+- Datalog computed predicates exist:
+  - `convex/lib/engine.ts` parses
+    `{ compute: [op, ...args], as?: term }`
+  - arithmetic ops can bind/check computed numbers
+  - string ops can normalize/measure text and run boolean string predicates
+  - computed clauses are deterministic, bounded, provenance-neutral folds of
+    earlier bindings
+  - `explainDatalog`, README examples, and the Data model Datalog console show
+    the syntax
 - Config history/diff exists:
   - `configHistory.currentManifest` reconstructs the current owned-artifact
     manifest from `config:default`
@@ -4379,6 +4388,110 @@ convex/metacrdtComponent.test.ts
 
 ---
 
+## Goal 45 — Datalog Computed Arithmetic/String Predicates
+
+**Status:** shipped in the Convex Datalog engine.
+
+**Objective:** close the Query/Rules backlog item for computed predicates by
+letting Datalog clauses deterministically compute values from already-bound
+variables. Arithmetic expressions can bind/check derived numeric values; string
+expressions can normalize text and run boolean text filters.
+
+### Scope
+
+Engine:
+
+```text
+convex/lib/engine.ts
+  parseClause
+  solveParsedWhere
+  describeClauses
+```
+
+API docs / UI examples:
+
+```text
+convex/datalog.ts
+src/pages/DataModel.tsx
+README.md
+```
+
+Tests:
+
+```text
+convex/datalog.test.ts
+```
+
+### Semantics
+
+- Syntax:
+  - `{ compute: ["+", "?salary", "?bonus"], as: "?total" }`
+  - `{ compute: ["lower", "?name"], as: "?lowerName" }`
+  - `{ compute: ["contains", "?lowerName", "maria"] }`
+- A computed clause is safe only when all input variables are already bound by
+  earlier clauses.
+- With `as`, the result binds the output variable or checks equality when the
+  output term is already bound.
+- Without `as`, the computed value must be boolean `true`; this acts as a
+  predicate filter.
+- Computed clauses add no provenance. They preserve the source facts already
+  justifying the binding.
+- Supported arithmetic ops:
+  `+`, `-`, `*`, `/`, `%`, `add`, `sub`, `mul`, `div`, `mod`, `min`, `max`,
+  `abs`, `floor`, `ceil`, `round`.
+- Supported string ops:
+  `concat`, `lower`, `upper`, `trim`, `length`, `contains`, `startsWith`,
+  `endsWith`.
+- Data type mismatch drops the binding; unknown operators and invalid arity are
+  query errors.
+
+### Non-Goals
+
+- Do not add recursive Datalog.
+- Do not add user-defined functions or arbitrary JavaScript execution.
+- Do not make computed clauses scan facts; they are only deterministic folds of
+  existing bindings.
+- Do not add engine-level pagination/streaming in this slice.
+
+### Acceptance Criteria
+
+- Arithmetic computed clauses can bind a value and later comparisons can filter
+  on that value.
+- Computed output can also be checked against an already-bound variable.
+- String transforms can feed boolean string predicates.
+- Unsafe computed input variables throw a predictable unsafe-query error.
+- `explainDatalog` classifies computed clauses.
+- Existing comparison, negation, disjunction, aggregation, and read-auth behavior
+  remain unchanged.
+
+### Verification
+
+- `npx vitest run convex/datalog.test.ts convex/aggregate.test.ts` passed
+  (21 focused tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- Full gate passed:
+  - `npm run test:core` passed (46 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm test` passed (17 backend test files, 122 tests).
+  - `npm run test:runtime` passed (18 tests).
+  - `npm run test:local` passed (13 tests).
+  - `npm run test:cloudflare` passed (12 tests).
+  - `npm run test:forma` passed (9 tests).
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+- Deployed with `npx convex dev --once` and
+  `npx @convex-dev/static-hosting upload`.
+- Live smoke passed:
+  - `curl -I https://chatty-hare-94.convex.site` returned `HTTP/2 200`.
+  - `npx convex run datalog:explainDatalog ...` returned computed clause
+    descriptions for `lower` and `contains`.
+  - `npx convex run datalog:datalog ...` returned `worker:maria` via
+    deployed `lower` + `contains` computed predicates.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -4435,7 +4548,7 @@ These remain valuable, but they should not interrupt the current goal.
 ### Query / Rules
 
 - [ ] Engine-level result pagination / streaming.
-- [ ] Computed predicates: arithmetic, string ops.
+- [x] Computed predicates: arithmetic, string ops.
 - [x] Disjunction.
 - [ ] Cross-entity rule incremental recompute.
 - [ ] DRed/counting for transitive closure deletions.

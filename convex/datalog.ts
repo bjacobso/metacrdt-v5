@@ -9,6 +9,7 @@ import {
 } from "./lib/engine";
 
 // A clause is a [e, a, v] triple, a [term, op, term] comparison,
+// { compute: [op, ...args], as?: term } deterministic computed predicate,
 // { not: [e, a, v] } negation, or { or: [[...clauses], ...] } disjunction —
 // so clauses are heterogeneous (array | object).
 const whereValidator = v.array(v.any());
@@ -16,6 +17,9 @@ const whereValidator = v.array(v.any());
 /**
  * Bounded, non-recursive Datalog over facts ∪ materialized derived facts.
  * Supports fact patterns, comparison predicates (>, <, >=, <=, ==, !=),
+ * deterministic computed predicates
+ * ({ compute: ["+", "?salary", "?bonus"], as: "?total" } or
+ *  { compute: ["contains", "?lowerName", "maria"] }),
  * negation ({ not: [...] }), and bounded disjunction
  * ({ or: [[...clauses], [...clauses]] }).
  *
@@ -23,7 +27,9 @@ const whereValidator = v.array(v.any());
  *     where: [
  *       ["?e", "type", "Employee"],
  *       ["?e", "salary", "?s"],
- *       ["?s", ">", 100000],
+ *       ["?e", "bonus", "?b"],
+ *       { compute: ["+", "?s", "?b"], as: "?total" },
+ *       ["?total", ">", 100000],
  *       {
  *         or: [
  *           [["?e", "worker.status", "active"]],
@@ -119,7 +125,7 @@ export const explainDatalog = query({
   handler: async (ctx, args) => {
     return {
       limits: LIMITS,
-      note: "Pattern join order is chosen dynamically by selectivity at run time; filters (compare/not) run as soon as their variables are bound.",
+      note: "Pattern join order is chosen dynamically by selectivity at run time; filters/projections (compare/compute/not) run as soon as their input variables are bound.",
       clauses: describeClauses(args.where),
     };
   },

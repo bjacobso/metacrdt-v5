@@ -54,6 +54,103 @@ describe("comparison predicates", () => {
   });
 });
 
+describe("computed predicates", () => {
+  test("binds arithmetic results and filters on the computed value", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await assert(t, "p:1", "type", "Person");
+    await assert(t, "p:1", "salary", 120000);
+    await assert(t, "p:1", "bonus", 15000);
+    await assert(t, "p:2", "type", "Person");
+    await assert(t, "p:2", "salary", 80000);
+    await assert(t, "p:2", "bonus", 10000);
+
+    const rows = await t.query(api.datalog.datalog, {
+      where: [
+        ["?e", "type", "Person"],
+        ["?e", "salary", "?salary"],
+        ["?e", "bonus", "?bonus"],
+        { compute: ["+", "?salary", "?bonus"], as: "?total" },
+        ["?total", ">", 100000],
+      ],
+      select: ["?e", "?total"],
+    });
+
+    expect(rows).toEqual([{ e: "p:1", total: 135000 }]);
+  });
+
+  test("string transforms can feed boolean string predicates", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await assert(t, "w:1", "type", "Worker");
+    await assert(t, "w:1", "name", "Maria Alvarez");
+    await assert(t, "w:2", "type", "Worker");
+    await assert(t, "w:2", "name", "Jo Chen");
+
+    const rows = await t.query(api.datalog.datalog, {
+      where: [
+        ["?e", "type", "Worker"],
+        ["?e", "name", "?name"],
+        { compute: ["lower", "?name"], as: "?lower" },
+        { compute: ["contains", "?lower", "maria"] },
+        { compute: ["length", "?name"], as: "?len" },
+      ],
+      select: ["?e", "?lower", "?len"],
+    });
+
+    expect(rows).toEqual([
+      { e: "w:1", lower: "maria alvarez", len: "Maria Alvarez".length },
+    ]);
+  });
+
+  test("computed output can be checked against an already-bound variable", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await assert(t, "invoice:1", "subtotal", 40);
+    await assert(t, "invoice:1", "tax", 4);
+    await assert(t, "invoice:1", "total", 44);
+    await assert(t, "invoice:2", "subtotal", 40);
+    await assert(t, "invoice:2", "tax", 4);
+    await assert(t, "invoice:2", "total", 45);
+
+    const rows = await t.query(api.datalog.datalog, {
+      where: [
+        ["?e", "subtotal", "?subtotal"],
+        ["?e", "tax", "?tax"],
+        ["?e", "total", "?total"],
+        { compute: ["add", "?subtotal", "?tax"], as: "?total" },
+      ],
+      select: ["?e"],
+    });
+
+    expect(rows).toEqual([{ e: "invoice:1" }]);
+  });
+
+  test("unsafe computed inputs throw", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await expect(
+      t.query(api.datalog.datalog, {
+        where: [{ compute: ["+", "?missing", 1], as: "?out" }],
+        select: ["?out"],
+      }),
+    ).rejects.toThrow(/unsafe/);
+  });
+
+  test("explainDatalog classifies computed clauses", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    const plan = await t.query(api.datalog.explainDatalog, {
+      where: [
+        ["?e", "name", "?name"],
+        { compute: ["lower", "?name"], as: "?lower" },
+        { compute: ["startsWith", "?lower", "mar"] },
+      ],
+    });
+
+    expect(plan.clauses).toEqual([
+      { kind: "pattern", e: "?e", a: "\"name\"", v: "?name" },
+      { kind: "compute", op: "lower", args: ["?name"], as: "?lower" },
+      { kind: "compute", op: "startsWith", args: ["?lower", "\"mar\""] },
+    ]);
+  });
+});
+
 describe("negation", () => {
   test("not-clause excludes bindings with a matching fact", async () => {
     const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });

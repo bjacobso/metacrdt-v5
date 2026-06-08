@@ -161,6 +161,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `{ or: [[...clauses], ...] }` branches. Branches run from the current binding,
   union/dedupe their bindings with provenance merged, and continue into later
   joins.
+- [x] **Datalog computed predicates** — Datalog `where` bodies now support
+  `{ compute: [op, ...args], as?: term }` for deterministic arithmetic/string
+  folds over already-bound variables. Arithmetic clauses can bind/check computed
+  numbers; string clauses can normalize/measure text and run boolean predicates.
+  Computed clauses preserve existing provenance and add no fact sources.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
@@ -262,8 +267,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] After Goal 41, choose persisted component-owned DAG run/timeline storage.
 - [x] After Goal 42, choose component-owned wait/scheduler support.
 - [x] After Goal 43, choose component-owned collect reminder/escalation timers.
-- [ ] After Goal 44, choose between provider-backed login UI / production auth,
-  live Cloudflare deployment/auth, or a parked Query/Rules item.
+- [x] After Goal 44, choose Datalog computed predicates.
+- [ ] After Goal 45, choose between provider-backed login UI / production auth,
+  live Cloudflare deployment/auth, or another parked Query/Rules item.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -288,6 +294,21 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — Datalog computed arithmetic/string predicates
+- [x] **Goal 45 shipped:** Datalog clauses can now compute values from
+  already-bound variables with `{ compute: [op, ...args], as?: term }`.
+- [x] **Arithmetic + string semantics.** Arithmetic ops (`+`, `-`, `*`, `/`,
+  `%`, aliases, min/max/rounding) can bind/check computed numbers; string ops
+  (`lower`, `upper`, `trim`, `length`, `concat`, `contains`, `startsWith`,
+  `endsWith`) support normalization and boolean text filters.
+- [x] **Safety/provenance discipline.** Computed inputs must already be bound;
+  output variables bind or filter by equality; no-`as` clauses must produce
+  boolean true. Computed clauses add no provenance and preserve existing source
+  facts.
+- [x] Focused tests cover arithmetic binding/filtering, output equality against
+  an already-bound variable, string transform + boolean predicate composition,
+  unsafe input rejection, and `explainDatalog` classification.
 
 ### 2026-06-07 — component-owned collect reminder/escalation timers
 - [x] **Goal 44 shipped:** component-owned collection-token runs now store
