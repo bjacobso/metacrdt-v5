@@ -67,7 +67,7 @@ packages/
 ├── views/            @metacrdt/views      # ViewSpec / response surfaces
 ├── agent/            @metacrdt/agent      # agent actors, proposals, skills
 ├── runtime/          @metacrdt/runtime    # done: services + memory/localStorage + BroadcastChannel + p2p
-├── convex/           @metacrdt/convex     # Convex target / component-owned log + projections / bindings
+├── convex/           @metacrdt/convex     # Convex target / component-owned log + projections + cardinality / bindings
 ├── cloudflare/       @metacrdt/cloudflare # done: DO storage + WebSocket relay + Worker example
 ├── local/            @metacrdt/local      # done: localStorage + IndexedDB + SQLite + BroadcastChannel target
 ├── node/             @metacrdt/node       # node target, tests, dev server

@@ -93,7 +93,7 @@ not invented:
 | This repo (`convex-triples`) | Package |
 | --- | --- |
 | `packages/core` (`@metacrdt/core`) | pure protocol kernel: events, order, G-Set merge, fold |
-| `packages/convex` (`@metacrdt/convex`) | Convex/core adapters, validators, Confect sidecar warning, component-owned protocol log, and component-owned current projections |
+| `packages/convex` (`@metacrdt/convex`) | Convex/core adapters, validators, Confect sidecar warning, component-owned protocol log, current projections, and cardinality-one reconciliation |
 | `packages/forma` (`@metacrdt/forma`) | Lisp authoring language: reader, formatter, evaluator, VM, type inference |
 | `packages/runtime` (`@metacrdt/runtime`) | runtime service contracts + memory harness + localStorage target seed + BroadcastChannel and p2p DataChannel transports proving target-neutral convergence, restart durability, same-origin anti-entropy, and peer-to-peer gossip |
 | `packages/cloudflare` (`@metacrdt/cloudflare`) | Durable Object storage-backed runtime services, structural WebSocket relay shell, and Worker/DO example shell |
@@ -117,10 +117,11 @@ not invented:
    `≺` order, G-Set merge, and deterministic bitemporal fold). It's the determinism
    guarantee and the most reusable. **`@metacrdt/convex`, `@metacrdt/forma`,
    `@metacrdt/runtime`, `@metacrdt/cloudflare`, and `@metacrdt/local` now exist
-   too**: Convex has adapters plus the first component-owned protocol log and
-   current projections; Forma is the runtime-neutral language package; runtime is
-   harness-first (service contracts, memory target, localStorage target seed,
-   BroadcastChannel transport seed, and p2p DataChannel transport);
+   too**: Convex has adapters plus the first component-owned protocol log,
+   current projections, and opt-in cardinality-one reconciliation; Forma is the
+   runtime-neutral language package; runtime is harness-first (service contracts,
+   memory target, localStorage target seed, BroadcastChannel transport seed, and
+   p2p DataChannel transport);
    Cloudflare is a storage-service target plus WebSocket relay and Worker/DO
    example shell, not a live deployed service yet; local is the browser-facing
    composition over localStorage + BroadcastChannel plus IndexedDB-compatible and

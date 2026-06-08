@@ -110,8 +110,8 @@ Current packages:
   reconstruction/verification, projected-row visibility, cardinality-one
   reconcile selection by `≺`, protocol append/verification helper factories, a
   packaged component that can either summarize host-owned rows or own a durable
-  protocol transaction/event log plus basic current-state projections, and
-  Confect sidecar guidance.
+  protocol transaction/event log plus current-state projections with opt-in
+  cardinality-one reconciliation, and Confect sidecar guidance.
 - **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
   authoring language extracted from Open Ontology: reader, formatter, evaluator,
   VM, type inference, and language-owned elaboration utilities.

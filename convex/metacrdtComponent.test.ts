@@ -118,4 +118,45 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       },
     ]);
   });
+
+  test("passes component-owned cardinality-one writes through app wrapper", async () => {
+    const t = convexTest(schema, modules);
+    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+
+    await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
+      e: "component-cardinality:worker",
+      a: "worker.status",
+      value: "active",
+      cardinality: "one",
+    });
+    const winner = await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
+      e: "component-cardinality:worker",
+      a: "worker.status",
+      value: "terminated",
+      cardinality: "one",
+    });
+
+    const current = await t.query(api.metacrdtComponent.listOwnedCurrent, {
+      e: "component-cardinality:worker",
+      a: "worker.status",
+    });
+    expect(current).toMatchObject([
+      {
+        factId: winner.factId,
+        v: "terminated",
+        assertEventId: winner.eventId,
+      },
+    ]);
+
+    const events = await t.query(api.metacrdtComponent.listOwnedEvents, {
+      e: "component-cardinality:worker",
+      a: "worker.status",
+      limit: 10,
+    });
+    expect(events.map((event) => event.kind).sort()).toEqual([
+      "assert",
+      "assert",
+      "retract",
+    ]);
+  });
 });

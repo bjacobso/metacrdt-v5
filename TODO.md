@@ -80,6 +80,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **`@metacrdt/convex` projection-owned slice** — component-owned writes now
   maintain component-owned `facts` and `currentFacts`; `log.listCurrent` and
   `api.metacrdtComponent.listOwnedCurrent` expose current component state.
+- [x] **`@metacrdt/convex` component-owned cardinality-one semantics** —
+  component-owned assert writes can opt into `cardinality: "one"`; current state
+  reconciles by `≺`, losers are retracted through protocol events, and audit
+  history keeps every assertion.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
@@ -230,6 +234,21 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Tests prove assert creates current state, tombstone removes it,
   untombstone restores it, retract removes it permanently, and mounted app
   wrappers can read the component-owned projection.
+
+### 2026-06-07 — @metacrdt/convex component-owned cardinality-one semantics
+- [x] **Opt-in cardinality landed inside the packaged component.**
+  `log.appendAssert` accepts `cardinality?: "many" | "one"`; many remains the
+  default, while one-valued writes reconcile visible component-owned candidates by
+  the shared `≺` order.
+- [x] **Losers remain auditable.** The component marks losing fact projections as
+  retracted, removes losing current rows, and appends protocol `retract` events
+  with causal refs to the winning assertion.
+- [x] **Reference wrapper passes the option through.**
+  `api.metacrdtComponent.appendOwnedAssert` exposes the cardinality option while
+  still deriving actor identity server-side.
+- [x] Tests cover package-level cardinality behavior and mounted app wrapper
+  behavior: two assertions produce two assert events plus one retract event, and
+  current state points at the winner.
 
 ### 2026-06-07 — @metacrdt/runtime p2p DataChannel transport
 - [x] **Added structural p2p transport.** `packages/runtime/src/p2p.ts` defines

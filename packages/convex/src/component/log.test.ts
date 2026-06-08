@@ -176,6 +176,58 @@ describe("@metacrdt/convex component-owned protocol log", () => {
     ).toEqual([]);
   });
 
+  test("cardinality-one assertions reconcile current state by protocol order", async () => {
+    const t = initComponentTest();
+    await t.mutation(componentInternal.log.appendAssert, {
+      ...actor,
+      txTime: 20_000,
+      e: "worker:cardinality",
+      a: "worker.status",
+      v: "active",
+      cardinality: "one",
+    });
+    const second = await t.mutation(componentInternal.log.appendAssert, {
+      ...actor,
+      txTime: 21_000,
+      e: "worker:cardinality",
+      a: "worker.status",
+      v: "terminated",
+      cardinality: "one",
+    });
+
+    const current = await t.query(componentInternal.log.listCurrent, {
+      e: "worker:cardinality",
+      a: "worker.status",
+    });
+    expect(current).toMatchObject([
+      {
+        factId: second.factId,
+        e: "worker:cardinality",
+        a: "worker.status",
+        v: "terminated",
+        assertEventId: second.eventId,
+      },
+    ]);
+
+    const events = await t.query(componentInternal.log.listEvents, {
+      e: "worker:cardinality",
+      a: "worker.status",
+      limit: 10,
+    });
+    expect(events.map((event: { kind: string }) => event.kind).sort()).toEqual([
+      "assert",
+      "assert",
+      "retract",
+    ]);
+    expect(
+      events.find((event: { kind: string; v: unknown }) => event.kind === "retract"),
+    ).toMatchObject({
+      v: "active",
+      reason: "superseded by ≺-max cardinality-one assertion",
+      validEventId: true,
+    });
+  });
+
   test("filters component-owned events by entity and attribute", async () => {
     const t = initComponentTest();
     await t.mutation(componentInternal.log.appendAssert, {

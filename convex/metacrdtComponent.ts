@@ -49,6 +49,8 @@ const ownedProtocolKind = v.union(
   v.literal("untombstone"),
 );
 
+const cardinality = v.union(v.literal("many"), v.literal("one"));
+
 const ownedEventSummaryValidator = v.object({
   rowId: v.string(),
   txId: v.string(),
@@ -210,6 +212,7 @@ export const appendOwnedAssert = mutation({
     reason: v.optional(v.string()),
     source: v.optional(v.string()),
     metadata: v.optional(v.any()),
+    cardinality: v.optional(cardinality),
   },
   returns: appendOwnedResultValidator,
   handler: async (ctx, args) => {
@@ -226,6 +229,7 @@ export const appendOwnedAssert = mutation({
         reason: args.reason,
         source: args.source,
         eventMetadata: args.metadata,
+        cardinality: args.cardinality,
       }),
     );
   },

@@ -31,6 +31,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           a: string;
           actorId: string;
           actorType: "user" | "system" | "agent" | "migration";
+          cardinality?: "many" | "one";
           causalRefs?: Array<string>;
           e: string;
           eventMetadata?: any;

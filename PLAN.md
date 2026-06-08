@@ -1,9 +1,10 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 24 (`@metacrdt/convex` component-owned projections) has
-shipped. The next active goal should be chosen from the remaining TODO
-candidates: full app write authorization, live Cloudflare deployment/auth, or
-migrating more of the reference runtime onto component-owned state.
+**Current goal:** Goal 25 (`@metacrdt/convex` component-owned cardinality-one
+projection semantics) has shipped. The next active goal should be chosen from
+the remaining TODO candidates: full app write authorization, live Cloudflare
+deployment/auth, or migrating more of the reference runtime onto component-owned
+state.
 
 This plan is the operational goal file. Read it with:
 
@@ -100,6 +101,8 @@ arguments.
     functions for a durable protocol log
   - component-owned `facts` and `currentFacts` projections maintained by the
     component append/lifecycle functions
+  - opt-in component-owned cardinality-one reconciliation for component writes,
+    using the shared `≺` order and protocol retract events for losers
   - a reference-app wrapper, `api.metacrdtComponent.verifyEvents`, that mounts
     the component as `components.metacrdt` while keeping table ownership and
     public API naming in the host app
@@ -108,8 +111,9 @@ arguments.
   - an explicit Confect sidecar warning/helper documenting the manual-mount
     lesson from Goal 2
   - package-local tests for deterministic event reconstruction, legacy fallback
-    behavior, registered component functions, component-owned log writes, and
-    component-owned current projection lifecycle
+    behavior, registered component functions, component-owned log writes,
+    component-owned current projection lifecycle, and component-owned
+    cardinality-one reconciliation
 - `@metacrdt/forma` exists in [`packages/forma`](./packages/forma):
   - runtime-neutral Lisp / S-expression authoring language
   - parser, formatter, evaluator, VM, type inference, and language-owned
@@ -214,9 +218,10 @@ arguments.
   not folded directly from raw core-shaped events.
 - `@metacrdt/convex` now has adapter helpers, stateless protocol helpers, a
   component-owned protocol transaction/event log, and component-owned
-  `facts`/`currentFacts` projections for component-owned writes. The reference
-  app still owns its production write path and has not migrated its existing
-  business logic/rules onto component-owned state.
+  `facts`/`currentFacts` projections with opt-in cardinality-one reconciliation
+  for component-owned writes. The reference app still owns its production write
+  path and has not migrated its existing business logic/rules onto
+  component-owned state.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime.
 - Multi-replica sync is specified and now implemented as in-memory
@@ -2286,6 +2291,64 @@ convex/metacrdtComponent.ts
 
 ---
 
+## Goal 25 — `@metacrdt/convex` Component-Owned Cardinality-One Semantics
+
+**Status:** shipped as opt-in component-owned projection logic.
+
+**Objective:** bring the component-owned current projection closer to the
+reference runtime's protocol semantics. Host apps can opt a component write into
+`cardinality: "one"`; the component then keeps all assertions in the event log
+but reconciles current state by the shared `≺` order and appends protocol
+retract events for projection losers.
+
+### Scope
+
+Package changes:
+
+```text
+packages/convex/src/component/log.ts
+  appendAssert({ cardinality?: "many" | "one" })
+  reconcileCardinalityOneCurrent(...)
+```
+
+Reference app changes:
+
+```text
+convex/metacrdtComponent.ts
+  appendOwnedAssert({ cardinality?: "many" | "one" })
+```
+
+### Acceptance Criteria
+
+- Component `appendAssert` accepts optional `cardinality`.
+- Default behavior remains many-valued.
+- When `cardinality: "one"`:
+  - visible component-owned candidates for `(e, a)` are reconstructed as core
+    assert events;
+  - the winner is selected by `@metacrdt/core` `≺` through the shared
+    `reconcileCardinalityOneCandidates` helper;
+  - losing facts are marked `retractedAt`;
+  - losing current rows are removed;
+  - protocol retract events are appended for losers, with causal refs pointing to
+    the winning event.
+- The app wrapper passes the cardinality option across the component boundary
+  while still deriving actor identity server-side.
+
+### Non-Goals
+
+- Do not import host app schema/cardinality facts into the component.
+- Do not migrate reference app `assertInTx` onto the component yet.
+- Do not implement component-owned derived/rule materialization in this slice.
+
+### Verification
+
+- `npm run test:convex-package` passed (27 tests).
+- `npx vitest run convex/metacrdtComponent.test.ts` passed (4 tests).
+- Convex package typecheck passed.
+- App Convex typecheck passed.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -2314,6 +2377,7 @@ These remain valuable, but they should not interrupt the current goal.
 - [ ] Live Cloudflare deployment / auth targets.
 - [x] First state-owned `@metacrdt/convex` protocol-log component slice.
 - [x] First projection-owning `@metacrdt/convex` component slice.
+- [x] Opt-in component-owned cardinality-one projection semantics.
 - [ ] Migrate more reference runtime business logic onto component-owned state.
 
 ### Auth / Privacy

@@ -4,8 +4,12 @@ import type { Doc, Id } from "./_generated/dataModel.js";
 import {
   buildAssertFactEvent,
   buildLifecycleFactEvent,
+  CARDINALITY_ONE_SUPERSESSION_REASON,
+  protocolEventFromRows,
+  reconcileCardinalityOneCandidates,
   summarizeProtocolEvent,
 } from "../index.js";
+import type { Event } from "@metacrdt/core";
 import type { ConvexTransactionRow, ProtocolFactEventRow } from "../types.js";
 
 const actorType = v.union(
@@ -27,6 +31,8 @@ const protocolKind = v.union(
   v.literal("tombstone"),
   v.literal("untombstone"),
 );
+
+const cardinality = v.union(v.literal("many"), v.literal("one"));
 
 const eventSummaryValidator = v.object({
   rowId: v.id("factEvents"),
@@ -189,6 +195,99 @@ async function targetFact(
   return fact;
 }
 
+async function assertEventForFact(
+  ctx: MutationCtx,
+  fact: Doc<"facts">,
+): Promise<Event> {
+  const row = await ctx.db
+    .query("factEvents")
+    .withIndex("by_eventId", (q) => q.eq("eventId", fact.assertEventId))
+    .unique();
+  if (row === null) {
+    throw new Error(`assert event ${fact.assertEventId} not found`);
+  }
+  const tx = await ctx.db.get(row.txId);
+  if (tx === null) throw new Error(`transaction ${row.txId} not found`);
+  const ev = protocolEventFromRows(rowForSummary(row), txForCore(tx));
+  if (ev === null || ev.kind !== "assert") {
+    throw new Error(`assert event ${fact.assertEventId} is not verifiable`);
+  }
+  return ev;
+}
+
+function isNowVisible(fact: Doc<"facts">, now: number): boolean {
+  if (fact.retractedAt !== undefined || fact.tombstonedAt !== undefined) {
+    return false;
+  }
+  if (fact.validFrom > now) return false;
+  if (fact.validTo !== undefined && fact.validTo <= now) return false;
+  return true;
+}
+
+async function visibleCandidateFacts(
+  ctx: MutationCtx,
+  e: string,
+  a: string,
+  now: number,
+): Promise<Doc<"facts">[]> {
+  const facts = await ctx.db
+    .query("facts")
+    .withIndex("by_e_and_a", (q) => q.eq("e", e).eq("a", a))
+    .collect();
+  return facts.filter((fact) => isNowVisible(fact, now));
+}
+
+async function reconcileCardinalityOneCurrent(
+  ctx: MutationCtx,
+  tx: Doc<"transactions">,
+  e: string,
+  a: string,
+): Promise<void> {
+  const facts = await visibleCandidateFacts(ctx, e, a, tx.txTime);
+  if (facts.length <= 1) return;
+
+  const candidates = await Promise.all(
+    facts.map(async (fact) => ({
+      item: fact,
+      event: await assertEventForFact(ctx, fact),
+    })),
+  );
+  const { winner, losers } = reconcileCardinalityOneCandidates(
+    candidates,
+    `${e}/${a}`,
+  );
+
+  for (const { item: fact, event } of losers) {
+    const built = buildLifecycleFactEvent<Id<"transactions">, Id<"facts">>({
+      tx: txForCore(tx),
+      txId: tx._id,
+      factId: fact._id,
+      kind: "retract",
+      targetEventId: event.id,
+      e: fact.e,
+      a: fact.a,
+      v: fact.v,
+      reason: CARDINALITY_ONE_SUPERSESSION_REASON,
+      causalRefs: [winner.event.id],
+    });
+    await ctx.db.insert("factEvents", withoutUndefined(built.row));
+    await ctx.db.patch(fact._id, {
+      retractedAt: tx.txTime,
+      lastTxId: tx._id,
+    });
+    await deleteCurrentForFact(ctx, fact._id);
+  }
+
+  const current = await ctx.db
+    .query("currentFacts")
+    .withIndex("by_e_and_a", (q) => q.eq("e", e).eq("a", a))
+    .collect();
+  for (const row of current) {
+    if (row.factId !== winner.item._id) await ctx.db.delete(row._id);
+  }
+  await insertCurrentIfNowVisible(ctx, winner.item, tx.txTime);
+}
+
 function currentFactSummary(
   row: Doc<"currentFacts">,
   fact: Doc<"facts">,
@@ -247,6 +346,7 @@ export const appendAssert = mutation({
     validTo: v.optional(v.number()),
     eventMetadata: v.optional(v.any()),
     causalRefs: v.optional(v.array(v.string())),
+    cardinality: v.optional(cardinality),
   },
   returns: appendResultValidator,
   handler: async (ctx, args) => {
@@ -285,6 +385,9 @@ export const appendAssert = mutation({
     const fact = await ctx.db.get(factId);
     if (fact === null) throw new Error(`inserted fact ${factId} not found`);
     await insertCurrentIfNowVisible(ctx, fact, tx.txTime);
+    if (args.cardinality === "one") {
+      await reconcileCardinalityOneCurrent(ctx, tx, args.e, args.a);
+    }
     return { txId: tx._id, rowId, eventId: built.event.id, factId };
   },
 });
