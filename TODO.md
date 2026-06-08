@@ -48,17 +48,19 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   Convex/core event construction, row reconstruction/verification summaries,
   visibility mapping, protocol metadata validators, pure cardinality-one
   reconcile selection by `≺`, host-mounted append/verify helper factories, and
-  the Confect sidecar warning. The reference app consumes it from
-  `convex/lib/coreEvent.ts`, `convex/lib/visibility.ts`, and
-  `confect/metacrdt.impl.ts`. Registered component/functions remain deferred
-  until the host-app API boundary is clearer.
+  the Confect sidecar warning. It also exposes a first stateless registered
+  component surface (`@metacrdt/convex/convex.config.js`) for building and
+  summarizing protocol rows; the reference app installs it as `components.metacrdt`
+  and wraps it as `api.metacrdtComponent.verifyEvents`. The reference app
+  consumes the package from `convex/lib/coreEvent.ts`, `convex/lib/visibility.ts`,
+  `confect/metacrdt.impl.ts`, and the mounted component wrapper.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
   a memory target/harness proving G-Set exchange convergence and version-vector
   anti-entropy. It does not yet own Convex or durable transport.
 - [ ] Targets: `@metacrdt/cloudflare` (DO), `@metacrdt/local` (browser), and a
-  fuller registered `@metacrdt/convex` component/function surface.
+  state-owning `@metacrdt/convex` component/function surface.
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -116,8 +118,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   outside the hardened collection-token path.
 
 **Next goal candidates**
-- [ ] Choose the next active goal: full app write authorization, or the next
-  `@metacrdt/convex` function factory/component slice.
+- [ ] Choose the next active goal: full app write authorization, durable
+  runtime transports, or a state-owning `@metacrdt/convex` component slice.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -142,6 +144,22 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — @metacrdt/convex registered component surface
+- [x] **Packaged component entrypoints added.** `@metacrdt/convex` now exports
+  `./convex.config(.js)` and `./_generated/component(.js)`, with a stateless
+  component under `packages/convex/src/component`.
+- [x] **Registered protocol helpers shipped.** Component functions build protocol
+  assert/lifecycle rows and summarize one or many protocol rows. They accept
+  explicit values across the component boundary; host apps still own auth, table
+  selection, database writes, and public wrapper names.
+- [x] **Reference app mount proved.** `convex/convex.config.ts` installs the
+  component as `metacrdt`; `api.metacrdtComponent.verifyEvents` fetches host
+  `factEvents`/`transactions`, calls `components.metacrdt.protocol.summarizeRows`,
+  and enforces optional `requireValid` for protocol-stamped events.
+- [x] Tests: `@metacrdt/convex` package component tests, app wrapper test,
+  root Convex suite, package typecheck, Convex typecheck, and live
+  `npx convex run metacrdtComponent:verifyEvents ...`.
 
 ### 2026-06-07 — command menu polish
 - [x] **Header search is real.** `Cmd/Ctrl+K` or the header search control opens a

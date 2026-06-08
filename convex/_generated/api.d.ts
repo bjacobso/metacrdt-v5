@@ -28,6 +28,7 @@ import type * as lib_origin from "../lib/origin.js";
 import type * as lib_readAuth from "../lib/readAuth.js";
 import type * as lib_visibility from "../lib/visibility.js";
 import type * as materialize from "../materialize.js";
+import type * as metacrdtComponent from "../metacrdtComponent.js";
 import type * as metacrdtConfect from "../metacrdtConfect.js";
 import type * as overview from "../overview.js";
 import type * as rebuild from "../rebuild.js";
@@ -62,6 +63,7 @@ declare const fullApi: ApiFromModules<{
   "lib/readAuth": typeof lib_readAuth;
   "lib/visibility": typeof lib_visibility;
   materialize: typeof materialize;
+  metacrdtComponent: typeof metacrdtComponent;
   metacrdtConfect: typeof metacrdtConfect;
   overview: typeof overview;
   rebuild: typeof rebuild;
@@ -98,4 +100,5 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   selfHosting: import("@convex-dev/static-hosting/_generated/component.js").ComponentApi<"selfHosting">;
+  metacrdt: import("@metacrdt/convex/_generated/component.js").ComponentApi<"metacrdt">;
 };

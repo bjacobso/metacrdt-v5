@@ -1,9 +1,10 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 13 (`@metacrdt/runtime` harness groundwork) has shipped.
+**Current goal:** Goal 13 (`@metacrdt/runtime` harness groundwork) has shipped,
+and `@metacrdt/convex` now has a first stateless registered component surface.
 The next active goal should be chosen from the remaining TODO candidates: full
-app write authorization or the next `@metacrdt/convex` function
-factory/component slice.
+app write authorization, durable runtime transports, or a state-owning
+`@metacrdt/convex` component slice.
 
 This plan is the operational goal file. Read it with:
 
@@ -77,7 +78,7 @@ configured actions can now take small typed arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 70 tests at last verification.
+- Convex backend tests are green: 87 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -92,10 +93,16 @@ configured actions can now take small typed arguments.
     host-provided inserter
   - helper for summarizing/verifying rows through a host-provided transaction
     lookup
+  - a stateless registered Convex component surface
+    (`@metacrdt/convex/convex.config.js`) with protocol row build/summarize
+    functions that operate on values passed across the component boundary
+  - a reference-app wrapper, `api.metacrdtComponent.verifyEvents`, that mounts
+    the component as `components.metacrdt` while keeping table ownership and
+    public API naming in the host app
   - an explicit Confect sidecar warning/helper documenting the manual-mount
     lesson from Goal 2
-  - package-local tests for deterministic event reconstruction and legacy
-    fallback behavior
+  - package-local tests for deterministic event reconstruction, legacy fallback
+    behavior, and registered component functions
 - `@metacrdt/forma` exists in [`packages/forma`](./packages/forma):
   - runtime-neutral Lisp / S-expression authoring language
   - parser, formatter, evaluator, VM, type inference, and language-owned
@@ -160,10 +167,10 @@ configured actions can now take small typed arguments.
   rows, while new corrections write protocol primitives.
 - `facts` and `currentFacts` are still maintained as imperative projections,
   not folded directly from raw core-shaped events.
-- `@metacrdt/convex` is adapter-first. It now owns cardinality-one reconcile
-  selection by `≺`, but the host app still owns database writes/projection rows.
-  A full Convex component surface and mutation factories remain deferred until
-  the package boundary is proven against more host-app usage.
+- `@metacrdt/convex` now has adapter helpers and a first stateless registered
+  component surface, but the host app still owns database writes/projection rows.
+  A state-owning Convex component and durable mutation factories remain deferred
+  until the package boundary is proven against more host-app usage.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime and does not implement durable transport targets.
 - Multi-replica sync is specified and now implemented as in-memory
@@ -760,15 +767,19 @@ packages/convex/
   - append protocol assert event
   - append lifecycle event
   - verify event rows
-- [ ] Export registered Convex component/functions for the same helpers once the
-  component API is clear.
-- [ ] Keep host apps free to mount functions under their own names.
+- [x] Export registered Convex component/functions for the same stateless
+  protocol helpers once the component API is clear:
+  - build protocol assert row
+  - build protocol lifecycle row
+  - summarize one or many protocol rows
+- [x] Keep host apps free to mount functions under their own names: the reference
+  app installs the package as `components.metacrdt` and exposes
+  `api.metacrdtComponent.verifyEvents` as its own wrapper.
 
-Deferred rationale: Goal 3 ships reusable, target-shaped helpers before
-mountable functions. The package now owns host-mounted helpers; a full registered
-component surface should come after one more host-app usage or the component API
-shape is clear, otherwise it risks fossilizing the current reference app's
-projection choices as public API.
+Deferred rationale: Goal 3 ships reusable, target-shaped helpers plus a
+stateless registered component surface. A state-owning component that owns
+tables/projection writes is still deferred; shipping that now would fossilize the
+current reference app's projection choices as public API.
 
 #### 4. Confect integration decision
 

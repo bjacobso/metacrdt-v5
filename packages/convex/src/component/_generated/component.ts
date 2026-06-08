@@ -1,0 +1,239 @@
+/* eslint-disable */
+/**
+ * Generated `ComponentApi` utility.
+ *
+ * THIS CODE IS AUTOMATICALLY GENERATED.
+ *
+ * To regenerate, run `npx convex dev`.
+ * @module
+ */
+
+import type { FunctionReference } from "convex/server";
+
+/**
+ * A utility for referencing a Convex component's exposed API.
+ *
+ * Useful when expecting a parameter like `components.myComponent`.
+ * Usage:
+ * ```ts
+ * async function myFunction(ctx: QueryCtx, component: ComponentApi) {
+ *   return ctx.runQuery(component.someFile.someQuery, { ...args });
+ * }
+ * ```
+ */
+export type ComponentApi<Name extends string | undefined = string | undefined> =
+  {
+    protocol: {
+      buildAssertRow: FunctionReference<
+        "query",
+        "internal",
+        {
+          a: string;
+          causalRefs?: Array<string>;
+          e: string;
+          factId?: string;
+          metadata?: any;
+          reason?: string;
+          tx: {
+            _creationTime: number;
+            actorId: string;
+            actorType: "user" | "system" | "agent" | "migration";
+            reason?: string;
+            txTime: number;
+          };
+          txId: string;
+          v: any;
+          validFrom: number;
+          validTo?: number;
+        },
+        {
+          a: string;
+          causalRefs?: Array<string>;
+          e: string;
+          eventId: string;
+          factId?: string;
+          hlc: { l: number; pt: number; r: string };
+          kind: "assert" | "retract" | "tombstone" | "untombstone";
+          metadata?: any;
+          reason?: string;
+          replicaId: string;
+          targetEventId?: string;
+          txId: string;
+          txTime: number;
+          v: any;
+          validFrom?: number;
+          validTo?: number;
+        },
+        Name
+      >;
+      buildLifecycleRow: FunctionReference<
+        "query",
+        "internal",
+        {
+          a: string;
+          causalRefs?: Array<string>;
+          e: string;
+          factId?: string;
+          kind: "retract" | "tombstone" | "untombstone";
+          metadata?: any;
+          reason?: string;
+          targetEventId: string;
+          tx: {
+            _creationTime: number;
+            actorId: string;
+            actorType: "user" | "system" | "agent" | "migration";
+            reason?: string;
+            txTime: number;
+          };
+          txId: string;
+          v: any;
+          validTo?: number;
+        },
+        {
+          a: string;
+          causalRefs?: Array<string>;
+          e: string;
+          eventId: string;
+          factId?: string;
+          hlc: { l: number; pt: number; r: string };
+          kind: "assert" | "retract" | "tombstone" | "untombstone";
+          metadata?: any;
+          reason?: string;
+          replicaId: string;
+          targetEventId?: string;
+          txId: string;
+          txTime: number;
+          v: any;
+          validFrom?: number;
+          validTo?: number;
+        },
+        Name
+      >;
+      summarizeRow: FunctionReference<
+        "query",
+        "internal",
+        {
+          row: {
+            a: string;
+            causalRefs?: Array<string>;
+            e: string;
+            eventId?: string;
+            factId?: string;
+            hlc?: { l: number; pt: number; r: string };
+            kind:
+              | "assert"
+              | "retract"
+              | "tombstone"
+              | "untombstone"
+              | "correction";
+            metadata?: any;
+            reason?: string;
+            replicaId?: string;
+            seq?: number;
+            targetEventId?: string;
+            txId?: string;
+            txTime: number;
+            v: any;
+            validFrom?: number;
+            validTo?: number;
+          };
+          tx: {
+            _creationTime: number;
+            actorId: string;
+            actorType: "user" | "system" | "agent" | "migration";
+            reason?: string;
+            txTime: number;
+          };
+        },
+        {
+          a: string;
+          actor: string;
+          actorType: "human" | "system" | "agent" | "migration";
+          causalRefs: Array<string>;
+          e: string;
+          eventId?: string;
+          hasProtocolMetadata: boolean;
+          hlc?: { l: number; pt: number; r: string };
+          kind:
+            | "assert"
+            | "retract"
+            | "tombstone"
+            | "untombstone"
+            | "correction";
+          reason?: string;
+          targetEventId?: string;
+          txTime: number;
+          v: any;
+          validEventId: boolean;
+          validFrom?: number;
+          validTo?: number;
+          verifiable: boolean;
+        },
+        Name
+      >;
+      summarizeRows: FunctionReference<
+        "query",
+        "internal",
+        {
+          inputs: Array<{
+            row: {
+              a: string;
+              causalRefs?: Array<string>;
+              e: string;
+              eventId?: string;
+              factId?: string;
+              hlc?: { l: number; pt: number; r: string };
+              kind:
+                | "assert"
+                | "retract"
+                | "tombstone"
+                | "untombstone"
+                | "correction";
+              metadata?: any;
+              reason?: string;
+              replicaId?: string;
+              seq?: number;
+              targetEventId?: string;
+              txId?: string;
+              txTime: number;
+              v: any;
+              validFrom?: number;
+              validTo?: number;
+            };
+            tx: {
+              _creationTime: number;
+              actorId: string;
+              actorType: "user" | "system" | "agent" | "migration";
+              reason?: string;
+              txTime: number;
+            };
+          }>;
+        },
+        Array<{
+          a: string;
+          actor: string;
+          actorType: "human" | "system" | "agent" | "migration";
+          causalRefs: Array<string>;
+          e: string;
+          eventId?: string;
+          hasProtocolMetadata: boolean;
+          hlc?: { l: number; pt: number; r: string };
+          kind:
+            | "assert"
+            | "retract"
+            | "tombstone"
+            | "untombstone"
+            | "correction";
+          reason?: string;
+          targetEventId?: string;
+          txTime: number;
+          v: any;
+          validEventId: boolean;
+          validFrom?: number;
+          validTo?: number;
+          verifiable: boolean;
+        }>,
+        Name
+      >;
+    };
+  };
