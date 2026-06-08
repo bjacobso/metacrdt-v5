@@ -1,0 +1,357 @@
+{
+  "source": "preludes/viewspec-protocol.lisp",
+  "module": {
+    "kind": "module",
+    "descriptorName": "view-expression-module",
+    "name": "ViewExpression",
+    "types": ["ViewExprNode"],
+    "enums": ["ViewExprSource"],
+    "objects": [
+      "ViewExprLiteral",
+      "ViewExprVar",
+      "ViewExprBinary",
+      "ViewExprUnary",
+      "ViewExprConditional",
+      "ViewExprPipe"
+    ],
+    "unions": ["ViewExpr"],
+    "imports": [],
+    "literalSchemas": [],
+    "extensionKey": "protocol/module"
+  },
+  "typeAliases": [
+    {
+      "kind": "type",
+      "descriptorName": "view-expr-node",
+      "name": "ViewExprNode",
+      "schemaName": "ViewExprNodeSchema",
+      "type": {
+        "kind": "ref",
+        "ref": "ViewExpr"
+      },
+      "extensionKey": "protocol/type"
+    }
+  ],
+  "enums": [
+    {
+      "kind": "enum",
+      "descriptorName": "view-expr-source",
+      "name": "ViewExprSource",
+      "schemaName": "ViewExprSource",
+      "values": [
+        "state",
+        "query",
+        "input",
+        "row",
+        "db",
+        "item",
+        "index",
+        "event",
+        "result",
+        "error",
+        "host"
+      ],
+      "description": "ViewSpec expression root source.",
+      "extensionKey": "protocol/enum"
+    }
+  ],
+  "objects": [
+    {
+      "kind": "object",
+      "descriptorName": "view-expr-literal",
+      "name": "ViewExprLiteral",
+      "schemaName": "ViewExprLiteralSchema",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "literal",
+            "values": ["literal"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "unknown"
+          },
+          "required": true,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-expr-var",
+      "name": "ViewExprVar",
+      "schemaName": "ViewExprVarSchema",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "literal",
+            "values": ["var"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "source",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExprSource"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "path",
+          "type": {
+            "kind": "array",
+            "item": {
+              "kind": "string"
+            }
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-expr-binary",
+      "name": "ViewExprBinary",
+      "schemaName": "ViewExprBinarySchema",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "literal",
+            "values": ["binary"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "op",
+          "type": {
+            "kind": "literal",
+            "values": ["===", "!==", ">", ">=", "<", "<=", "+", "-", "*", "/", "&&", "||"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "left",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExpr"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "right",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExpr"
+          },
+          "required": true,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-expr-unary",
+      "name": "ViewExprUnary",
+      "schemaName": "ViewExprUnarySchema",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "literal",
+            "values": ["unary"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "op",
+          "type": {
+            "kind": "literal",
+            "values": ["!", "-"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExpr"
+          },
+          "required": true,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-expr-conditional",
+      "name": "ViewExprConditional",
+      "schemaName": "ViewExprConditionalSchema",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "literal",
+            "values": ["conditional"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "condition",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExpr"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "then",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExpr"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "else",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExpr"
+          },
+          "required": true,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-expr-pipe",
+      "name": "ViewExprPipe",
+      "schemaName": "ViewExprPipeSchema",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "literal",
+            "values": ["pipe"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExpr"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "args",
+          "type": {
+            "kind": "array",
+            "item": {
+              "kind": "ref",
+              "ref": "ViewExpr"
+            }
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    }
+  ],
+  "unions": [
+    {
+      "kind": "union",
+      "descriptorName": "view-expr",
+      "name": "ViewExpr",
+      "schemaName": "ViewExpression",
+      "members": [
+        {
+          "name": "literal",
+          "tag": "literal",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExprLiteral"
+          }
+        },
+        {
+          "name": "var",
+          "tag": "var",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExprVar"
+          }
+        },
+        {
+          "name": "binary",
+          "tag": "binary",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExprBinary"
+          }
+        },
+        {
+          "name": "unary",
+          "tag": "unary",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExprUnary"
+          }
+        },
+        {
+          "name": "conditional",
+          "tag": "conditional",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExprConditional"
+          }
+        },
+        {
+          "name": "pipe",
+          "tag": "pipe",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExprPipe"
+          }
+        }
+      ],
+      "extensionKey": "protocol/union"
+    }
+  ],
+  "catalogs": []
+}

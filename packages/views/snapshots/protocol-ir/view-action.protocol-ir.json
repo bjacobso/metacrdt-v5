@@ -1,0 +1,1265 @@
+{
+  "source": "preludes/viewspec-protocol.lisp",
+  "module": {
+    "kind": "module",
+    "descriptorName": "view-action-module",
+    "name": "ViewAction",
+    "types": ["ViewActionOrList"],
+    "enums": [],
+    "objects": [
+      "ViewSetStateAction",
+      "ViewPatchStateAction",
+      "ViewToggleStateAction",
+      "ViewRunQueryAction",
+      "ViewRunQueriesAction",
+      "ViewNavigateAction",
+      "ViewShowToastAction",
+      "ViewOpenDialogAction",
+      "ViewCloseDialogAction",
+      "ViewEmitAction",
+      "ViewExecuteActionAction",
+      "ViewFetchAction",
+      "ViewToolCallAction",
+      "ViewRequestDisplayModeAction",
+      "ViewUpdateContextAction",
+      "ViewSendMessageAction",
+      "ViewOpenFilePickerAction"
+    ],
+    "unions": ["ViewAction"],
+    "imports": [
+      {
+        "name": "ViewExpr",
+        "from": "ViewExpression",
+        "schemaName": "ViewExpression",
+        "typeOnly": false
+      }
+    ],
+    "literalSchemas": [],
+    "extensionKey": "protocol/module"
+  },
+  "typeAliases": [
+    {
+      "kind": "type",
+      "descriptorName": "view-action-or-list",
+      "name": "ViewActionOrList",
+      "schemaName": "ViewActionOrListSchema",
+      "type": {
+        "kind": "union",
+        "variants": [
+          {
+            "kind": "ref",
+            "ref": "ViewAction"
+          },
+          {
+            "kind": "array",
+            "item": {
+              "kind": "ref",
+              "ref": "ViewAction"
+            }
+          }
+        ]
+      },
+      "description": "A single action or an ordered list of actions.",
+      "extensionKey": "protocol/type"
+    }
+  ],
+  "enums": [],
+  "objects": [
+    {
+      "kind": "object",
+      "descriptorName": "view-set-state-action",
+      "name": "ViewSetStateAction",
+      "schemaName": "ViewSetStateActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["setState"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "unknown"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-patch-state-action",
+      "name": "ViewPatchStateAction",
+      "schemaName": "ViewPatchStateActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["patchState"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "unknown"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-toggle-state-action",
+      "name": "ViewToggleStateAction",
+      "schemaName": "ViewToggleStateActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["toggleState"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-run-query-action",
+      "name": "ViewRunQueryAction",
+      "schemaName": "ViewRunQueryActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["runQuery"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "query",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-run-queries-action",
+      "name": "ViewRunQueriesAction",
+      "schemaName": "ViewRunQueriesActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["runQueries"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "queries",
+          "type": {
+            "kind": "array",
+            "item": {
+              "kind": "string"
+            }
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-navigate-action",
+      "name": "ViewNavigateAction",
+      "schemaName": "ViewNavigateActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["navigate"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "path",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExpr"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-show-toast-action",
+      "name": "ViewShowToastAction",
+      "schemaName": "ViewShowToastActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["showToast"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExpr"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExpr"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "variant",
+          "type": {
+            "kind": "literal",
+            "values": ["default", "success", "error", "warning", "info"]
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "duration",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-open-dialog-action",
+      "name": "ViewOpenDialogAction",
+      "schemaName": "ViewOpenDialogActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["openDialog"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "dialogId",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-close-dialog-action",
+      "name": "ViewCloseDialogAction",
+      "schemaName": "ViewCloseDialogActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["closeDialog"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "dialogId",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-emit-action",
+      "name": "ViewEmitAction",
+      "schemaName": "ViewEmitActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["emit"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "event",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "payload",
+          "type": {
+            "kind": "unknown"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-execute-action-action",
+      "name": "ViewExecuteActionAction",
+      "schemaName": "ViewExecuteActionActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["executeAction"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "actionRef",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "entityId",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExpr"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "parameters",
+          "type": {
+            "kind": "record",
+            "value": {
+              "kind": "unknown"
+            }
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-fetch-action",
+      "name": "ViewFetchAction",
+      "schemaName": "ViewFetchActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["fetch"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "url",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExpr"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "method",
+          "type": {
+            "kind": "literal",
+            "values": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "headers",
+          "type": {
+            "kind": "record",
+            "value": {
+              "kind": "unknown"
+            }
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "unknown"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-tool-call-action",
+      "name": "ViewToolCallAction",
+      "schemaName": "ViewToolCallActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["toolCall"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "tool",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExpr"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "arguments",
+          "type": {
+            "kind": "record",
+            "value": {
+              "kind": "unknown"
+            }
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-request-display-mode-action",
+      "name": "ViewRequestDisplayModeAction",
+      "schemaName": "ViewRequestDisplayModeActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["requestDisplayMode"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "mode",
+          "type": {
+            "kind": "literal",
+            "values": ["inline", "fullscreen", "pip"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-update-context-action",
+      "name": "ViewUpdateContextAction",
+      "schemaName": "ViewUpdateContextActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["updateContext"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "content",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExpr"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "structuredContent",
+          "type": {
+            "kind": "record",
+            "value": {
+              "kind": "unknown"
+            }
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-send-message-action",
+      "name": "ViewSendMessageAction",
+      "schemaName": "ViewSendMessageActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["sendMessage"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "content",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExpr"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-open-file-picker-action",
+      "name": "ViewOpenFilePickerAction",
+      "schemaName": "ViewOpenFilePickerActionSchema",
+      "fields": [
+        {
+          "name": "action",
+          "type": {
+            "kind": "literal",
+            "values": ["openFilePicker"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "accept",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "multiple",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "maxSize",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onError",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onFinally",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    }
+  ],
+  "unions": [
+    {
+      "kind": "union",
+      "descriptorName": "view-action",
+      "name": "ViewAction",
+      "schemaName": "ViewActionSchema",
+      "discriminator": "action",
+      "members": [
+        {
+          "name": "setState",
+          "tag": "setState",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewSetStateAction"
+          }
+        },
+        {
+          "name": "patchState",
+          "tag": "patchState",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewPatchStateAction"
+          }
+        },
+        {
+          "name": "toggleState",
+          "tag": "toggleState",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewToggleStateAction"
+          }
+        },
+        {
+          "name": "runQuery",
+          "tag": "runQuery",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewRunQueryAction"
+          }
+        },
+        {
+          "name": "runQueries",
+          "tag": "runQueries",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewRunQueriesAction"
+          }
+        },
+        {
+          "name": "navigate",
+          "tag": "navigate",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewNavigateAction"
+          }
+        },
+        {
+          "name": "showToast",
+          "tag": "showToast",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewShowToastAction"
+          }
+        },
+        {
+          "name": "openDialog",
+          "tag": "openDialog",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewOpenDialogAction"
+          }
+        },
+        {
+          "name": "closeDialog",
+          "tag": "closeDialog",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewCloseDialogAction"
+          }
+        },
+        {
+          "name": "emit",
+          "tag": "emit",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewEmitAction"
+          }
+        },
+        {
+          "name": "executeAction",
+          "tag": "executeAction",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewExecuteActionAction"
+          }
+        },
+        {
+          "name": "fetch",
+          "tag": "fetch",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewFetchAction"
+          }
+        },
+        {
+          "name": "toolCall",
+          "tag": "toolCall",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewToolCallAction"
+          }
+        },
+        {
+          "name": "requestDisplayMode",
+          "tag": "requestDisplayMode",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewRequestDisplayModeAction"
+          }
+        },
+        {
+          "name": "updateContext",
+          "tag": "updateContext",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewUpdateContextAction"
+          }
+        },
+        {
+          "name": "sendMessage",
+          "tag": "sendMessage",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewSendMessageAction"
+          }
+        },
+        {
+          "name": "openFilePicker",
+          "tag": "openFilePicker",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewOpenFilePickerAction"
+          }
+        }
+      ],
+      "extensionKey": "protocol/union"
+    }
+  ],
+  "catalogs": []
+}

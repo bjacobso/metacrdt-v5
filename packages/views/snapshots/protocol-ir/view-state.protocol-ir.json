@@ -1,0 +1,251 @@
+{
+  "source": "preludes/viewspec-protocol.lisp",
+  "module": {
+    "kind": "module",
+    "descriptorName": "view-state-module",
+    "name": "ViewState",
+    "types": [],
+    "enums": [],
+    "objects": [
+      "ViewScalarStateDecl",
+      "ViewListStateDecl",
+      "ViewObjectStateDecl",
+      "ViewJsonStateDecl",
+      "ViewComponentStateDecl"
+    ],
+    "unions": ["ViewStateDecl"],
+    "imports": [
+      {
+        "name": "ViewNode",
+        "from": "ViewNode",
+        "schemaName": "ViewNode",
+        "typeOnly": false
+      }
+    ],
+    "literalSchemas": [],
+    "extensionKey": "protocol/module"
+  },
+  "typeAliases": [],
+  "enums": [],
+  "objects": [
+    {
+      "kind": "object",
+      "descriptorName": "view-scalar-state-decl",
+      "name": "ViewScalarStateDecl",
+      "schemaName": "ViewScalarStateDeclSchema",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "literal",
+            "values": ["string", "number", "boolean", "null"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "initial",
+          "type": {
+            "kind": "unknown"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-list-state-decl",
+      "name": "ViewListStateDecl",
+      "schemaName": "ViewListStateDeclSchema",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "literal",
+            "values": ["list"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "item",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewStateDecl"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "initial",
+          "type": {
+            "kind": "array",
+            "item": {
+              "kind": "unknown"
+            }
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-object-state-decl",
+      "name": "ViewObjectStateDecl",
+      "schemaName": "ViewObjectStateDeclSchema",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "literal",
+            "values": ["object"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "record",
+            "value": {
+              "kind": "ref",
+              "ref": "ViewStateDecl"
+            }
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "initial",
+          "type": {
+            "kind": "record",
+            "value": {
+              "kind": "unknown"
+            }
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-json-state-decl",
+      "name": "ViewJsonStateDecl",
+      "schemaName": "ViewJsonStateDeclSchema",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "literal",
+            "values": ["json"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "initial",
+          "type": {
+            "kind": "unknown"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-component-state-decl",
+      "name": "ViewComponentStateDecl",
+      "schemaName": "ViewComponentStateDeclSchema",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "literal",
+            "values": ["component"]
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "initial",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "ref",
+                "ref": "ViewNode"
+              },
+              {
+                "kind": "null"
+              }
+            ]
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    }
+  ],
+  "unions": [
+    {
+      "kind": "union",
+      "descriptorName": "view-state-decl",
+      "name": "ViewStateDecl",
+      "schemaName": "ViewStateDeclSchema",
+      "discriminator": "kind",
+      "members": [
+        {
+          "name": "scalar",
+          "tag": "scalar",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewScalarStateDecl"
+          }
+        },
+        {
+          "name": "list",
+          "tag": "list",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewListStateDecl"
+          }
+        },
+        {
+          "name": "object",
+          "tag": "object",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewObjectStateDecl"
+          }
+        },
+        {
+          "name": "json",
+          "tag": "json",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewJsonStateDecl"
+          }
+        },
+        {
+          "name": "component",
+          "tag": "component",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewComponentStateDecl"
+          }
+        }
+      ],
+      "extensionKey": "protocol/union"
+    }
+  ],
+  "catalogs": []
+}

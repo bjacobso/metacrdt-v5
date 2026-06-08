@@ -1,0 +1,17 @@
+{
+  "$viewSpec": {
+    "version": "2"
+  },
+  "queries": {
+    "employee": {
+      "queryRef": "employee-by-id"
+    }
+  },
+  "root": {
+    "type": "not-a-view-node",
+    "value": {
+      "kind": "literal",
+      "value": "Hello"
+    }
+  }
+}

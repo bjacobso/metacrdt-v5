@@ -480,6 +480,30 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ## Log
 
+### 2026-06-08 — `@metacrdt/views` ViewSpec fold (self-hosting)
+- [x] **`@metacrdt/views` shipped (Phase 1 of [plans/views.md](./plans/views.md)).**
+  Folded Open Ontology's ViewSpec into a new pure feature package: the
+  host-agnostic view contract (Effect Schema IR) plus the normalize / validate /
+  evaluate runtime.
+- [x] **Self-hosting, not vendored-only.** The view contract is *generated* from
+  in-package Forma preludes (`preludes/{ui,viewspec,viewspec-protocol}.lisp`) by
+  `scripts/generate-view-node.ts`, which drives `@metacrdt/forma`'s descriptor
+  codegen. The spike confirmed forma re-exports every protocol-codegen function
+  OO used (22/23 identically; `parseDescriptorPrelude` = forma's `parsePrelude`);
+  adapting the codegen was just swapping the import source + aliasing four
+  symbols. First production exercise of forma's descriptor codegen.
+- [x] **Vendored output, drift-guarded.** `src/generated/*.generated.ts` is
+  committed; `generated-sources.test.ts` re-renders from the preludes and asserts
+  the committed files match, and the IR-snapshot tests confirm forma's descriptor
+  IR matches OO's committed snapshots byte-for-byte.
+- [x] **Clean boundary.** Runtime depends only on `effect`; `@metacrdt/forma` is a
+  build-time devDependency only; no import from `.context/open-ontology`. Package
+  owns the protocol (IR + preludes + generate + runtime); does *not* own the
+  Forma→ViewSpec authoring lowering, the renderer, or query execution.
+- [x] Verification: `npm run test:packages` (views: 25 tests, 8 files),
+  `npm run pack:packages`, `npm run typecheck`, and `npm run build` (packages +
+  vite app) all pass.
+
 ### 2026-06-08 — package build tooling
 - [x] **Goal 107 shipped:** centralized package build config. Added root
   `tsdown.config.ts`, moved all package build scripts to
