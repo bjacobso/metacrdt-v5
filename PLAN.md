@@ -1,19 +1,20 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 61 (production `getEntity` reads from the event log) has
+**Current goal:** Goal 62 (production bitemporal entity reads from the event log) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
 `factEvents`. Goal 60 promoted the already-proven `queryFactsFromEventLog`
 point-query path into production `api.facts.queryFacts`. Goal 61 promoted the
 already-proven `entityFromEventLog` object fold into production
-`api.facts.getEntity`, while leaving bitemporal entity-as-of reads and
-type/listing reads on `facts` / `currentFacts` until later goals. The next active
-goal should be chosen from the remaining TODO candidates: bitemporal entity reads
-(`entityAsOf` / `entityFactsAsOf`), typed entity list/search reads
-(`queryEntities`), provider-backed login UI / production auth, live Cloudflare
-deployment/auth, or a carefully scoped Confect wrapper now that the main
-production base fact reads have moved to event-log folds.
+`api.facts.getEntity`. Goal 62 moved production bitemporal entity reads
+(`entityAsOf`, `entityFactsAsOf`) to protocol-shaped `factEvents`, while leaving
+typed/listing reads on `facts` / `currentFacts` until a later goal. The next
+active goal should be chosen from the remaining TODO candidates: typed entity
+list/search reads (`queryEntities`), `compareFacts`, provider-backed login UI /
+production auth, live Cloudflare deployment/auth, or a carefully scoped Confect
+wrapper now that the main production base fact reads have moved to event-log
+folds.
 
 This plan is the operational goal file. Read it with:
 
@@ -92,6 +93,9 @@ arguments.
   protocol-shaped `factEvents` and schema cardinality facts with
   `@metacrdt/core`, preserving the existing `{ id, attributes, denied }` shape
   and read-authorization behavior.
+- Production `api.facts.entityAsOf` and `api.facts.entityFactsAsOf` fold
+  bitemporal entity state directly from protocol-shaped `factEvents`, preserving
+  read authorization and the time-travel fact annotations used by the UI.
 - `api.facts.entityFromEventLog` folds a host entity directly from
   protocol-shaped `factEvents` with `@metacrdt/core`, including schema
   cardinality facts from the same log, and redacts through the same read-auth
@@ -410,8 +414,10 @@ arguments.
 - `facts` and `currentFacts` are still maintained as imperative projections,
   not folded directly from raw core-shaped events.
 - Production `getEntity` now uses the same bounded event-log fold as
-  `entityFromEventLog`; bitemporal entity-as-of reads and typed entity
-  list/search reads still use `facts` / `currentFacts`.
+  `entityFromEventLog`; production `entityAsOf` and `entityFactsAsOf` also fold
+  from protocol-shaped `factEvents`.
+- `compareFacts` and typed entity list/search reads still use `facts` /
+  `currentFacts`.
 - `entityFromEventLog` remains intentionally bounded and proof/read-model
   oriented, returning coordinate/skipped-legacy counts that production
   `getEntity` does not expose.
@@ -5275,6 +5281,112 @@ TODO.md
   - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
   - `npx tsc --noEmit -p tsconfig.json` passed.
 - `npm run build` passed.
+
+---
+
+## Goal 62 — Production Bitemporal Entity Reads from the Event Log
+
+**Status:** shipped in the Convex reference runtime.
+
+**Objective:** make production `api.facts.entityAsOf` and
+`api.facts.entityFactsAsOf` answer bitemporal entity reads from protocol-shaped
+`factEvents` instead of from the `facts` projection.
+
+This continues the host read-path migration after Goals 60 and 61. The current
+object read and point fact read are already event-log backed; the time-travel
+entity reads should share that source of truth before broader list/search reads
+move off projections.
+
+### Scope
+
+Backend:
+
+```text
+convex/facts.ts
+  entityAsOf
+  entityFactsAsOf
+  queryFactRowsFromEventLog denied-attribute reporting
+```
+
+Tests:
+
+```text
+convex/triples.test.ts
+convex/readAuth.test.ts
+convex/writeAuth.test.ts
+convex/datalog.test.ts
+```
+
+Docs:
+
+```text
+README.md
+PLAN.md
+TODO.md
+```
+
+### Semantics
+
+- `entityAsOf` keeps its existing `{ id, coord, attributes, denied }` shape.
+- `entityAsOf` reuses the same event-log entity fold helper as production
+  `getEntity`, but with caller-supplied `txTime` / `validTime` and include flags.
+- `entityFactsAsOf` reuses the event-log point-query fold for all visible facts
+  on the entity, preserving the time-travel UI's fact annotations:
+  `a`, `v`, `assertedAt`, `retractedAt`, `validFrom`, `validTo`,
+  `tombstonedAt`, `actor`, `reason`, and `txTime`.
+- Attribute-level read authorization still records denied attributes for visible
+  facts the principal cannot read.
+- The explicit proof/debug APIs remain available.
+
+### Non-Goals
+
+- Do not replace `compareFacts` in this slice.
+- Do not replace `queryEntities` / typed list/search reads in this slice.
+- Do not remove or stop maintaining `facts` / `currentFacts`.
+- Do not backfill legacy `factEvents` without protocol metadata.
+- Do not migrate this code to Confect in this slice.
+
+### Implementation
+
+- [x] Route `entityAsOf` through `entityAttributesFromEventLog`.
+- [x] Extend `queryFactRowsFromEventLog` to report denied attributes.
+- [x] Route `entityFactsAsOf` through `queryFactRowsFromEventLog`.
+- [x] Preserve response shapes and time-travel annotations.
+- [x] Leave projection maintenance and rebuild unchanged.
+
+### Acceptance Criteria
+
+- For ordinary protocol-shaped writes, `entityAsOf` matches `getEntity` at the
+  current coordinate.
+- If the `facts` projection is corrupted for an entity, production `entityAsOf`
+  and `entityFactsAsOf` still return visible state from `factEvents`.
+- `entityFactsAsOf` preserves actor/reason annotations from source transactions.
+- PII/read-grant behavior remains unchanged: ungranted sensitive attributes are
+  omitted and reported in `denied`.
+
+### Verification
+
+- `npx convex codegen` passed (generated bindings, bundled/uploaded Convex
+  functions, and ran Convex TypeScript).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/triples.test.ts convex/readAuth.test.ts convex/writeAuth.test.ts convex/datalog.test.ts`
+  passed (59 tests).
+- Broader gate passed:
+  - `npm test` passed (17 backend test files, 146 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+  - `git diff --check` passed.
+
+### Definition of Done
+
+Goal 62 is complete when production `entityAsOf` and `entityFactsAsOf` no longer
+read the `facts` projection, all compatibility/read-auth tests pass, docs record
+the remaining projection-backed `compareFacts` / `queryEntities` surface, and
+the change is committed and pushed.
 
 ---
 

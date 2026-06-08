@@ -52,6 +52,15 @@ describe("cardinality-one", () => {
       includeRetracted: true,
     });
     expect(all.map((f) => f.v).sort()).toEqual(["active", "inactive"]);
+
+    const asOfAudit = await t.query(api.facts.entityAsOf, {
+      e: "e:1",
+      includeRetracted: true,
+    });
+    expect((asOfAudit.attributes["employee.status"] as string[]).sort()).toEqual([
+      "active",
+      "inactive",
+    ]);
   });
 
   test("same-time cardinality-one assertions choose the core ≺-max winner", async () => {
@@ -474,6 +483,45 @@ describe("event log is append-only", () => {
     expect(asOf.attributes).toEqual(entity.attributes);
     expect(entity.attributes["status"]).toEqual(["terminated"]);
     expect(entity.attributes["name"]).toEqual(["Ada"]);
+  });
+
+  test("bitemporal entity reads survive a corrupted facts projection", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await t.mutation(api.attributes.defineAttribute, {
+      name: "status.asOfLogOnly",
+      valueType: "string",
+      cardinality: "one",
+    });
+    await t.mutation(api.facts.assertFact, {
+      e: "e:as-of-log-only",
+      a: "status.asOfLogOnly",
+      value: "visible",
+      reason: "source event stays authoritative",
+    });
+
+    await t.run(async (ctx) => {
+      const rows = await ctx.db
+        .query("facts")
+        .withIndex("by_e", (q) => q.eq("e", "e:as-of-log-only"))
+        .collect();
+      for (const row of rows) {
+        await ctx.db.patch(row._id, {
+          retractedAt: Date.now(),
+          tombstonedAt: Date.now(),
+        });
+      }
+    });
+
+    const asOf = await t.query(api.facts.entityAsOf, { e: "e:as-of-log-only" });
+    expect(asOf.attributes["status.asOfLogOnly"]).toEqual(["visible"]);
+
+    const factsAsOf = await t.query(api.facts.entityFactsAsOf, {
+      e: "e:as-of-log-only",
+    });
+    expect(factsAsOf.facts.map((f) => [f.a, f.v])).toEqual([
+      ["status.asOfLogOnly", "visible"],
+    ]);
+    expect(factsAsOf.facts[0].reason).toBe("source event stays authoritative");
   });
 });
 

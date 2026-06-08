@@ -853,7 +853,12 @@ async function queryFactRowsFromEventLog(
     includeRetracted?: boolean;
     limit?: number;
   },
-): Promise<{ coord: { txTime: number; validTime: number }; skipped: number; rows: QueryFactRow[] }> {
+): Promise<{
+  coord: { txTime: number; validTime: number };
+  skipped: number;
+  rows: QueryFactRow[];
+  denied: Array<{ a: string; reason: "pii" }>;
+}> {
   const coord = {
     txTime: args.txTime ?? Date.now(),
     validTime: args.validTime ?? Date.now(),
@@ -868,6 +873,7 @@ async function queryFactRowsFromEventLog(
   );
   const principal = await readPrincipal(ctx);
   const out: QueryFactRow[] = [];
+  const deniedByAttr = new Map<string, { a: string; reason: "pii" }>();
   const keys =
     args.e !== undefined && args.a !== undefined
       ? [[args.e, args.a] as const]
@@ -886,7 +892,10 @@ async function queryFactRowsFromEventLog(
       if (args.value !== undefined && valueKey(ev.v) !== valueKey(args.value)) {
         continue;
       }
-      if (!(await canReadAttribute(ctx, principal, ev.e!, ev.a!))) continue;
+      if (!(await canReadAttribute(ctx, principal, ev.e!, ev.a!))) {
+        deniedByAttr.set(ev.a!, { a: ev.a!, reason: "pii" });
+        continue;
+      }
 
       const row = rowByEventId.get(ev.id);
       const retraction = firstLifecycleEvent(events, "retract", ev.id, coord.txTime);
@@ -918,7 +927,12 @@ async function queryFactRowsFromEventLog(
     }
   }
   out.sort((x, y) => x.e.localeCompare(y.e) || x.a.localeCompare(y.a));
-  return { coord, skipped: protocol.skipped, rows: out };
+  return {
+    coord,
+    skipped: protocol.skipped,
+    rows: out,
+    denied: [...deniedByAttr.values()],
+  };
 }
 
 async function cardinalityEventsForAttributes(
@@ -1153,9 +1167,10 @@ const coordValidator = v.object({
 
 /**
  * Reconstruct an entity's attribute map at an arbitrary bitemporal coordinate
- * directly from the canonical `facts` log (not the currentFacts projection),
- * so it works for any past txTime / validTime. This is the general form of the
- * asOf* helpers: pass now/now to reproduce getEntity.
+ * directly from protocol-shaped `factEvents`, so it works for any past txTime /
+ * validTime without trusting the disposable `facts` / `currentFacts`
+ * projections. This is the general form of the asOf* helpers: pass now/now to
+ * reproduce getEntity.
  */
 export const entityAsOf = query({
   args: {
@@ -1166,31 +1181,16 @@ export const entityAsOf = query({
     includeRetracted: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const coord = {
-      txTime: args.txTime ?? Date.now(),
-      validTime: args.validTime ?? Date.now(),
-    };
-    const rows = await ctx.db
-      .query("facts")
-      .withIndex("by_e", (q) => q.eq("e", args.e))
-      .take(2000);
-
+    const result = await queryFactRowsFromEventLog(ctx, args);
     const attributes: Record<string, unknown[]> = {};
-    for (const f of rows) {
-      if (
-        !isVisible(f, coord, {
-          includeTombstoned: args.includeTombstoned,
-          includeRetracted: args.includeRetracted,
-        })
-      ) {
-        continue;
-      }
-      (attributes[f.a] ??= []).push(f.v);
+    for (const row of result.rows) {
+      (attributes[row.a] ??= []).push(row.v);
     }
     return {
       id: args.e,
-      coord,
-      ...(await redactAttributeMap(ctx, args.e, attributes)),
+      coord: result.coord,
+      attributes,
+      denied: result.denied,
     };
   },
 });
@@ -1255,44 +1255,21 @@ export const entityFactsAsOf = query({
     includeRetracted: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const coord = {
-      txTime: args.txTime ?? Date.now(),
-      validTime: args.validTime ?? Date.now(),
-    };
-    const rows = await ctx.db
-      .query("facts")
-      .withIndex("by_e", (q) => q.eq("e", args.e))
-      .take(2000);
-
-    const opts = {
-      includeTombstoned: args.includeTombstoned,
-      includeRetracted: args.includeRetracted,
-    };
-    const principal = await readPrincipal(ctx);
-    const out = [];
-    const deniedByAttr = new Map<string, { a: string; reason: "pii" }>();
-    for (const f of rows) {
-      if (!isVisible(f, coord, opts)) continue;
-      if (!(await canReadAttribute(ctx, principal, f.e, f.a))) {
-        deniedByAttr.set(f.a, { a: f.a, reason: "pii" });
-        continue;
-      }
-      const tx = await ctx.db.get("transactions", f.firstTxId);
-      out.push({
-        a: f.a,
-        v: f.v,
-        assertedAt: f.assertedAt,
-        retractedAt: f.retractedAt,
-        validFrom: f.validFrom,
-        validTo: f.validTo,
-        tombstonedAt: f.tombstonedAt,
-        actor: tx?.actorId,
-        reason: tx?.reason,
-        txTime: tx?.txTime,
-      });
-    }
+    const result = await queryFactRowsFromEventLog(ctx, args);
+    const out = result.rows.map((f) => ({
+      a: f.a,
+      v: f.v,
+      assertedAt: f.assertedAt,
+      retractedAt: f.retractedAt,
+      validFrom: f.validFrom,
+      validTo: f.validTo,
+      tombstonedAt: f.tombstonedAt,
+      actor: f.actor,
+      reason: f.reason,
+      txTime: f.assertedAt,
+    }));
     out.sort((x, y) => x.a.localeCompare(y.a));
-    return { id: args.e, coord, facts: out, denied: [...deniedByAttr.values()] };
+    return { id: args.e, coord: result.coord, facts: out, denied: result.denied };
   },
 });
 

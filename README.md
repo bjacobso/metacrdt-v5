@@ -182,6 +182,9 @@ Built today:
   the existing `{ id, attributes, denied }` shape and read-authorization behavior;
   `entityFromEventLog` remains as the explicit proof/debug wrapper with
   coordinate and skipped-legacy counts
+- production bitemporal entity reads (`entityAsOf`, `entityFactsAsOf`) now fold
+  from protocol-shaped `factEvents`, preserving read authorization and provenance
+  annotations for the time-travel UI
 - production fact point queries (`api.facts.queryFacts`) now fold base facts
   directly from protocol-shaped `factEvents` while preserving the old array
   return shape and read-authorization behavior; `queryFactsFromEventLog` remains
