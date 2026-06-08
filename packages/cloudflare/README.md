@@ -29,11 +29,15 @@ implements them on Cloudflare.
   append-and-rebuild, `getEvent`, `listEvents`, `rebuildCurrent`, `listCurrent`,
   `getCurrentEntity`, `listCurrentEntities`, and the EventStore-backed
   bitemporal Datalog query methods (`query`, `page`, `aggregate`,
-  `derivedRows`). The surface reads protocol events from the SQLite event table,
-  rebuilds SQL projection rows from the protocol log with shared
-  `@metacrdt/runtime` / `@metacrdt/core` fold semantics, serves current reads
-  from the SQLite projection table, and routes query semantics through
-  `@metacrdt/runtime`'s `DatalogQueryService`.
+  `derivedRows`) plus projection-backed current query methods (`queryCurrent`,
+  `pageCurrent`, `aggregateCurrent`, `derivedRowsCurrent`). The surface reads
+  protocol events from the SQLite event table, rebuilds SQL projection rows from
+  the protocol log with shared `@metacrdt/runtime` / `@metacrdt/core` fold
+  semantics, serves current reads from the SQLite projection table, routes
+  bitemporal query semantics through `@metacrdt/runtime`'s EventStore-backed
+  `DatalogQueryService`, and routes current query methods through runtime's
+  projection-backed `DatalogQueryService` provider over the SQLite projection
+  table.
 - **WebSocket relay** — `DurableObjectWebSocketRelay` / `attachDurableObjectRelay`
   (`RelayConnection`, `RelayOptions`, `WebSocketLike`): accepts server sockets,
   answers version-vector hellos with deltas, merges client events through the
@@ -128,9 +132,11 @@ It is still not a fully optimized bitemporal triple store or a live deployment.
 The first component-equivalent current-state surface exists over the SQLite
 runtime, and the same facade now exposes protocol event reads (`getEvent` /
 `listEvents`) plus EventStore-backed Datalog reads (`query`, `page`,
-`aggregate`, `derivedRows`). The remaining parity plan — SQL-indexed query
-optimization, collection/flow surface, alarm multiplexing, and live frontend
-queries over DO WebSockets — is
+`aggregate`, `derivedRows`) plus projection-backed current Datalog reads
+(`queryCurrent`, `pageCurrent`, `aggregateCurrent`, `derivedRowsCurrent`). The
+remaining parity plan — full historical SQL-indexed query optimization,
+collection/flow surface, alarm multiplexing, and live frontend queries over DO
+WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth

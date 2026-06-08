@@ -201,13 +201,15 @@ append-and-rebuild helpers plus `rebuildCurrent`, `listCurrent`,
 store. Goal 117 adds protocol event reads (`getEvent` / `listEvents`) to the
 same DO SQLite facade. Goal 118 adds the default EventStore-backed bitemporal
 Datalog query surface (`query`, `page`, `aggregate`, `derivedRows`) to that
-facade. The next active goal should be chosen from the remaining TODO
-candidates:
+facade. Goal 119 adds the runtime projection-backed current Datalog provider and
+exposes it on the same DO SQLite facade as `queryCurrent`, `pageCurrent`,
+`aggregateCurrent`, and `derivedRowsCurrent`. The next active goal should be
+chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
-remaining Cloudflare DO+SQLite SQL-indexed-query/operational parity, another
-carefully scoped Confect/domain wrapper, or the next projection dependency
-(closure/derived provenance or remaining operational process state).
+remaining Cloudflare DO+SQLite historical SQL-indexed-query/operational parity,
+another carefully scoped Confect/domain wrapper, or the next projection
+dependency (closure/derived provenance or remaining operational process state).
 
 This plan is the operational goal file. Read it with:
 
@@ -527,8 +529,9 @@ arguments.
   - first DO SQLite current-state surface:
     `createDurableObjectSqliteCurrentSurface` plus Effect-native
     append-and-rebuild, get/list events, EventStore-backed bitemporal Datalog
-    reads, rebuild, current-row, current-entity, and typed-current-entity
-    helpers backed by SQLite event/projection rows
+    reads, projection-backed current Datalog reads, rebuild, current-row,
+    current-entity, and typed-current-entity helpers backed by SQLite
+    event/projection rows
   - structural Durable Object WebSocket relay shell for hello/delta sync and
     event fan-out
   - Worker-facing router + Durable Object class shell and example Wrangler config
@@ -9422,6 +9425,67 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
 
 ---
 
+## Goal 119 — Projection-Backed Current Datalog Provider
+
+**Status:** shipped.
+
+**Objective:** start the optimized/materialized query-provider path without
+claiming full historical SQL query parity. Runtime should expose a
+`DatalogQueryService` provider over `ProjectionStoreService` rows for
+current-state query surfaces, and the Cloudflare DO SQLite facade should expose
+that provider explicitly as current-query methods while preserving the existing
+EventStore-backed bitemporal methods.
+
+### What Shipped
+
+- Refactored `packages/runtime/src/query.ts` so Datalog parsing, solving,
+  projection, pagination, aggregation, and derived-row shaping run through one
+  shared candidate-source seam.
+- Kept the existing EventStore-backed provider:
+  - `datalogQueryService(store)`;
+  - `datalogQueryLayer()`.
+- Added the projection-backed current provider:
+  - `projectionDatalogQueryService(projection)`;
+  - `projectionDatalogQueryLayer()`.
+- The projection provider sources pattern candidates from
+  `ProjectionStoreService.scan(...)`, preserving `ProjectionRow.sourceEventIds`
+  as query/event provenance and reusing the same `@metacrdt/query` pure solver
+  helpers as the EventStore provider.
+- Extended `packages/cloudflare/src/sqliteCurrent.ts` with Effect helpers and
+  Promise-facade methods:
+  - `queryCurrent`;
+  - `pageCurrent`;
+  - `aggregateCurrent`;
+  - `derivedRowsCurrent`.
+- The Cloudflare facade now composes two query Layers:
+  - `query` / `page` / `aggregate` / `derivedRows` use
+    `datalogQueryLayer()` over the SQLite event table;
+  - `queryCurrent` / `pageCurrent` / `aggregateCurrent` /
+    `derivedRowsCurrent` use `projectionDatalogQueryLayer()` over the SQLite
+    projection table.
+- Updated runtime, Cloudflare, README, target docs, PLAN, and TODO to describe
+  this as a **current-state materialized provider**, not a full bitemporal
+  SQL-indexed provider.
+
+### Non-Goals
+
+- Do not replace the existing bitemporal `query` methods. They remain
+  EventStore-backed and work at supplied `(txTime, validTime)` coordinates.
+- Do not claim historical SQL-indexed query parity. Projection rows represent a
+  rebuilt current/as-of coordinate and are not a complete bitemporal log.
+- Do not add a Cloudflare-specific SQL planner for historical joins yet.
+- Do not implement collection/flow, alarm multiplexing, or live-query
+  WebSocket subscriptions.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/runtime`
+- `npm test --workspace @metacrdt/runtime`
+- `npm run typecheck --workspace @metacrdt/cloudflare`
+- `npm test --workspace @metacrdt/cloudflare`
+
+---
+
 ## Goal 118 — @metacrdt/cloudflare DO SQLite Bitemporal Query Surface
 
 **Status:** shipped.
@@ -9812,6 +9876,11 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   `effect/Schema`-validated args, tagged errors in the Effect channel, stable
   pagination, and an EventStore-backed Layer implementation. `@metacrdt/testkit`
   routes query conformance through this service instead of a private helper.
+- **Materialized current-query provider started:** `@metacrdt/runtime` now also
+  exposes `projectionDatalogQueryService()` and `projectionDatalogQueryLayer()`,
+  providing the same `DatalogQueryService` API over target-provided
+  `ProjectionStoreService` rows. This is a current-state provider, not a
+  historical bitemporal query engine.
 - **Materialized projection-store boundary started:** `@metacrdt/runtime` now
   defines `ProjectionStoreService`, `ProjectionRow`, `ProjectionStore`, and
   `projectionRowsFromLog`; memory/localStorage, Node memory/SQLite/Postgres,
@@ -9821,12 +9890,12 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   `runRuntimeProjectionStoreConformance`, proving replace-from-fold, indexed
   scans, rebuild-style replacement, and clear over those Layers.
 - **Remaining keystone work:** query conformance now covers the production
-  EventStore-backed `DatalogQueryService` contract. It does not yet cover a
-  second, target-optimized/materialized query implementation; that should wait
-  until a target has a query engine beyond the shared EventStore-backed Layer.
-  The current `ProjectionStoreService` is a replaceable current-state read model,
-  not a complete bitemporal log, so it must not be presented as a full
-  `DatalogQueryService` provider.
+  EventStore-backed `DatalogQueryService` contract and runtime's
+  projection-backed current provider. It does not yet cover a target-specific
+  historical SQL-indexed query implementation. The current
+  `ProjectionStoreService` is a replaceable current-state read model, not a
+  complete bitemporal log, so it must not be presented as full historical query
+  parity.
 - **Zero Effect today (by current design):** `core`, `schema`, `query`, and the
   root Convex reference app stay pure/plain where appropriate. `runtime`,
   `testkit`, and Convex/Node/local/Cloudflare target packages now use Effect v3
@@ -9912,6 +9981,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Cloudflare Worker/DO example shell + Wrangler config.
 - [x] Cloudflare Durable Object SQLite runtime-service substrate.
 - [x] Cloudflare Durable Object SQLite log/current/query surface.
+- [x] Projection-backed current Datalog provider for runtime + Cloudflare DO
+  SQLite facade.
 - [x] `@metacrdt/local` browser/local-first package over localStorage +
   BroadcastChannel.
 - [x] IndexedDB-compatible async local persistence adapter.

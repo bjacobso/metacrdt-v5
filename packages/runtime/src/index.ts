@@ -50,6 +50,8 @@ export {
   PaginationOpts,
   datalogQueryLayer,
   datalogQueryService,
+  projectionDatalogQueryLayer,
+  projectionDatalogQueryService,
   type DatalogAggregateArgs as DatalogAggregateArgsType,
   type DatalogDerivedRowsArgs as DatalogDerivedRowsArgsType,
   type DatalogQueryArgs as DatalogQueryArgsType,

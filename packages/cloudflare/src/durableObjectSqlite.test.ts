@@ -298,6 +298,18 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
     ).resolves.toMatchObject({
       rows: [{ w: "worker:maria" }],
     });
+    await expect(
+      surface.queryCurrent({
+        where: [
+          ["?w", "type", "Worker"],
+          ["?w", "worker.status", "terminated"],
+        ],
+        select: ["?w"],
+        coord,
+      }),
+    ).resolves.toMatchObject({
+      rows: [{ w: "worker:maria" }],
+    });
 
     const firstTag = await surface.page({
       where: [["worker:maria", "worker.tag", "?tag"]],
@@ -320,6 +332,30 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       page: [{ tag: "urgent" }],
       isDone: true,
     });
+    const firstCurrentTag = await surface.pageCurrent({
+      where: [["worker:maria", "worker.tag", "?tag"]],
+      select: ["?tag"],
+      coord,
+      paginationOpts: { numItems: 1 },
+    });
+    const secondCurrentTag = await surface.pageCurrent({
+      where: [["worker:maria", "worker.tag", "?tag"]],
+      select: ["?tag"],
+      coord,
+      paginationOpts: {
+        numItems: 1,
+        cursor: firstCurrentTag.continueCursor,
+      },
+    });
+    expect(firstCurrentTag).toMatchObject({
+      page: [{ tag: "remote" }],
+      continueCursor: "1",
+      isDone: false,
+    });
+    expect(secondCurrentTag).toMatchObject({
+      page: [{ tag: "urgent" }],
+      isDone: true,
+    });
 
     await expect(
       surface.aggregate({
@@ -332,9 +368,32 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
         aggregates: [{ op: "count", as: "tags" }],
       }),
     ).resolves.toEqual([{ w: "worker:maria", tags: 2 }]);
+    await expect(
+      surface.aggregateCurrent({
+        where: [
+          ["?w", "type", "Worker"],
+          ["?w", "worker.tag", "?tag"],
+        ],
+        coord,
+        groupBy: ["?w"],
+        aggregates: [{ op: "count", as: "tags" }],
+      }),
+    ).resolves.toEqual([{ w: "worker:maria", tags: 2 }]);
 
     await expect(
       surface.derivedRows({
+        where: [
+          ["?w", "type", "Worker"],
+          ["?w", "worker.status", "terminated"],
+        ],
+        coord,
+        emit: { e: "?w", a: "worker.offboarded", v: true },
+      }),
+    ).resolves.toEqual([
+      { e: "worker:maria", a: "worker.offboarded", v: true },
+    ]);
+    await expect(
+      surface.derivedRowsCurrent({
         where: [
           ["?w", "type", "Worker"],
           ["?w", "worker.status", "terminated"],

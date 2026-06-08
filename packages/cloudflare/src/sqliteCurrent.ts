@@ -17,6 +17,7 @@ import {
   TransportService,
   applyOperationEffect,
   datalogQueryLayer,
+  projectionDatalogQueryLayer,
   projectionRowsFromLog,
   runtimeServicesLayer,
   type DatalogAggregateArgsType,
@@ -165,6 +166,14 @@ export type DurableObjectSqliteCurrentSurface = {
   ): Promise<ResultPage<Record<string, unknown>>>;
   aggregate(args: DatalogAggregateArgsType): Promise<Record<string, unknown>[]>;
   derivedRows(args: DatalogDerivedRowsArgsType): Promise<DerivedRow[]>;
+  queryCurrent(args: DatalogQueryArgsType): Promise<DatalogQueryResult>;
+  pageCurrent(
+    args: DatalogQueryPageArgsType,
+  ): Promise<ResultPage<Record<string, unknown>>>;
+  aggregateCurrent(
+    args: DatalogAggregateArgsType,
+  ): Promise<Record<string, unknown>[]>;
+  derivedRowsCurrent(args: DatalogDerivedRowsArgsType): Promise<DerivedRow[]>;
   rebuildCurrent(
     args?: DurableObjectSqliteRebuildCurrentArgs,
   ): Promise<DurableObjectSqliteRebuildCurrentResult>;
@@ -357,6 +366,34 @@ export function derivedRowsDurableObjectSqliteEffect(
   });
 }
 
+export function queryDurableObjectSqliteCurrentEffect(
+  args: DatalogQueryArgsType,
+): Effect.Effect<DatalogQueryResult, RuntimeError, DatalogQueryService> {
+  return queryDurableObjectSqliteEffect(args);
+}
+
+export function pageDurableObjectSqliteCurrentEffect(
+  args: DatalogQueryPageArgsType,
+): Effect.Effect<
+  ResultPage<Record<string, unknown>>,
+  RuntimeError,
+  DatalogQueryService
+> {
+  return pageDurableObjectSqliteEffect(args);
+}
+
+export function aggregateDurableObjectSqliteCurrentEffect(
+  args: DatalogAggregateArgsType,
+): Effect.Effect<Record<string, unknown>[], RuntimeError, DatalogQueryService> {
+  return aggregateDurableObjectSqliteEffect(args);
+}
+
+export function derivedRowsDurableObjectSqliteCurrentEffect(
+  args: DatalogDerivedRowsArgsType,
+): Effect.Effect<DerivedRow[], RuntimeError, DatalogQueryService> {
+  return derivedRowsDurableObjectSqliteEffect(args);
+}
+
 export function listDurableObjectSqliteCurrentEffect(
   args: DurableObjectSqliteCurrentFilter = {},
 ): Effect.Effect<
@@ -538,6 +575,19 @@ function runtimeLayer(runtime: DurableObjectSqliteRuntime) {
   return Layer.provideMerge(services)(datalogQueryLayer());
 }
 
+function currentQueryRuntimeLayer(runtime: DurableObjectSqliteRuntime) {
+  const services = runtimeServicesLayer({
+    profile: runtime.profile,
+    store: runtime.store,
+    projection: runtime.projection,
+    clock: runtime.clock,
+    sequencer: runtime.sequencer,
+    scheduler: runtime.scheduler,
+    transport: runtime.transport,
+  });
+  return Layer.provideMerge(services)(projectionDatalogQueryLayer());
+}
+
 export function createDurableObjectSqliteCurrentSurface(
   runtime: DurableObjectSqliteRuntime,
   options: DurableObjectSqliteCurrentSurfaceOptions,
@@ -549,6 +599,14 @@ export function createDurableObjectSqliteCurrentSurface(
   const run = <A, E>(effect: Effect.Effect<A, E, any>) =>
     Effect.runPromise(
       Effect.provide(effect, runtimeLayer(runtime)) as Effect.Effect<A, E, never>,
+    );
+  const runCurrentQuery = <A, E>(effect: Effect.Effect<A, E, any>) =>
+    Effect.runPromise(
+      Effect.provide(effect, currentQueryRuntimeLayer(runtime)) as Effect.Effect<
+        A,
+        E,
+        never
+      >,
     );
   return {
     appendAssert: (args) =>
@@ -573,6 +631,14 @@ export function createDurableObjectSqliteCurrentSurface(
     page: (args) => run(pageDurableObjectSqliteEffect(args)),
     aggregate: (args) => run(aggregateDurableObjectSqliteEffect(args)),
     derivedRows: (args) => run(derivedRowsDurableObjectSqliteEffect(args)),
+    queryCurrent: (args) =>
+      runCurrentQuery(queryDurableObjectSqliteCurrentEffect(args)),
+    pageCurrent: (args) =>
+      runCurrentQuery(pageDurableObjectSqliteCurrentEffect(args)),
+    aggregateCurrent: (args) =>
+      runCurrentQuery(aggregateDurableObjectSqliteCurrentEffect(args)),
+    derivedRowsCurrent: (args) =>
+      runCurrentQuery(derivedRowsDurableObjectSqliteCurrentEffect(args)),
     rebuildCurrent: (args) =>
       run(
         rebuildDurableObjectSqliteCurrentEffect(

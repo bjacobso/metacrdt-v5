@@ -3,6 +3,7 @@ import {
   runRuntimeNetworkTransportConformance,
   runRuntimeConformance,
   runRuntimePersistenceConformance,
+  runRuntimeProjectionQueryConformance,
   runRuntimeProjectionStoreConformance,
   type RuntimeNetworkTransportConformanceTarget,
   type RuntimeLayerConformanceTarget,
@@ -274,6 +275,19 @@ describe("@metacrdt/cloudflare conformance", () => {
     });
   });
 
+  test("passes the shared projection-query conformance suite", async () => {
+    await expect(
+      runRuntimeProjectionQueryConformance(cloudflareProjectionStoreTarget),
+    ).resolves.toEqual({
+      target: "cloudflare-do-projection-store",
+      checks: [
+        "projection-query-join-negation-provenance",
+        "projection-query-pagination-aggregation",
+        "projection-query-derived-rows",
+      ],
+    });
+  });
+
   test("SQLite target passes the shared runtime conformance suite", async () => {
     await expect(runRuntimeConformance(cloudflareSqliteTarget)).resolves.toEqual({
       target: "cloudflare-do-sqlite",
@@ -311,6 +325,19 @@ describe("@metacrdt/cloudflare conformance", () => {
         "projection-store-scan-filters",
         "projection-store-replace-is-atomic",
         "projection-store-clear",
+      ],
+    });
+  });
+
+  test("SQLite target passes the shared projection-query conformance suite", async () => {
+    await expect(
+      runRuntimeProjectionQueryConformance(cloudflareSqliteProjectionStoreTarget),
+    ).resolves.toEqual({
+      target: "cloudflare-do-sqlite-projection-store",
+      checks: [
+        "projection-query-join-negation-provenance",
+        "projection-query-pagination-aggregation",
+        "projection-query-derived-rows",
       ],
     });
   });

@@ -6,8 +6,10 @@ adapter over `ctx.storage.sql.exec(...)`, with EventStore / ProjectionStore /
 HLC / seq services, Layer-backed conformance, and the first
 component-equivalent log/current/query surface (`appendAssert` /
 `appendLifecycle` append-and-rebuild helpers, `getEvent`, `listEvents`,
-`query`, `page`, `aggregate`, `derivedRows`, `rebuildCurrent`, `listCurrent`,
-`getCurrentEntity`, `listCurrentEntities`). SQL-indexed query optimization and
+EventStore-backed `query` / `page` / `aggregate` / `derivedRows`,
+projection-backed `queryCurrent` / `pageCurrent` / `aggregateCurrent` /
+`derivedRowsCurrent`, `rebuildCurrent`, `listCurrent`, `getCurrentEntity`,
+`listCurrentEntities`). Full historical SQL-indexed query optimization and
 operational parity are still ahead.
 
 **Scope:** Grow `@metacrdt/cloudflare` from a sync-plane shell into a full
@@ -32,11 +34,12 @@ SQLite runtime substrate: structural SQLite services for events, projection
 rows, HLC, and per-replica `seq`. It now has the first component-equivalent
 log/current/query surface over that substrate: append-and-rebuild helpers,
 `getEvent`, `listEvents`, EventStore-backed bitemporal Datalog reads
-(`query`, `page`, `aggregate`, `derivedRows`), `rebuildCurrent`, and current
-entity/list reads backed by SQLite projection rows. It still has no
-SQL-optimized indexed triple queries, no full cardinality-one projection
-reconcile / invalidation surface, and none of the operational (collection/flow)
-surface.
+(`query`, `page`, `aggregate`, `derivedRows`), projection-backed current Datalog
+reads (`queryCurrent`, `pageCurrent`, `aggregateCurrent`,
+`derivedRowsCurrent`), `rebuildCurrent`, and current entity/list reads backed by
+SQLite projection rows. It still has no historical SQL-optimized indexed triple
+queries, no full cardinality-one projection reconcile / invalidation surface,
+and none of the operational (collection/flow) surface.
 
 This doc defines what it takes to bring Cloudflare to parity, in what order, and
 which decisions must be settled first — and it makes **live frontend queries an
@@ -98,7 +101,7 @@ function surface — backed by Durable Object SQLite instead of the Convex DB.
 | `DurableObjectSqliteEventStore` | SQLite-backed event table over `ctx.storage.sql.exec(...)`; indexed by entity and attribute |
 | `DurableObjectSqliteProjectionStore` | SQLite-backed materialized projection table; indexed by entity, attribute, and source event |
 | `DurableObjectSqliteClock` / `DurableObjectSqliteSequencer` | SQLite-backed HLC + per-replica `seq` metadata |
-| `createDurableObjectSqliteCurrentSurface` | First component-equivalent log/current/query facade: append-and-rebuild, get/list events, EventStore-backed Datalog reads, rebuild, list current rows, read current entity, and list typed current entities |
+| `createDurableObjectSqliteCurrentSurface` | First component-equivalent log/current/query facade: append-and-rebuild, get/list events, EventStore-backed bitemporal Datalog reads, projection-backed current Datalog reads, rebuild, list current rows, read current entity, and list typed current entities |
 | `DurableObjectWebSocketRelay` | version-vector hello/delta sync + event fan-out |
 | `MetaCrdtRelayDurableObject` / `relayWorker` | Worker/DO example shell |
 
@@ -112,9 +115,10 @@ full queryable component-equivalent bitemporal triple store.
 ## The gap, in one sentence
 
 Cloudflare can already **converge and persist an event log**, expose protocol
-event reads, run EventStore-backed bitemporal Datalog reads, rebuild
+event reads, run EventStore-backed bitemporal Datalog reads, run
+projection-backed current Datalog reads over SQLite projection rows, rebuild
 SQLite-backed current projection rows, and serve current entity/list reads; it
-cannot yet expose the optimized SQL-indexed query provider or the full
+cannot yet expose the full historical SQL-indexed query provider or the full
 **operational collection/flow** surface.
 
 ---
@@ -170,16 +174,21 @@ reconcile reuses the Phase B helper.
 **Shipped seed:** `createDurableObjectSqliteCurrentSurface` wraps the SQLite
 runtime with `appendAssert` / `appendLifecycle` append-and-rebuild helpers,
 `getEvent`, `listEvents`, `rebuildCurrent`, `listCurrent`, `getCurrentEntity`,
-`listCurrentEntities`, and the default `DatalogQueryService` methods (`query`,
-`page`, `aggregate`, `derivedRows`). It reads protocol events from the SQLite
-event table, rebuilds the neutral `ProjectionStoreService` rows from the
+`listCurrentEntities`, the default EventStore-backed `DatalogQueryService`
+methods (`query`, `page`, `aggregate`, `derivedRows`), and the
+projection-backed current methods (`queryCurrent`, `pageCurrent`,
+`aggregateCurrent`, `derivedRowsCurrent`). It reads protocol events from the
+SQLite event table, rebuilds the neutral `ProjectionStoreService` rows from the
 protocol log using shared `@metacrdt/runtime` / `@metacrdt/core` fold semantics,
-serves current reads from the SQLite projection table, and routes bitemporal
-Datalog reads through the shared EventStore-backed query service.
+serves current reads from the SQLite projection table, routes bitemporal Datalog
+reads through the shared EventStore-backed query service, and routes current
+Datalog reads through runtime's projection-backed query provider over those
+SQLite projection rows.
 
 **Still ahead for parity:** richer append function surface, SQL-indexed query
-provider optimization/conformance, full component-style cardinality-one
-reconcile/invalidation reporting, and the collection/flow surface.
+provider optimization/conformance for historical bitemporal queries, full
+component-style cardinality-one reconcile/invalidation reporting, and the
+collection/flow surface.
 
 ### Phase D — Operational surface + alarms
 

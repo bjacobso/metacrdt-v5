@@ -33,6 +33,7 @@ import {
   type RuntimeServices,
   type ScheduledOperation,
   type ProjectionRow,
+  projectionDatalogQueryLayer,
 } from "@metacrdt/runtime";
 import { Effect, Layer } from "effect";
 import * as Either from "effect/Either";
@@ -69,6 +70,10 @@ export type RuntimeProjectionStoreConformanceServices =
 
 export type RuntimeQueryConformanceServices =
   | RuntimeConformanceServices
+  | DatalogQueryService;
+
+export type RuntimeProjectionQueryConformanceServices =
+  | RuntimeProjectionStoreConformanceServices
   | DatalogQueryService;
 
 export type RuntimeProjectionStoreConformanceLayer = Layer.Layer<
@@ -288,6 +293,21 @@ async function runWithProjectionStoreTargetLayer<A>(
   >,
 ): Promise<A> {
   return await Effect.runPromise(Effect.provide(program, target.createLayer(options)));
+}
+
+async function runWithProjectionQueryTargetLayer<A>(
+  target: RuntimeProjectionStoreConformanceTarget,
+  options: RuntimeFactoryOptions,
+  program: Effect.Effect<
+    A,
+    RuntimeError,
+    RuntimeProjectionQueryConformanceServices
+  >,
+): Promise<A> {
+  const layer = Layer.provideMerge(target.createLayer(options))(
+    projectionDatalogQueryLayer(),
+  );
+  return await Effect.runPromise(Effect.provide(program, layer));
 }
 
 async function withLayerSessions<A>(
@@ -873,6 +893,113 @@ export async function runRuntimeProjectionStoreConformance(
       // Keep the row type part of the public conformance surface.
       const _typedRows: readonly ProjectionRow[] = secondRows;
       void _typedRows;
+
+      return { target: target.name, checks };
+    }),
+  );
+}
+
+export async function runRuntimeProjectionQueryConformance(
+  target: RuntimeProjectionStoreConformanceTarget,
+): Promise<ConformanceReport> {
+  return await runWithProjectionQueryTargetLayer(
+    target,
+    { replicaId: "testkit:projection-query", wall: () => 20_000 },
+    Effect.gen(function* () {
+      const checks: string[] = [];
+      const store = yield* EventStoreService;
+      const projection = yield* ProjectionStoreService;
+      const datalog = yield* DatalogQueryService;
+      const coord = { txTime: 10_000, validTime: 100 };
+      const cardinalityOf = (a: string) =>
+        a === "worker.tag" ? ("many" as const) : ("one" as const);
+      const ev = (pt: number, e: string, a: string, v: Value) =>
+        assertEvent({
+          e,
+          a,
+          v,
+          validFrom: 0,
+          actor: "testkit",
+          actorType: "system",
+          hlc: { pt, l: 0, r: "testkit:projection-query" },
+        });
+
+      const events = [
+        ev(1, "worker:maria", "type", "Worker"),
+        ev(2, "worker:maria", "worker.status", "active"),
+        ev(3, "worker:maria", "worker.status", "terminated"),
+        ev(4, "worker:maria", "worker.tag", "remote"),
+        ev(5, "worker:maria", "worker.tag", "urgent"),
+        ev(6, "worker:ivan", "type", "Worker"),
+        ev(7, "worker:ivan", "worker.status", "pending"),
+        ev(8, "placement:1", "placement.worker", "worker:maria"),
+        ev(9, "placement:1", "placement.status", "open"),
+      ];
+      for (const event of events) yield* store.append(event);
+
+      yield* projection.replace(
+        projectionRowsFromLog(fromEvents(yield* store.scan()), coord, cardinalityOf),
+      );
+
+      const query = yield* datalog.query({
+        where: [
+          ["?w", "type", "Worker"],
+          ["?w", "worker.status", "terminated"],
+          ["?w", "worker.tag", "remote"],
+          { not: ["?w", "worker.status", "pending"] },
+          ["?p", "placement.worker", "?w"],
+          ["?p", "placement.status", "open"],
+        ],
+        select: ["?w", "?p"],
+        coord,
+      });
+      expect(
+        target,
+        query.rows.length === 1 &&
+          query.rows[0]?.w === "worker:maria" &&
+          query.rows[0]?.p === "placement:1" &&
+          query.eventSourceIds.length >= 5,
+        "projection query provider should join current rows and preserve source events",
+      );
+      checks.push("projection-query-join-negation-provenance");
+
+      const firstTag = yield* datalog.page({
+        where: [["worker:maria", "worker.tag", "?tag"]],
+        select: ["?tag"],
+        coord,
+        paginationOpts: { numItems: 1 },
+      });
+      const aggregate = yield* datalog.aggregate({
+        where: [["worker:maria", "worker.tag", "?tag"]],
+        coord,
+        groupBy: [],
+        aggregates: [{ op: "count", as: "tags" }],
+      });
+      expect(
+        target,
+        firstTag.page.length === 1 &&
+          firstTag.page[0]?.tag === "remote" &&
+          firstTag.continueCursor === "1" &&
+          aggregate.length === 1 &&
+          aggregate[0]?.tags === 2,
+        "projection query provider should paginate and aggregate current rows",
+      );
+      checks.push("projection-query-pagination-aggregation");
+
+      const derived = yield* datalog.derivedRows({
+        where: [["?w", "worker.status", "terminated"]],
+        coord,
+        emit: { e: "?w", a: "worker.offboarded", v: true },
+      });
+      expect(
+        target,
+        derived.length === 1 &&
+          derived[0]?.e === "worker:maria" &&
+          derived[0]?.a === "worker.offboarded" &&
+          derived[0]?.v === true,
+        "projection query provider should shape derived rows from current bindings",
+      );
+      checks.push("projection-query-derived-rows");
 
       return { target: target.name, checks };
     }),

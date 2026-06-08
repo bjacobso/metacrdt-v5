@@ -30,7 +30,10 @@ transport exists.
   Effect/Schema-validated `query`, `page`, `aggregate`, and `derivedRows`
   operations over a target's `EventStoreService`, using the pure
   `@metacrdt/query` planner and row helpers. The default Layer is
-  EventStore-backed; target-optimized providers should preserve this contract.
+  EventStore-backed. `projectionDatalogQueryLayer()` provides the same service
+  contract over a target's materialized `ProjectionStoreService` rows for
+  current-state query surfaces; target-optimized providers should preserve the
+  same API and result semantics.
 - **Operation helpers** — Effect-native `applyOperationEffect`,
   `mergeFromEffect`, and `requireCapabilityEffect` over the service tags, plus
   compatibility `applyOperation`, `mergeFrom`, `requireCapability` wrappers over
@@ -143,9 +146,11 @@ const queryResult = await Effect.runPromise(
 The Effect service/tag boundary plus memory and localStorage Layers are shipped.
 The memory and localStorage Layers now provide `ProjectionStoreService`, and
 `datalogQueryLayer()` provides the default EventStore-backed
-`DatalogQueryService`. BroadcastChannel and p2p DataChannel compatibility paths
-are also shipped. Node, local, and Cloudflare target packages expose their own
-runtime Layers and projection stores, and the Convex component target exposes a
-component-owned `projectionRows` read model through `ProjectionStoreService`.
+`DatalogQueryService`; `projectionDatalogQueryLayer()` provides the same query
+API over materialized projection rows for current-state providers. BroadcastChannel
+and p2p DataChannel compatibility paths are also shipped. Node, local, and
+Cloudflare target packages expose their own runtime Layers and projection stores,
+and the Convex component target exposes a component-owned `projectionRows` read
+model through `ProjectionStoreService`.
 `@metacrdt/testkit` conformance runs over Layer-provided targets while
 compatibility `RuntimeServices` facades remain for older callers.

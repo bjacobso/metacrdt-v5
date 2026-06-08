@@ -15,6 +15,7 @@ import {
   deltaSince,
   exchangeDeltas,
   mergeFrom,
+  projectionDatalogQueryLayer,
   projectionRowsFromLog,
   requireCapability,
   versionVector,
@@ -176,6 +177,97 @@ describe("@metacrdt/runtime memory harness", () => {
     expect(result.second.page).toEqual([{ e: "worker:c" }]);
     expect(result.second.isDone).toBe(true);
     expect(result.second.continueCursor).toBeNull();
+  });
+
+  test("projection-backed DatalogQueryService queries materialized current rows", async () => {
+    const layer = Layer.provideMerge(
+      createMemoryRuntimeLayer({
+        replicaId: "effect:projection-query",
+        wall: () => 100,
+      }),
+    )(projectionDatalogQueryLayer());
+
+    const program = Effect.gen(function* () {
+      yield* applyOperationEffect({
+        op: "assert",
+        e: "worker:maria",
+        a: "type",
+        v: "Worker",
+        actor: "user:1",
+      });
+      yield* applyOperationEffect({
+        op: "assert",
+        e: "worker:maria",
+        a: "worker.status",
+        v: "terminated",
+        actor: "user:1",
+      });
+      yield* applyOperationEffect({
+        op: "assert",
+        e: "worker:maria",
+        a: "worker.tag",
+        v: "remote",
+        actor: "user:1",
+      });
+      yield* applyOperationEffect({
+        op: "assert",
+        e: "worker:maria",
+        a: "worker.tag",
+        v: "urgent",
+        actor: "user:1",
+      });
+
+      const store = yield* EventStoreService;
+      const projection = yield* ProjectionStoreService;
+      yield* projection.replace(
+        projectionRowsFromLog(
+          fromEvents(yield* store.scan()),
+          coord,
+          (a) => (a === "worker.tag" ? "many" : "one"),
+        ),
+      );
+
+      const datalog = yield* DatalogQueryService;
+      const query = yield* datalog.query({
+        where: [
+          ["?w", "type", "Worker"],
+          ["?w", "worker.status", "terminated"],
+        ],
+        select: ["?w"],
+        coord,
+      });
+      const firstTag = yield* datalog.page({
+        where: [["worker:maria", "worker.tag", "?tag"]],
+        select: ["?tag"],
+        coord,
+        paginationOpts: { numItems: 1 },
+      });
+      const aggregate = yield* datalog.aggregate({
+        where: [["worker:maria", "worker.tag", "?tag"]],
+        coord,
+        groupBy: [],
+        aggregates: [{ op: "count", as: "tags" }],
+      });
+      const derived = yield* datalog.derivedRows({
+        where: [["?w", "worker.status", "terminated"]],
+        coord,
+        emit: { e: "?w", a: "worker.offboarded", v: true },
+      });
+      return { query, firstTag, aggregate, derived };
+    });
+
+    const result = await Effect.runPromise(Effect.provide(program, layer));
+    expect(result.query.rows).toEqual([{ w: "worker:maria" }]);
+    expect(result.query.eventSourceIds).toHaveLength(2);
+    expect(result.firstTag).toMatchObject({
+      page: [{ tag: "remote" }],
+      continueCursor: "1",
+      isDone: false,
+    });
+    expect(result.aggregate).toEqual([{ tags: 2 }]);
+    expect(result.derived).toEqual([
+      { e: "worker:maria", a: "worker.offboarded", v: true },
+    ]);
   });
 
   test("DatalogQueryService validation and parser failures stay in the Effect error channel", async () => {

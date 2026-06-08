@@ -33,8 +33,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   projection-store conformance, and restart-persistence conformance.
 - [x] Cloudflare Durable Object SQLite log/current/query surface —
   append-and-rebuild, event get/list, EventStore-backed bitemporal Datalog
-  reads, rebuild, current-row, current-entity, and typed current-entity reads
-  over SQLite event/projection stores with Effect helpers and a Promise facade.
+  reads, projection-backed current Datalog reads, rebuild, current-row,
+  current-entity, and typed current-entity reads over SQLite event/projection
+  stores with Effect helpers and a Promise facade.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -43,10 +44,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   dependency-free structural SQLite key/value adapter and local-first runtime.
 - [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
   DataChannel anti-entropy transport with multi-hop gossip.
-- [ ] Cloudflare remaining component-equivalent SQLite surface — SQL-indexed
-  query-provider optimization, cardinality-one reconcile/invalidation reporting,
-  operational collection/flow surface, DO alarm multiplexing, and live-query
-  WebSocket plumbing (see [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
+- [ ] Cloudflare remaining component-equivalent SQLite surface — historical
+  SQL-indexed query-provider optimization, cardinality-one
+  reconcile/invalidation reporting, operational collection/flow surface, DO
+  alarm multiplexing, and live-query WebSocket plumbing (see
+  [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
@@ -104,6 +106,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   backed by `EventStoreService`, with Schema-validated query/page/aggregate/
   derived-row APIs, tagged runtime errors, stable pagination, and testkit
   conformance routed through the service.
+- [x] **Goal 111 materialized current-query provider started** —
+  `@metacrdt/runtime` now exposes `projectionDatalogQueryLayer()` /
+  `projectionDatalogQueryService()`, providing the same `DatalogQueryService`
+  contract over `ProjectionStoreService` rows for current-state query surfaces.
+  `@metacrdt/cloudflare` uses it for `queryCurrent`, `pageCurrent`,
+  `aggregateCurrent`, and `derivedRowsCurrent` on the DO SQLite facade.
 - [x] **Goal 111 materialized projection-store boundary started** —
   `@metacrdt/runtime` now defines `ProjectionStoreService`, `ProjectionRow`,
   `ProjectionStore`, and `projectionRowsFromLog`; memory/localStorage, Node
@@ -113,12 +121,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   a component `projectionRows` table and `replace`/`scan`/`clear` component
   functions; `createConvexComponentRuntimeLayer` provides
   `ProjectionStoreService` and passes shared projection-store conformance.
-- [ ] **Goal 111 next: optimized/materialized query providers** — when a target
-  exposes a query implementation beyond the shared EventStore-backed
-  `DatalogQueryService` Layer, add provider-specific conformance proving it
-  matches the production service contract. Do **not** treat the current
-  `ProjectionStoreService` as that provider: it is a replaceable current-state
-  read model, not a full bitemporal query source.
+- [ ] **Goal 111 next: target-specific historical query providers** — when a
+  target exposes a query implementation beyond the shared EventStore-backed
+  `DatalogQueryService` Layer and the projection-backed current provider, add
+  provider-specific conformance proving it matches the production service
+  contract for its claimed coordinate range. Current `ProjectionStoreService`
+  rows are a current-state read model; full bitemporal SQL query parity still
+  needs an indexed historical provider.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
@@ -568,6 +577,25 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — projection-backed current Datalog provider
+- [x] **Added runtime's materialized current-query provider.**
+  `@metacrdt/runtime` now exposes `projectionDatalogQueryService()` and
+  `projectionDatalogQueryLayer()`, reusing the same parser/solver/projection/
+  pagination/aggregate/derived-row pipeline as the EventStore-backed
+  `DatalogQueryService` while sourcing candidates from `ProjectionStoreService`
+  rows.
+- [x] **Cloudflare DO SQLite facade now has opt-in current Datalog reads.**
+  `createDurableObjectSqliteCurrentSurface` exposes `queryCurrent`,
+  `pageCurrent`, `aggregateCurrent`, and `derivedRowsCurrent`; these run through
+  the projection-backed provider over the SQLite projection table, separate from
+  the existing EventStore-backed bitemporal `query`/`page`/`aggregate`/
+  `derivedRows` methods.
+- [x] **Tests and docs.** Runtime tests prove the projection provider supports
+  query/page/aggregate/derivedRows over materialized rows; Cloudflare tests prove
+  the current provider matches the existing fixture. Remaining Cloudflare parity
+  is historical SQL-indexed query optimization, richer reconcile/invalidation,
+  collection/flow, alarms, and live-query plumbing.
 
 ### 2026-06-08 — @metacrdt/cloudflare SQLite bitemporal query surface
 - [x] **Added EventStore-backed Datalog reads to the DO SQLite facade.**

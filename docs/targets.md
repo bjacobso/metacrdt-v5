@@ -82,8 +82,9 @@ On open hosts the adapter is a selectable dependency.
 - `@metacrdt/runtime`'s in-memory target/Layer — the reference harness.
 - `@metacrdt/testkit` — Effect Layer-backed conformance helpers for EventStore,
   anti-entropy, deterministic fold convergence, EventStore-backed projection,
-  the runtime `DatalogQueryService` contract, opt-in materialized projection-store
-  semantics, and restart-persistence semantics (log/HLC/seq), plus scheduler
+  the runtime `DatalogQueryService` contract, runtime's projection-backed
+  current-query provider, opt-in materialized projection-store semantics, and
+  restart-persistence semantics (log/HLC/seq), plus scheduler
   service-boundary, transport publish-boundary, and first network
   delivery/catch-up semantics. Log/sync/projection/query conformance is proven
   against the in-memory Layer, Convex component Layer, Cloudflare Durable Object
@@ -133,7 +134,7 @@ On open hosts the adapter is a selectable dependency.
 | SQLite-wasm | `local` | done |
 | SQLite (server) | `node` | done (structural driver API + shared lifecycle plan) |
 | Postgres | `node` | done (structural `query(sql, params)` adapter + shared lifecycle plan) |
-| DO SQLite | `cloudflare` | started (runtime-service substrate + projection/persistence conformance + first log/current/query surface; full operational parity planned in [cloudflare-target.md](./cloudflare-target.md)) |
+| DO SQLite | `cloudflare` | started (runtime-service substrate + projection/persistence conformance + log/current/query surface, including projection-backed current Datalog reads; full operational parity planned in [cloudflare-target.md](./cloudflare-target.md)) |
 | Convex tables | `convex` | done (managed) |
 | FoundationDB | — | archive unless a real need appears |
 
@@ -257,13 +258,16 @@ a sibling target.
    suite over `ProjectionStoreService`, now wired through runtime memory/local,
    Node memory/SQLite/Postgres, local-first localStorage, and Cloudflare Durable
    Object storage, plus the Convex component-owned `projectionRows` read model;
-   add optimized/materialized query-provider conformance whenever a target
-   exposes a query engine beyond the shared EventStore-backed service. This is what *proves* the
-   "guaranteed to converge" claim across targets.
+   runtime now also exposes a projection-backed current-query provider under the
+   same `DatalogQueryService` contract. Add target-specific query-provider
+   conformance whenever a target exposes a fuller query engine beyond the shared
+   EventStore-backed service and current projection provider. This is what
+   *proves* the "guaranteed to converge" claim across targets.
 3. **Cloudflare Phase B/C** — the DO SQLite runtime-service substrate and first
-   log/current/query surface have started; next is the optimized SQL-indexed
-   query provider plus collection/flow, alarm, and live-query surface over
-   SQLite ([cloudflare-target.md](./cloudflare-target.md)).
+   log/current/query surface have started, including projection-backed current
+   Datalog reads; next is the optimized historical SQL-indexed query provider
+   plus collection/flow, alarm, and live-query surface over SQLite
+   ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal
    enough repeated DDL/query-generation logic beyond the current Node lifecycle
    plan to justify a shared SQL package.

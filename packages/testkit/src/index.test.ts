@@ -17,6 +17,7 @@ import {
   runRuntimeNetworkTransportConformance,
   runRuntimePersistenceConformance,
   runRuntimeProjectionConformance,
+  runRuntimeProjectionQueryConformance,
   runRuntimeProjectionStoreConformance,
   runRuntimeQueryConformance,
   runRuntimeSchedulerConformance,
@@ -428,6 +429,18 @@ describe("@metacrdt/testkit", () => {
     ]);
   });
 
+  test("runtime projection-query conformance passes for the in-memory target", async () => {
+    const report = await runRuntimeProjectionQueryConformance(
+      memoryProjectionStoreTarget,
+    );
+    expect(report.target).toBe("memory-projection-store");
+    expect(report.checks).toEqual([
+      "projection-query-join-negation-provenance",
+      "projection-query-pagination-aggregation",
+      "projection-query-derived-rows",
+    ]);
+  });
+
   test("runtime projection-store conformance passes for the localStorage target", async () => {
     await expect(
       runRuntimeProjectionStoreConformance(localProjectionStoreTarget()),
@@ -438,6 +451,19 @@ describe("@metacrdt/testkit", () => {
         "projection-store-scan-filters",
         "projection-store-replace-is-atomic",
         "projection-store-clear",
+      ],
+    });
+  });
+
+  test("runtime projection-query conformance passes for the localStorage target", async () => {
+    await expect(
+      runRuntimeProjectionQueryConformance(localProjectionStoreTarget()),
+    ).resolves.toEqual({
+      target: "local-storage-projection-store",
+      checks: [
+        "projection-query-join-negation-provenance",
+        "projection-query-pagination-aggregation",
+        "projection-query-derived-rows",
       ],
     });
   });

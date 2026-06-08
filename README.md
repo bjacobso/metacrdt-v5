@@ -161,13 +161,16 @@ Current packages:
   `ProjectionStoreService`, Effect-native operation helpers, compatibility
   Promise facades, version-vector delta calculation, BroadcastChannel
   anti-entropy, and p2p DataChannel anti-entropy. The runtime package also owns
-  the shared `ProjectionRow` contract and `projectionRowsFromLog` builder.
+  the shared `ProjectionRow` contract, `projectionRowsFromLog` builder, default
+  EventStore-backed Datalog query Layer, and projection-backed current-query
+  Layer.
 - **`@metacrdt/cloudflare`** (`packages/cloudflare`) — Durable Object / Worker
   target helpers: KV-backed and SQLite-backed event log/projection/HLC/seq
   services, Effect Layer providers, the first SQLite-backed current-state surface
-  (append-and-rebuild, protocol event reads, EventStore-backed Datalog reads,
-  rebuild, current rows/entities), WebSocket relay shell, Worker router, and
-  example Wrangler config.
+  (append-and-rebuild, protocol event reads, EventStore-backed bitemporal
+  Datalog reads, projection-backed current Datalog reads, rebuild, current
+  rows/entities), WebSocket relay shell, Worker router, and example Wrangler
+  config.
 - **`@metacrdt/local`** (`packages/local`) — browser/local-first target package:
   localStorage-backed event/HLC/seq services composed with BroadcastChannel
   anti-entropy, IndexedDB-compatible async persistence, SQLite-compatible local
@@ -711,8 +714,8 @@ Frontier:
 - Durable Object + SQLite triple-store parity
 - production database lifecycle/migrations beyond the current Node SQL DDL plan
   and structural production assembly helper
-- optimized/materialized Datalog/query providers beyond the shared
-  EventStore-backed `DatalogQueryService`
+- full historical SQL-indexed Datalog/query providers beyond the shared
+  EventStore-backed service and current projection-backed query provider
 
 See [TODO.md](./TODO.md) for the running pulse.
 

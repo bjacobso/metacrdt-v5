@@ -58,8 +58,21 @@ verified to behave identically at the boundaries that matter.
     aggregate rows summarize the provenanced bindings.
   - `query-derived-rows` — query bindings deterministically shape derived rows.
   This proves the production query-service contract for the shared
-  EventStore-backed runtime Layer. Target-optimized/materialized query providers
-  should add provider-specific conformance proving they match this contract.
+  EventStore-backed runtime Layer.
+- **`runRuntimeProjectionQueryConformance`** — that a target-provided
+  `ProjectionStoreService` can feed runtime's projection-backed
+  `DatalogQueryService` current provider:
+  - `projection-query-join-negation-provenance` — joins current materialized
+    rows, applies `not`, and preserves source event ids from projection rows.
+  - `projection-query-pagination-aggregation` — stable current rows paginate and
+    aggregate from the materialized projection.
+  - `projection-query-derived-rows` — current bindings deterministically shape
+    derived rows.
+  This suite is **opt-in** for targets that expose a projection store. It proves
+  the shared current-query provider over materialized rows; target-specific
+  historical/indexed query providers should add provider-specific conformance
+  proving they match the EventStore-backed contract for their claimed coordinate
+  range.
 - **`runRuntimeProjectionStoreConformance`** — that a target-provided
   `ProjectionStoreService` can persist and replace materialized current rows
   built from the shared core fold:
@@ -151,6 +164,10 @@ boundary for targets that expose `ProjectionStoreService`; it currently runs
 against runtime memory/localStorage, Node memory/SQLite/Postgres, local-first
 localStorage, Cloudflare Durable Object storage, and the Convex component-owned
 `projectionRows` read model.
+`runRuntimeProjectionQueryConformance` proves that projection-store rows can also
+serve the runtime projection-backed current `DatalogQueryService`; it currently
+runs against runtime memory/localStorage and Cloudflare Durable Object storage /
+SQLite.
 
 ## Usage
 
@@ -176,7 +193,8 @@ Durable targets that preserve storage across runtime re-creation also run
 `runRuntimeTransportConformance`. Targets with observable peer/network harnesses
 can add `runRuntimeNetworkTransportConformance`. Targets that provide a
 materialized `ProjectionStoreService` can add
-`runRuntimeProjectionStoreConformance`.
+`runRuntimeProjectionStoreConformance` and
+`runRuntimeProjectionQueryConformance`.
 
 ## Scope Today, and What's Next
 
@@ -185,14 +203,15 @@ the first opt-in **materialized projection-store** boundary, durable restart
 semantics, scheduler submission, the basic transport publish boundary, and the
 first network-delivery checks: event-store semantics, anti-entropy, the in-log
 fold, projection from target-returned event sources, querying those
-target-returned logs through `DatalogQueryService`, persistence of the event
+target-returned logs through `DatalogQueryService`, querying materialized current
+rows through runtime's projection-backed provider, persistence of the event
 log/HLC/seq across re-creation, payload-preserving scheduler submission,
 event-batch preserving transport publication, and peer delivery/catch-up for the
 BroadcastChannel, p2p DataChannel, and Cloudflare Durable Object WebSocket relay
 harnesses. It does **not yet** cover live relay deployment auth/retry/durability,
-target-optimized/materialized Datalog/query providers beyond the shared
-EventStore-backed service Layer, or live deployment semantics. Those checks
-should be added when the relevant target capabilities are shared beyond the
-Convex reference app (see
+target-specific historical/indexed Datalog/query providers beyond the shared
+EventStore-backed service Layer and runtime's projection-backed current provider,
+or live deployment semantics. Those checks should be added when the relevant
+target capabilities are shared beyond the Convex reference app (see
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md) and
 [docs/targets.md](../../docs/targets.md)).

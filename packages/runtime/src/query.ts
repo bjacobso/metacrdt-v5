@@ -34,10 +34,13 @@ import { Context, Effect, Layer } from "effect";
 import * as Schema from "effect/Schema";
 import {
   EventStoreService,
+  ProjectionStoreService,
   RuntimeOperationError,
   type EventStoreEffect,
+  type ProjectionStoreEffect,
   type RuntimeError,
 } from "./services.js";
+import type { ProjectionRow } from "./types.js";
 
 export const DatalogQueryCoord = Schema.Struct({
   txTime: Schema.Number,
@@ -211,26 +214,71 @@ function visibleAssertCandidates(
     .sort((a, b) => a.prov[0]!.localeCompare(b.prov[0]!));
 }
 
-function fetchPatternCandidates(
-  store: EventStoreEffect,
+type PatternCandidateSource = (
   clause: PatternClause,
   binding: Binding,
-  fullLog: Log,
   coord: DatalogQueryCoord,
-): Effect.Effect<QueryTriple<string, string>[], RuntimeError> {
-  const filter = scanFilterForPattern(clause, binding);
-  if (filter === null) return Effect.succeed([]);
-  return Effect.map(store.scan(filter), (events) =>
-    visibleAssertCandidates(clause, binding, events, fullLog, coord),
-  );
+) => Effect.Effect<QueryTriple<string, string>[], RuntimeError>;
+
+function eventStorePatternSource(
+  store: EventStoreEffect,
+  fullLog: Log,
+): PatternCandidateSource {
+  return (clause, binding, coord) => {
+    const filter = scanFilterForPattern(clause, binding);
+    if (filter === null) return Effect.succeed([]);
+    return Effect.map(store.scan(filter), (events) =>
+      visibleAssertCandidates(clause, binding, events, fullLog, coord),
+    );
+  };
+}
+
+function projectionCandidates(
+  clause: PatternClause,
+  binding: Binding,
+  rows: readonly ProjectionRow[],
+): QueryTriple<string, string>[] {
+  const input = patternInputForBinding(clause, binding);
+  return rows
+    .filter((row) => {
+      if (input.eConst !== undefined && input.eConst !== row.e) return false;
+      if (input.aConst !== undefined && input.aConst !== row.a) return false;
+      if (input.vIsConst && valueKey(input.vConst) !== valueKey(row.v)) {
+        return false;
+      }
+      return true;
+    })
+    .map((row) => ({
+      e: row.e,
+      a: row.a,
+      v: row.v,
+      prov: [...row.sourceEventIds],
+      eventProv: [...row.sourceEventIds],
+    }))
+    .sort((a, b) => {
+      const left = a.eventProv[0] ?? "";
+      const right = b.eventProv[0] ?? "";
+      return left.localeCompare(right);
+    });
+}
+
+function projectionStorePatternSource(
+  projection: ProjectionStoreEffect,
+): PatternCandidateSource {
+  return (clause, binding) => {
+    const filter = scanFilterForPattern(clause, binding);
+    if (filter === null) return Effect.succeed([]);
+    return Effect.map(projection.scan(filter), (rows) =>
+      projectionCandidates(clause, binding, rows),
+    );
+  };
 }
 
 function solveParsedQuery(
-  store: EventStoreEffect,
   clauses: AnyClause[],
   seed: QueryState,
-  fullLog: Log,
   coord: DatalogQueryCoord,
+  source: PatternCandidateSource,
 ): Effect.Effect<QueryState[], RuntimeError> {
   return Effect.gen(function* () {
     let frame = initialSolverFrame<string, string>(
@@ -250,13 +298,7 @@ function solveParsedQuery(
 
       if (clause.kind === "pattern") {
         for (const state of frame.states) {
-          const candidates = yield* fetchPatternCandidates(
-            store,
-            clause,
-            state.binding,
-            fullLog,
-            coord,
-          );
+          const candidates = yield* source(clause, state.binding, coord);
           nextStates.push(
             ...extendPatternCandidatesWithinLimit(
               clause,
@@ -278,13 +320,7 @@ function solveParsedQuery(
         });
       } else if (clause.kind === "not") {
         for (const state of frame.states) {
-          const candidates = yield* fetchPatternCandidates(
-            store,
-            clause.pattern,
-            state.binding,
-            fullLog,
-            coord,
-          );
+          const candidates = yield* source(clause.pattern, state.binding, coord);
           if (passesNegationCandidates(clause, state.binding, candidates)) {
             nextStates.push(state);
           }
@@ -293,7 +329,7 @@ function solveParsedQuery(
         for (const state of frame.states) {
           for (const branch of clause.branches) {
             nextStates.push(
-              ...(yield* solveParsedQuery(store, branch, state, fullLog, coord)),
+              ...(yield* solveParsedQuery(branch, state, coord, source)),
             );
           }
         }
@@ -313,23 +349,20 @@ function solveParsedQuery(
   });
 }
 
-function runQuery(
-  store: EventStoreEffect,
+function runQueryWithSource(
   args: DatalogQueryArgs,
+  source: PatternCandidateSource,
 ): Effect.Effect<DatalogQueryResult, RuntimeError> {
   return Effect.gen(function* () {
     const clauses = yield* Effect.try({
       try: () => parseClauses([...args.where]),
       catch: (cause) => operationError("DatalogQuery.parse", cause),
     });
-    const allEvents = yield* store.scan();
-    const fullLog = fromEvents(allEvents);
     const states = yield* solveParsedQuery(
-      store,
       clauses,
       { binding: {}, sources: [], eventSources: [] },
-      fullLog,
       args.coord,
+      source,
     );
     const rows = yield* Effect.try({
       try: () => project(states.map((state) => state.binding), [...args.select]),
@@ -345,12 +378,99 @@ function runQuery(
   });
 }
 
+function runEventStoreQuery(
+  store: EventStoreEffect,
+  args: DatalogQueryArgs,
+): Effect.Effect<DatalogQueryResult, RuntimeError> {
+  return Effect.gen(function* () {
+    const allEvents = yield* store.scan();
+    const fullLog = fromEvents(allEvents);
+    return yield* runQueryWithSource(args, eventStorePatternSource(store, fullLog));
+  });
+}
+
+function datalogQueryServiceFromSource(
+  operationPrefix: string,
+  source: PatternCandidateSource,
+): DatalogQueryEffect {
+  return {
+    query: (input) =>
+      Effect.flatMap(
+        decode(`${operationPrefix}.query.args`, DatalogQueryArgs, input),
+        (args) => runQueryWithSource(args, source),
+      ),
+    page: (input) =>
+      Effect.gen(function* () {
+        const args = yield* decode(
+          `${operationPrefix}.page.args`,
+          DatalogQueryPageArgs,
+          input,
+        );
+        const result = yield* runQueryWithSource(args, source);
+        return yield* Effect.try({
+          try: () => paginateRows(sortRows(result.rows), args.paginationOpts),
+          catch: (cause) => operationError(`${operationPrefix}.page`, cause),
+        });
+      }),
+    aggregate: (input) =>
+      Effect.gen(function* () {
+        const args = yield* decode(
+          `${operationPrefix}.aggregate.args`,
+          DatalogAggregateArgs,
+          input,
+        );
+        const result = yield* runQueryWithSource(
+          {
+            where: args.where,
+            select: [],
+            coord: args.coord,
+          },
+          source,
+        );
+        return yield* Effect.try({
+          try: () =>
+            aggregateBindings(
+              result.states.map((state) => state.binding),
+              [...args.groupBy],
+              args.aggregates as AggSpec[],
+            ),
+          catch: (cause) => operationError(`${operationPrefix}.aggregate`, cause),
+        });
+      }),
+    derivedRows: (input) =>
+      Effect.gen(function* () {
+        const args = yield* decode(
+          `${operationPrefix}.derivedRows.args`,
+          DatalogDerivedRowsArgs,
+          input,
+        );
+        const result = yield* runQueryWithSource(
+          {
+            where: args.where,
+            select: [],
+            coord: args.coord,
+          },
+          source,
+        );
+        return yield* Effect.try({
+          try: () =>
+            derivedRowsFromBindings(
+              result.states.map((state) => state.binding),
+              args.emit as EmitSpec,
+            ),
+          catch: (cause) =>
+            operationError(`${operationPrefix}.derivedRows`, cause),
+        });
+      }),
+  };
+}
+
 export function datalogQueryService(store: EventStoreEffect): DatalogQueryEffect {
   return {
     query: (input) =>
       Effect.flatMap(
         decode("DatalogQuery.query.args", DatalogQueryArgs, input),
-        (args) => runQuery(store, args),
+        (args) => runEventStoreQuery(store, args),
       ),
     page: (input) =>
       Effect.gen(function* () {
@@ -359,7 +479,7 @@ export function datalogQueryService(store: EventStoreEffect): DatalogQueryEffect
           DatalogQueryPageArgs,
           input,
         );
-        const result = yield* runQuery(store, args);
+        const result = yield* runEventStoreQuery(store, args);
         return yield* Effect.try({
           try: () => paginateRows(sortRows(result.rows), args.paginationOpts),
           catch: (cause) => operationError("DatalogQuery.page", cause),
@@ -372,7 +492,7 @@ export function datalogQueryService(store: EventStoreEffect): DatalogQueryEffect
           DatalogAggregateArgs,
           input,
         );
-        const result = yield* runQuery(store, {
+        const result = yield* runEventStoreQuery(store, {
           where: args.where,
           select: [],
           coord: args.coord,
@@ -394,7 +514,7 @@ export function datalogQueryService(store: EventStoreEffect): DatalogQueryEffect
           DatalogDerivedRowsArgs,
           input,
         );
-        const result = yield* runQuery(store, {
+        const result = yield* runEventStoreQuery(store, {
           where: args.where,
           select: [],
           coord: args.coord,
@@ -411,6 +531,15 @@ export function datalogQueryService(store: EventStoreEffect): DatalogQueryEffect
   };
 }
 
+export function projectionDatalogQueryService(
+  projection: ProjectionStoreEffect,
+): DatalogQueryEffect {
+  return datalogQueryServiceFromSource(
+    "ProjectionDatalogQuery",
+    projectionStorePatternSource(projection),
+  );
+}
+
 export function datalogQueryLayer(): Layer.Layer<
   DatalogQueryService,
   never,
@@ -419,5 +548,16 @@ export function datalogQueryLayer(): Layer.Layer<
   return Layer.effect(
     DatalogQueryService,
     Effect.map(EventStoreService, datalogQueryService),
+  );
+}
+
+export function projectionDatalogQueryLayer(): Layer.Layer<
+  DatalogQueryService,
+  never,
+  ProjectionStoreService
+> {
+  return Layer.effect(
+    DatalogQueryService,
+    Effect.map(ProjectionStoreService, projectionDatalogQueryService),
   );
 }
