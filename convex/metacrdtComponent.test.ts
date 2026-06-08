@@ -782,6 +782,154 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     ]);
   });
 
+  test("materializes component-owned compliance requirements and retracts stale tasks", async () => {
+    const t = mountedTest();
+
+    await t.mutation(api.rules.defineRule, {
+      name: "require.materialized_i9",
+      where: [
+        ["?p", "type", "Placement"],
+        ["?p", "worker", "?w"],
+        ["?p", "employer", "?s"],
+      ],
+      emit: { e: "?w", a: "requires.materialized_i9", v: "?s" },
+      dependsOnAttributes: ["type", "worker", "employer"],
+      materialization: "manual",
+    });
+    await t.mutation(api.rules.defineRule, {
+      name: "require.materialized_handbook",
+      where: [
+        ["?p", "type", "Placement"],
+        ["?p", "worker", "?w"],
+        ["?p", "client", "?s"],
+      ],
+      emit: { e: "?w", a: "requires.materialized_handbook", v: "?s" },
+      dependsOnAttributes: ["type", "worker", "client"],
+      materialization: "manual",
+    });
+    await t.mutation(api.metacrdtComponent.defineOwnedForm, {
+      form: "materialized_i9",
+      title: "Materialized I-9",
+      fields: [{ name: "legalName", label: "Legal name", type: "string" }],
+    });
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-materialize:worker",
+      type: "Worker",
+      name: "Materialize Worker",
+    });
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-materialize:employer",
+      type: "Employer",
+    });
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-materialize:client",
+      type: "Client",
+    });
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-materialize:placement",
+      type: "Placement",
+      attributes: [
+        { a: "worker", value: "component-materialize:worker" },
+        { a: "employer", value: "component-materialize:employer" },
+        { a: "client", value: "component-materialize:client" },
+      ],
+    });
+
+    const initial = await t.mutation(
+      api.metacrdtComponent.materializeOwnedCompliance,
+      { worker: "component-materialize:worker" },
+    );
+    expect(initial.summary).toEqual({
+      requires: 2,
+      tasks: 2,
+      asserted: 4,
+      retracted: 0,
+      kept: 0,
+    });
+
+    let entity = await t.query(api.metacrdtComponent.getOwnedCurrentEntity, {
+      e: "component-materialize:worker",
+    });
+    expect(entity?.attributes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          a: "requires.materialized_i9",
+          values: ["component-materialize:employer"],
+        }),
+        expect.objectContaining({
+          a: "task.materialized_i9",
+          values: ["component-materialize:employer"],
+        }),
+        expect.objectContaining({
+          a: "requires.materialized_handbook",
+          values: ["component-materialize:client"],
+        }),
+        expect.objectContaining({
+          a: "task.materialized_handbook",
+          values: ["component-materialize:client"],
+        }),
+      ]),
+    );
+
+    const issued = await t.mutation(
+      api.metacrdtComponent.issueOwnedOpenCollections,
+      { worker: "component-materialize:worker" },
+    );
+    const i9 = issued.items.find((item) => item.form === "materialized_i9")!;
+    await t.mutation(api.forms.submitCollection, {
+      token: i9.token,
+      values: { legalName: "Materialize Worker" },
+    });
+
+    const afterReuse = await t.mutation(
+      api.metacrdtComponent.materializeOwnedCompliance,
+      { worker: "component-materialize:worker" },
+    );
+    expect(afterReuse.summary).toEqual({
+      requires: 2,
+      tasks: 1,
+      asserted: 0,
+      retracted: 1,
+      kept: 3,
+    });
+
+    entity = await t.query(api.metacrdtComponent.getOwnedCurrentEntity, {
+      e: "component-materialize:worker",
+    });
+    const attrs = entity?.attributes ?? [];
+    expect(attrs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          a: "submitted.materialized_i9",
+          values: ["component-materialize:employer"],
+        }),
+        expect.objectContaining({
+          a: "requires.materialized_i9",
+          values: ["component-materialize:employer"],
+        }),
+        expect.objectContaining({
+          a: "requires.materialized_handbook",
+          values: ["component-materialize:client"],
+        }),
+        expect.objectContaining({
+          a: "task.materialized_handbook",
+          values: ["component-materialize:client"],
+        }),
+      ]),
+    );
+    expect(attrs.find((attr) => attr.a === "task.materialized_i9")).toBeUndefined();
+
+    const events = await t.query(api.metacrdtComponent.listOwnedEvents, {
+      e: "component-materialize:worker",
+      a: "task.materialized_i9",
+      limit: 10,
+    });
+    expect(events.map((event) => event.kind).sort()).toEqual([
+      "assert",
+      "retract",
+    ]);
+  });
+
   test("component-owned missing current entity returns null", async () => {
     const t = mountedTest();
 

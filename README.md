@@ -193,6 +193,9 @@ Built today:
   `reuse`/`collect` decisions from configured host requirement rules over
   component-owned placement/scope/evidence state, then issue missing evidence as
   component-owned collection links
+- component-owned compliance materialization: the same Worker page can write
+  component-owned `requires.<form>` and open `task.<form>` facts, and retract
+  stale task facts once submitted evidence becomes reusable
 - single-use, expiring collection tokens for the public `/collect` page
 - Tailwind + React Router research-preview UI
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility
@@ -304,8 +307,11 @@ rules as semantics while keeping operational data inside the component. For a
 component-owned Worker, the reference wrapper reads component-owned placements
 and scope entities, checks component-owned `submitted.<form>` evidence, returns
 `reuse`/`collect` decisions, and issues missing component-owned collection
-links without creating host `flowRuns` rows. The older host `collectionTarget:
-"component"` bridge remains supported for already-issued transition tokens.
+links without creating host `flowRuns` rows. It can also materialize those
+decisions as component-owned `requires.<form>` facts plus open `task.<form>`
+facts, then retract stale task facts when a later submission satisfies the
+requirement. The older host `collectionTarget: "component"` bridge remains
+supported for already-issued transition tokens.
 
 ---
 

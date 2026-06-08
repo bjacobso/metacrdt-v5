@@ -29,9 +29,21 @@ export default function ComponentEntity() {
       reused: boolean;
     }>;
   } | null>(null);
+  const [materializeResult, setMaterializeResult] = useState<{
+    summary: {
+      requires: number;
+      tasks: number;
+      asserted: number;
+      retracted: number;
+      kept: number;
+    };
+  } | null>(null);
   const runOwnedAction = useMutation(api.metacrdtComponent.runOwnedAction);
   const issueOwnedOpenCollections = useMutation(
     api.metacrdtComponent.issueOwnedOpenCollections,
+  );
+  const materializeOwnedCompliance = useMutation(
+    api.metacrdtComponent.materializeOwnedCompliance,
   );
   const entity = useQuery(api.metacrdtComponent.getOwnedCurrentEntity, {
     e: id,
@@ -95,6 +107,16 @@ export default function ComponentEntity() {
     try {
       const result = await issueOwnedOpenCollections({ worker: id });
       setIssueResult(result);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function materializeComplianceFacts() {
+    setBusy("materialize-compliance");
+    try {
+      const result = await materializeOwnedCompliance({ worker: id });
+      setMaterializeResult(result);
     } finally {
       setBusy(null);
     }
@@ -278,14 +300,22 @@ export default function ComponentEntity() {
             title="Component compliance"
             hint="configured requirements over component-owned state"
             right={
-              compliance.summary.collect > 0 ? (
+              <div className="flex flex-wrap gap-2">
                 <Button
-                  disabled={busy === "compliance"}
-                  onClick={issueComplianceCollections}
+                  disabled={busy === "materialize-compliance"}
+                  onClick={materializeComplianceFacts}
                 >
-                  Issue open collections
+                  Materialize facts
                 </Button>
-              ) : undefined
+                {compliance.summary.collect > 0 && (
+                  <Button
+                    disabled={busy === "compliance"}
+                    onClick={issueComplianceCollections}
+                  >
+                    Issue open collections
+                  </Button>
+                )}
+              </div>
             }
           />
           {compliance.items.length === 0 ? (
@@ -353,6 +383,15 @@ export default function ComponentEntity() {
                   {item.reused ? " reused" : ""}
                 </a>
               ))}
+            </div>
+          )}
+          {materializeResult !== null && (
+            <div className="border-t border-line-soft px-5 py-3 text-[12px] text-blue-ink">
+              Materialized {materializeResult.summary.requires} requirements and{" "}
+              {materializeResult.summary.tasks} open tasks. Asserted{" "}
+              {materializeResult.summary.asserted}, retracted{" "}
+              {materializeResult.summary.retracted}, kept{" "}
+              {materializeResult.summary.kept}.
             </div>
           )}
         </Card>

@@ -136,6 +136,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `require.*` rules plus component-owned placement/scope/evidence state, then
   issue missing evidence as component-owned collection runs without creating host
   `flowRuns` rows.
+- [x] **Goal 40: component-owned compliance materialization** — materialize the
+  live component compliance plan into component-owned `requires.<form>` and open
+  `task.<form>` facts, and retract stale task facts when submitted evidence turns
+  a collection into reuse.
 - [x] **Datalog disjunction** — Datalog `where` bodies now support bounded
   `{ or: [[...clauses], ...] }` branches. Branches run from the current binding,
   union/dedupe their bindings with provenance merged, and continue into later
@@ -237,8 +241,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 **Next goal candidates**
 - [x] Choose the next active goal: Goal 39, component-owned compliance
   issue/reuse.
-- [ ] After Goal 39, choose between provider-backed login UI / production auth,
-  live Cloudflare deployment/auth, or component-owned DAG flows/materialization.
+- [ ] After Goal 40, choose between provider-backed login UI / production auth,
+  live Cloudflare deployment/auth, or a component-owned DAG flow runner.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -263,6 +267,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — component-owned compliance materialization
+- [x] **Goal 40 shipped:** `api.metacrdtComponent.materializeOwnedCompliance`
+  writes component-owned `requires.<form>` facts for all matching requirements
+  and `task.<form>` facts for open collection decisions.
+- [x] **Materialized tasks reconcile.** Re-running the materializer after a
+  component-owned form submission keeps satisfied `requires.*` facts, retracts
+  stale `task.*` facts through component protocol lifecycle events, and leaves
+  already-correct facts untouched.
+- [x] **UI and tests cover the projection.** `/component/e/:id` exposes
+  Materialize facts on Worker compliance cards; focused tests prove initial
+  materialization, submission, stale task retraction, and protocol event history.
 
 ### 2026-06-07 — component-owned compliance issue/reuse
 - [x] **Goal 39 shipped:** `api.metacrdtComponent.ownedCompliancePlan` computes

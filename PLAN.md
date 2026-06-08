@@ -1,10 +1,10 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 39 (component-owned compliance issue/reuse) has shipped.
+**Current goal:** Goal 40 (component-owned compliance materialization) has
+shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth,
-component-owned DAG flows/compliance materialization, or another parked
-Query/Rules item.
+component-owned DAG flows, or another parked Query/Rules item.
 
 This plan is the operational goal file. Read it with:
 
@@ -288,6 +288,13 @@ arguments.
   - `/component/e/:id` shows a Component compliance card for Worker entities and
     can issue open collection links
   - host compliance and host `flowRuns` remain unchanged
+- Component-owned compliance materialization exists:
+  - `api.metacrdtComponent.materializeOwnedCompliance` writes component-owned
+    `requires.<form>` facts for all currently required evidence and
+    `task.<form>` facts for open collection decisions
+  - stale component-owned `requires.*` / `task.*` facts are retracted through
+    protocol lifecycle events when the live plan no longer wants them
+  - `/component/e/:id` exposes a Materialize facts action for Worker entities
 - Component-owned form definitions exist:
   - `defineOwnedForm` writes `type = Form` and `formDef` into the component log
   - `collectionByToken` reads component-target form metadata from component-owned
@@ -307,11 +314,11 @@ arguments.
   and event-log rebuild for component-owned writes. The reference app still owns
   its production write path and has not migrated its existing business logic/rules
   onto component-owned state.
-- Component-owned action collection, standalone collect runs, and
-  compliance-issued collection links now own token rows, form definitions, and
-  submitted evidence inside the component. Host-owned DAG flows/actions still
-  use the host `flowRuns` table, and component-owned DAG flows / obligation
-  materialization remain future work.
+- Component-owned action collection, standalone collect runs,
+  compliance-issued collection links, and materialized `requires.*` / `task.*`
+  facts now live inside the component. Host-owned DAG flows/actions still use
+  the host `flowRuns` table, and a component-owned DAG flow runner / scheduler
+  remains future work.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime.
 - Multi-replica sync is specified and now implemented as in-memory
@@ -3844,6 +3851,105 @@ Live smoke:
 
 ---
 
+## Goal 40 — Component-Owned Compliance Materialization
+
+**Status:** shipped as component-owned obligation/task facts without a component
+DAG runner.
+
+**Objective:** take Goal 39's live `reuse` / `collect` plan and write it into
+component-owned current state as ordinary MetaCRDT facts:
+
+- `requires.<form> = scope` for every currently required evidence item.
+- `task.<form> = scope` for every item still needing collection.
+
+When a later component-owned submission makes evidence reusable, the materializer
+retracts the stale `task.<form>` fact while preserving the `requires.<form>` fact
+and the append-only history.
+
+### Scope
+
+Reference app wrapper:
+
+```text
+convex/metacrdtComponent.ts
+  materializeOwnedCompliance
+```
+
+Frontend:
+
+```text
+src/pages/ComponentEntity.tsx
+  Materialize facts action in the Component compliance card
+```
+
+Tests:
+
+```text
+convex/metacrdtComponent.test.ts
+```
+
+### Semantics
+
+`materializeOwnedCompliance({ worker })`:
+
+- requires host write auth and derives actor server-side;
+- recomputes `ownedCompliancePlan({ worker })` inside the mutation;
+- refuses to materialize if unsupported requirement rules are present, avoiding
+  partial silent compliance state;
+- computes desired component-owned facts:
+  - one `requires.<form>` fact for each plan item;
+  - one `task.<form>` fact for each `collect` decision;
+- appends missing desired facts through the component-owned protocol log;
+- retracts current component-owned `requires.*` / `task.*` facts for the Worker
+  that are no longer desired;
+- leaves already-correct current facts untouched and reports `kept` counts.
+
+### Non-Goals
+
+- Do not migrate host compliance `derivedFacts`.
+- Do not install component-owned rule definitions.
+- Do not implement a component-owned DAG flow runner.
+- Do not add reminders/escalations/scheduler behavior.
+- Do not replace Goal 39's live planner; materialized facts are a projection
+  convenience and can be rebuilt by calling the mutation again.
+
+### Acceptance Criteria
+
+- Initial materialization for a component-owned Worker writes `requires.*` and
+  `task.*` current facts into component-owned state.
+- Submitting component-owned evidence changes the live plan from `collect` to
+  `reuse`.
+- Re-materializing after submission retracts the stale `task.*` fact and keeps
+  the `requires.*` fact.
+- Retraction uses protocol lifecycle events targeting the original component
+  assert event.
+- The component Worker detail UI exposes the materialization action.
+- Host compliance and host `flowRuns` behavior remain unchanged.
+
+### Verification
+
+- `npx vitest run convex/metacrdtComponent.test.ts convex/forms.test.ts convex/appconfig.test.ts`
+  passed (33 tests).
+- `npm run test:core` passed (46 tests).
+- `npm run test:convex-package` passed (31 tests).
+- `npm test` passed (17 backend test files, 113 tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex dev --once` deployed backend functions to `chatty-hare-94`.
+- `npx @convex-dev/static-hosting upload` deployed the frontend to
+  `https://chatty-hare-94.convex.site`.
+
+Live smoke:
+
+- `curl -I https://chatty-hare-94.convex.site` returned HTTP 200.
+- `npx convex run metacrdtComponent:listOwnedCurrentEntities ...` returned
+  deployed component-owned Worker rows.
+- `npx convex run metacrdtComponent:ownedCompliancePlan ...` returned the
+  deployed component compliance wrapper shape.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -3885,7 +3991,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Component-owned collection run/token storage.
 - [x] Component-owned standalone collect runs.
 - [x] Goal 39: component-owned compliance issue/reuse.
-- [ ] Component-owned DAG flows and compliance materialization after Goal 39.
+- [x] Goal 40: component-owned compliance materialization.
+- [ ] Component-owned DAG flow runner / scheduler after Goal 40.
 
 ### Auth / Privacy
 
@@ -3943,10 +4050,10 @@ or intentionally moved out of this repo's scope. Each shipped slice must update
 `PLAN.md` / `TODO.md`, pass the relevant test/typecheck/build gate, and be
 committed/pushed with the verification recorded.
 
-Goal 39 is complete: component-owned Worker detail can compute reuse/collect
-compliance decisions from configured requirement rules, issue missing
-component-owned collection links without host `flowRuns`, reuse completed
-component-owned submitted evidence, and preserve host compliance behavior.
+Goal 40 is complete: component-owned Worker detail can materialize
+`requires.<form>` and open `task.<form>` facts from configured requirement rules,
+retract stale task facts when submitted evidence becomes reusable, and preserve
+host compliance / host `flowRuns` behavior.
 
 The next shipped slice should update this section with its own concrete
 definition of done before implementation starts.

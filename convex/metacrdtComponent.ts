@@ -1,5 +1,10 @@
 import { v } from "convex/values";
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import {
+  mutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server";
 import { components } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import {
@@ -170,6 +175,20 @@ const ownedComplianceIssueResultValidator = v.object({
   items: v.array(ownedComplianceIssueItemValidator),
 });
 
+const ownedComplianceMaterializeResultValidator = v.object({
+  worker: v.string(),
+  asserted: v.array(appendOwnedResultValidator),
+  retracted: v.array(appendOwnedResultValidator),
+  kept: v.number(),
+  summary: v.object({
+    requires: v.number(),
+    tasks: v.number(),
+    asserted: v.number(),
+    retracted: v.number(),
+    kept: v.number(),
+  }),
+});
+
 const ownedCurrentFactValidator = v.object({
   factId: v.string(),
   e: v.string(),
@@ -323,6 +342,11 @@ type OwnedCompliancePlan = {
   };
 };
 
+type DesiredComplianceFact = {
+  a: string;
+  value: string;
+};
+
 function isPattern(x: unknown): x is [unknown, unknown, unknown] {
   return Array.isArray(x) && x.length === 3;
 }
@@ -349,6 +373,27 @@ function hasValue(attrs: OwnedEntityMap, a: string, v: unknown): boolean {
 
 function hasType(attrs: OwnedEntityMap, type: string): boolean {
   return hasValue(attrs, "type", type);
+}
+
+function complianceFactKey(a: string, value: unknown): string {
+  return `${a}\u0000${JSON.stringify(value)}`;
+}
+
+function desiredComplianceFacts(plan: OwnedCompliancePlan): DesiredComplianceFact[] {
+  const desired = new Map<string, DesiredComplianceFact>();
+  for (const item of plan.items) {
+    for (const row of [
+      { a: `requires.${item.form}`, value: item.scope },
+      ...(item.decision === "collect"
+        ? [{ a: `task.${item.form}`, value: item.scope }]
+        : []),
+    ]) {
+      desired.set(complianceFactKey(row.a, row.value), row);
+    }
+  }
+  return [...desired.values()].sort((a, b) =>
+    complianceFactKey(a.a, a.value).localeCompare(complianceFactKey(b.a, b.value)),
+  );
 }
 
 function parseRequirementRule(rule: Doc<"rules">): ParsedRequirement {
@@ -838,6 +883,94 @@ export const issueOwnedOpenCollections = mutation({
       issued: items.filter((item) => !item.reused).length,
       reused: items.filter((item) => item.reused).length,
       items,
+    };
+  },
+});
+
+export const materializeOwnedCompliance = mutation({
+  args: {
+    worker: v.string(),
+  },
+  returns: ownedComplianceMaterializeResultValidator,
+  handler: async (ctx, args) => {
+    const actor = await actorContext(ctx);
+    const plan = await buildOwnedCompliancePlan(ctx, args.worker);
+    if (plan.unsupported.length > 0) {
+      throw new Error(
+        `cannot materialize unsupported requirement rules: ${plan.unsupported
+          .map((rule) => `${rule.rule} (${rule.reason})`)
+          .join(", ")}`,
+      );
+    }
+
+    const desired = desiredComplianceFacts(plan);
+    const desiredKeys = new Set(
+      desired.map((row) => complianceFactKey(row.a, row.value)),
+    );
+    const existingEntity = await loadOwnedEntity(ctx, args.worker);
+    const existingFacts =
+      existingEntity?.facts.filter(
+        (fact) => fact.a.startsWith("requires.") || fact.a.startsWith("task."),
+      ) ?? [];
+    const existingKeys = new Set(
+      existingFacts.map((fact) => complianceFactKey(fact.a, fact.v)),
+    );
+
+    const asserted = [];
+    for (const row of desired) {
+      if (existingKeys.has(complianceFactKey(row.a, row.value))) continue;
+      asserted.push(
+        await ctx.runMutation(
+          components.metacrdt.log.appendAssert,
+          withoutUndefined({
+            ...actor,
+            e: args.worker,
+            a: row.a,
+            v: row.value,
+            reason: `materialize component-owned compliance ${row.a}`,
+            source: "metacrdtComponent.materializeOwnedCompliance",
+          }),
+        ),
+      );
+    }
+
+    const retracted = [];
+    for (const fact of existingFacts) {
+      if (desiredKeys.has(complianceFactKey(fact.a, fact.v))) continue;
+      retracted.push(
+        await ctx.runMutation(
+          components.metacrdt.log.appendLifecycle,
+          withoutUndefined({
+            ...actor,
+            kind: "retract" as const,
+            targetEventId: fact.assertEventId,
+            e: fact.e,
+            a: fact.a,
+            v: fact.v,
+            reason: `retract stale component-owned compliance ${fact.a}`,
+            source: "metacrdtComponent.materializeOwnedCompliance",
+          }),
+        ),
+      );
+    }
+
+    const requires = desired.filter((row) => row.a.startsWith("requires.")).length;
+    const tasks = desired.filter((row) => row.a.startsWith("task.")).length;
+    const kept = existingFacts.filter((fact) =>
+      desiredKeys.has(complianceFactKey(fact.a, fact.v)),
+    ).length;
+    return {
+      worker: args.worker,
+      asserted,
+      retracted,
+      kept,
+      summary: {
+        requires,
+        tasks,
+        asserted: asserted.length,
+        retracted: retracted.length,
+        kept,
+      },
     };
   },
 });
