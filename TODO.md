@@ -428,8 +428,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] After Goal 42, choose component-owned wait/scheduler support.
 - [x] After Goal 43, choose component-owned collect reminder/escalation timers.
 - [x] After Goal 44, choose Datalog computed predicates.
-- [ ] Choose between production provider wiring, live Cloudflare
-  deployment/auth, or another parked Query/Rules item.
+- [x] Choose the next target-planning goal: formalize target vs storage adapter
+  vs transport and write the Cloudflare parity plan.
+- [ ] Choose between production provider wiring, `@metacrdt/node` + testkit,
+  Cloudflare DO+SQLite parity, or another parked Query/Rules item.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -495,6 +497,21 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   that returns Convex JWTs.
 - [x] **Root typecheck hardened:** `npm run typecheck` builds packages before
   package/root typechecking so `dist`-based package exports are always present.
+
+### 2026-06-08 — target/adapters model and Cloudflare parity plan
+- [x] **Goal 101 shipped:** added `docs/targets.md` to separate execution
+  targets from storage adapters and transports. Targets are hosts (Convex,
+  Cloudflare DOs, Node, local/browser); Postgres/SQLite/IndexedDB/DO SQLite are
+  storage adapters; WebSockets/BroadcastChannel/p2p/HTTP are transports.
+- [x] **Cloudflare parity plan written:** `docs/cloudflare-target.md` defines how
+  `@metacrdt/cloudflare` grows from a sync-plane shell into a Durable Object +
+  SQLite bitemporal triple store at parity with `@metacrdt/convex`, with live
+  frontend queries over DO WebSockets called out as a stretch goal.
+- [x] README, `docs/architecture.md`, `docs/package-consolidation.md`, and
+  `packages/cloudflare/README.md` now link the target model and Cloudflare plan.
+- [ ] Next concrete target-runtime candidates: `@metacrdt/node` with
+  memory/server-SQLite adapters, `@metacrdt/testkit` conformance suite, or
+  Cloudflare Phase B/C.
 
 ### 2026-06-08 — host event-log entity fold
 - [x] **Goal 98 shipped:** `@metacrdt/query` guarded positive-pattern extension.

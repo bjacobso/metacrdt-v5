@@ -67,17 +67,25 @@ packages/
 ├── views/            @metacrdt/views      # ViewSpec / response surfaces
 ├── agent/            @metacrdt/agent      # agent actors, proposals, skills
 ├── runtime/          @metacrdt/runtime    # done: services + memory/localStorage + BroadcastChannel + p2p
-├── convex/           @metacrdt/convex     # Convex target / component-owned log + projections + cardinality / bindings
-├── cloudflare/       @metacrdt/cloudflare # done: DO storage + WebSocket relay + Worker example
-├── local/            @metacrdt/local      # done: localStorage + IndexedDB + SQLite + BroadcastChannel target
-├── node/             @metacrdt/node       # node target, tests, dev server
+├── sql/              @metacrdt/sql        # storage adapter: relational triple-store DDL + queries (sqlite/postgres dialects)
+├── convex/           @metacrdt/convex     # target (managed): component-owned log + projections + cardinality / bindings
+├── cloudflare/       @metacrdt/cloudflare # target (managed): DO storage + WebSocket relay + Worker example
+├── local/            @metacrdt/local      # target (browser): localStorage + IndexedDB + SQLite + BroadcastChannel
+├── node/             @metacrdt/node       # target (open host): tests, dev server, mounts sqlite/postgres/memory adapters
 ├── cli/              @metacrdt/cli
 ├── sdk/              @metacrdt/sdk
-└── testkit/          @metacrdt/testkit
+└── testkit/          @metacrdt/testkit    # convergence-conformance suite every target must pass
 ```
 
 This is the target map, not a mandate to create empty packages now. The rule is:
 extract a package only when code and tests justify the boundary.
+
+**Target ≠ storage backend.** A *target* is an execution host; a *storage
+adapter* (`sqlite`, `postgres`, DO SQLite, IndexedDB) implements `EventStore`;
+a *transport adapter* implements `Transport`. So Postgres is not a peer of
+`convex`/`cloudflare` — it is an adapter the open `node` host mounts. The full
+target/adapter/transport model, the managed-vs-open-host distinction, and the
+eventual dependency graph are in [targets.md](./targets.md).
 
 ---
 
@@ -91,11 +99,16 @@ Keep these axes separate.
 | **Language** | `forma` | Lisp syntax, reader, evaluator, type system, diagnostics, LSP/editor contracts | ontology-specific runtime |
 | **Feature packages** | `schema`, `query`, `workflow`, `forms`, `views`, `agent` | portable substrate features | Convex/Cloudflare/Node APIs |
 | **Harness** | `runtime` | service interfaces, operation helpers, memory harness, capability model | concrete persistence or durable transport |
-| **Targets** | `convex`, `cloudflare`, `local`, `node` | runtime bindings, persistence, scheduler, transport, deploy shape | feature semantics |
-| **Tools/apps** | `cli`, `sdk`, app surfaces | developer/product experience | protocol semantics |
+| **Storage adapters** | `sql` (sqlite/postgres), adapters inside `local` | implement `EventStore` + projection store | execution scheduling, feature semantics |
+| **Transport adapters** | broadcast/p2p in `runtime`, WS in `cloudflare`, HTTP/SSE in `node` | implement `Transport` (anti-entropy I/O) | storage, feature semantics |
+| **Targets (hosts)** | `convex`, `cloudflare`, `local`, `node` | execution host + scheduler + a default adapter choice + deploy shape | feature semantics; another target |
+| **Tools/apps** | `cli`, `sdk`, `testkit`, app surfaces | developer/product experience, conformance | protocol semantics |
 
 The core discipline: a feature package may depend on `@metacrdt/core` and
 eventually `@metacrdt/runtime` interfaces, but it must not import a target.
+Adapters and transports depend only on `runtime` + `core`. Targets depend
+downward on everything; targets never depend on each other. See
+[targets.md](./targets.md) for the full dependency graph.
 
 ---
 

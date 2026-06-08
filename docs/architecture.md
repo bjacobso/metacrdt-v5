@@ -98,7 +98,7 @@ not invented:
 | `packages/convex` (`@metacrdt/convex`) | Convex/core adapters, validators, Confect sidecar warning, component-owned protocol log, current projections, and cardinality-one reconciliation |
 | `packages/forma` (`@metacrdt/forma`) | Lisp authoring language: reader, formatter, evaluator, VM, type inference |
 | `packages/runtime` (`@metacrdt/runtime`) | runtime service contracts + memory harness + localStorage target seed + BroadcastChannel and p2p DataChannel transports proving target-neutral convergence, restart durability, same-origin anti-entropy, and peer-to-peer gossip |
-| `packages/cloudflare` (`@metacrdt/cloudflare`) | Durable Object storage-backed runtime services, structural WebSocket relay shell, and Worker/DO example shell |
+| `packages/cloudflare` (`@metacrdt/cloudflare`) | Durable Object storage-backed runtime services, structural WebSocket relay shell, and Worker/DO example shell. Parity build-out to a DO + SQLite triple store (and live queries over DO WebSockets as a stretch goal) is planned in [cloudflare-target.md](./cloudflare-target.md) |
 | `packages/local` (`@metacrdt/local`) | browser/local-first target package composing runtime localStorage services + BroadcastChannel transport, plus async local runtime services, IndexedDB-compatible persistence, and SQLite-compatible persistence |
 | `convex/attributes.ts`, `convex/lib/meta.ts` | Convex schema runtime over `@metacrdt/schema` constants/lowering/read-model helpers |
 | `convex/datalog.ts`, `convex/lib/engine.ts` | Convex Datalog runtime over `@metacrdt/query` helpers |

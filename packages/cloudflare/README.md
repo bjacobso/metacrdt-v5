@@ -50,7 +50,16 @@ import { createDurableObjectRuntime, relayWorker } from "@metacrdt/cloudflare";
 
 ## Status
 
-The runtime services, relay, and Worker/DO example are **structural** shells:
-storage-backed and protocol-correct, but not yet a live deployment. Live
-Cloudflare deployment and auth remain on the frontier (see
+This package today implements the **sync plane** — a convergent event log over
+Durable Object storage, plus the relay and Worker shells. It is storage-backed
+and protocol-correct, but not yet a queryable triple store or a live deployment.
+
+The plan to grow it to parity with `@metacrdt/convex` — an indexed, bitemporal
+triple store over Durable Object **SQLite** storage, with projections,
+cardinality-one reconcile, rebuild, and the collection/flow surface — is
+[docs/cloudflare-target.md](../../docs/cloudflare-target.md). That doc also tracks
+**live frontend queries over DO WebSockets** as an explicit stretch goal the
+architecture must not preclude.
+
+Live Cloudflare deployment and auth remain on the frontier (see
 [TODO.md](../../TODO.md), [docs/alchemy.md](../../docs/alchemy.md)).

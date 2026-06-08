@@ -532,6 +532,11 @@ rebuildable from that history.
 - [VISION.md](./VISION.md) — product/substrate thesis and pillars.
 - [PLAN.md](./PLAN.md) — full backlog and milestone plan.
 - [TODO.md](./TODO.md) — running worklog and near-term next steps.
+- [docs/targets.md](./docs/targets.md) — target / storage-adapter / transport
+  model, managed-vs-open hosts, and the eventual package dependency graph.
+- [docs/cloudflare-target.md](./docs/cloudflare-target.md) — Durable Object +
+  SQLite triple-store target plan (parity with the Convex component; live
+  queries over DO WebSockets as a stretch goal).
 - [docs/confect.md](./docs/confect.md) — backend as Effect via Confect.
 - [docs/foldkit.md](./docs/foldkit.md) — client as projection.
 - [docs/alchemy.md](./docs/alchemy.md) — infrastructure as the same program.

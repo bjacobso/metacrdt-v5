@@ -134,7 +134,12 @@ payloads are `dist`-only (plus package metadata and the Cloudflare Wrangler
 example), and dry-run npm packs verify no `src` or test files ship. Goal 100
 adds a fail-closed `convex/auth.config.ts`: the backend now has the required auth
 config file but accepts no JWT providers until a production provider is chosen
-and the config is filled with that issuer/audience. The next active goal
+and the config is filled with that issuer/audience. Goal 101 clarifies the
+multi-target roadmap: targets are execution hosts, storage and transport are
+separate adapter axes, `@metacrdt/node` is the next highest-value host, and
+Cloudflare parity means growing the existing sync-plane shell into a Durable
+Object + SQLite triple store without reimplementing core fold/reconcile
+semantics. The next active goal
 should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, live Cloudflare
 deployment/auth, another carefully scoped Confect/domain wrapper, or the next
@@ -149,6 +154,10 @@ This plan is the operational goal file. Read it with:
 - [docs/architecture.md](./docs/architecture.md) — package/layer map
 - [docs/package-consolidation.md](./docs/package-consolidation.md) — Open
   Ontology fold plan
+- [docs/targets.md](./docs/targets.md) — target / storage-adapter / transport
+  model
+- [docs/cloudflare-target.md](./docs/cloudflare-target.md) — Durable Object +
+  SQLite target parity plan
 - [docs/confect.md](./docs/confect.md) — Confect/Effect direction
 
 When changing Convex code, read
@@ -8838,6 +8847,56 @@ activation path documented for the later product/provider decision.
 - `npx convex dev --once` accepts the config and prepares functions.
 - Existing write-auth tests still prove anonymous writes fail and authenticated
   test identities succeed.
+
+---
+
+## Goal 101 — Target / Adapter / Cloudflare Parity Plan
+
+**Status:** shipped as planning documentation.
+
+**Objective:** turn the fuzzy "Cloudflare target" / "Postgres target" language
+into an executable target model before building more runtime code. A MetaCRDT
+target should be defined as an execution host with scheduler/lifecycle semantics;
+storage and transport should be separate adapter axes.
+
+### What Shipped
+
+- Added `docs/targets.md`.
+- Added `docs/cloudflare-target.md`.
+- Updated README, `docs/architecture.md`, `docs/package-consolidation.md`, and
+  `packages/cloudflare/README.md` to link the new target model and Cloudflare
+  parity plan.
+- Defined the target/adapters split:
+  - `convex` and `cloudflare` are managed targets with fixed storage choices
+  - `node` and `local` are open hosts that mount storage/transport adapters
+  - Postgres, SQLite, IndexedDB, and DO SQLite are storage adapters, not peer
+    targets
+  - live queries are transport/invalidation concerns, not substrate semantics
+- Clarified the recommended runtime build order:
+  1. `@metacrdt/node` with memory/server-SQLite adapters
+  2. `@metacrdt/testkit` convergence-conformance suite
+  3. Cloudflare Phase B/C: shared fold/reconcile extraction, then DO + SQLite
+     triple-store parity
+  4. extract `@metacrdt/sql` after a second SQLite consumer exists
+- Clarified Cloudflare parity:
+  - today `@metacrdt/cloudflare` is a sync-plane shell
+  - parity means indexed Durable Object SQLite tables, bitemporal projections,
+    cardinality-one reconcile, rebuild, collection/flow surface, and DO alarms
+  - live frontend queries over DO WebSockets are an explicit stretch goal the
+    architecture must not preclude
+
+### Non-Goals
+
+- Do not implement DO SQLite in this planning slice.
+- Do not add `@metacrdt/node`, `@metacrdt/sql`, or `@metacrdt/testkit` yet.
+- Do not claim Cloudflare target parity until the package has a queryable triple
+  store and conformance tests.
+
+### Verification
+
+- Documentation links resolve locally.
+- Root package typecheck still passes; docs-only changes do not affect runtime
+  builds.
 
 ---
 
