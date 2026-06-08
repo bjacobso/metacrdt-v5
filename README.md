@@ -98,11 +98,18 @@ research frontier, tracked explicitly in [TODO.md](./TODO.md).
 
 This repo is becoming the canonical `@metacrdt/*` monorepo.
 
-Current package:
+Current packages:
 
 - **`@metacrdt/core`** (`packages/core`) — pure, dependency-free convergence
   kernel: SHA-256, base32, canonical values, HLC, events, `≺`, G-Set merge, and
   the bitemporal fold.
+- **`@metacrdt/convex`** (`packages/convex`) — Convex target adapters:
+  protocol metadata validators, Convex/core event construction, row
+  reconstruction/verification, projected-row visibility, and Confect sidecar
+  guidance.
+- **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
+  authoring language extracted from Open Ontology: reader, formatter, evaluator,
+  VM, type inference, and language-owned elaboration utilities.
 
 Planned package graph:
 
@@ -216,9 +223,11 @@ Important tables:
 | `attributes` / schema facts | predicate and type metadata |
 | `flowDefs` / `flowRuns` | durable workflow definitions and executions |
 
-The next runtime step is to move the write path onto core semantics: stamp
-`eventId` + HLC metadata onto `factEvents` and resolve cardinality-one conflicts
-by the `≺` order rather than arrival order.
+New writes already stamp `eventId` + HLC metadata onto `factEvents`, lifecycle
+events target protocol assert ids, and cardinality-one current projections
+reconcile by the core `≺` order. The next product/runtime step is making
+config-as-code reconciliation true: facts removed from a blueprint should retract
+from the configured shape instead of lingering.
 
 ---
 

@@ -1,8 +1,8 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** extract `@metacrdt/forma` from the pinned Open Ontology
-language packages, after the reusable `@metacrdt/convex` adapter package has
-landed as an adapter-first target package.
+**Current goal:** make `applyConfig` a true reconciler, so configured facts
+removed from a blueprint are retracted instead of lingering after the next
+configuration apply.
 
 This plan is the operational goal file. Read it with:
 
@@ -36,9 +36,9 @@ The repository should make that statement true in code:
 5. Confect/Effect improves the Convex target's schema, error, and service
    boundaries without becoming the protocol.
 
-The immediate technical gap has moved up a layer: the protocol kernel and Convex
-adapters now exist, so the next extraction is the authoring language that can
-describe MetaCRDT shapes without depending on a runtime target.
+The immediate technical gap has moved back into product semantics: the package
+graph now has `core`, `convex`, and `forma`, while the live config-as-code layer
+is still idempotent-by-upsert rather than a real reconcile loop.
 
 ---
 
@@ -87,6 +87,12 @@ describe MetaCRDT shapes without depending on a runtime target.
     lesson from Goal 2
   - package-local tests for deterministic event reconstruction and legacy
     fallback behavior
+- `@metacrdt/forma` exists in [`packages/forma`](./packages/forma):
+  - runtime-neutral Lisp / S-expression authoring language
+  - parser, formatter, evaluator, VM, type inference, and language-owned
+    elaboration utilities
+  - selected Open Ontology Lisp fixtures copied into package-local tests
+  - no source imports from `.context/open-ontology`
 
 ### Not Yet True
 
@@ -99,6 +105,8 @@ describe MetaCRDT shapes without depending on a runtime target.
   mutation factories, and cardinality-one reconcile helpers remain deferred
   until the package boundary is proven against more host-app usage.
 - Multi-replica sync is specified but not implemented.
+- `applyConfig` is still idempotent-by-upsert. Removing an item from the
+  blueprint does not currently retract the previously configured facts/rows.
 - Confect is integrated as a narrow sidecar spike:
   - `confect/` defines a typed Effect Schema function group.
   - `convex/metacrdtConfect.ts` manually mounts the generated registered
@@ -740,23 +748,51 @@ source map.
 
 ### Acceptance Criteria
 
-- `packages/forma` exists as `@metacrdt/forma`.
-- README states what Forma owns and does not own.
-- No runtime/target dependencies.
-- No imports from `.context/open-ontology`.
-- Selected Lisp fixtures parse/evaluate/typecheck.
-- Any old Onlang naming is either removed or documented as legacy alias.
+- [x] `packages/forma` exists as `@metacrdt/forma`.
+- [x] README states what Forma owns and does not own.
+- [x] No runtime/target dependencies.
+- [x] No imports from `.context/open-ontology`.
+- [x] Selected Lisp fixtures parse/evaluate/typecheck.
+- [x] Any old Onlang naming is either removed or documented as legacy alias.
+
+---
+
+## Goal 5 — True `applyConfig` Reconcile
+
+**Objective:** make config-as-code behave like a reconciler, not just an
+idempotent upsert. If a configured type, attribute, form, flow, requirement, or
+action is removed from the blueprint and `applyConfig` runs again, the old
+configured shape must be retracted or deactivated through the same fact/history
+model instead of lingering.
+
+### Acceptance Criteria
+
+- `applyConfig` computes a stable desired set for every configured artifact it
+  owns.
+- Previously configured facts that are no longer desired are retracted in a new
+  transaction with `actorId: "config"` and an explicit reconcile reason.
+- Runtime data facts are not retracted by config reconcile.
+- System/meta facts are not retracted by tenant config reconcile.
+- Existing imperative rows that are not fact-backed enough to retract safely
+  (for example flow/action definitions, if applicable) have a clear inactive or
+  superseded state, or the plan records why they remain append-only for now.
+- Tests prove removal:
+  - removing a requirement removes the derived obligation on the next reconcile
+  - removing an action makes it disappear from `actionsForType` / entity detail
+  - removing a configured type/attribute affects configured-type discovery
+    without deleting runtime entities
+- Existing behavior for repeated identical `setupStaffing` / `applyConfig` stays
+  idempotent.
+- Convex tests, package tests, typechecks, and `npx convex dev --once` pass.
 
 ---
 
 ## Parked Product/Engine Backlog
 
-These remain valuable, but they should not interrupt Goal 1.
+These remain valuable, but they should not interrupt the current goal.
 
 ### Product / Config
 
-- [ ] `applyConfig` true reconcile: retract config facts removed from the
-  blueprint.
 - [ ] Config history/diff UI.
 - [ ] Arg-taking actions / actions that open forms.
 - [ ] Dry-run compliance: hypothetical worker + scope, no writes.
@@ -814,25 +850,18 @@ These remain valuable, but they should not interrupt Goal 1.
 
 ## Definition of Done for the Current Goal
 
-Goal 4 is complete when:
+Goal 5 is complete when:
 
-- `packages/forma` exists as `@metacrdt/forma`.
-- Forma is extracted from the pinned Open Ontology language packages without
-  importing from `.context/open-ontology` at runtime.
-- The package README states what Forma owns:
-  - the Lisp/sexpr authoring language
-  - parser / printer / AST or IR boundary
-  - selected evaluator/typechecking utilities that are language-owned
-- The package README states what Forma does **not** own:
-  - Convex bindings
-  - protocol event storage
-  - Datalog/runtime execution
-  - product UI
-- Selected Open Ontology language fixtures are copied or ported into package-local
-  tests.
-- Any old Onlang naming is either removed or documented as a legacy alias.
-- `npm run test:forma` passes.
-- `npm run test:core`, `npm run test:convex-package`, `npm test`, both
-  typechecks, and `npx convex dev --once` still pass.
-- `PLAN.md`, `TODO.md`, and relevant docs record the extraction result.
+- `applyConfig` has reconcile semantics for the artifacts it owns.
+- Removing a configured item from the blueprint causes the old configured
+  representation to disappear from the relevant read models on the next apply.
+- The reconcile path records history through transactions/facts where possible,
+  and documents any intentionally append-only rows.
+- Runtime data and system/meta facts are protected from config cleanup.
+- Re-applying the same blueprint remains idempotent.
+- Tests cover removal of at least one requirement, one action, and one configured
+  type/attribute without deleting runtime entities.
+- `npm run test:forma`, `npm run test:core`, `npm run test:convex-package`,
+  `npm test`, both typechecks, and `npx convex dev --once` still pass.
+- `PLAN.md`, `TODO.md`, and relevant docs record the reconcile result.
 - The change is committed and pushed.

@@ -1,0 +1,499 @@
+/**
+ * Bootstrap — load prelude sources and register form descriptors + meta-fn hooks.
+ *
+ * This is the entry point for bootstrapping the language from prelude files.
+ * It parses descriptor preludes, extracts form descriptors and meta-fn
+ * declarations, and registers them in the appropriate registries.
+ *
+ * @module bootstrap
+ */
+
+import { readFileSync } from "node:fs";
+import { parsePrelude, type MetaFnDecl, type MetaFnKind } from "./meta-fn-decl.js";
+import { FormDescriptorRegistry } from "./FormDescriptorRegistry.js";
+import { ElaborationRegistry } from "./ElaborationRegistry.js";
+import { createMetaFnHook } from "./meta-fn-executor.js";
+import { ElaborationDescriptorRegistry } from "./ElaborationDescriptorRegistry.js";
+import { createElaborationDescriptorHook } from "./elaboration-executor.js";
+import type { FormDescriptor } from "./FormDescriptor.js";
+import type { HookKind } from "./ElaborationHook.js";
+import type { HostedMetaBuiltinsFactory, MetaBuiltinsContext } from "./meta-builtins.js";
+import type {
+  ElaborationDescriptor,
+  ElaborationField,
+  ElaborationObjectField,
+  ElaborationSource,
+} from "./ElaborationDescriptor.js";
+
+// =============================================================================
+// Types
+// =============================================================================
+
+export interface BootstrappedPrelude {
+  readonly descriptions: FormDescriptorRegistry;
+  readonly elaboration: ElaborationRegistry;
+  readonly elaborationDescriptors: ElaborationDescriptorRegistry;
+  readonly hostedDsls: ReadonlyMap<string, BootstrappedHostedDsl>;
+  readonly stats: {
+    readonly compilerForms: number;
+    readonly domainForms: number;
+    readonly hostedDsls: number;
+    readonly hostedDslForms: number;
+    readonly hostedDslMetaFns: number;
+    readonly metaFns: number;
+    readonly elaborations: number;
+  };
+}
+
+export interface HostedDsl {
+  readonly name: string;
+  readonly sources: readonly string[];
+  readonly hostedMetaBuiltins?: HostedMetaBuiltinsFactory;
+}
+
+export interface BootstrappedHostedDsl {
+  readonly name: string;
+  readonly descriptors: readonly FormDescriptor[];
+  readonly metaFns: readonly MetaFnDecl[];
+  readonly elaborations: readonly ElaborationDescriptor[];
+}
+
+export interface BootstrapOptions {
+  readonly additionalSources?: readonly string[];
+  readonly hostedMetaBuiltins?: HostedMetaBuiltinsFactory;
+  readonly hostedDsls?: readonly HostedDsl[];
+}
+
+// =============================================================================
+// Bootstrap from source strings
+// =============================================================================
+
+/**
+ * Bootstrap from prelude source strings.
+ * Parses all sources, deduplicates meta-fns (last wins), and registers
+ * all descriptors and hooks.
+ *
+ * @param compilerSource - descriptor compiler source (meta forms)
+ * @param domainSource - domain form declarations
+ * @param additionalSources - additional sources with hooks or extra declarations
+ */
+export function bootstrapFromSources(
+  compilerSource: string,
+  domainSource: string,
+  ...additionalSourcesAndOptions: readonly (string | BootstrapOptions)[]
+): BootstrappedPrelude {
+  const { additionalSources, options } = splitBootstrapInputs(additionalSourcesAndOptions);
+  const compiler = parsePrelude(compilerSource);
+  const domain = parsePrelude(domainSource);
+  const additional = additionalSources.map((s) => parsePrelude(s));
+  const hostedDsls = parseHostedDsls(options.hostedDsls ?? []);
+
+  const descriptions = new FormDescriptorRegistry();
+  const elaboration = new ElaborationRegistry();
+  const elaborationDescriptors = new ElaborationDescriptorRegistry();
+
+  // Register all form descriptors
+  for (const desc of compiler.forms) {
+    descriptions.register(desc);
+  }
+  for (const desc of domain.forms) {
+    descriptions.register(desc);
+  }
+  let additionalFormCount = 0;
+  for (const a of additional) {
+    for (const desc of a.forms) {
+      descriptions.register(desc);
+      additionalFormCount++;
+    }
+  }
+
+  descriptions.alias("completion-action", "completion-mutation");
+
+  // Register all meta-fn hooks (deduplicated, last wins)
+  const allMetaFns = [
+    ...compiler.metaFns,
+    ...domain.metaFns,
+    ...additional.flatMap((a) => a.metaFns),
+    ...[...hostedDsls.values()].flatMap((hostedDsl) => hostedDsl.metaFns),
+  ];
+  const deduped = new Map(allMetaFns.map((m) => [m.name, m]));
+  validateMetaFnDeclarations([...deduped.values()]);
+  const hostedMetaBuiltins = mergeHostedMetaBuiltins(
+    options.hostedMetaBuiltins,
+    options.hostedDsls ?? [],
+  );
+  const metaBuiltinsContext: MetaBuiltinsContext = { hostedDsls };
+  for (const metaFn of deduped.values()) {
+    if (!isExecutableHookKind(metaFn.kind)) continue;
+    elaboration.registerHook(createMetaFnHook(metaFn, hostedMetaBuiltins, metaBuiltinsContext));
+  }
+
+  const allElaborations = [
+    ...compiler.elaborations,
+    ...domain.elaborations,
+    ...additional.flatMap((a) => a.elaborations),
+    ...[...hostedDsls.values()].flatMap((hostedDsl) => hostedDsl.elaborations),
+  ];
+  const dedupedElaborations = new Map(allElaborations.map((item) => [item.name, item]));
+  for (const descriptor of dedupedElaborations.values()) {
+    elaborationDescriptors.register(descriptor);
+    const hasLispFallback = elaboration.hasHook(descriptor.hook);
+    if (!nativeElaborationDisabled() || !hasLispFallback) {
+      elaboration.registerHook(createElaborationDescriptorHook(descriptor));
+    }
+  }
+
+  validateDescriptorHookReferences(descriptions.list(), elaboration);
+  validateElaborationDescriptorReferences(elaborationDescriptors.list(), descriptions);
+  validateConstructedByReferences(descriptions.list(), elaborationDescriptors);
+
+  return {
+    descriptions,
+    elaboration,
+    elaborationDescriptors,
+    hostedDsls,
+    stats: {
+      compilerForms: compiler.forms.length,
+      domainForms: domain.forms.length + additionalFormCount,
+      hostedDsls: hostedDsls.size,
+      hostedDslForms: [...hostedDsls.values()].reduce(
+        (count, hostedDsl) => count + hostedDsl.descriptors.length,
+        0,
+      ),
+      hostedDslMetaFns: [...hostedDsls.values()].reduce(
+        (count, hostedDsl) => count + hostedDsl.metaFns.length,
+        0,
+      ),
+      metaFns: deduped.size,
+      elaborations: dedupedElaborations.size,
+    },
+  };
+}
+
+function validateMetaFnDeclarations(metaFns: readonly MetaFnDecl[]): void {
+  for (const metaFn of metaFns) {
+    if (metaFn.capabilities.length === 0) continue;
+    throw new Error(
+      `Meta-fn '${metaFn.name}' declares unsupported capabilities: ${metaFn.capabilities.join(", ")}`,
+    );
+  }
+}
+
+function isExecutableHookKind(kind: MetaFnKind): kind is HookKind {
+  return (
+    kind === "bindings" || kind === "validate" || kind === "construct" || kind === "result-type"
+  );
+}
+
+// =============================================================================
+// Bootstrap from file paths
+// =============================================================================
+
+/**
+ * Bootstrap from prelude file paths. Reads files synchronously.
+ *
+ * @param compilerPath - path to descriptor compiler prelude
+ * @param domainPath - path to domain declaration prelude
+ * @param additionalPaths - paths to additional prelude files
+ */
+export function bootstrapFromFiles(
+  compilerPath: string,
+  domainPath: string,
+  ...additionalPathsAndOptions: readonly (string | BootstrapOptions)[]
+): BootstrappedPrelude {
+  const { additionalSources, options } = splitBootstrapInputs(additionalPathsAndOptions);
+  const compilerSource = readFileSync(compilerPath, "utf-8");
+  const domainSource = readFileSync(domainPath, "utf-8");
+  const fileSources = additionalSources.map((p) => readFileSync(p, "utf-8"));
+  return bootstrapFromSources(compilerSource, domainSource, ...fileSources, options);
+}
+
+function splitBootstrapInputs(values: readonly (string | BootstrapOptions)[]): {
+  readonly additionalSources: readonly string[];
+  readonly options: BootstrapOptions;
+} {
+  const last = values.at(-1);
+  const hasOptions = typeof last === "object" && last !== null;
+  const options = hasOptions ? (last as BootstrapOptions) : {};
+  const positionalSources = hasOptions
+    ? (values.slice(0, -1) as readonly string[])
+    : (values as readonly string[]);
+  return {
+    additionalSources: [...positionalSources, ...(options.additionalSources ?? [])],
+    options,
+  };
+}
+
+function parseHostedDsls(
+  hostedDsls: readonly HostedDsl[],
+): ReadonlyMap<string, BootstrappedHostedDsl> {
+  const registrations = new Map<string, BootstrappedHostedDsl>();
+
+  for (const hostedDsl of hostedDsls) {
+    if (registrations.has(hostedDsl.name)) {
+      throw new Error(`Duplicate hosted DSL registration '${hostedDsl.name}'`);
+    }
+
+    const parsedSources = hostedDsl.sources.map((source) => parsePrelude(source));
+    const descriptors = parsedSources.flatMap((parsed) => parsed.forms);
+    const metaFns = parsedSources.flatMap((parsed) => parsed.metaFns);
+    const elaborations = parsedSources.flatMap((parsed) => parsed.elaborations);
+    registrations.set(hostedDsl.name, {
+      name: hostedDsl.name,
+      descriptors,
+      metaFns,
+      elaborations,
+    });
+  }
+
+  return registrations;
+}
+
+function nativeElaborationDisabled(): boolean {
+  return ["1", "true", "TRUE", "yes", "YES"].includes(
+    process.env["OO_LANG_DISABLE_NATIVE_ELABORATION"] ?? "",
+  );
+}
+
+function validateElaborationDescriptorReferences(
+  descriptors: readonly ElaborationDescriptor[],
+  forms: FormDescriptorRegistry,
+): void {
+  for (const descriptor of descriptors) {
+    const form = forms.get(descriptor.form);
+    if (!form) {
+      throw new Error(
+        `Elaboration '${descriptor.name}' references missing form '${descriptor.form}'`,
+      );
+    }
+    if (form.elaboration.kind !== "hook" && form.elaboration.kind !== "composite") {
+      throw new Error(
+        `Elaboration '${descriptor.name}' references form '${descriptor.form}' without a construct hook`,
+      );
+    }
+    if (form.elaboration.fn !== descriptor.hook) {
+      throw new Error(
+        `Elaboration '${descriptor.name}' targets hook '${descriptor.hook}' but form '${descriptor.form}' constructs with '${form.elaboration.fn}'`,
+      );
+    }
+  }
+}
+
+function validateConstructedByReferences(
+  forms: readonly FormDescriptor[],
+  elaborations: ElaborationDescriptorRegistry,
+): void {
+  for (const form of forms) {
+    if (!form.constructedBy) continue;
+
+    const descriptor = elaborations.getByName(form.constructedBy.elaboration);
+    if (!descriptor) {
+      throw new Error(
+        `Form '${form.name}' declares :constructed-by '${form.constructedBy.elaboration}', but no such elaboration is registered`,
+      );
+    }
+    const child = form.constructedBy.child ?? form.name;
+    if (!elaborationMentionsChild(descriptor, child)) {
+      throw new Error(
+        `Form '${form.name}' declares :constructed-by '${form.constructedBy.elaboration}', but that elaboration does not project child form '${child}'`,
+      );
+    }
+  }
+}
+
+function elaborationMentionsChild(descriptor: ElaborationDescriptor, childForm: string): boolean {
+  return descriptor.fields.some((field) => fieldMentionsChild(field, childForm));
+}
+
+function fieldMentionsChild(field: ElaborationField, childForm: string): boolean {
+  switch (field.kind) {
+    case "source":
+      return sourceMentionsChild(field.source, childForm);
+    case "children":
+      return (
+        field.child === childForm ||
+        field.fields.some((childField) => objectFieldMentionsChild(childField, childForm))
+      );
+    case "assignments":
+      return field.child === childForm;
+  }
+}
+
+function objectFieldMentionsChild(field: ElaborationObjectField, childForm: string): boolean {
+  return sourceMentionsChild(field.source, childForm);
+}
+
+function sourceMentionsChild(source: ElaborationSource, childForm: string): boolean {
+  switch (source.kind) {
+    case "child":
+    case "children":
+      return (
+        source.child === childForm ||
+        source.fields.some((field) => objectFieldMentionsChild(field, childForm))
+      );
+    case "object":
+      return source.fields.some((field) => objectFieldMentionsChild(field, childForm));
+    case "format":
+      return source.parts.some((part) => sourceMentionsChild(part, childForm));
+    case "first":
+      return source.sources.some((part) => sourceMentionsChild(part, childForm));
+    case "default":
+    case "ref":
+    case "primitive":
+      return sourceMentionsChild(source.source, childForm);
+    case "when":
+      return (
+        sourceMentionsChild(source.condition, childForm) ||
+        sourceMentionsChild(source.source, childForm)
+      );
+    default:
+      return false;
+  }
+}
+
+function mergeHostedMetaBuiltins(
+  rootFactory: HostedMetaBuiltinsFactory | undefined,
+  hostedDsls: readonly HostedDsl[],
+): HostedMetaBuiltinsFactory | undefined {
+  const hostedDslFactories = hostedDsls
+    .map((hostedDsl) => hostedDsl.hostedMetaBuiltins)
+    .filter((factory): factory is HostedMetaBuiltinsFactory => factory !== undefined);
+  const factories = [rootFactory, ...hostedDslFactories].filter(
+    (factory): factory is HostedMetaBuiltinsFactory => factory !== undefined,
+  );
+
+  if (factories.length === 0) return undefined;
+
+  return (semanticEnv, context) =>
+    Object.assign({}, ...factories.map((factory) => factory(semanticEnv, context)));
+}
+
+function validateDescriptorHookReferences(
+  descriptors: readonly FormDescriptor[],
+  elaboration: ElaborationRegistry,
+): void {
+  for (const descriptor of descriptors) {
+    // Meta-phase bootstrap forms still rely on transitional seed behavior.
+    if (descriptor.phase !== "domain") continue;
+
+    validateDescriptorStaticReferences(descriptor);
+    validateHookReference(descriptor, "bindings", "bindings", descriptor.bindings, elaboration);
+    validateHookReference(descriptor, "validation", "validate", descriptor.validation, elaboration);
+    validateHookReference(
+      descriptor,
+      "elaboration",
+      "construct",
+      descriptor.elaboration,
+      elaboration,
+    );
+    validateHookReference(
+      descriptor,
+      "resultType",
+      "result-type",
+      descriptor.resultType,
+      elaboration,
+    );
+  }
+}
+
+function validateDescriptorStaticReferences(descriptor: FormDescriptor): void {
+  const slotNames = new Set(descriptor.slots.map((slot) => slot.name));
+  const identifierNames = new Set(descriptor.identifiers.map((identifier) => identifier.name));
+  const fieldNames = new Set([...slotNames, ...identifierNames]);
+
+  for (const slot of descriptor.slots) {
+    if (slot.typeFrom && !slotNames.has(slot.typeFrom)) {
+      throw new Error(
+        `Form '${descriptor.name}' references missing type-from slot '${slot.typeFrom}'`,
+      );
+    }
+  }
+
+  const bindingRules =
+    descriptor.bindings.kind === "static" || descriptor.bindings.kind === "composite"
+      ? descriptor.bindings.rules
+      : [];
+  for (const rule of bindingRules) {
+    if (rule.identifier && !identifierNames.has(rule.identifier)) {
+      throw new Error(
+        `Form '${descriptor.name}' references missing binding identifier '${rule.identifier}'`,
+      );
+    }
+    if (rule.slot && !slotNames.has(rule.slot)) {
+      throw new Error(`Form '${descriptor.name}' references missing binding slot '${rule.slot}'`);
+    }
+  }
+
+  const validationChecks =
+    descriptor.validation.kind === "static" || descriptor.validation.kind === "composite"
+      ? descriptor.validation.checks
+      : [];
+  for (const check of validationChecks) {
+    if (check.slot && !fieldNames.has(check.slot)) {
+      throw new Error(
+        `Form '${descriptor.name}' references missing validation field '${check.slot}'`,
+      );
+    }
+    if (check.defaultSlot && !fieldNames.has(check.defaultSlot)) {
+      throw new Error(
+        `Form '${descriptor.name}' references missing validation field '${check.defaultSlot}'`,
+      );
+    }
+    if (check.listSlot && !fieldNames.has(check.listSlot)) {
+      throw new Error(
+        `Form '${descriptor.name}' references missing validation field '${check.listSlot}'`,
+      );
+    }
+  }
+
+  if (descriptor.elaboration.kind === "static" || descriptor.elaboration.kind === "composite") {
+    for (const opcode of descriptor.elaboration.opcodes) {
+      if (opcode.slot && !fieldNames.has(opcode.slot)) {
+        throw new Error(
+          `Form '${descriptor.name}' references missing elaboration field '${opcode.slot}'`,
+        );
+      }
+    }
+  }
+
+  switch (descriptor.resultType.kind) {
+    case "slot-type":
+    case "declaration-result":
+    case "declaration-ref-result":
+      if (!slotNames.has(descriptor.resultType.slot)) {
+        throw new Error(
+          `Form '${descriptor.name}' references missing result-type slot '${descriptor.resultType.slot}'`,
+        );
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+function validateHookReference(
+  descriptor: FormDescriptor,
+  strategyName: string,
+  expectedKind: HookKind,
+  strategy:
+    | FormDescriptor["bindings"]
+    | FormDescriptor["validation"]
+    | FormDescriptor["elaboration"]
+    | FormDescriptor["resultType"],
+  elaboration: ElaborationRegistry,
+): void {
+  if (strategy.kind !== "hook" && strategy.kind !== "composite") return;
+
+  const hook = elaboration.getHook(strategy.fn);
+  if (!hook) {
+    throw new Error(
+      `Form '${descriptor.name}' references missing ${strategyName} hook '${strategy.fn}'`,
+    );
+  }
+
+  if (hook.kind !== expectedKind) {
+    throw new Error(
+      `Form '${descriptor.name}' expects ${strategyName} hook '${strategy.fn}' to be kind '${expectedKind}', got '${hook.kind}'`,
+    );
+  }
+}

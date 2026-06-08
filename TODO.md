@@ -39,7 +39,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   continue toward retiring the hand-maintained `facts` projection.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
-- [ ] **Extract `@metacrdt/forma`** from Open Ontology's language packages
+- [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
   (`language-ts`, selected `language-host` / docs / tests). Forma owns the Lisp
   authoring language; runtime lowering stays out until the IR boundary proves it.
 - [x] **`@metacrdt/convex` adapter package extracted** — `packages/convex` owns
@@ -53,18 +53,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `@metacrdt/convex` component surface. Don't factor these until the harness
   boundary is real.
 
-**Current goal — extract `@metacrdt/forma` (see [PLAN.md](./PLAN.md#goal-4--extract-metacrdtforma))**
-- [ ] Create `packages/forma` as `@metacrdt/forma` from the pinned Open Ontology
-  language packages (`language-ts`, selected `language-host` / docs / tests).
-- [ ] Keep Forma runtime-neutral: parser / printer / AST or IR boundary and
-  selected evaluator/typechecking utilities only; no Convex, runtime target, or
-  product UI dependencies.
-- [ ] Port selected language fixtures into package-local tests and document any
-  Onlang naming as legacy alias or remove it.
+**Current goal — true `applyConfig` reconcile (see [PLAN.md](./PLAN.md#goal-5--true-applyconfig-reconcile))**
+- [ ] Make `applyConfig` compute a stable desired set for configured artifacts.
+- [ ] Retract or deactivate previously configured facts/rows dropped from the
+  blueprint, without touching runtime data or system/meta facts.
+- [ ] Add tests proving requirement/action/type-or-attribute removal and repeated
+  identical apply idempotence.
 
 **Product / engine**
-- [ ] `applyConfig` true reconcile — retract config facts dropped from the blueprint
-  (today it's idempotent-by-upsert, never removes).
 - [ ] Attribute-level PII authorization — read grants; query layer omits ungranted
   attrs (the i9 SSN) and reports `Denied`. The deferred pillar.
 - [ ] Dry-run compliance — read-only "for a hypothetical worker + scope, what's
@@ -96,6 +92,24 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — @metacrdt/forma extraction
+- [x] **Goal 4 shipped:** `packages/forma` now publishes `@metacrdt/forma`, the
+  runtime-neutral Lisp / S-expression authoring language extracted from the
+  pinned Open Ontology language implementation. It owns reader/source/session,
+  formatter, evaluator, expander, VM, builtins, HM type inference, forms,
+  descriptors, artifacts, and language-owned elaboration/codegen utilities.
+- [x] **Boundary documented:** `packages/forma/README.md` states what Forma owns
+  and explicitly excludes Convex bindings, protocol event storage, Datalog/runtime
+  execution, platform targets, and product UI. Onlang is documented as a legacy
+  alias; new code imports `@metacrdt/forma`.
+- [x] **Fixture coverage:** selected Open Ontology Lisp fixtures were copied into
+  package-local tests and now parse/evaluate/typecheck under the new package. The
+  extraction test also enforces no `.context/open-ontology` or `@open-ontology/*`
+  imports in `packages/forma/src`.
+- [x] Verification: `npm run test:forma` (9 tests) and package typecheck pass;
+  full repo gates are recorded in the commit that shipped this slice. Current
+  goal moves to true `applyConfig` reconcile.
 
 ### 2026-06-07 — @metacrdt/convex adapter package extraction
 - [x] **Goal 3 shipped adapter-first:** `packages/convex` now publishes

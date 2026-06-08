@@ -40,7 +40,8 @@ MetaCRDT — the umbrella: the primitive, the thesis, the org
 │   @metacrdt/cloudflare ..... Durable-Object edge replica + WS sync
 │   @metacrdt/local .......... browser/SQLite local-first (the foldkit client)
 │
-├─ TOOLING           Onlang/Forma = DSL frontend → IR  ·  Schematics = the IDE/authoring surface
+├─ TOOLING           @metacrdt/forma = Lisp authoring language → IR
+│                    Schematics = the IDE/authoring surface
 │
 ├─ ONTOLOGY          "Alpha Ontology" = the default shipped blueprint
 │                     (the standard library: staffing/compliance types+rules, generalized)
@@ -79,7 +80,7 @@ whole point of the harness:
 | --- | --- |
 | **Open Ontology** | the open spec / community effort (SPEC.md) |
 | **Alpha Ontology** | the default ontology shipped with MetaCRDT (the standard blueprint library) |
-| **Onlang / Forma** | the DSL / compiler frontend (authoring → IR) |
+| **Onlang / Forma** | `@metacrdt/forma`, the Lisp authoring language / compiler frontend (authoring → IR) |
 | **Schematics** | the IDE / tooling |
 | **Onboarded** | the first application built on MetaCRDT (datarooms / compliance) |
 | **Meta-Effects** | absorbed: the runtime is `@metacrdt/runtime` + Effect Layers |
@@ -93,6 +94,7 @@ not invented:
 | --- | --- |
 | `packages/core` (`@metacrdt/core`) | pure protocol kernel: events, order, G-Set merge, fold |
 | `packages/convex` (`@metacrdt/convex`) | Convex/core adapters, validators, Confect sidecar warning |
+| `packages/forma` (`@metacrdt/forma`) | Lisp authoring language: reader, formatter, evaluator, VM, type inference |
 | `convex/attributes.ts`, `convex/lib/meta.ts` | `@metacrdt/schema` |
 | `convex/datalog.ts`, `convex/lib/engine.ts` | `@metacrdt/query` |
 | `convex/flows.ts` | `@metacrdt/workflow` |
@@ -110,9 +112,10 @@ not invented:
    premature-coupling trap. **`@metacrdt/core` is published first** — it exists now
    at `packages/core`: pure, dependency-free, and tested (SPEC §4–5; the events,
    `≺` order, G-Set merge, and deterministic bitemporal fold). It's the determinism
-   guarantee and the most reusable. **`@metacrdt/convex` is now the second package**:
-   adapter-first, package-owned, and consumed by the reference app. Everything else
-   extracts as it stabilizes. (Tracked in [TODO.md](../TODO.md).)
+   guarantee and the most reusable. **`@metacrdt/convex` and `@metacrdt/forma`
+   now exist too**: Convex is adapter-first; Forma is the runtime-neutral language
+   package. Everything else extracts as it stabilizes. (Tracked in
+   [TODO.md](../TODO.md).)
 2. **The name is the thesis — so protect what makes it true.** *Databases store
    facts; CRDTs synchronize facts; MetaCRDT synchronizes facts, logic, workflows,
    permissions, agents, and interfaces.* That sentence is only true because the log

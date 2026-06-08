@@ -1,4 +1,7 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+
+@source "../index.html";
+@source "./**/*.{ts,tsx}";
 
 /* Design tokens ported from the Triple Store mockup's design system, exposed as
    Tailwind theme variables so they're available as utilities (bg-brand,

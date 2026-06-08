@@ -1,0 +1,34 @@
+/**
+ * Validated artifact packaging for engine-owned declaration payloads.
+ *
+ * @module Artifact
+ */
+
+export {
+  packageArtifact,
+  packageArtifactJson,
+  validatePackageableDeclarations,
+  type ArtifactPackage,
+  type ArtifactResult,
+  type ArtifactSourceSummary,
+  type DeclarationSummary,
+  type JsonValue,
+  type PackageableDeclaration,
+  type PackageArtifactOptions,
+  type PackagedDeclaration,
+} from "./artifact/artifact.js";
+export {
+  isMechanicsArtifactForm,
+  mechanicsPackageableDeclarations,
+  type MechanicsArtifactDiagnostic,
+  type MechanicsArtifactResult,
+} from "./mechanics/artifact.js";
+export {
+  makeMechanicsRuntime,
+  MechanicsRuntimeError,
+  type MechanicsRuntime,
+  type MechanicsRuntimeOptions,
+  type MechanicsRuntimeValue,
+  type MechanicsServiceImplementation,
+  type MechanicsServiceMethod,
+} from "./mechanics/runtime.js";

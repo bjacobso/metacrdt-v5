@@ -278,6 +278,8 @@ new repo honest: the canonical runtime must actually use the canonical core.
 
 ### Phase 3 — Extract `@metacrdt/forma`
 
+Status: shipped as `packages/forma` / `@metacrdt/forma`.
+
 Source material:
 
 - `packages/language-ts`
@@ -289,11 +291,11 @@ Source material:
 
 Deliverables:
 
-- `packages/forma`
-- README defining the language boundary
-- source parser/evaluator/type API
-- fixtures proving compatibility with selected Open Ontology Lisp examples
-- no imports from `.context/open-ontology`
+- [x] `packages/forma`
+- [x] README defining the language boundary
+- [x] source parser/evaluator/type API
+- [x] fixtures proving compatibility with selected Open Ontology Lisp examples
+- [x] no imports from `.context/open-ontology`
 
 ### Phase 4 — Extract query/schema/workflow/forms/views
 
