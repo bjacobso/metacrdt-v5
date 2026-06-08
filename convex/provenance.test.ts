@@ -47,6 +47,7 @@ describe("provenance", () => {
       ]);
       // Each source carries its asserting transaction's actor.
       expect(v.because.every((b) => b.actor !== undefined)).toBe(true);
+      expect(v.because.every((b) => b.eventId !== undefined)).toBe(true);
 
       await t.run(async (ctx) => {
         const rows = await ctx.db
@@ -67,6 +68,62 @@ describe("provenance", () => {
           expect(eventRows[0].kind).toBe("assert");
         }
       });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("explainDerived resolves sources through protocol event ids before fact ids", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await t.mutation(api.rules.defineRule, {
+        name: "missing_cert",
+        where: [
+          ["?e", "worker.status", "active"],
+          ["?e", "cert.completed", false],
+        ],
+        emit: { e: "?e", a: "compliance.violation", v: "missing_cert" },
+        dependsOnAttributes: ["worker.status", "cert.completed"],
+      });
+      await t.mutation(api.facts.assertFact, {
+        e: "w:event",
+        a: "worker.status",
+        value: "active",
+      });
+      await t.mutation(api.facts.assertFact, {
+        e: "w:event",
+        a: "cert.completed",
+        value: false,
+      });
+      await flush(t);
+
+      await t.run(async (ctx) => {
+        const row = await ctx.db
+          .query("derivedFacts")
+          .withIndex("by_e_a", (q) =>
+            q.eq("e", "w:event").eq("a", "compliance.violation"),
+          )
+          .unique();
+        expect(row?.sourceEventIds).toHaveLength(2);
+        // Simulate the future state where compatibility fact-id provenance is no
+        // longer available on a derived row. The explanation should still resolve
+        // from protocol event ids.
+        await ctx.db.patch(row!._id, { sourceFactIds: [] });
+      });
+
+      const explained = await t.query(api.rules.explainDerived, {
+        e: "w:event",
+        a: "compliance.violation",
+      });
+      expect(explained).toHaveLength(1);
+      expect(explained[0].because.map((b) => b.a).sort()).toEqual([
+        "cert.completed",
+        "worker.status",
+      ]);
+      expect(explained[0].because.every((b) => b.eventId !== undefined)).toBe(
+        true,
+      );
     } finally {
       vi.useRealTimers();
     }

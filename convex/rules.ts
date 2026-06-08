@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { requireWritePrincipal } from "./lib/writeAuth";
 
@@ -148,20 +149,51 @@ export const explainDerived = query({
     const out = [];
     for (const d of derived) {
       const because = [];
-      for (const fid of d.sourceFactIds) {
-        const f = await ctx.db.get("facts", fid);
-        if (!f) continue;
-        const tx = await ctx.db.get("transactions", f.firstTxId);
-        because.push({
-          factId: fid,
-          e: f.e,
-          a: f.a,
-          v: f.v,
-          assertedAt: f.assertedAt,
-          actor: tx?.actorId,
-          reason: tx?.reason,
-          txTime: tx?.txTime,
-        });
+      const seen = new Set<string>();
+
+      if ((d.sourceEventIds ?? []).length > 0) {
+        for (const eventId of d.sourceEventIds ?? []) {
+          const row = await ctx.db
+            .query("factEvents")
+            .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
+            .unique();
+          if (!row || row.kind !== "assert") continue;
+          const tx = await ctx.db.get(row.txId);
+          const key = `event:${eventId}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          because.push({
+            eventId,
+            factId: row.factId,
+            e: row.e,
+            a: row.a,
+            v: row.v,
+            assertedAt: row.txTime,
+            actor: tx?.actorId,
+            reason: tx?.reason,
+            txTime: tx?.txTime,
+          });
+        }
+      } else {
+        for (const fid of d.sourceFactIds as Id<"facts">[]) {
+          const f = await ctx.db.get("facts", fid);
+          if (!f) continue;
+          const tx = await ctx.db.get("transactions", f.firstTxId);
+          const key = `fact:${fid}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          because.push({
+            factId: fid,
+            eventId: f.assertEventId,
+            e: f.e,
+            a: f.a,
+            v: f.v,
+            assertedAt: f.assertedAt,
+            actor: tx?.actorId,
+            reason: tx?.reason,
+            txTime: tx?.txTime,
+          });
+        }
       }
       out.push({
         e: d.e,

@@ -1,7 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 75 (user-facing obligation reads from event-log rule
-output) has shipped.
+**Current goal:** Goal 76 (derived explanations resolve source event ids) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -38,7 +37,9 @@ solver/materializers so materialized `derivedFacts` keep protocol
 enabled compliance-obligation resolver into `convex/lib/obligations.ts` and
 routes `workerCompliance`, `entityDetail.obligations`, Overview obligation
 counts, and `flows.issueAllOpen` through read-only rule output solved against
-protocol-shaped `factEvents` instead of materialized `derivedFacts`. The next
+protocol-shaped `factEvents` instead of materialized `derivedFacts`. Goal 76
+moves `rules.explainDerived` to resolve `derivedFacts.sourceEventIds` first,
+falling back to compatibility `sourceFactIds` only for legacy derived rows. The next
 active goal should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
@@ -198,7 +199,11 @@ arguments.
 - Materialized derived rows now store protocol `sourceEventIds` alongside
   compatibility `sourceFactIds`, for both non-closure Datalog output and
   transitive-closure output.
-- Convex backend tests are green: 150 tests at last verification.
+- `api.rules.explainDerived` now resolves source assertion event ids first and
+  falls back to compatibility `sourceFactIds` only for legacy derived rows,
+  preserving the existing "because" shape while returning `eventId`s for
+  protocol-backed explanations.
+- Convex backend tests are green: 152 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -7287,6 +7292,80 @@ Docs:
 - `npx convex codegen` passed and uploaded the backend functions.
 - Full gate passed:
   - `npm test` passed (17 backend test files, 151 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+- `git diff --check` passed.
+
+---
+
+## Goal 76 — Explain Derived Facts Through Protocol Event IDs
+
+**Status:** shipped for the public derived-fact explanation path.
+
+**Objective:** use the protocol provenance added in Goal 74. Newly materialized
+derived rows carry `sourceEventIds`; `api.rules.explainDerived` should resolve
+those event ids first, and use compatibility `sourceFactIds` only for legacy
+rows that do not have event provenance.
+
+### Scope
+
+Backend:
+
+- `convex/rules.ts`
+  - `explainDerived`
+
+Tests:
+
+- `convex/provenance.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+
+### Semantics
+
+- For derived rows with `sourceEventIds`, each source id is resolved through
+  `factEvents.by_eventId`.
+- Only source assertion events are included in the `because` list.
+- Transaction actor/reason/time is resolved from the source event row's `txId`.
+- The existing explanation response remains compatible:
+  - `e`, `a`, `v`
+  - `assertedAt`
+  - `actor`, `reason`, `txTime`
+  - optional `factId` when the source event still has a projection fact id
+  - new `eventId` for protocol-backed rows
+- Legacy derived rows without `sourceEventIds` still resolve through
+  `sourceFactIds`, and include `eventId` when the source fact has
+  `assertEventId`.
+
+### Non-Goals
+
+- Do not remove `derivedFacts`.
+- Do not remove `sourceFactIds`; they remain compatibility provenance and remain
+  useful for legacy rows.
+- Do not change materialization semantics in this slice.
+- Do not change the frontend explanation UI.
+
+### Acceptance Criteria
+
+- Existing provenance tests still pass.
+- `explainDerived` returns `eventId`s for protocol-backed derived rows.
+- `explainDerived` still works when a derived row has `sourceEventIds` but an
+  empty compatibility `sourceFactIds` list.
+- Focused provenance tests and full verification gate pass.
+
+### Verification
+
+- `npx vitest run convex/provenance.test.ts` passed (4 tests).
+- `npx convex codegen` passed and uploaded the backend functions.
+- Full gate passed:
+  - `npm test` passed (17 backend test files, 152 tests).
   - `npm run test:convex-package` passed (33 tests).
   - `npm run test:core` passed (46 tests).
   - `npx tsc --noEmit -p convex/tsconfig.json` passed.

@@ -100,12 +100,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   Host flow-run status transitions are now mirrored into `flow.run.status` facts,
   and System flow-resumer counts read waiting runs from `factEvents` instead of
   host `flowRuns`. Materialized derived rows now carry protocol
-  `sourceEventIds` alongside compatibility `sourceFactIds`. User-facing
-  compliance obligation reads (`workerCompliance`, `entityDetail.obligations`,
-  Overview required/open counts, and `flows.issueAllOpen`) now derive enabled
-  `require.*` / `task.*` rule output from protocol-shaped `factEvents` instead
-  of reading materialized `derivedFacts`. Remaining: derived rows are still
-  stored in `derivedFacts`.
+  `sourceEventIds` alongside compatibility `sourceFactIds`, and
+  `explainDerived` resolves event ids first for protocol-backed explanations.
+  User-facing compliance obligation reads (`workerCompliance`,
+  `entityDetail.obligations`, Overview required/open counts, and
+  `flows.issueAllOpen`) now derive enabled `require.*` / `task.*` rule output
+  from protocol-shaped `factEvents` instead of reading materialized
+  `derivedFacts`. Remaining: derived rows are still stored in `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -367,6 +368,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 76 shipped:** `api.rules.explainDerived` now resolves
+  `derivedFacts.sourceEventIds` through `factEvents.by_eventId` before falling
+  back to compatibility `sourceFactIds` for legacy rows. The public "because"
+  shape remains compatible and now includes protocol `eventId`s for
+  event-backed source assertions.
+- [x] **Derived explanation protocol proof.** `convex/provenance.test.ts` patches
+  a materialized derived row to clear `sourceFactIds` while preserving
+  `sourceEventIds`; `explainDerived` still returns the two source facts. The root
+  Convex suite is now 152 tests.
 - [x] **Goal 75 shipped:** user-facing compliance obligation reads now derive
   enabled `require.*` / `task.*` output from protocol-shaped `factEvents`.
   `convex/lib/obligations.ts` is the shared read-only resolver; it solves each

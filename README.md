@@ -242,8 +242,9 @@ Built today:
   `eventId` and resolve compatibility `sourceFactIds` through `factEvents`,
   rather than receiving the changed projection `factId`
 - materialized derived rows carry protocol `sourceEventIds` alongside existing
-  compatibility `sourceFactIds`, so derived provenance is now event-addressable
-  while current explanations keep working
+  compatibility `sourceFactIds`, and `api.rules.explainDerived` resolves those
+  event ids first (falling back to fact ids for legacy rows), so derived
+  explanations are now protocol-addressed without dropping old provenance
 - Datalog query engine with joins, comparisons, computed arithmetic/string
   predicates, negation, aggregation, cursor-paged result APIs, and materialized
   transitive closure
