@@ -160,9 +160,12 @@ back to structural response objects while still importing no Node framework or
 Node type package. The next active goal
 should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding the next
-Node slice (Postgres / packaged dev server), Cloudflare DO+SQLite parity,
-another carefully scoped Confect/domain wrapper, or the next projection
-dependency (closure/derived provenance or remaining operational process state).
+Node slice (Postgres), Cloudflare DO+SQLite parity, another carefully scoped
+Confect/domain wrapper, or the next projection dependency (closure/derived
+provenance or remaining operational process state). Goal 108 adds the packaged
+Node dev-server CLI (`metacrdt-node-dev`) as an in-memory local sync process over
+the existing native listener, proving the Node target can now be run directly
+from an installed package.
 
 This plan is the operational goal file. Read it with:
 
@@ -9139,6 +9142,62 @@ Goal 105, not a second implementation of sync semantics.
 - `npx tsc --noEmit -p packages/node/tsconfig.json` passes.
 - `npm run test:packages`, `npm run build:packages`, and `npm run typecheck`
   include the Node package and pass.
+
+---
+
+## Goal 108 — @metacrdt/node Packaged Dev Server CLI
+
+**Status:** shipped.
+
+**Objective:** make the Node target runnable from an installed package without
+requiring each host app to hand-roll a `node:http` server. This should be a thin
+local-development wrapper over the already-tested memory runtime and native
+request listener, not a second sync implementation and not a production server.
+
+### What Shipped
+
+- Added `metacrdt-node-dev` as the `@metacrdt/node` package binary.
+- Added `packages/node/src/dev-server.ts` with:
+  - `parseNodeDevServerArgs(args)`
+  - `usage()`
+  - `startNodeDevServer(options)`
+  - `main(args)`
+- The dev server composes existing surfaces:
+  - `createNodeMemoryRuntime`
+  - `createNodeHttpRequestListener`
+  - native `node:http`
+- CLI options:
+  - `--host <host>` (default `127.0.0.1`)
+  - `--port <port>` (default `8787`; `0` asks the OS to choose)
+  - `--base-path <path>` (default `/metacrdt`)
+  - `--replica-id <id>` (default `node:dev`)
+  - `--name <name>` (default `node-dev`)
+  - `--help`
+- Programmatic startup returns the runtime, server, resolved host/port, origin,
+  sync URL, and an async `close()` helper.
+- Startup handles listener errors without hanging; shutdown is wired for SIGINT
+  and SIGTERM in the CLI entrypoint.
+- `@metacrdt/node` exports `./dev-server` for tests and host tooling that want
+  programmatic startup rather than the binary.
+
+### Non-Goals
+
+- Do not add production auth, observability, static asset serving, or process
+  supervision.
+- Do not add durable production storage here. The packaged dev server is
+  intentionally memory-only; Postgres remains the next durable Node storage
+  candidate.
+- Do not add an SDK client in this slice.
+
+### Verification
+
+- `npm test --workspace @metacrdt/node` passes, now with ten Node tests,
+  including an ephemeral real `node:http` server health check.
+- `npx tsc --noEmit -p packages/node/tsconfig.json` passes.
+- `npm run test:packages`, `npm run build:packages`, `npm run pack:packages`,
+  `npm run typecheck`, and `npm run build` pass.
+- `packages/node/dist/dev-server.js` preserves the `#!/usr/bin/env node`
+  shebang in the package build.
 
 ---
 

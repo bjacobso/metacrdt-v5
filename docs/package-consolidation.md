@@ -71,7 +71,7 @@ packages/
 ├── convex/           @metacrdt/convex     # target (managed): component-owned log + projections + cardinality / bindings
 ├── cloudflare/       @metacrdt/cloudflare # target (managed): DO storage + WebSocket relay + Worker example
 ├── local/            @metacrdt/local      # target (browser): localStorage + IndexedDB + SQLite + BroadcastChannel
-├── node/             @metacrdt/node       # done: open host memory + structural SQLite + HTTP/SSE handler/listener; postgres/dev server later
+├── node/             @metacrdt/node       # done: open host memory + structural SQLite + HTTP/SSE handler/listener + dev-server CLI; postgres later
 ├── cli/              @metacrdt/cli
 ├── sdk/              @metacrdt/sdk
 └── testkit/          @metacrdt/testkit    # done: first convergence-conformance suite

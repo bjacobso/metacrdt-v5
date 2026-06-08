@@ -64,8 +64,8 @@ On open hosts the adapter is a selectable dependency.
 - `@metacrdt/local` — browser/local-first host.
 - `@metacrdt/node` — open server-process host with memory and structural
   server-SQLite runtime services plus a dependency-free structural HTTP/SSE sync
-  handler and native `node:http`-style request listener. Postgres, packaged dev
-  server, and SDK integration remain future slices.
+  handler, native `node:http`-style request listener, and packaged in-memory
+  dev-server CLI. Postgres and SDK integration remain future slices.
 - `@metacrdt/runtime`'s in-memory target — the reference harness.
 - `@metacrdt/testkit` — framework-neutral conformance helpers for EventStore,
   anti-entropy, and deterministic fold convergence (currently proven against
@@ -74,8 +74,8 @@ On open hosts the adapter is a selectable dependency.
 
 ### Should exist next
 
-- **`@metacrdt/node` next slices** — add Postgres, a packaged dev server, and SDK
-  integration on top of the memory/SQLite host and HTTP/SSE sync surface now in
+- **`@metacrdt/node` next slices** — add Postgres and SDK integration on top of
+  the memory/SQLite host, HTTP/SSE sync surface, and packaged dev server now in
   place.
 
 ### Defer until a real need justifies them
@@ -123,7 +123,7 @@ across `database-sql` / `database-sqlite` / `database-postgres`.
 | p2p DataChannel | `runtime` | done |
 | DO WebSocket relay | `cloudflare` | shell done |
 | Convex reactivity | `convex` | done (managed) |
-| HTTP / SSE | `node` | done (structural handler + native-style listener; packaged dev server later) |
+| HTTP / SSE | `node` | done (structural handler + native-style listener + packaged dev-server CLI) |
 
 ---
 
@@ -210,9 +210,9 @@ a sibling target.
 
 ## Recommended build order
 
-1. **`@metacrdt/node`** + `memory` / `sqlite` adapters + HTTP/SSE handler —
-   unlocks a dev server, SDK, self-hosting, and another host for the testkit to
-   exercise.
+1. **`@metacrdt/node`** + `memory` / `sqlite` adapters + HTTP/SSE handler +
+   packaged dev server — unlocks SDK/self-hosting work and another host for the
+   testkit to exercise.
 2. **Expand `@metacrdt/testkit` as targets mature** — add persistence,
    scheduler, transport, and query/projection suites whenever a second target
    exposes the relevant capability. This is what *proves* the "guaranteed to

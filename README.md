@@ -165,7 +165,8 @@ Current packages:
   dependency, plus a dependency-free `createNodeSyncHttpHandler` exposing health,
   delta pull, event push, and one-shot SSE sync over any `RuntimeServices`, and a
   `createNodeHttpRequestListener` adapter for native `node:http`-style
-  request/response objects. Both memory and SQLite runtimes pass
+  request/response objects. It also ships `metacrdt-node-dev`, an in-memory
+  local sync server CLI over native `node:http`. Both memory and SQLite runtimes pass
   `@metacrdt/testkit`.
 - **`@metacrdt/testkit`** (`packages/testkit`) — target conformance helpers:
   framework-neutral async checks for EventStore idempotency/filtering/content-id
@@ -202,7 +203,7 @@ Planned package graph:
 @metacrdt/cloudflare  Durable Object / Worker target
 @metacrdt/local       browser/local-first target
 @metacrdt/testkit     target conformance checks
-@metacrdt/node        Node target (memory + structural SQLite + HTTP/SSE handler + native-style listener shipped)
+@metacrdt/node        Node target (memory + structural SQLite + HTTP/SSE + listener + dev-server CLI shipped)
 ```
 
 Open Ontology is vendored as a context submodule at
@@ -669,7 +670,7 @@ Frontier:
 - commutative supersession in the write path
 - HLC + version-vector sync across replicas
 - Durable Object + SQLite triple-store parity
-- Postgres, a packaged Node dev server/CLI, and shared SQL storage adapters
+- Postgres and shared SQL storage adapters
 - expanded conformance suites for persistence, scheduler, transport, and queries
 
 See [TODO.md](./TODO.md) for the running pulse.

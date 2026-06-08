@@ -441,9 +441,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Choose the next target-runtime slice: first `@metacrdt/node` package.
 - [x] Choose the next Node slice: structural HTTP/SSE sync handler.
 - [x] Choose the next Node slice: native-style HTTP listener adapter.
+- [x] Choose the next Node slice: packaged dev-server CLI.
 - [ ] Choose between production provider wiring, next Node slice (Postgres /
-  packaged dev server), Cloudflare DO+SQLite parity, or another parked
-  Query/Rules item.
+  durable SQL storage), Cloudflare DO+SQLite parity, or another parked Query/Rules
+  item.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -529,9 +530,22 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `packages/cloudflare/README.md` now link the target model and Cloudflare plan.
 - [x] Next concrete target-runtime candidate chosen: first `@metacrdt/testkit`
   conformance suite.
-- [ ] Remaining target-runtime candidates: Node Postgres / packaged dev-server
-  adapters, Cloudflare Phase B/C, or expanded testkit persistence/scheduler/
-  transport suites once a second target needs them.
+- [ ] Remaining target-runtime candidates: Node Postgres / durable SQL storage,
+  Cloudflare Phase B/C, or expanded testkit persistence/scheduler/transport
+  suites once a second target needs them.
+
+### 2026-06-08 — Node packaged dev-server CLI
+- [x] **Goal 108 shipped:** `@metacrdt/node` now ships the
+  `metacrdt-node-dev` binary, an in-memory local sync server over native
+  `node:http`.
+- [x] Added `./dev-server` exports for `parseNodeDevServerArgs`,
+  `startNodeDevServer`, and `usage`, so host tooling can start the same server
+  programmatically without shelling out.
+- [x] The CLI composes `createNodeMemoryRuntime` +
+  `createNodeHttpRequestListener`; it does not duplicate sync semantics.
+- [x] Verification: focused Node tests/typecheck, package build/pack, full package
+  tests, root typecheck, and app build passed; the built binary preserves its
+  shebang.
 
 ### 2026-06-08 — first @metacrdt/testkit package
 - [x] **Goal 102 shipped:** added `packages/testkit` / `@metacrdt/testkit`, a

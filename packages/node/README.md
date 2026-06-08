@@ -25,6 +25,10 @@ different storage adapters behind the same runtime contracts.
   objects. It consumes streamed request bodies, calls the structural sync
   handler, and writes status/headers/body back to the response without importing
   Node types.
+- **Packaged dev server CLI** — `metacrdt-node-dev`, an in-memory local sync
+  server over native `node:http`. It is a convenience wrapper over
+  `createNodeMemoryRuntime` + `createNodeHttpRequestListener`, with configurable
+  host/port/base path and graceful shutdown.
 
 ## What Node Does Not Own
 
@@ -34,9 +38,9 @@ different storage adapters behind the same runtime contracts.
 - Cloudflare Durable Object storage/relay behavior — `@metacrdt/cloudflare`.
 - Postgres. It belongs here eventually, but this first slice only adds memory and
   server-SQLite runtime services.
-- A packaged long-running dev server. The HTTP/SSE handler and request listener
-  are the reusable protocol surfaces; choosing ports, process lifecycle, logging,
-  and local UI/CLI wiring is a later convenience layer.
+- Production server framework, auth, observability, static asset serving, or
+  durable production storage. The packaged dev server is intentionally
+  memory-only and local-development oriented.
 
 ## Conformance
 
@@ -45,7 +49,8 @@ EventStore / anti-entropy / deterministic-fold conformance suite. The package
 also verifies SQLite persistence of the event log, HLC, and per-replica `seq`
 across runtime recreation, and tests the HTTP/SSE handler's health, delta pull,
 event push, SSE response paths, and the native-style listener adapter's response
-writing and streamed POST body merge.
+writing and streamed POST body merge. The dev-server CLI is tested by starting a
+real ephemeral `node:http` server and querying its health route.
 
 ## Usage
 
@@ -70,6 +75,13 @@ const response = await handleSync({
 // Native node:http-style adapter:
 const listener = createNodeHttpRequestListener(runtime, { basePath: "/sync" });
 // http.createServer((req, res) => void listener(req, res)).listen(8787)
+```
+
+Local in-memory dev server:
+
+```sh
+npx metacrdt-node-dev --port 8787 --base-path /sync
+curl http://127.0.0.1:8787/sync/health
 ```
 
 `db` is any object with a structural SQLite API:
