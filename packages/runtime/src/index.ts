@@ -28,6 +28,15 @@ export {
   type MemoryRuntimeOptions,
 } from "./memory.js";
 
+export {
+  LocalClock,
+  LocalEventStore,
+  LocalSequencer,
+  createLocalRuntime,
+  type LocalRuntimeOptions,
+  type LocalRuntimeStorage,
+} from "./local.js";
+
 export { applyOperation, mergeFrom, requireCapability } from "./operations.js";
 export {
   deltaSince,

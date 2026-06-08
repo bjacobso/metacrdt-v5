@@ -13,8 +13,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Runtime harness sequencing + version-vector anti-entropy — memory runtimes
   stamp local events with per-replica `seq`, compute version vectors, exchange
   deltas, and converge idempotently (SPEC §8 shape, not durable transport yet).
-- [ ] Durable HLC/`seq`/version-vector transport targets — offline / p2p /
-  Durable-Object-per-group (see [foldkit.md](./docs/foldkit.md),
+- [x] Browser/localStorage runtime seed — durable event log + HLC + per-replica
+  `seq` inside `@metacrdt/runtime`, with version-vector exchange surviving
+  restart. This is local durability, not network transport.
+- [ ] Durable version-vector network transports — BroadcastChannel / relay /
+  Durable-Object-per-group / p2p (see [foldkit.md](./docs/foldkit.md),
   [alchemy.md](./docs/alchemy.md)).
 
 **Packaging / monorepo (map, not migration — see [docs/architecture.md](./docs/architecture.md))**
@@ -59,8 +62,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
   a memory target/harness proving G-Set exchange convergence and version-vector
   anti-entropy. It does not yet own Convex or durable transport.
-- [ ] Targets: `@metacrdt/cloudflare` (DO), `@metacrdt/local` (browser), and a
-  state-owning `@metacrdt/convex` component/function surface.
+- [x] **Browser/localStorage target seed** — `packages/runtime/src/local.ts`
+  provides localStorage-compatible `LocalEventStore`, `LocalClock`, and
+  `LocalSequencer`, plus `createLocalRuntime`. This deliberately stays inside
+  `@metacrdt/runtime` until the full `@metacrdt/local` package boundary is earned.
+- [ ] Targets: `@metacrdt/cloudflare` (DO), full `@metacrdt/local` (browser /
+  IndexedDB or SQLite + transport), and a state-owning `@metacrdt/convex`
+  component/function surface.
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -119,7 +127,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 **Next goal candidates**
 - [ ] Choose the next active goal: full app write authorization, durable
-  runtime transports, or a state-owning `@metacrdt/convex` component slice.
+  runtime network transports, Cloudflare Durable Objects, or a state-owning
+  `@metacrdt/convex` component slice.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -144,6 +153,20 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — runtime localStorage target seed
+- [x] **Added a browser/localStorage runtime target seed inside
+  `@metacrdt/runtime`.** `packages/runtime/src/local.ts` defines
+  `LocalRuntimeStorage`, `LocalEventStore`, `LocalClock`, `LocalSequencer`, and
+  `createLocalRuntime`. It persists the G-Set event log, HLC, and per-replica
+  sequence under a namespace while preserving verified core event IDs.
+- [x] **Restart durability proved.** Local runtime tests recreate replicas over
+  the same storage and prove event log/HLC/`seq` continuity, same-wall-clock HLC
+  logical increments, byte-value round-trip without breaking content addressing,
+  and version-vector exchange that converges, restarts, and remains idempotent.
+- [x] This is deliberately **not** `@metacrdt/local` yet and not a network
+  transport. BroadcastChannel/IndexedDB/SQLite/Cloudflare/relay targets remain
+  separate next slices.
 
 ### 2026-06-07 — @metacrdt/convex registered component surface
 - [x] **Packaged component entrypoints added.** `@metacrdt/convex` now exports

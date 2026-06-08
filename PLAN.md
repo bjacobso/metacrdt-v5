@@ -1,10 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 13 (`@metacrdt/runtime` harness groundwork) has shipped,
-and `@metacrdt/convex` now has a first stateless registered component surface.
-The next active goal should be chosen from the remaining TODO candidates: full
-app write authorization, durable runtime transports, or a state-owning
-`@metacrdt/convex` component slice.
+**Current goal:** Goal 14 (`@metacrdt/runtime` localStorage target seed) has
+shipped. The next active goal should be chosen from the remaining TODO
+candidates: full app write authorization, durable runtime network transports,
+Cloudflare Durable Objects, or a state-owning `@metacrdt/convex` component slice.
 
 This plan is the operational goal file. Read it with:
 
@@ -114,9 +113,12 @@ configured actions can now take small typed arguments.
     `Transport`, optional `RuntimeSequencer`)
   - capability metadata and operation helpers over `@metacrdt/core`
   - an in-memory target/harness for proving convergence across runtimes
+  - a localStorage-compatible browser/local-first target seed with durable event
+    log, HLC, and per-replica sequence storage
   - version-vector delta calculation and one-round anti-entropy exchange helpers
   - package-local tests for HLC injection, per-replica sequencing, G-Set exchange
-    convergence, version-vector deltas, lifecycle events, and capability checks
+    convergence, version-vector deltas, persisted local state, lifecycle events,
+    and capability checks
 - `applyConfig` now behaves as a true section-scoped reconciler:
   - configured artifact ownership is tracked on `config:default`
   - explicitly supplied config sections compute desired sets
@@ -172,10 +174,11 @@ configured actions can now take small typed arguments.
   A state-owning Convex component and durable mutation factories remain deferred
   until the package boundary is proven against more host-app usage.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
-  reference runtime and does not implement durable transport targets.
+  reference runtime and does not implement durable network transport targets.
 - Multi-replica sync is specified and now implemented as in-memory
-  version-vector anti-entropy, but not yet bound to Cloudflare/local/Convex
-  transports.
+  version-vector anti-entropy, and the localStorage target persists event/HLC/seq
+  state, but sync is not yet bound to Cloudflare/Convex transports or browser
+  networking.
 - Full app login/write authorization is not configured; unauthenticated callers
   are treated as `anonymous`, so PII is denied by default but general public
   writes remain demo-grade.
@@ -1575,6 +1578,69 @@ memory.
 
 ---
 
+## Goal 14 — `@metacrdt/runtime` localStorage Target Seed
+
+**Status:** shipped as a durable local runtime target inside
+`@metacrdt/runtime`.
+
+**Objective:** prove the next runtime target shape after memory without creating
+a premature `@metacrdt/local` package. The target persists the pieces required
+for a browser/local-first replica to survive restart: the G-Set event log, HLC,
+and per-replica sequence. It reuses the existing runtime operation helpers and
+version-vector anti-entropy functions.
+
+### Scope
+
+Package additions:
+
+```text
+packages/runtime/
+  src/local.ts       # localStorage-compatible event store, clock, sequencer
+  src/local.test.ts  # restart/convergence/content-addressing tests
+```
+
+This is **not** a network transport and **not** the final
+`@metacrdt/local` package. It is the target seed that proves the browser/local
+storage boundary before adding BroadcastChannel, IndexedDB, SQLite, or a peer /
+relay transport.
+
+### Acceptance Criteria
+
+- Add a `LocalRuntimeStorage` interface matching the sync subset of
+  `window.localStorage`.
+- Add `LocalEventStore`:
+  - persists core events by namespace;
+  - verifies event IDs on append/load;
+  - preserves G-Set/idempotent merge semantics;
+  - upgrades legacy duplicate events when the duplicate carries missing `seq`
+    metadata;
+  - round-trips byte values without breaking content addressing.
+- Add `LocalClock`:
+  - persists HLC per namespace + replica;
+  - accepts wall time as an injected function;
+  - never reads ambient time from core.
+- Add `LocalSequencer`:
+  - persists per-replica `seq`;
+  - continues after runtime recreation.
+- Export `createLocalRuntime` and local target classes from
+  `@metacrdt/runtime`.
+- Add tests proving:
+  - event log, HLC, and sequence survive recreated runtimes;
+  - same-wall-clock restart increments HLC logical time;
+  - two local runtimes exchange deltas, converge, restart, and remain converged;
+  - repeated exchange is idempotent after restart;
+  - byte values survive storage round-trip and still verify by content address.
+- Do **not** create `@metacrdt/local` yet.
+- Do **not** bind Convex or Cloudflare to runtime yet.
+
+### Verification
+
+- `npm run test:runtime` passed (10 tests).
+- Runtime package typecheck passed.
+- Full gate for this slice is recorded in the commit that shipped it.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -1590,10 +1656,12 @@ These remain valuable, but they should not interrupt the current goal.
 
 - [x] `@metacrdt/runtime` harness groundwork.
 - [x] In-memory version-vector anti-entropy helpers.
-- [ ] Durable anti-entropy transport targets.
+- [x] Browser/localStorage runtime target seed (durable event log + HLC + seq).
+- [ ] Durable anti-entropy network transport targets.
 - [ ] Full registered `@metacrdt/convex` component/function surface.
 - [ ] Cloudflare Durable Object target.
-- [ ] Browser/local-first target.
+- [ ] Full `@metacrdt/local` browser/local-first package (IndexedDB/SQLite and
+  browser transport still deferred).
 
 ### Auth / Privacy
 
