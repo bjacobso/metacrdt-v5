@@ -21,6 +21,10 @@ different storage adapters behind the same runtime contracts.
 - **Driver-neutral Postgres shape** — `NodePostgresClientLike`, matching the
   common `pg`/Neon-style `query(sql, params)` surface. The package intentionally
   ships no Postgres driver dependency.
+- **Shared SQL lifecycle plan** — `createNodeSqlLifecyclePlan` validates table
+  prefixes and emits the runtime event/meta table names, indexes, and ordered DDL
+  used by both the SQLite and Postgres adapters. This is intentionally narrower
+  than a full `@metacrdt/sql` package.
 - **HTTP/SSE sync handler** — `createNodeSyncHttpHandler`, a dependency-free
   fetch-like handler over any `RuntimeServices`: health/version-vector,
   pull-delta, push-events, and one-shot SSE delta routes. It returns a small
@@ -53,6 +57,7 @@ The memory, SQLite, and Postgres runtime services pass the shared
 `@metacrdt/testkit` EventStore / anti-entropy / deterministic-fold conformance
 suite. The package also verifies SQLite and Postgres persistence of the event
 log, HLC, and per-replica `seq` across runtime recreation, and tests the
+shared SQL lifecycle plan used by both SQL adapters. It also tests the
 HTTP/SSE handler's health, delta pull, event push, SSE response paths, and the
 native-style listener adapter's response writing and streamed POST body merge.
 The dev-server CLI is tested by starting a real ephemeral `node:http` server and
@@ -64,6 +69,7 @@ querying its health route.
 import {
   createNodeHttpRequestListener,
   createNodePostgresRuntime,
+  createNodeSqlLifecyclePlan,
   createNodeSqliteRuntime,
   createNodeSyncHttpHandler,
 } from "@metacrdt/node";
@@ -91,6 +97,20 @@ const pgRuntime = await createNodePostgresRuntime({
   replicaId: "node:pg",
   client, // e.g. a pg Pool/Client or Neon wrapper with query(sql, params)
 });
+```
+
+Host tooling that wants to run its own migrations can use the same lifecycle
+plan the adapters use:
+
+```ts
+const plan = createNodeSqlLifecyclePlan({
+  dialect: "postgres",
+  tablePrefix: "tenant_a",
+});
+
+for (const sql of plan.initializeStatements) {
+  await client.query(sql);
+}
 ```
 
 Local in-memory dev server:

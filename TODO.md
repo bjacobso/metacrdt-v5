@@ -443,8 +443,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Choose the next Node slice: native-style HTTP listener adapter.
 - [x] Choose the next Node slice: packaged dev-server CLI.
 - [x] Choose the next Node slice: Postgres runtime services.
-- [ ] Choose between production provider wiring, Node SDK / shared SQL lifecycle
-  helpers, Cloudflare DO+SQLite parity, or another parked Query/Rules item.
+- [x] Choose the next Node slice: shared SQL lifecycle plan.
+- [ ] Choose between production provider wiring, Node SDK helpers, Cloudflare
+  DO+SQLite parity, or another parked Query/Rules item.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -530,9 +531,22 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `packages/cloudflare/README.md` now link the target model and Cloudflare plan.
 - [x] Next concrete target-runtime candidate chosen: first `@metacrdt/testkit`
   conformance suite.
-- [ ] Remaining target-runtime candidates: Node SDK / shared SQL lifecycle
-  helpers, Cloudflare Phase B/C, or expanded testkit persistence/scheduler/
-  transport suites once a second target needs them.
+- [ ] Remaining target-runtime candidates: Node SDK helpers, Cloudflare Phase
+  B/C, or expanded testkit persistence/scheduler/transport suites once a second
+  target needs them.
+
+### 2026-06-08 — Node shared SQL lifecycle plan
+- [x] **Goal 110 shipped:** `@metacrdt/node` now exports
+  `createNodeSqlLifecyclePlan`, a narrow SQLite/Postgres lifecycle seam for
+  validated table/index names and ordered event/meta initialization DDL.
+- [x] Both structural SQL adapters now consume the shared lifecycle plan for
+  initialization and table references while keeping query execution in their
+  concrete stores (`?` for SQLite, `$n` for Postgres).
+- [x] This is deliberately not `@metacrdt/sql` yet. The extraction waits until a
+  second SQL consumer (for example DO SQLite) proves the shared DDL/query
+  boundary.
+- [x] Verification: focused Node tests/typecheck passed; Node package tests are
+  now 15/15.
 
 ### 2026-06-08 — Node Postgres runtime services
 - [x] **Goal 109 shipped:** `@metacrdt/node` now exports structural Postgres

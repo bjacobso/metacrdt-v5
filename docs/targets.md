@@ -65,8 +65,8 @@ On open hosts the adapter is a selectable dependency.
 - `@metacrdt/node` — open server-process host with memory and structural
   server-SQLite/Postgres runtime services plus a dependency-free structural
   HTTP/SSE sync handler, native `node:http`-style request listener, and packaged
-  in-memory dev-server CLI. SDK integration and shared SQL lifecycle helpers
-  remain future slices.
+  in-memory dev-server CLI. It also exposes a shared SQL lifecycle plan for the
+  SQLite/Postgres runtime tables. SDK integration remains a future slice.
 - `@metacrdt/runtime`'s in-memory target — the reference harness.
 - `@metacrdt/testkit` — framework-neutral conformance helpers for EventStore,
   anti-entropy, and deterministic fold convergence (currently proven against
@@ -75,9 +75,10 @@ On open hosts the adapter is a selectable dependency.
 
 ### Should exist next
 
-- **`@metacrdt/node` next slices** — add SDK integration and shared SQL
-  lifecycle/migration helpers on top of the memory/SQLite/Postgres host,
-  HTTP/SSE sync surface, and packaged dev server now in place.
+- **`@metacrdt/node` next slices** — add SDK/client integration and production
+  database lifecycle guidance on top of the memory/SQLite/Postgres host,
+  lifecycle DDL plan, HTTP/SSE sync surface, and packaged dev server now in
+  place.
 
 ### Defer until a real need justifies them
 
@@ -102,19 +103,22 @@ On open hosts the adapter is a selectable dependency.
 | localStorage | `local` (via `runtime`) | done |
 | IndexedDB | `local` | done |
 | SQLite-wasm | `local` | done |
-| SQLite (server) | `node` | done (structural driver API) |
-| Postgres | `node` | done (structural `query(sql, params)` adapter) |
+| SQLite (server) | `node` | done (structural driver API + shared lifecycle plan) |
+| Postgres | `node` | done (structural `query(sql, params)` adapter + shared lifecycle plan) |
 | DO SQLite | `cloudflare` | planned ([cloudflare-target.md](./cloudflare-target.md)) |
 | Convex tables | `convex` | done (managed) |
 | FoundationDB | — | archive unless a real need appears |
 
-**Extract `@metacrdt/sql` when the second SQLite consumer lands.** SQLite-in-node,
-SQLite-wasm-in-browser, and DO-SQLite all want the *same* relational triple-store
-schema + query generation — only the driver differs. When that duplication is
-real, extract a driver-agnostic `@metacrdt/sql` (DDL + parameterized
-triple/projection queries) with thin per-host driver bindings. **Postgres becomes
-a second dialect of that same package.** This unifies what Open Ontology split
-across `database-sql` / `database-sqlite` / `database-postgres`.
+**Extract `@metacrdt/sql` when the second SQLite consumer lands.** Node now has a
+small shared SQL lifecycle plan (`createNodeSqlLifecyclePlan`) for events/meta
+tables and indexes across SQLite and Postgres, but that is intentionally not a
+package boundary. SQLite-in-node, SQLite-wasm-in-browser, and DO-SQLite all want
+the *same* relational triple-store schema + query generation — only the driver
+differs. When that duplication is real, extract a driver-agnostic
+`@metacrdt/sql` (DDL + parameterized triple/projection queries) with thin
+per-host driver bindings. **Postgres becomes a second dialect of that same
+package.** This unifies what Open Ontology split across `database-sql` /
+`database-sqlite` / `database-postgres`.
 
 ### Transport adapters (implement `Transport`)
 
@@ -211,9 +215,9 @@ a sibling target.
 
 ## Recommended build order
 
-1. **`@metacrdt/node`** + `memory` / `sqlite` / `postgres` adapters + HTTP/SSE
-   handler + packaged dev server — unlocks SDK/self-hosting work and another
-   host for the testkit to exercise.
+1. **`@metacrdt/node`** + `memory` / `sqlite` / `postgres` adapters + shared SQL
+   lifecycle plan + HTTP/SSE handler + packaged dev server — unlocks
+   SDK/self-hosting work and another host for the testkit to exercise.
 2. **Expand `@metacrdt/testkit` as targets mature** — add persistence,
    scheduler, transport, and query/projection suites whenever a second target
    exposes the relevant capability. This is what *proves* the "guaranteed to
@@ -221,6 +225,7 @@ a sibling target.
 3. **Cloudflare Phase B/C** — extract the shared fold into core, then the DO +
    SQLite triple store ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal
-   enough repeated DDL/query-generation logic to justify a shared SQL package.
+   enough repeated DDL/query-generation logic beyond the current Node lifecycle
+   plan to justify a shared SQL package.
 5. **Bun / Deno / desktop / serverless** — adapter selections or deployment
    shapes, not new packages, until divergence forces otherwise.

@@ -68,6 +68,31 @@ export type NodePostgresRuntimeOptions = {
   capabilities?: Iterable<RuntimeCapability>;
 };
 
+export type NodeSqlDialect = "sqlite" | "postgres";
+
+export type NodeSqlLifecyclePlanOptions = {
+  dialect?: NodeSqlDialect;
+  tablePrefix?: string;
+};
+
+export type NodeSqlLifecyclePlan = {
+  dialect: NodeSqlDialect;
+  tablePrefix: string;
+  tables: {
+    events: string;
+    meta: string;
+  };
+  indexes: {
+    eventsByEntity: string;
+    eventsByAttribute: string;
+  };
+  createEventsTable: string;
+  createEventsByEntityIndex: string;
+  createEventsByAttributeIndex: string;
+  createMetaTable: string;
+  initializeStatements: readonly string[];
+};
+
 export type NodeSqliteRuntime = RuntimeServices & {
   store: NodeSqliteEventStore;
   clock: NodeSqliteClock;
@@ -126,6 +151,60 @@ function tableNames(prefix: string): { events: string; meta: string } {
   return {
     events: identifier(`${prefix}_events`),
     meta: identifier(`${prefix}_meta`),
+  };
+}
+
+/**
+ * Driver-neutral SQL lifecycle plan for the Node storage adapters.
+ *
+ * This intentionally owns only the stable lifecycle surface shared by SQLite and
+ * Postgres: validated names, table DDL, and index DDL. Query execution and
+ * dialect-specific parameter syntax stay in the concrete stores until a second
+ * server/edge SQL consumer proves enough duplication to extract `@metacrdt/sql`.
+ */
+export function createNodeSqlLifecyclePlan(
+  options: NodeSqlLifecyclePlanOptions = {},
+): NodeSqlLifecyclePlan {
+  const dialect = options.dialect ?? "sqlite";
+  const tablePrefix = options.tablePrefix ?? "metacrdt";
+  const tables = tableNames(tablePrefix);
+  const indexes = {
+    eventsByEntity: identifier(`${tablePrefix}_events_by_e`),
+    eventsByAttribute: identifier(`${tablePrefix}_events_by_a`),
+  };
+  const createEventsTable =
+    `CREATE TABLE IF NOT EXISTS ${tables.events} (` +
+    "id TEXT PRIMARY KEY NOT NULL, " +
+    "e TEXT, " +
+    "a TEXT, " +
+    "event_json TEXT NOT NULL" +
+    ")";
+  const createEventsByEntityIndex =
+    `CREATE INDEX IF NOT EXISTS ${indexes.eventsByEntity} ` +
+    `ON ${tables.events} (e)`;
+  const createEventsByAttributeIndex =
+    `CREATE INDEX IF NOT EXISTS ${indexes.eventsByAttribute} ` +
+    `ON ${tables.events} (a)`;
+  const createMetaTable =
+    `CREATE TABLE IF NOT EXISTS ${tables.meta} (` +
+    "key TEXT PRIMARY KEY NOT NULL, " +
+    "value TEXT NOT NULL" +
+    ")";
+  return {
+    dialect,
+    tablePrefix,
+    tables,
+    indexes,
+    createEventsTable,
+    createEventsByEntityIndex,
+    createEventsByAttributeIndex,
+    createMetaTable,
+    initializeStatements: [
+      createEventsTable,
+      createEventsByEntityIndex,
+      createEventsByAttributeIndex,
+      createMetaTable,
+    ],
   };
 }
 
@@ -445,32 +524,19 @@ export function createNodeHttpRequestListener(
 }
 
 export class NodeSqliteEventStore implements EventStore {
-  private readonly tables: { events: string; meta: string };
+  private readonly plan: NodeSqlLifecyclePlan;
 
   constructor(
     private readonly db: NodeSqliteDatabaseLike,
     tablePrefix = "metacrdt",
   ) {
-    this.tables = tableNames(tablePrefix);
+    this.plan = createNodeSqlLifecyclePlan({ dialect: "sqlite", tablePrefix });
   }
 
   async initialize(): Promise<void> {
-    await this.exec(
-      `CREATE TABLE IF NOT EXISTS ${this.tables.events} (` +
-        "id TEXT PRIMARY KEY NOT NULL, " +
-        "e TEXT, " +
-        "a TEXT, " +
-        "event_json TEXT NOT NULL" +
-        ")",
-    );
-    await this.exec(
-      `CREATE INDEX IF NOT EXISTS ${this.tables.events.slice(1, -1)}_by_e ` +
-        `ON ${this.tables.events} (e)`,
-    );
-    await this.exec(
-      `CREATE INDEX IF NOT EXISTS ${this.tables.events.slice(1, -1)}_by_a ` +
-        `ON ${this.tables.events} (a)`,
-    );
+    await this.exec(this.plan.createEventsTable);
+    await this.exec(this.plan.createEventsByEntityIndex);
+    await this.exec(this.plan.createEventsByAttributeIndex);
   }
 
   private async exec(sql: string): Promise<void> {
@@ -490,14 +556,14 @@ export class NodeSqliteEventStore implements EventStore {
     if (inserted) {
       const stmt = await prepare(
         this.db,
-        `INSERT INTO ${this.tables.events} (id, e, a, event_json) VALUES (?, ?, ?, ?)`,
+        `INSERT INTO ${this.plan.tables.events} (id, e, a, event_json) VALUES (?, ?, ?, ?)`,
       );
       if (!stmt.run) throw new Error("SQLite statement does not support run()");
       await stmt.run(event.id, event.e ?? null, event.a ?? null, eventJson(event));
     } else if (existing.seq === undefined && event.seq !== undefined) {
       const stmt = await prepare(
         this.db,
-        `UPDATE ${this.tables.events} SET event_json = ? WHERE id = ?`,
+        `UPDATE ${this.plan.tables.events} SET event_json = ? WHERE id = ?`,
       );
       if (!stmt.run) throw new Error("SQLite statement does not support run()");
       await stmt.run(eventJson(event), event.id);
@@ -508,7 +574,7 @@ export class NodeSqliteEventStore implements EventStore {
   async get(id: EventId): Promise<Event | undefined> {
     const stmt = await prepare(
       this.db,
-      `SELECT event_json FROM ${this.tables.events} WHERE id = ?`,
+      `SELECT event_json FROM ${this.plan.tables.events} WHERE id = ?`,
     );
     if (!stmt.get) throw new Error("SQLite statement does not support get()");
     return decodeEvent(await stmt.get(id));
@@ -540,7 +606,7 @@ export class NodeSqliteEventStore implements EventStore {
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
     const stmt = await prepare(
       this.db,
-      `SELECT event_json FROM ${this.tables.events}${where} ORDER BY id`,
+      `SELECT event_json FROM ${this.plan.tables.events}${where} ORDER BY id`,
     );
     if (!stmt.all) throw new Error("SQLite statement does not support all()");
     return (await stmt.all(...params))
@@ -560,28 +626,30 @@ export class NodeSqliteEventStore implements EventStore {
 }
 
 export class NodeSqliteMetaStore {
-  private readonly table: string;
+  private readonly plan: NodeSqlLifecyclePlan;
 
   constructor(
     private readonly db: NodeSqliteDatabaseLike,
     tablePrefix = "metacrdt",
   ) {
-    this.table = tableNames(tablePrefix).meta;
+    this.plan = createNodeSqlLifecyclePlan({ dialect: "sqlite", tablePrefix });
   }
 
   async initialize(): Promise<void> {
-    const sql = `CREATE TABLE IF NOT EXISTS ${this.table} (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)`;
     if (this.db.exec) {
-      await this.db.exec(sql);
+      await this.db.exec(this.plan.createMetaTable);
       return;
     }
-    const stmt = await prepare(this.db, sql);
+    const stmt = await prepare(this.db, this.plan.createMetaTable);
     if (!stmt.run) throw new Error("SQLite statement does not support run()");
     await stmt.run();
   }
 
   async get(key: string): Promise<string | undefined> {
-    const stmt = await prepare(this.db, `SELECT value FROM ${this.table} WHERE key = ?`);
+    const stmt = await prepare(
+      this.db,
+      `SELECT value FROM ${this.plan.tables.meta} WHERE key = ?`,
+    );
     if (!stmt.get) throw new Error("SQLite statement does not support get()");
     return valueColumn(await stmt.get(key));
   }
@@ -589,7 +657,7 @@ export class NodeSqliteMetaStore {
   async set(key: string, value: string): Promise<void> {
     const stmt = await prepare(
       this.db,
-      `INSERT OR REPLACE INTO ${this.table} (key, value) VALUES (?, ?)`,
+      `INSERT OR REPLACE INTO ${this.plan.tables.meta} (key, value) VALUES (?, ?)`,
     );
     if (!stmt.run) throw new Error("SQLite statement does not support run()");
     await stmt.run(key, value);
@@ -686,35 +754,19 @@ export class NodeSqliteSequencer implements RuntimeSequencer {
 }
 
 export class NodePostgresEventStore implements EventStore {
-  private readonly tables: { events: string; meta: string };
+  private readonly plan: NodeSqlLifecyclePlan;
 
   constructor(
     private readonly client: NodePostgresClientLike,
     tablePrefix = "metacrdt",
   ) {
-    this.tables = tableNames(tablePrefix);
+    this.plan = createNodeSqlLifecyclePlan({ dialect: "postgres", tablePrefix });
   }
 
   async initialize(): Promise<void> {
-    await queryPostgres(
-      this.client,
-      `CREATE TABLE IF NOT EXISTS ${this.tables.events} (` +
-        "id TEXT PRIMARY KEY NOT NULL, " +
-        "e TEXT, " +
-        "a TEXT, " +
-        "event_json TEXT NOT NULL" +
-        ")",
-    );
-    await queryPostgres(
-      this.client,
-      `CREATE INDEX IF NOT EXISTS ${this.tables.events.slice(1, -1)}_by_e ` +
-        `ON ${this.tables.events} (e)`,
-    );
-    await queryPostgres(
-      this.client,
-      `CREATE INDEX IF NOT EXISTS ${this.tables.events.slice(1, -1)}_by_a ` +
-        `ON ${this.tables.events} (a)`,
-    );
+    await queryPostgres(this.client, this.plan.createEventsTable);
+    await queryPostgres(this.client, this.plan.createEventsByEntityIndex);
+    await queryPostgres(this.client, this.plan.createEventsByAttributeIndex);
   }
 
   async append(event: Event): Promise<AppendResult> {
@@ -724,7 +776,7 @@ export class NodePostgresEventStore implements EventStore {
     if (existing === undefined) {
       const result = await queryPostgres(
         this.client,
-        `INSERT INTO ${this.tables.events} (id, e, a, event_json) VALUES ($1, $2, $3, $4) ` +
+        `INSERT INTO ${this.plan.tables.events} (id, e, a, event_json) VALUES ($1, $2, $3, $4) ` +
           "ON CONFLICT (id) DO NOTHING",
         [event.id, event.e ?? null, event.a ?? null, eventJson(event)],
       );
@@ -734,7 +786,7 @@ export class NodePostgresEventStore implements EventStore {
     } else if (existing.seq === undefined && event.seq !== undefined) {
       await queryPostgres(
         this.client,
-        `UPDATE ${this.tables.events} SET event_json = $1 WHERE id = $2`,
+        `UPDATE ${this.plan.tables.events} SET event_json = $1 WHERE id = $2`,
         [eventJson(event), event.id],
       );
     }
@@ -744,7 +796,7 @@ export class NodePostgresEventStore implements EventStore {
   async get(id: EventId): Promise<Event | undefined> {
     const result = await queryPostgres(
       this.client,
-      `SELECT event_json FROM ${this.tables.events} WHERE id = $1`,
+      `SELECT event_json FROM ${this.plan.tables.events} WHERE id = $1`,
       [id],
     );
     return decodeEvent(result.rows?.[0]);
@@ -776,7 +828,7 @@ export class NodePostgresEventStore implements EventStore {
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
     const result = await queryPostgres(
       this.client,
-      `SELECT event_json FROM ${this.tables.events}${where} ORDER BY id`,
+      `SELECT event_json FROM ${this.plan.tables.events}${where} ORDER BY id`,
       params,
     );
     return (result.rows ?? [])
@@ -796,26 +848,23 @@ export class NodePostgresEventStore implements EventStore {
 }
 
 export class NodePostgresMetaStore {
-  private readonly table: string;
+  private readonly plan: NodeSqlLifecyclePlan;
 
   constructor(
     private readonly client: NodePostgresClientLike,
     tablePrefix = "metacrdt",
   ) {
-    this.table = tableNames(tablePrefix).meta;
+    this.plan = createNodeSqlLifecyclePlan({ dialect: "postgres", tablePrefix });
   }
 
   async initialize(): Promise<void> {
-    await queryPostgres(
-      this.client,
-      `CREATE TABLE IF NOT EXISTS ${this.table} (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)`,
-    );
+    await queryPostgres(this.client, this.plan.createMetaTable);
   }
 
   async get(key: string): Promise<string | undefined> {
     const result = await queryPostgres(
       this.client,
-      `SELECT value FROM ${this.table} WHERE key = $1`,
+      `SELECT value FROM ${this.plan.tables.meta} WHERE key = $1`,
       [key],
     );
     return valueColumn(result.rows?.[0]);
@@ -824,7 +873,7 @@ export class NodePostgresMetaStore {
   async set(key: string, value: string): Promise<void> {
     await queryPostgres(
       this.client,
-      `INSERT INTO ${this.table} (key, value) VALUES ($1, $2) ` +
+      `INSERT INTO ${this.plan.tables.meta} (key, value) VALUES ($1, $2) ` +
         "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
       [key, value],
     );

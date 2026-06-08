@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 109 (Node Postgres Runtime Services) has
+**Current goal:** Goal 110 (Node Shared SQL Lifecycle Plan) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -159,16 +159,20 @@ bodies, delegates to the structural sync handler, and writes status/headers/body
 back to structural response objects while still importing no Node framework or
 Node type package. The next active goal
 should be chosen from the remaining TODO candidates:
-choosing/wiring the provider-specific React wrapper/JWT flow, adding Node SDK or
-shared SQL lifecycle helpers, Cloudflare DO+SQLite parity, another carefully
-scoped Confect/domain wrapper, or the next projection dependency
+choosing/wiring the provider-specific React wrapper/JWT flow, adding Node SDK
+helpers, Cloudflare DO+SQLite parity, another carefully scoped Confect/domain
+wrapper, or the next projection dependency
 (closure/derived provenance or remaining operational process state). Goal 108
 adds the packaged Node dev-server CLI (`metacrdt-node-dev`) as an in-memory
 local sync process over the existing native listener, proving the Node target can
 now be run directly from an installed package. Goal 109 adds the durable Node
 storage slice: a driver-neutral Postgres runtime over a structural
 `query(sql, params)` client, with EventStore/HLC/seq services passing the same
-conformance suite as memory and SQLite.
+conformance suite as memory and SQLite. Goal 110 adds the first shared SQL
+lifecycle seam inside `@metacrdt/node`: a public, driver-neutral
+`createNodeSqlLifecyclePlan` that owns validated table/index names plus
+events/meta DDL for both SQLite and Postgres, consumed by both adapters without
+extracting a premature `@metacrdt/sql` package.
 
 This plan is the operational goal file. Read it with:
 
@@ -9248,6 +9252,55 @@ event-log semantics.
 - A Postgres persistence regression recreates the runtime over the same
   structural client and proves event log, HLC, and per-replica `seq` survive.
 - `npx tsc --noEmit -p packages/node/tsconfig.json` passes.
+- `npm run test:packages`, `npm run build:packages`, `npm run pack:packages`,
+  `npm run typecheck`, and `npm run build` pass.
+
+---
+
+## Goal 110 — @metacrdt/node Shared SQL Lifecycle Plan
+
+**Status:** shipped.
+
+**Objective:** remove the first visible SQLite/Postgres lifecycle duplication in
+`@metacrdt/node` without prematurely extracting a separate `@metacrdt/sql`
+package. The shared seam should be public and useful to host applications, but
+it should stay narrow: validated identifiers plus lifecycle DDL for the runtime
+event/meta tables and indexes.
+
+### What Shipped
+
+- Added `NodeSqlDialect`, `NodeSqlLifecyclePlanOptions`, and
+  `NodeSqlLifecyclePlan`.
+- Added `createNodeSqlLifecyclePlan(options)`:
+  - validates `tablePrefix` through the same SQL identifier guard used by the
+    adapters
+  - emits quoted events/meta table names
+  - emits quoted event indexes for `e` and `a`
+  - emits the shared events table DDL
+  - emits the shared meta table DDL
+  - exposes ordered `initializeStatements` for host tooling and migrations
+- Rewired `NodeSqliteEventStore` / `NodeSqliteMetaStore` initialization and
+  query table references through the lifecycle plan.
+- Rewired `NodePostgresEventStore` / `NodePostgresMetaStore` initialization and
+  query table references through the same lifecycle plan.
+
+### Non-Goals
+
+- Do not extract `@metacrdt/sql` yet. Query execution still differs enough by
+  parameter syntax (`?` vs `$1`) and driver shape that the package boundary
+  should wait for another SQL consumer, such as DO SQLite.
+- Do not add database migrations, schema version tables, connection pooling, or
+  hosted database lifecycle management.
+- Do not add Node SDK helpers in this slice.
+
+### Verification
+
+- `npm test --workspace @metacrdt/node` passes, now with fifteen Node tests.
+- New tests prove:
+  - lifecycle plans validate unsafe table prefixes
+  - SQLite and Postgres receive the same shared lifecycle DDL
+  - both SQL runtimes initialize through `createNodeSqlLifecyclePlan`
+- `npm run typecheck --workspace @metacrdt/node` passes.
 - `npm run test:packages`, `npm run build:packages`, `npm run pack:packages`,
   `npm run typecheck`, and `npm run build` pass.
 

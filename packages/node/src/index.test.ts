@@ -10,6 +10,7 @@ import {
   createNodeHttpRequestListener,
   createNodeMemoryRuntime,
   createNodePostgresRuntime,
+  createNodeSqlLifecyclePlan,
   createNodeSyncHttpHandler,
   createNodeSqliteRuntime,
   type NodeHttpIncomingMessageLike,
@@ -31,7 +32,7 @@ class FakeSqliteDatabase implements NodeSqliteDatabaseLike {
   readonly events = new Map<string, EventRow>();
   readonly meta = new Map<string, string>();
 
-  exec(): void {}
+  exec(_sql: string): void {}
 
   prepare(sql: string): NodeSqliteStatementLike {
     const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
@@ -247,6 +248,37 @@ const coord = { txTime: 10_000, validTime: 10_000 };
 const one = () => "one" as const;
 
 describe("@metacrdt/node target", () => {
+  test("SQL lifecycle plan validates names and emits shared table/index DDL", () => {
+    const sqlite = createNodeSqlLifecyclePlan({
+      dialect: "sqlite",
+      tablePrefix: "tenant_a",
+    });
+    const postgres = createNodeSqlLifecyclePlan({
+      dialect: "postgres",
+      tablePrefix: "tenant_a",
+    });
+
+    expect(sqlite.tables).toEqual({
+      events: '"tenant_a_events"',
+      meta: '"tenant_a_meta"',
+    });
+    expect(sqlite.indexes).toEqual({
+      eventsByEntity: '"tenant_a_events_by_e"',
+      eventsByAttribute: '"tenant_a_events_by_a"',
+    });
+    expect(sqlite.initializeStatements).toEqual(postgres.initializeStatements);
+    expect(sqlite.initializeStatements).toEqual([
+      'CREATE TABLE IF NOT EXISTS "tenant_a_events" (id TEXT PRIMARY KEY NOT NULL, e TEXT, a TEXT, event_json TEXT NOT NULL)',
+      'CREATE INDEX IF NOT EXISTS "tenant_a_events_by_e" ON "tenant_a_events" (e)',
+      'CREATE INDEX IF NOT EXISTS "tenant_a_events_by_a" ON "tenant_a_events" (a)',
+      'CREATE TABLE IF NOT EXISTS "tenant_a_meta" (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)',
+    ]);
+
+    expect(() =>
+      createNodeSqlLifecyclePlan({ tablePrefix: "tenant-a" }),
+    ).toThrow("invalid SQL identifier: tenant-a_events");
+  });
+
   test("node memory runtime passes shared conformance", async () => {
     await expect(runRuntimeConformance(memoryTarget)).resolves.toMatchObject({
       target: "node-memory",
@@ -327,6 +359,27 @@ describe("@metacrdt/node target", () => {
     expect(versionVector(await third.store.scan())).toEqual({ "node:sqlite": 2 });
   });
 
+  test("SQLite runtime initializes through the shared SQL lifecycle plan", async () => {
+    const statements: string[] = [];
+    const db = new FakeSqliteDatabase();
+    db.exec = (sql: string) => {
+      statements.push(sql);
+    };
+
+    await createNodeSqliteRuntime({
+      db,
+      replicaId: "node:sqlite-custom",
+      tablePrefix: "tenant_a",
+    });
+
+    expect(statements).toEqual(
+      createNodeSqlLifecyclePlan({
+        dialect: "sqlite",
+        tablePrefix: "tenant_a",
+      }).initializeStatements,
+    );
+  });
+
   test("Postgres runtime persists event log, HLC, and seq across recreation", async () => {
     const client = new FakePostgresClient();
     const first = await createNodePostgresRuntime({
@@ -372,6 +425,29 @@ describe("@metacrdt/node target", () => {
       "terminated",
     );
     expect(versionVector(await third.store.scan())).toEqual({ "node:postgres": 2 });
+  });
+
+  test("Postgres runtime initializes through the shared SQL lifecycle plan", async () => {
+    const statements: string[] = [];
+    const client = new FakePostgresClient();
+    const original = client.query.bind(client);
+    client.query = (sql, params) => {
+      if (sql.toLowerCase().startsWith("create ")) statements.push(sql);
+      return original(sql, params);
+    };
+
+    await createNodePostgresRuntime({
+      client,
+      replicaId: "node:postgres-custom",
+      tablePrefix: "tenant_b",
+    });
+
+    expect(statements).toEqual(
+      createNodeSqlLifecyclePlan({
+        dialect: "postgres",
+        tablePrefix: "tenant_b",
+      }).initializeStatements,
+    );
   });
 
   test("HTTP sync handler exposes health, delta pull, and event push", async () => {
