@@ -395,6 +395,11 @@ describe("config-as-code + origin + entity detail", () => {
     try {
       const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
+      await t.mutation(api.flows.startCollect, {
+        subject: "worker:system-count",
+        form: "i9",
+        scope: "employer:acme",
+      });
       const procs = await t.query(api.system.listSystemProcesses, {});
       const reconciler = procs.find((p) => p.name === "compliance-reconciler");
       expect(reconciler).toBeDefined();
@@ -405,10 +410,15 @@ describe("config-as-code + origin + entity detail", () => {
         (s) => s.label === "open/required obligations",
       );
       expect(obligationStat).toBeDefined();
+      const flowResumer = procs.find((p) => p.name === "flow-resumer");
+      const waitingStat = flowResumer!.stats.find((s) => s.label === "runs waiting");
+      expect(waitingStat?.value).toBe(1);
 
       await t.run(async (ctx) => {
         const rows = await ctx.db.query("derivedFacts").collect();
         for (const row of rows) await ctx.db.delete(row._id);
+        const runs = await ctx.db.query("flowRuns").collect();
+        for (const run of runs) await ctx.db.delete(run._id);
       });
 
       const afterWipe = await t.query(api.system.listSystemProcesses, {});
@@ -419,6 +429,10 @@ describe("config-as-code + origin + entity detail", () => {
         afterReconciler!.stats.find((s) => s.label === "open/required obligations")
           ?.value,
       ).toBe(obligationStat!.value);
+      const afterFlowResumer = afterWipe.find((p) => p.name === "flow-resumer");
+      expect(
+        afterFlowResumer!.stats.find((s) => s.label === "runs waiting")?.value,
+      ).toBe(waitingStat!.value);
     } finally {
       vi.useRealTimers();
     }

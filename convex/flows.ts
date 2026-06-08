@@ -9,7 +9,7 @@ import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { runWhere } from "./lib/engine";
-import { assertInTx, createTransaction } from "./facts";
+import { assertInTx, createTransaction, retractInTx } from "./facts";
 import { requireWritePrincipal } from "./lib/writeAuth";
 
 // A minimal durable workflow runner for the compliance `collect` step:
@@ -21,6 +21,9 @@ import { requireWritePrincipal } from "./lib/writeAuth";
 
 const DEFAULTS = { reminderSeconds: 10, escalateSeconds: 30 };
 const DEFAULT_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const FLOW_RUN_STATUS_ATTR = "flow.run.status";
+
+type FlowRunStatus = Doc<"flowRuns">["status"];
 
 function tokenExpiresAt(now: number, expireSeconds?: number): number {
   return now + (expireSeconds !== undefined ? expireSeconds * 1000 : DEFAULT_TOKEN_TTL_MS);
@@ -45,6 +48,41 @@ async function log(
   message?: string,
 ): Promise<void> {
   await ctx.db.insert("flowEvents", { runId, ts: Date.now(), kind, message });
+}
+
+function flowRunEntity(runId: Id<"flowRuns">): string {
+  return `flowRun:${runId}`;
+}
+
+async function recordFlowRunStatus(
+  ctx: MutationCtx,
+  runId: Id<"flowRuns">,
+  status: FlowRunStatus,
+  now: number,
+  reason: string,
+): Promise<void> {
+  const txId = await createTransaction(ctx, {
+    actorId: "system:flows",
+    actorType: "system",
+    reason,
+    source: "flowRuns",
+    now,
+  });
+  const entity = flowRunEntity(runId);
+  const current = await ctx.db
+    .query("currentFacts")
+    .withIndex("by_e_a", (q) => q.eq("e", entity).eq("a", FLOW_RUN_STATUS_ATTR))
+    .collect();
+  for (const row of current) {
+    await retractInTx(ctx, txId, now, row.factId, reason);
+  }
+  await assertInTx(ctx, txId, now, {
+    e: entity,
+    a: FLOW_RUN_STATUS_ATTR,
+    value: status,
+    reason,
+    source: "flowRuns",
+  });
 }
 
 /** Start a `collect` flow for one (subject, form, scope) obligation. */
@@ -88,6 +126,7 @@ export const startCollect = mutation({
       tokenExpiresAt: tokenExpiresAt(now, args.expireSeconds),
     });
     await log(ctx, runId, "issued", `collect ${args.form} for ${args.scope}`);
+    await recordFlowRunStatus(ctx, runId, "waiting", now, "flow collect issued");
 
     // Schedule the timer ticks. They no-op if the run has left `waiting`.
     await ctx.scheduler.runAfter(reminderSeconds * 1000, internal.flows.tick, {
@@ -161,6 +200,7 @@ export const startCollectInternal = internalMutation({
       tokenExpiresAt: tokenExpiresAt(now),
     });
     await log(ctx, runId, "issued", `collect ${args.form} for ${args.scope}`);
+    await recordFlowRunStatus(ctx, runId, "waiting", now, "flow collect issued");
     await ctx.scheduler.runAfter(DEFAULTS.reminderSeconds * 1000, internal.flows.tick, {
       runId,
       phase: "reminder",
@@ -190,6 +230,7 @@ export const tick = internalMutation({
     if (args.phase === "expire") {
       await ctx.db.patch("flowRuns", run._id, { status: "expired", step: "expired", updatedAt: now });
       await log(ctx, run._id, "expired", "collection window elapsed");
+      await recordFlowRunStatus(ctx, run._id, "expired", now, "flow expired");
     } else if (args.phase === "reminder") {
       await ctx.db.patch("flowRuns", run._id, { step: "reminded", updatedAt: now });
       await log(ctx, run._id, "reminder", `reminded about ${run.form}`);
@@ -228,6 +269,7 @@ export const resumeOnSubmission = internalMutation({
           updatedAt: now,
         });
         await log(ctx, run._id, "completed", "obligation satisfied");
+        await recordFlowRunStatus(ctx, run._id, "completed", now, "flow completed");
       }
     }
   },
@@ -239,12 +281,14 @@ export const cancelFlow = mutation({
     await requireWritePrincipal(ctx);
     const run = await ctx.db.get("flowRuns", args.runId);
     if (!run || run.status !== "waiting") return;
+    const now = Date.now();
     await ctx.db.patch("flowRuns", run._id, {
       status: "cancelled",
       step: "cancelled",
-      updatedAt: Date.now(),
+      updatedAt: now,
     });
     await log(ctx, run._id, "cancelled", "cancelled by user");
+    await recordFlowRunStatus(ctx, run._id, "cancelled", now, "flow cancelled");
   },
 });
 
@@ -381,6 +425,7 @@ async function resumeToNext(
     step: next,
     updatedAt: now,
   });
+  await recordFlowRunStatus(ctx, run._id, "running", now, "flow resumed");
   await ctx.scheduler.runAfter(0, internal.flows.advanceFlow, { runId: run._id });
 }
 
@@ -451,6 +496,7 @@ export const startFlow = mutation({
       updatedAt: now,
     });
     await log(ctx, runId, "started", def.title ?? args.flowDefName);
+    await recordFlowRunStatus(ctx, runId, "running", now, "flow started");
     await ctx.scheduler.runAfter(0, internal.flows.advanceFlow, { runId });
     return { runId };
   },
@@ -482,6 +528,7 @@ export const advanceFlow = internalMutation({
         updatedAt: now,
       });
       await log(ctx, run._id, "completed");
+      await recordFlowRunStatus(ctx, run._id, "completed", now, "flow completed");
     };
 
     for (let i = 0; i < 50; i++) {
@@ -538,6 +585,7 @@ export const advanceFlow = internalMutation({
           updatedAt: now,
         });
         await log(ctx, run._id, "issued", `collect ${cfg.form} for ${scope}`);
+        await recordFlowRunStatus(ctx, run._id, "waiting", now, "flow waiting");
         await ctx.scheduler.runAfter(DEFAULTS.reminderSeconds * 1000, internal.flows.tick, {
           runId: run._id,
           phase: "reminder",
@@ -551,6 +599,7 @@ export const advanceFlow = internalMutation({
           updatedAt: now,
         });
         await log(ctx, run._id, "wait", `${cfg.seconds ?? 5}s`);
+        await recordFlowRunStatus(ctx, run._id, "waiting", now, "flow waiting");
         await ctx.scheduler.runAfter(Number(cfg.seconds ?? 5) * 1000, internal.flows.wake, {
           runId: run._id,
         });
@@ -563,6 +612,7 @@ export const advanceFlow = internalMutation({
           updatedAt: now,
         });
         await log(ctx, run._id, "action", String(cfg.label ?? "external action"));
+        await recordFlowRunStatus(ctx, run._id, "waiting", now, "flow waiting");
         await ctx.scheduler.runAfter(
           Number(cfg.delaySeconds ?? 1) * 1000,
           internal.flows.runActionStep,

@@ -97,9 +97,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   counts now derive enabled requirement/task output from `factEvents` instead of
   materialized `derivedFacts`. Closure semi-naive add now receives the changed
   assertion `eventId` and resolves compatibility provenance through `factEvents`.
-  Remaining: flow-resumer process counts still summarize host `flowRuns`,
-  derived rows are still stored in `derivedFacts`, and derived provenance still
-  uses compatibility `sourceFactIds` instead of protocol event ids.
+  Host flow-run status transitions are now mirrored into `flow.run.status` facts,
+  and System flow-resumer counts read waiting runs from `factEvents` instead of
+  host `flowRuns`. Remaining: derived rows are still stored in `derivedFacts`,
+  and derived provenance still uses compatibility `sourceFactIds` instead of
+  protocol event ids.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -361,6 +363,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 73 shipped:** host `flowRuns` status transitions are mirrored as
+  protocol facts (`flowRun:<runId>`, `flow.run.status`, status). The attribute is
+  built-in cardinality-one, and the mirror helper explicitly retracts the prior
+  visible status before asserting the next status so same-millisecond/fake-timer
+  transitions fold correctly.
+- [x] **System flow-resumer projection proof.** `system.listSystemProcesses` now
+  counts waiting runs by solving `flow.run.status = waiting` through
+  `eventLogTripleSource`; the appconfig test deletes all `flowRuns` rows and the
+  count remains unchanged.
 - [x] **Goal 72 shipped:** closure semi-naive incremental add no longer receives
   the changed projection `factId`. `processFactChange` schedules the delta worker
   with the edge assertion's protocol `eventId`; `incrementalClosureAdd` resolves

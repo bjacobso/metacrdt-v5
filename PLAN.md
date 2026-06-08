@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 72 (closure semi-naive add receives event-log provenance) has
+**Current goal:** Goal 73 (System flow-resumer count reads flow status from the event log) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -29,12 +29,14 @@ moved the System process view's compliance obligation count to a read-only
 event-log derivation instead of materialized `derivedFacts`. Goal 72 moved the
 closure semi-naive add worker boundary from the changed projection `factId` to
 the changed assertion `eventId`, while preserving existing `sourceFactIds`
-through an event-log compatibility lookup. The next active goal should be chosen
-from the remaining TODO candidates:
+through an event-log compatibility lookup. Goal 73 mirrors host `flowRuns`
+status transitions into ordinary `flow.run.status` facts and moves the System
+flow-resumer waiting-run count to that event-log fold. The next active goal
+should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
-the next projection dependency (closure/derived provenance or operational
-`flowRuns` process state).
+the next projection dependency (closure/derived provenance or remaining
+operational process state).
 
 This plan is the operational goal file. Read it with:
 
@@ -179,6 +181,9 @@ arguments.
   `eventId`, then resolves today's projection-style `sourceFactIds` through
   `factEvents.by_eventId`; the delta worker no longer receives the changed
   projection `factId`.
+- Host flow-run status transitions are mirrored into protocol-shaped
+  `flow.run.status` facts, and the System tab's flow-resumer waiting-run count
+  reads those facts from `factEvents` instead of scanning `flowRuns`.
 - Convex backend tests are green: 150 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
@@ -7002,6 +7007,88 @@ Docs:
 
 - `npx tsc --noEmit -p convex/tsconfig.json` passed.
 - `npx vitest run convex/provenance.test.ts` passed (3 tests).
+- Full gate passed:
+  - `npx convex codegen` passed.
+  - `npm test` passed (17 backend test files, 150 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+  - `git diff --check` passed.
+
+---
+
+## Goal 73 — System Flow-Resumer Count from Flow Status Facts
+
+**Status:** shipped for the System tab flow-resumer count.
+
+**Objective:** remove the System process read model's waiting-run count
+dependency on the host `flowRuns` operational table. The flow engine still uses
+`flowRuns` as its durable process state, but every host run status transition is
+mirrored into ordinary protocol-shaped facts so read-model surfaces can fold
+current flow status from `factEvents`.
+
+### Scope
+
+Backend:
+
+- `convex/flows.ts`
+  - status mirror helper
+  - collect run start/complete/expire/cancel transitions
+  - DAG run start/wait/resume/complete transitions
+- `convex/lib/meta.ts`
+  - built-in cardinality for `flow.run.status`
+- `convex/system.ts`
+  - flow-resumer waiting-run count
+
+Tests:
+
+- `convex/appconfig.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+
+### Semantics
+
+- Each host `flowRuns` status transition asserts:
+  - entity: `flowRun:<runId>`
+  - attribute: `flow.run.status`
+  - value: the new status
+- `flow.run.status` is built-in cardinality-one, and the mirror helper
+  explicitly retracts the previous visible status before asserting the new one,
+  so same-millisecond/fake-timer transitions still fold to the latest process
+  status.
+- The System tab's `flow-resumer` process count now solves
+  `["?run", "flow.run.status", "waiting"]` through `eventLogTripleSource`.
+- `flowRuns` remains the operational scheduler/process table; this slice moves a
+  dashboard count, not the workflow runtime itself.
+
+### Non-Goals
+
+- Do not remove or stop using `flowRuns`.
+- Do not rewrite `flows.listFlows`, `/collect`, timers, or DAG advancement to
+  run from event-log folds.
+- Do not mirror the full run context/token payload into facts.
+- Do not move component-owned flow process state in this slice.
+
+### Acceptance Criteria
+
+- `convex/system.ts` no longer queries `flowRuns`.
+- A waiting collect run is counted by the System tab after deleting all host
+  `flowRuns` rows.
+- The compliance-reconciler count still survives after deleting all
+  `derivedFacts`.
+- Focused appconfig tests and Convex typecheck pass.
+
+### Verification
+
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/appconfig.test.ts` passed (16 tests).
 - Full gate passed:
   - `npx convex codegen` passed.
   - `npm test` passed (17 backend test files, 150 tests).

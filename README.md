@@ -209,6 +209,8 @@ Built today:
 - System process compliance-obligation counts now derive enabled requirement/
   task rule output from protocol-shaped `factEvents` instead of reading
   `derivedFacts`
+- System process flow-resumer counts now read mirrored `flow.run.status` facts
+  from protocol-shaped `factEvents` instead of scanning host `flowRuns`
 - production fact point queries (`api.facts.queryFacts`) now fold base facts
   directly from protocol-shaped `factEvents` while preserving the old array
   return shape and read-authorization behavior; `queryFactsFromEventLog` remains

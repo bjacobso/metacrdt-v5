@@ -45,6 +45,20 @@ async function countComplianceObligationsFromEventLog(
   return keys.size;
 }
 
+async function countWaitingFlowRunsFromEventLog(
+  ctx: Parameters<typeof runWhere>[0],
+): Promise<number> {
+  const now = Date.now();
+  const rows = await runWhere(
+    ctx,
+    [["?run", "flow.run.status", "waiting"]],
+    { txTime: now, validTime: now },
+    {},
+    { source: eventLogTripleSource },
+  );
+  return new Set(rows.map((row) => String(row.run))).size;
+}
+
 /**
  * Descriptors for the system processes, each enriched with live counts. Mirrors
  * what the entity/flow lists do for the "configured" side: gives the System tab
@@ -71,12 +85,7 @@ export const listSystemProcesses = query({
     const obligationFacts =
       await countComplianceObligationsFromEventLog(ctx, complianceRules);
 
-    const waitingRuns = (
-      await ctx.db
-        .query("flowRuns")
-        .withIndex("by_status", (q) => q.eq("status", "waiting"))
-        .take(500)
-    ).length;
+    const waitingRuns = await countWaitingFlowRunsFromEventLog(ctx);
 
     return [
       {

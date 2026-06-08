@@ -61,6 +61,8 @@ export const BUILTIN_CARDINALITY: Record<string, "one" | "many"> = {
   appliesTo: "one",
   asserts: "one",
   label: "one",
+  // Operational process facts mirrored from host flowRuns for read-model surfaces.
+  "flow.run.status": "one",
 };
 
 /** The meta-attributes themselves, for self-description / bootstrap. */
