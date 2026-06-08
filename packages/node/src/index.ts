@@ -10,8 +10,10 @@ import {
 import {
   createMemoryRuntime,
   type AppendResult,
+  deltaSince,
   type EventFilter,
   type EventStore,
+  mergeFrom,
   type MergeResult,
   type MemoryRuntimeOptions,
   type RuntimeCapability,
@@ -19,6 +21,8 @@ import {
   type RuntimeProfile,
   type RuntimeSequencer,
   type RuntimeServices,
+  type VersionVector,
+  versionVector,
 } from "@metacrdt/runtime";
 
 export type NodeSqliteStatementLike = {
@@ -47,6 +51,25 @@ export type NodeSqliteRuntime = RuntimeServices & {
   clock: NodeSqliteClock;
   sequencer: NodeSqliteSequencer;
 };
+
+export type NodeSyncHttpRequestLike = {
+  method?: string;
+  url: string;
+  body?: unknown | (() => unknown | Promise<unknown>);
+};
+
+export type NodeSyncHttpResponse = {
+  status: number;
+  headers: Readonly<Record<string, string>>;
+  body: string;
+};
+
+export type NodeSyncHttpOptions = {
+  basePath?: string;
+  protocol?: string;
+};
+
+const DEFAULT_SYNC_PROTOCOL = "metacrdt.node.http.v1";
 
 function identifier(name: string): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
@@ -91,6 +114,195 @@ function decodeEvent(row: unknown): Event | undefined {
 
 function eventJson(event: Event): string {
   return JSON.stringify(event);
+}
+
+function jsonResponse(value: unknown, status = 200): NodeSyncHttpResponse {
+  return {
+    status,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(value),
+  };
+}
+
+function textResponse(
+  body: string,
+  status: number,
+  headers: Record<string, string>,
+): NodeSyncHttpResponse {
+  return { status, headers, body };
+}
+
+function parsePathAndQuery(raw: string): { path: string; query: string } {
+  const scheme = raw.indexOf("://");
+  const slash = scheme >= 0 ? raw.indexOf("/", scheme + 3) : -1;
+  const pathQuery =
+    scheme >= 0
+      ? raw.slice(slash >= 0 ? slash : raw.length)
+      : raw;
+  const withoutHash = pathQuery.split("#", 1)[0] ?? "/";
+  const q = withoutHash.indexOf("?");
+  return q < 0
+    ? { path: withoutHash || "/", query: "" }
+    : { path: withoutHash.slice(0, q) || "/", query: withoutHash.slice(q + 1) };
+}
+
+function queryParams(query: string): Map<string, string> {
+  const params = new Map<string, string>();
+  if (query === "") return params;
+  for (const pair of query.split("&")) {
+    if (pair === "") continue;
+    const eq = pair.indexOf("=");
+    const key = eq < 0 ? pair : pair.slice(0, eq);
+    const value = eq < 0 ? "" : pair.slice(eq + 1);
+    params.set(decodeURIComponent(key), decodeURIComponent(value.replace(/\+/g, " ")));
+  }
+  return params;
+}
+
+function normalizeBasePath(basePath = "/metacrdt"): string {
+  const path = basePath.startsWith("/") ? basePath : `/${basePath}`;
+  return path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
+}
+
+function route(path: string, basePath: string): string | undefined {
+  if (path === basePath) return "/";
+  if (!path.startsWith(`${basePath}/`)) return undefined;
+  return path.slice(basePath.length) || "/";
+}
+
+function parseVersionVector(raw: string | undefined): VersionVector {
+  if (!raw) return {};
+  const parsed = JSON.parse(raw) as unknown;
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("version vector must be an object");
+  }
+  const vv: Record<string, number> = {};
+  for (const [replica, seq] of Object.entries(parsed)) {
+    if (typeof seq !== "number" || !Number.isFinite(seq) || seq < 0) {
+      throw new Error(`invalid version vector sequence for ${replica}`);
+    }
+    vv[replica] = Math.floor(seq);
+  }
+  return vv;
+}
+
+async function requestBody(request: NodeSyncHttpRequestLike): Promise<unknown> {
+  const raw = typeof request.body === "function" ? await request.body() : request.body;
+  return typeof raw === "string" ? (JSON.parse(raw) as unknown) : raw;
+}
+
+function eventsFromBody(body: unknown): Event[] {
+  const events = Array.isArray(body)
+    ? body
+    : typeof body === "object" && body !== null
+      ? (body as { events?: unknown }).events
+      : undefined;
+  if (!Array.isArray(events)) throw new Error("expected body { events: Event[] }");
+  for (const event of events) {
+    if (!verifyId(event as Event)) {
+      throw new Error("body contains invalid event id");
+    }
+  }
+  return events as Event[];
+}
+
+function sseFrame(event: string, data: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+/**
+ * A dependency-free HTTP/SSE sync surface for server-process runtimes.
+ *
+ * It intentionally returns a small structural response instead of importing
+ * Node's `http` types or depending on a framework. Adapters for Express, Hono,
+ * Fastify, native `node:http`, Bun, or tests can translate this shape.
+ */
+export function createNodeSyncHttpHandler(
+  runtime: RuntimeServices,
+  options: NodeSyncHttpOptions = {},
+): (request: NodeSyncHttpRequestLike) => Promise<NodeSyncHttpResponse> {
+  const basePath = normalizeBasePath(options.basePath);
+  const protocol = options.protocol ?? DEFAULT_SYNC_PROTOCOL;
+
+  return async (request) => {
+    const method = (request.method ?? "GET").toUpperCase();
+    const parsed = parsePathAndQuery(request.url);
+    const matched = route(parsed.path, basePath);
+    if (matched === undefined) return jsonResponse({ error: "not found" }, 404);
+    if (method === "OPTIONS") {
+      return {
+        status: 204,
+        headers: {
+          allow: "GET, POST, OPTIONS",
+          "access-control-allow-methods": "GET, POST, OPTIONS",
+          "access-control-allow-headers": "content-type",
+        },
+        body: "",
+      };
+    }
+
+    try {
+      if (method === "GET" && (matched === "/" || matched === "/health")) {
+        return jsonResponse({
+          ok: true,
+          protocol,
+          profile: {
+            name: runtime.profile.name,
+            replicaId: runtime.profile.replicaId,
+            capabilities: [...runtime.profile.capabilities].sort(),
+          },
+          vv: versionVector(await runtime.store.scan()),
+        });
+      }
+
+      if (method === "GET" && matched === "/events") {
+        const params = queryParams(parsed.query);
+        const remote = parseVersionVector(params.get("vv") ?? params.get("since"));
+        const events = await runtime.store.scan();
+        const delta = deltaSince(events, remote);
+        return jsonResponse({
+          protocol,
+          from: runtime.profile.replicaId,
+          vv: versionVector(events),
+          since: remote,
+          events: delta.events,
+        });
+      }
+
+      if (method === "GET" && matched === "/events/sse") {
+        const params = queryParams(parsed.query);
+        const remote = parseVersionVector(params.get("vv") ?? params.get("since"));
+        const events = await runtime.store.scan();
+        const delta = {
+          protocol,
+          from: runtime.profile.replicaId,
+          vv: versionVector(events),
+          since: remote,
+          events: deltaSince(events, remote).events,
+        };
+        return textResponse(sseFrame("delta", delta), 200, {
+          "content-type": "text/event-stream",
+          "cache-control": "no-cache",
+          connection: "keep-alive",
+        });
+      }
+
+      if (method === "POST" && matched === "/events") {
+        const events = eventsFromBody(await requestBody(request));
+        const inserted = await mergeFrom(runtime, events);
+        return jsonResponse({
+          protocol,
+          inserted,
+          seen: events.length,
+          vv: versionVector(await runtime.store.scan()),
+        });
+      }
+    } catch (err) {
+      return jsonResponse({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+
+    return jsonResponse({ error: "not found" }, 404);
+  };
 }
 
 export class NodeSqliteEventStore implements EventStore {

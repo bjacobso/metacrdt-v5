@@ -8,6 +8,7 @@ import {
 } from "@metacrdt/testkit";
 import {
   createNodeMemoryRuntime,
+  createNodeSyncHttpHandler,
   createNodeSqliteRuntime,
   type NodeSqliteDatabaseLike,
   type NodeSqliteStatementLike,
@@ -184,5 +185,79 @@ describe("@metacrdt/node target", () => {
       "terminated",
     );
     expect(versionVector(await third.store.scan())).toEqual({ "node:sqlite": 2 });
+  });
+
+  test("HTTP sync handler exposes health, delta pull, and event push", async () => {
+    const a = createNodeMemoryRuntime({
+      replicaId: "node:a",
+      wall: () => 1_000,
+    });
+    const b = createNodeMemoryRuntime({
+      replicaId: "node:b",
+      wall: () => 2_000,
+    });
+    const event = await applyOperation(a, {
+      op: "assert",
+      e: "case:1",
+      a: "case.status",
+      v: "open",
+      actor: "user:1",
+    });
+    const serveA = createNodeSyncHttpHandler(a, { basePath: "/sync" });
+    const serveB = createNodeSyncHttpHandler(b, { basePath: "/sync" });
+
+    const health = await serveA({ method: "GET", url: "https://node.test/sync/health" });
+    expect(health.status).toBe(200);
+    expect(JSON.parse(health.body)).toMatchObject({
+      ok: true,
+      protocol: "metacrdt.node.http.v1",
+      profile: { replicaId: "node:a" },
+      vv: { "node:a": 1 },
+    });
+
+    const delta = await serveA({
+      method: "GET",
+      url: `/sync/events?vv=${encodeURIComponent(JSON.stringify({}))}`,
+    });
+    expect(delta.status).toBe(200);
+    const parsedDelta = JSON.parse(delta.body) as { events: unknown[] };
+    expect(parsedDelta.events).toHaveLength(1);
+
+    const pushed = await serveB({
+      method: "POST",
+      url: "/sync/events",
+      body: { events: parsedDelta.events },
+    });
+    expect(pushed.status).toBe(200);
+    expect(JSON.parse(pushed.body)).toMatchObject({
+      inserted: 1,
+      seen: 1,
+      vv: { "node:a": 1 },
+    });
+    expect(await b.store.get(event.id)).toEqual(event);
+  });
+
+  test("HTTP sync handler returns a one-shot SSE delta", async () => {
+    const runtime = createNodeMemoryRuntime({
+      replicaId: "node:sse",
+      wall: () => 3_000,
+    });
+    await applyOperation(runtime, {
+      op: "assert",
+      e: "task:1",
+      a: "task.status",
+      v: "open",
+      actor: "user:1",
+    });
+
+    const response = await createNodeSyncHttpHandler(runtime)({
+      method: "GET",
+      url: "/metacrdt/events/sse",
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toBe("text/event-stream");
+    expect(response.body).toContain("event: delta\n");
+    expect(response.body).toContain('"from":"node:sse"');
+    expect(response.body).toContain('"events":[');
   });
 });

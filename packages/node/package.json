@@ -1,7 +1,7 @@
 {
   "name": "@metacrdt/node",
   "version": "0.1.0",
-  "description": "MetaCRDT Node target helpers: a server-process host with memory and structural SQLite runtime services.",
+  "description": "MetaCRDT Node target helpers: server-process memory/SQLite runtime services plus dependency-free HTTP/SSE sync handlers.",
   "type": "module",
   "license": "MIT",
   "main": "./dist/index.js",

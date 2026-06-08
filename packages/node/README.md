@@ -15,6 +15,11 @@ different storage adapters behind the same runtime contracts.
   `NodeSqliteStatementLike`, matching the common `prepare().get/all/run` surface
   used by better-sqlite3-style wrappers, Bun SQLite adapters, and tests. The
   package intentionally ships no native SQLite dependency.
+- **HTTP/SSE sync handler** — `createNodeSyncHttpHandler`, a dependency-free
+  fetch-like handler over any `RuntimeServices`: health/version-vector,
+  pull-delta, push-events, and one-shot SSE delta routes. It returns a small
+  structural response so Express, Fastify, Hono, native `node:http`, Bun, tests,
+  or a future dev server can adapt it without this package owning a framework.
 
 ## What Node Does Not Own
 
@@ -24,22 +29,32 @@ different storage adapters behind the same runtime contracts.
 - Cloudflare Durable Object storage/relay behavior — `@metacrdt/cloudflare`.
 - Postgres. It belongs here eventually, but this first slice only adds memory and
   server-SQLite runtime services.
+- A long-running hosted server. The HTTP/SSE handler is the reusable protocol
+  surface; binding it to a concrete Node HTTP listener is a later convenience
+  layer.
 
 ## Conformance
 
 Both the memory and SQLite runtime services pass the shared `@metacrdt/testkit`
 EventStore / anti-entropy / deterministic-fold conformance suite. The package
 also verifies SQLite persistence of the event log, HLC, and per-replica `seq`
-across runtime recreation.
+across runtime recreation, and tests the HTTP/SSE handler's health, delta pull,
+event push, and SSE response paths.
 
 ## Usage
 
 ```ts
-import { createNodeSqliteRuntime } from "@metacrdt/node";
+import { createNodeSqliteRuntime, createNodeSyncHttpHandler } from "@metacrdt/node";
 
 const runtime = await createNodeSqliteRuntime({
   replicaId: "node:main",
   db,
+});
+
+const handleSync = createNodeSyncHttpHandler(runtime, { basePath: "/sync" });
+const response = await handleSync({
+  method: "GET",
+  url: "/sync/events?vv=%7B%7D",
 });
 ```
 
@@ -51,3 +66,13 @@ type NodeSqliteDatabaseLike = {
   prepare(sql: string): NodeSqliteStatementLike | Promise<NodeSqliteStatementLike>;
 };
 ```
+
+The sync handler routes are:
+
+- `GET /<base>/health` — profile + local version vector.
+- `GET /<base>/events?vv=<json>` — events this runtime has beyond the supplied
+  version vector.
+- `POST /<base>/events` with `{ events }` — merge remote events into the local
+  G-Set and advance the local HLC.
+- `GET /<base>/events/sse?vv=<json>` — one-shot `text/event-stream` delta frame
+  for simple server-sent-event clients.

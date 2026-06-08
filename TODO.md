@@ -435,9 +435,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Wire the shared `@metacrdt/testkit` suite into existing Cloudflare and
   local runtime targets.
 - [x] Choose the next target-runtime slice: first `@metacrdt/node` package.
+- [x] Choose the next Node slice: structural HTTP/SSE sync handler.
 - [ ] Choose between production provider wiring, next Node slice (Postgres /
-  HTTP-SSE / dev server), Cloudflare DO+SQLite parity, or another parked
-  Query/Rules item.
+  concrete listener or dev server), Cloudflare DO+SQLite parity, or another
+  parked Query/Rules item.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -517,8 +518,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `packages/cloudflare/README.md` now link the target model and Cloudflare plan.
 - [x] Next concrete target-runtime candidate chosen: first `@metacrdt/testkit`
   conformance suite.
-- [ ] Remaining target-runtime candidates: `@metacrdt/node` with
-  memory/server-SQLite adapters, Cloudflare Phase B/C, or expanded testkit
+- [ ] Remaining target-runtime candidates: Node Postgres / concrete
+  listener/dev-server adapters, Cloudflare Phase B/C, or expanded testkit
   persistence/scheduler/transport suites once a second target needs them.
 
 ### 2026-06-08 — first @metacrdt/testkit package
@@ -547,6 +548,19 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   anti-entropy, deterministic fold equality, and idempotent second sync.
 - [x] Verification: focused Cloudflare/local package tests, `npm run
   test:packages`, `npm run build:packages`, and `npm run typecheck` all passed.
+
+### 2026-06-08 — Node HTTP/SSE sync handler
+- [x] **Goal 105 shipped:** `@metacrdt/node` now exports
+  `createNodeSyncHttpHandler`, a dependency-free structural HTTP/SSE sync surface
+  over any `RuntimeServices`.
+- [x] Routes shipped: health/profile/version-vector, pull delta by supplied
+  version vector, push remote events through `mergeFrom`, and one-shot
+  `text/event-stream` delta frames. The handler returns structural
+  `{ status, headers, body }` responses so native `node:http`, Express, Fastify,
+  Hono, Bun, tests, or a future dev server can adapt it without this package
+  owning listener lifecycle.
+- [x] Verification: focused Node tests/typecheck, `npm run test:packages`,
+  `npm run build:packages`, and `npm run typecheck` passed.
 
 ### 2026-06-08 — first @metacrdt/node target
 - [x] **Goal 104 shipped:** added `packages/node` / `@metacrdt/node`, the open

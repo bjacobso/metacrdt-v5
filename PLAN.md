@@ -146,11 +146,14 @@ suite into the existing Cloudflare Durable Object target and local async target,
 so three targets now prove the same EventStore, anti-entropy, and deterministic
 fold contract. Goal 104 adds the first `@metacrdt/node` package: an open
 server-process host with memory and structural server-SQLite runtime services,
-both passing shared conformance. The next active goal
+both passing shared conformance. Goal 105 adds the next Node target slice: a
+dependency-free structural HTTP/SSE sync handler over any `RuntimeServices`,
+covering health/version-vector, pull-delta, push-events, and one-shot SSE delta
+routes without binding the package to a concrete Node framework. The next active goal
 should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding the next
-Node slice (Postgres / HTTP-SSE / dev server), Cloudflare DO+SQLite parity,
-another carefully scoped Confect/domain wrapper, or the next projection
+Node slice (Postgres / concrete listener or dev server), Cloudflare DO+SQLite
+parity, another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
 This plan is the operational goal file. Read it with:
@@ -9037,6 +9040,53 @@ suite.
 - `npx tsc --noEmit -p packages/node/tsconfig.json` passes.
 - `npm run test:packages`, `npm run build:packages`, and `npm run typecheck`
   include the new workspace package and pass.
+
+---
+
+## Goal 105 — @metacrdt/node HTTP/SSE Sync Handler
+
+**Status:** shipped.
+
+**Objective:** make the Node target sync-addressable without choosing a concrete
+server framework. The package should expose a small structural handler that
+adapters for native `node:http`, Express, Fastify, Hono, Bun, tests, or a future
+dev server can translate, while all protocol behavior stays in
+`@metacrdt/runtime` / `@metacrdt/core`.
+
+### What Shipped
+
+- Added `createNodeSyncHttpHandler(runtime, options)` to `@metacrdt/node`.
+- The handler is dependency-free and framework-neutral:
+  - accepts a structural `{ method, url, body }` request
+  - returns a structural `{ status, headers, body }` response
+  - imports no Node `http` types and owns no listener lifecycle
+- Routes:
+  - `GET /<base>/health` returns profile, capabilities, protocol id, and local
+    version vector
+  - `GET /<base>/events?vv=<json>` returns the event delta beyond the supplied
+    version vector
+  - `POST /<base>/events` merges remote events through `mergeFrom`, verifies
+    event ids before merge, advances the local HLC through runtime semantics, and
+    returns inserted/seen counts plus the new version vector
+  - `GET /<base>/events/sse?vv=<json>` returns a one-shot
+    `text/event-stream` delta frame for simple SSE clients
+- Updated package docs and target docs so HTTP/SSE is now “structural handler
+  shipped; concrete listeners later,” not merely planned.
+
+### Non-Goals
+
+- Do not add a native Node listener, Express/Fastify/Hono adapter, or CLI dev
+  server yet.
+- Do not add Postgres in this slice.
+- Do not add long-lived live-query invalidation subscriptions; the SSE route is
+  a one-shot delta frame over the same version-vector anti-entropy contract.
+
+### Verification
+
+- `npm test --workspace @metacrdt/node` passes, now with five Node tests.
+- `npx tsc --noEmit -p packages/node/tsconfig.json` passes.
+- `npm run test:packages`, `npm run build:packages`, and `npm run typecheck`
+  include the Node package and pass.
 
 ---
 
