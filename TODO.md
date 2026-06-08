@@ -75,8 +75,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   sync for target-provided network harnesses. Proven against runtime
   BroadcastChannel, p2p DataChannel, and Cloudflare Durable Object WebSocket
   relay harnesses.
-- [ ] **Goal 111 next: expanded suites** — add query/projection capabilities as
-  second implementations expose them.
+- [x] **Goal 111 projection conformance started** —
+  `@metacrdt/testkit` now has `runRuntimeProjectionConformance`, proving shared
+  core projection semantics over target-returned EventStore logs: cardinality-one
+  `≺` winners, cardinality-many sets, bitemporal coordinates, audit flags, entity
+  maps, and filtered-source point projection.
+- [ ] **Goal 111 next: expanded suites** — add a full Datalog/query service
+  contract and materialized projection-store conformance as second
+  implementations expose those capabilities.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
@@ -519,6 +525,19 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — Goal 111 EventStore projection conformance
+- [x] **Added `runRuntimeProjectionConformance`.** The shared runtime suite now
+  appends protocol events through a target's `EventStoreService`, scans them back
+  through the target, and folds them with `@metacrdt/core` to prove
+  cardinality-one `≺` winners, cardinality-many values, bitemporal valid-time
+  coordinates, entity-map projection, audit flags for retracted/tombstoned
+  values, and filtered-source point projection.
+- [x] **Included projection in `runRuntimeConformance`.** Memory/testkit,
+  Convex component, local async, Cloudflare Durable Object, and Node
+  memory/SQLite/Postgres targets now inherit the projection checks through their
+  existing Layer conformance. This is event-log projection conformance, not yet a
+  full Datalog/query-service or materialized projection-store conformance.
 
 ### 2026-06-08 — Goal 111 Cloudflare relay network conformance
 - [x] **Wired Cloudflare relay into shared network conformance.** The

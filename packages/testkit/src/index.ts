@@ -1,6 +1,10 @@
 import {
   assert as assertEvent,
+  entity as projectEntity,
   fromEvents,
+  retract as retractEvent,
+  tombstone as tombstoneEvent,
+  value as projectValue,
   valueOf,
   verifyId,
   type Event,
@@ -468,14 +472,227 @@ export async function runRuntimeConvergenceConformance(
   });
 }
 
+export async function runRuntimeProjectionConformance(
+  target: AnyRuntimeConformanceTarget,
+): Promise<ConformanceReport> {
+  return await runWithTargetLayer(
+    target,
+    { replicaId: "testkit:projection", wall: () => 1_000 },
+    Effect.gen(function* () {
+      const checks: string[] = [];
+      const profile = yield* RuntimeProfileService;
+      const store = yield* EventStoreService;
+      expect(
+        target,
+        profile.replicaId === "testkit:projection",
+        "runtime profile replicaId mismatch",
+      );
+
+      const active = assertEvent({
+        e: "worker:maria",
+        a: "worker.status",
+        v: "active",
+        validFrom: 0,
+        actor: "alice",
+        actorType: "human",
+        hlc: { pt: 1, l: 0, r: "testkit:projection" },
+      });
+      const terminated = assertEvent({
+        e: "worker:maria",
+        a: "worker.status",
+        v: "terminated",
+        validFrom: 0,
+        actor: "bob",
+        actorType: "human",
+        hlc: { pt: 1, l: 0, r: "testkit:projection" },
+      });
+      const remote = assertEvent({
+        e: "worker:maria",
+        a: "worker.tag",
+        v: "remote",
+        validFrom: 0,
+        actor: "alice",
+        actorType: "human",
+        hlc: { pt: 2, l: 0, r: "testkit:projection" },
+      });
+      const urgent = assertEvent({
+        e: "worker:maria",
+        a: "worker.tag",
+        v: "urgent",
+        validFrom: 0,
+        actor: "bob",
+        actorType: "human",
+        hlc: { pt: 3, l: 0, r: "testkit:projection" },
+      });
+      const seasonal = assertEvent({
+        e: "placement:1",
+        a: "placement.status",
+        v: "active",
+        validFrom: 50,
+        validTo: 200,
+        actor: "system",
+        actorType: "system",
+        hlc: { pt: 4, l: 0, r: "testkit:projection" },
+      });
+      const future = assertEvent({
+        e: "placement:1",
+        a: "placement.status",
+        v: "future",
+        validFrom: 200,
+        actor: "system",
+        actorType: "system",
+        hlc: { pt: 5, l: 0, r: "testkit:projection" },
+      });
+      const cert = assertEvent({
+        e: "cert:1",
+        a: "cert.status",
+        v: "valid",
+        validFrom: 0,
+        actor: "system",
+        actorType: "system",
+        hlc: { pt: 6, l: 0, r: "testkit:projection" },
+      });
+      const certRetracted = retractEvent({
+        target: cert.id,
+        actor: "auditor",
+        actorType: "human",
+        hlc: { pt: 7, l: 0, r: "testkit:projection" },
+      });
+      const note = assertEvent({
+        e: "worker:maria",
+        a: "worker.note",
+        v: "hidden",
+        validFrom: 0,
+        actor: "system",
+        actorType: "system",
+        hlc: { pt: 8, l: 0, r: "testkit:projection" },
+      });
+      const noteTombstoned = tombstoneEvent({
+        target: note.id,
+        actor: "auditor",
+        actorType: "human",
+        hlc: { pt: 9, l: 0, r: "testkit:projection" },
+      });
+
+      // Intentionally append in a non-semantic order. A target may scan in any
+      // order; the projection result must come from the shared core fold.
+      for (const event of [
+        urgent,
+        seasonal,
+        certRetracted,
+        active,
+        noteTombstoned,
+        future,
+        remote,
+        cert,
+        note,
+        terminated,
+      ]) {
+        yield* store.append(event);
+      }
+
+      const current = { txTime: 10_000, validTime: 100 };
+      const later = { txTime: 10_000, validTime: 250 };
+      const cardinalityOf = (a: string) =>
+        a === "worker.tag" ? ("many" as const) : ("one" as const);
+      const log = fromEvents(yield* store.scan());
+
+      const status = projectValue(
+        "worker:maria",
+        "worker.status",
+        current,
+        log,
+        cardinalityOf,
+      );
+      expect(
+        target,
+        !Array.isArray(status) &&
+          status?.id === terminated.id &&
+          status.v === "terminated",
+        "cardinality-one projection should pick the ≺-max visible assert",
+      );
+      checks.push("projection-cardinality-one-winner");
+
+      const tags = valueOf(
+        "worker:maria",
+        "worker.tag",
+        current,
+        log,
+        cardinalityOf,
+      ) as string[];
+      expect(
+        target,
+        JSON.stringify([...tags].sort()) === JSON.stringify(["remote", "urgent"]),
+        "cardinality-many projection should return every visible value",
+      );
+      checks.push("projection-cardinality-many-set");
+
+      const worker = projectEntity("worker:maria", current, log, cardinalityOf);
+      expect(
+        target,
+        "worker.status" in worker &&
+          "worker.tag" in worker &&
+          !("worker.note" in worker),
+        "entity projection should include visible attributes and omit tombstoned ones",
+      );
+      checks.push("projection-entity-map");
+
+      expect(
+        target,
+        valueOf("placement:1", "placement.status", current, log, cardinalityOf) ===
+          "active" &&
+          valueOf("placement:1", "placement.status", later, log, cardinalityOf) ===
+            "future",
+        "bitemporal projection should respect valid intervals",
+      );
+      checks.push("projection-bitemporal-coordinate");
+
+      expect(
+        target,
+        valueOf("cert:1", "cert.status", current, log, cardinalityOf) ===
+          undefined &&
+          valueOf("cert:1", "cert.status", current, log, cardinalityOf, {
+            includeRetracted: true,
+          }) === "valid" &&
+          valueOf("worker:maria", "worker.note", current, log, cardinalityOf) ===
+            undefined &&
+          valueOf("worker:maria", "worker.note", current, log, cardinalityOf, {
+            includeTombstoned: true,
+          }) === "hidden",
+        "projection audit flags should expose retracted/tombstoned values only when requested",
+      );
+      checks.push("projection-audit-flags");
+
+      const workerLog = fromEvents(yield* store.scan({ e: "worker:maria" }));
+      expect(
+        target,
+        valueOf(
+          "worker:maria",
+          "worker.status",
+          current,
+          workerLog,
+          cardinalityOf,
+        ) === "terminated" &&
+          valueOf("placement:1", "placement.status", current, workerLog, cardinalityOf) ===
+            undefined,
+        "projection should work over target-filtered event sources",
+      );
+      checks.push("projection-filtered-source-query");
+
+      return { target: target.name, checks };
+    }),
+  );
+}
+
 export async function runRuntimeConformance(
   target: AnyRuntimeConformanceTarget,
 ): Promise<ConformanceReport> {
   const store = await runEventStoreConformance(target);
   const convergence = await runRuntimeConvergenceConformance(target);
+  const projection = await runRuntimeProjectionConformance(target);
   return {
     target: target.name,
-    checks: [...store.checks, ...convergence.checks],
+    checks: [...store.checks, ...convergence.checks, ...projection.checks],
   };
 }
 

@@ -71,17 +71,17 @@ On open hosts the adapter is a selectable dependency.
   Postgres. SDK integration remains a future slice.
 - `@metacrdt/runtime`'s in-memory target/Layer — the reference harness.
 - `@metacrdt/testkit` — Effect Layer-backed conformance helpers for EventStore,
-  anti-entropy, deterministic fold convergence, and restart-persistence
-  semantics (log/HLC/seq), plus scheduler service-boundary, transport
-  publish-boundary, and first network delivery/catch-up semantics. Log/sync
-  conformance is proven against the in-memory Layer, Convex component Layer,
-  Cloudflare Durable Object Layer, async local Layer, and Node
-  memory/SQLite/Postgres Layers; persistence conformance is wired into runtime
-  localStorage, local async, and Node SQLite/Postgres; scheduler submission and
-  transport publication conformance are wired into testkit memory and Node
-  memory; network delivery/catch-up conformance is proven against
-  BroadcastChannel, p2p DataChannel, and Cloudflare Durable Object WebSocket
-  relay harnesses. Compatibility
+  anti-entropy, deterministic fold convergence, EventStore-backed projection,
+  and restart-persistence semantics (log/HLC/seq), plus scheduler
+  service-boundary, transport publish-boundary, and first network
+  delivery/catch-up semantics. Log/sync/projection conformance is proven against
+  the in-memory Layer, Convex component Layer, Cloudflare Durable Object Layer,
+  async local Layer, and Node memory/SQLite/Postgres Layers; persistence
+  conformance is wired into runtime localStorage, local async, and Node
+  SQLite/Postgres; scheduler submission and transport publication conformance are
+  wired into testkit memory and Node memory; network delivery/catch-up
+  conformance is proven against BroadcastChannel, p2p DataChannel, and
+  Cloudflare Durable Object WebSocket relay harnesses. Compatibility
   `RuntimeServices` targets still adapt through `runtimeServicesLayer`.
 
 ### Should exist next
@@ -234,9 +234,11 @@ a sibling target.
    Persistence conformance has started for durable targets, and scheduler
    service-boundary / transport publish-boundary conformance has started for
    observable services. Network delivery/catch-up conformance has started for
-   BroadcastChannel, p2p DataChannel, and Cloudflare relay harnesses; add
-   query/projection suites whenever the relevant target capabilities are exposed.
-   This is what *proves* the "guaranteed to converge" claim across targets.
+   BroadcastChannel, p2p DataChannel, and Cloudflare relay harnesses. EventStore
+   projection conformance is included in the shared runtime suite; add full
+   Datalog/query-service and materialized projection-store suites whenever the
+   relevant target capabilities are exposed. This is what *proves* the
+   "guaranteed to converge" claim across targets.
 3. **Cloudflare Phase B/C** — extract the shared fold into core, then the DO +
    SQLite triple store ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal

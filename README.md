@@ -178,10 +178,11 @@ Current packages:
   runtimes expose Effect Layer providers and pass `@metacrdt/testkit`.
 - **`@metacrdt/testkit`** (`packages/testkit`) — target conformance helpers:
   Effect Layer-backed checks for EventStore idempotency/filtering/content-id
-  verification, version-vector anti-entropy, and deterministic fold convergence.
-  It also includes restart-persistence conformance for durable targets, checking
-  event-log/HLC/seq continuity across runtime re-creation, plus scheduler
-  service-boundary, transport publish-boundary, and peer network
+  verification, version-vector anti-entropy, deterministic fold convergence, and
+  EventStore-backed projection semantics. It also includes restart-persistence
+  conformance for durable targets, checking event-log/HLC/seq continuity across
+  runtime re-creation, plus scheduler service-boundary, transport
+  publish-boundary, and peer network
   delivery/catch-up conformance for observable services/harnesses. The package
   proves itself against runtime Layers (including BroadcastChannel, p2p, and
   Cloudflare relay network harnesses) and is consumed by Convex/Node/local/
@@ -687,7 +688,7 @@ Frontier:
 - HLC + version-vector sync across replicas
 - Durable Object + SQLite triple-store parity
 - production database lifecycle/migrations beyond the current Node SQL DDL plan
-- query/projection conformance suites
+- full Datalog/query-service and materialized projection-store conformance suites
 
 See [TODO.md](./TODO.md) for the running pulse.
 

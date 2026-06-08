@@ -70,6 +70,12 @@ describe("@metacrdt/local conformance", () => {
         "version-vector-convergence",
         "deterministic-fold-convergence",
         "idempotent-second-sync",
+        "projection-cardinality-one-winner",
+        "projection-cardinality-many-set",
+        "projection-entity-map",
+        "projection-bitemporal-coordinate",
+        "projection-audit-flags",
+        "projection-filtered-source-query",
       ],
     });
   });

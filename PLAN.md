@@ -9399,8 +9399,14 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   BroadcastChannel, p2p DataChannel, and Cloudflare Durable Object WebSocket
   relay harnesses. This is peer delivery/catch-up conformance, not live
   deployment/auth or retry/durability conformance.
-- **Remaining keystone work:** conformance still does not cover query/projection
-  behavior.
+- **Projection conformance started:** `@metacrdt/testkit` also has
+  `runRuntimeProjectionConformance`, proving cardinality-one `≺` winners,
+  cardinality-many values, bitemporal coordinates, audit flags, entity maps, and
+  filtered-source point projection over events returned by each target's
+  `EventStoreService`. It is included in `runRuntimeConformance` for current
+  Layer targets.
+- **Remaining keystone work:** conformance still does not cover a full
+  Datalog/query service contract or materialized triple-store projection stores.
 - **Zero Effect today (by current design):** `core`, `schema`, `query`, and the
   root Convex reference app stay pure/plain where appropriate. `runtime`,
   `testkit`, and Convex/Node/local/Cloudflare target packages now use Effect v3

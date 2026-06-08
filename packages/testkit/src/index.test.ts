@@ -16,6 +16,7 @@ import {
   runRuntimeConvergenceConformance,
   runRuntimeNetworkTransportConformance,
   runRuntimePersistenceConformance,
+  runRuntimeProjectionConformance,
   runRuntimeSchedulerConformance,
   runRuntimeTransportConformance,
   type RuntimeNetworkTransportConformanceTarget,
@@ -358,7 +359,20 @@ describe("@metacrdt/testkit", () => {
   test("combined conformance returns all checks", async () => {
     const report = await runRuntimeConformance(memoryTarget);
     expect(report.target).toBe("memory");
-    expect(report.checks).toHaveLength(8);
+    expect(report.checks).toHaveLength(14);
+  });
+
+  test("runtime projection conformance passes for the in-memory target", async () => {
+    const report = await runRuntimeProjectionConformance(memoryTarget);
+    expect(report.target).toBe("memory");
+    expect(report.checks).toEqual([
+      "projection-cardinality-one-winner",
+      "projection-cardinality-many-set",
+      "projection-entity-map",
+      "projection-bitemporal-coordinate",
+      "projection-audit-flags",
+      "projection-filtered-source-query",
+    ]);
   });
 
   test("persistence conformance passes for the localStorage target", async () => {

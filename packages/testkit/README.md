@@ -30,7 +30,23 @@ verified to behave identically at the boundaries that matter.
   - `deterministic-fold-convergence` — both replicas fold the merged log to the
     same cardinality-one winner and the same cardinality-many set.
   - `idempotent-second-sync` — a second exchange sends and inserts nothing.
-- **`runRuntimeConformance`** — runs both suites and returns the combined report.
+- **`runRuntimeProjectionConformance`** — that target-loaded event logs project
+  through the shared core fold exactly as SPEC §5 requires:
+  - `projection-cardinality-one-winner` — cardinality-one attributes pick the
+    `≺`-max visible assert.
+  - `projection-cardinality-many-set` — cardinality-many attributes return every
+    visible value.
+  - `projection-entity-map` — entity projection includes visible attributes and
+    omits tombstoned ones.
+  - `projection-bitemporal-coordinate` — valid-time coordinates select the
+    right historical/future value.
+  - `projection-audit-flags` — retracted/tombstoned values appear only through
+    explicit audit flags.
+  - `projection-filtered-source-query` — projection works over a target-filtered
+    event source such as `scan({ e })`. This proves the shared projection over
+    events returned by the target, not a full Datalog/query service.
+- **`runRuntimeConformance`** — runs EventStore, convergence, and projection
+  suites and returns the combined report.
 - **`runRuntimePersistenceConformance`** — that a durable Layer target survives
   runtime re-creation over the same backing store:
   - `event-log-survives-recreate` — the pre-restart event remains readable.
@@ -89,11 +105,12 @@ Testkit is the executable check on the guarantees the SPEC makes: §4 content
 addressing (`content-id-verification`), §5 the grow-only-set merge and the
 deterministic fold, and §8 version-vector anti-entropy. If a target passes
 `runRuntimeConformance`, it satisfies the log/sync convergence contract those
-sections define. If a durable target also passes
-`runRuntimePersistenceConformance`, its log/HLC/seq state survives runtime
-re-creation over the same backing store. `runRuntimeSchedulerConformance` proves
-the Effect scheduler service boundary for targets that expose an observable
-scheduler; it does not claim host wakeup durability.
+sections define, and it can project target-returned event logs through the shared
+core fold. If a durable target also passes `runRuntimePersistenceConformance`,
+its log/HLC/seq state survives runtime re-creation over the same backing store.
+`runRuntimeSchedulerConformance` proves the Effect scheduler service boundary
+for targets that expose an observable scheduler; it does not claim host wakeup
+durability.
 `runRuntimeTransportConformance` proves the Effect transport publish boundary;
 it does not claim peer discovery, delivery, retries, or relay semantics.
 `runRuntimeNetworkTransportConformance` proves peer delivery and late-join
@@ -126,18 +143,16 @@ can add `runRuntimeNetworkTransportConformance`.
 
 ## Scope Today, and What's Next
 
-The suite covers the **log + sync plane**, durable restart semantics, scheduler
-submission, the basic transport publish boundary, and the first network-delivery
-checks: event-store semantics, anti-entropy, the in-log fold, persistence of the
-event log/HLC/seq across re-creation, payload-preserving scheduler submission,
+The suite covers the **log + sync + projection plane**, durable restart
+semantics, scheduler submission, the basic transport publish boundary, and the
+first network-delivery checks: event-store semantics, anti-entropy, the in-log
+fold, projection from target-returned event sources, persistence of the event
+log/HLC/seq across re-creation, payload-preserving scheduler submission,
 event-batch preserving transport publication, and peer delivery/catch-up for the
 BroadcastChannel, p2p DataChannel, and Cloudflare Durable Object WebSocket relay
-harnesses. It does **not yet** cover live relay deployment auth/retry/durability
-or **projection conformance** — proving that two targets fold the same events
-into the same *bitemporal projection* and resolve the same cardinality-one winner
-through the shared projection path. Projection checks should be added once the
-fold/reconcile logic is shared out of
-`@metacrdt/convex` into `@metacrdt/core` (the keystone in
+harnesses. It does **not yet** cover live relay deployment auth/retry/durability,
+a full Datalog/query service contract, or materialized triple-store projection
+stores. Those checks should be added when the relevant target capabilities are
+shared beyond the Convex reference app (see
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md) and
-[docs/targets.md](../../docs/targets.md)). Until then, the cross-target guarantee
-is proven for the log, not yet for the materialized triple store.
+[docs/targets.md](../../docs/targets.md)).
