@@ -1,11 +1,10 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 43 (component-owned DAG wait/scheduler wakeups) has
-shipped.
+**Current goal:** Goal 44 (component-owned collect reminder/escalation timers)
+has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
-provider-backed login UI / production auth, live Cloudflare deployment/auth,
-component-owned collect reminder/escalation timers, or another parked
-Query/Rules item.
+provider-backed login UI / production auth, live Cloudflare deployment/auth, or
+another parked Query/Rules item.
 
 This plan is the operational goal file. Read it with:
 
@@ -80,7 +79,7 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 116 tests at last verification.
+- Convex backend tests are green: 117 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -304,6 +303,12 @@ arguments.
   - `collectionByToken` reads component-target form metadata from component-owned
     current state
   - host-target tokens still read host `formDef` facts
+- Component-owned collection reminder/escalation/expiry timers exist:
+  - component-owned collection run rows store bounded timer state
+  - app wrappers schedule reminder/escalation ticks for newly issued component
+    collection tokens and an expiry tick when an explicit expiry is requested
+  - scheduled ticks no-op once a run is completed, expired, or otherwise no
+    longer waiting
 
 ### Not Yet True
 
@@ -325,9 +330,9 @@ arguments.
   including `assert`, `notify`, subject-local `branch`, synchronous `action`, and
   `collect` parking through component collection tokens, and `wait` parking with
   a host-scheduled internal wake. The component now owns persisted DAG
-  run/timeline rows for that starter/resumer. Host-owned DAG flows still use the
-  host `flowRuns` table, and component-owned collect reminder/escalation timers
-  remain future work.
+  run/timeline rows for that starter/resumer. Component-owned collection runs now
+  support host-scheduled reminder/escalation/explicit-expiry ticks. Host-owned
+  DAG flows still use the host `flowRuns` table.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime.
 - Multi-replica sync is specified and now implemented as in-memory
@@ -4176,8 +4181,7 @@ Live smoke:
 
 ## Goal 43 — Component-Owned DAG Wait/Scheduler Wakeups
 
-**Status:** shipped for basic `wait` steps. Collection reminder/escalation timers
-remain future work.
+**Status:** shipped for basic `wait` steps.
 
 **Objective:** make component-owned DAG `wait` steps real: a flow can park in a
 component-owned DAG run, schedule a host internal wakeup, resume the same
@@ -4229,7 +4233,6 @@ convex/metacrdtComponent.test.ts
 
 ### Non-Goals
 
-- Do not implement component-owned collect reminder/escalation timers.
 - Do not implement delayed external action callbacks.
 - Do not migrate host `flows.startFlow`.
 - Do not make component functions depend on host auth/env; the host wrapper still
@@ -4270,6 +4273,109 @@ convex/metacrdtComponent.test.ts
     returned successfully.
   - `npx convex run flows:flowsForType '{"type":"Worker"}'` returned the
     configured Worker onboarding flow.
+
+---
+
+## Goal 44 — Component-Owned Collect Reminder/Escalation Timers
+
+**Status:** shipped for component-owned collection runs.
+
+**Objective:** make component-owned collection-token runs behave like the host
+collect runner's operational timers: newly issued component collection links can
+schedule reminder and escalation ticks, optionally schedule an explicit expiry
+tick, and no-op once the run is no longer waiting.
+
+### Scope
+
+Component package:
+
+```text
+packages/convex/src/component/schema.ts
+  flowRuns timer fields
+
+packages/convex/src/component/log.ts
+  tickCollection
+```
+
+Reference app wrapper:
+
+```text
+convex/metacrdtComponent.ts
+  startOwnedCollect
+  issueOwnedOpenCollections
+  runOwnedAction opensForm
+  startOwnedFlow collect steps
+  internal tickOwnedCollection
+```
+
+Tests:
+
+```text
+packages/convex/src/component/log.test.ts
+convex/metacrdtComponent.test.ts
+```
+
+### Semantics
+
+- Component-owned `flowRuns` remain operational component rows, not protocol
+  facts.
+- `issueCollection` records bounded timer metadata on the run:
+  `step`, `reminderSeconds`, `escalateSeconds`, `expireSeconds`, and timestamp
+  fields for reminder/escalation/expiry.
+- Host wrappers schedule `internal.metacrdtComponent.tickOwnedCollection` for
+  new component-owned runs only; reused live tokens do not schedule duplicate
+  ticks.
+- `tickOwnedCollection` calls the component-owned `log.tickCollection`.
+- `tickCollection`:
+  - no-ops unless the component run still has `status = "waiting"`;
+  - marks reminder ticks as `step = "reminded"`;
+  - marks escalation ticks as `step = "escalated"`;
+  - marks explicit expiry ticks as `status = "expired"`, `step = "expired"`;
+  - updates only bounded scalar fields on the run row.
+
+### Non-Goals
+
+- Do not send email/SMS/push notifications.
+- Do not implement multi-recipient escalation routing.
+- Do not migrate host-owned collect flows to the component.
+- Do not add component-owned rule/materialized projections beyond the existing
+  component compliance slice.
+
+### Acceptance Criteria
+
+- A component-owned collection run can record reminder, escalation, and expiry
+  ticks in component-owned state.
+- Scheduled reminder/escalation ticks fire for a newly issued component-owned
+  collection run.
+- Ticks no-op after collection submission has completed the run.
+- Explicit expiry transitions a still-waiting component run to `expired`, and
+  `/collect` refuses the token as expired.
+- Component-owned collection runs still do not create host `flowRuns` rows.
+
+### Verification
+
+- `npx vitest run packages/convex/src/component/log.test.ts convex/metacrdtComponent.test.ts convex/forms.test.ts`
+  passed (24 focused tests).
+- Full gate passed:
+  - `npm run test:core` passed (46 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm test` passed (17 backend test files, 117 tests).
+  - `npm run test:runtime` passed (18 tests).
+  - `npm run test:local` passed (13 tests).
+  - `npm run test:cloudflare` passed (12 tests).
+  - `npm run test:forma` passed (9 tests).
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+- Deployed with `npx convex dev --once` and
+  `npx @convex-dev/static-hosting upload`.
+- Live smoke passed:
+  - `curl -I https://chatty-hare-94.convex.site` returned `HTTP/2 200`.
+  - `npx convex run metacrdtComponent:listOwnedCollections '{"limit":5}'`
+    returned successfully.
+  - `npx convex run metacrdtComponent:listOwnedFlowRuns '{"limit":5}'`
+    returned successfully.
 
 ---
 
@@ -4318,7 +4424,7 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Goal 41: component-owned DAG flow starter/resumer.
 - [x] Goal 42: persisted component-owned DAG run/timeline storage.
 - [x] Goal 43: component-owned DAG wait/scheduler wakeups.
-- [ ] Component-owned collect reminder/escalation timers after Goal 43.
+- [x] Goal 44: component-owned collect reminder/escalation timers.
 
 ### Auth / Privacy
 

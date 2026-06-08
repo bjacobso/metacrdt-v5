@@ -152,6 +152,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   park the component-owned DAG run, schedule `internal.metacrdtComponent.wakeOwnedFlow`,
   resume the same run at the wait step's `next`, and continue writing
   component-owned fact effects under a system actor.
+- [x] **Goal 44: component-owned collect reminder/escalation timers** —
+  component-owned collection runs now record bounded timer state, host wrappers
+  schedule reminder/escalation ticks for newly issued component-owned collection
+  tokens, explicit expiry can mark still-waiting runs `expired`, and ticks no-op
+  after submission completes a run.
 - [x] **Datalog disjunction** — Datalog `where` bodies now support bounded
   `{ or: [[...clauses], ...] }` branches. Branches run from the current binding,
   union/dedupe their bindings with provenance merged, and continue into later
@@ -191,7 +196,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   hello/delta catch-up, directed deltas, lifecycle cleanup, and multi-hop gossip.
 - [ ] Targets: live Cloudflare deployment/auth and migrating more reference
   runtime business logic onto `@metacrdt/convex` component-owned state
-  (component-owned collect reminder/escalation timers remain).
+  (component-owned collect reminder/escalation/expiry timers now shipped).
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -256,9 +261,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] After Goal 40, choose component-owned DAG flow starter/resumer.
 - [x] After Goal 41, choose persisted component-owned DAG run/timeline storage.
 - [x] After Goal 42, choose component-owned wait/scheduler support.
-- [ ] After Goal 43, choose between provider-backed login UI / production auth,
-  live Cloudflare deployment/auth, component-owned collect reminder/escalation
-  timers, or a parked Query/Rules item.
+- [x] After Goal 43, choose component-owned collect reminder/escalation timers.
+- [ ] After Goal 44, choose between provider-backed login UI / production auth,
+  live Cloudflare deployment/auth, or a parked Query/Rules item.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -283,6 +288,19 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — component-owned collect reminder/escalation timers
+- [x] **Goal 44 shipped:** component-owned collection-token runs now store
+  bounded timer state (`step`, configured seconds, reminder/escalation/expiry
+  timestamps) inside the `@metacrdt/convex` component.
+- [x] **Host-owned scheduler boundary preserved.** App wrappers schedule
+  `internal.metacrdtComponent.tickOwnedCollection` for newly issued component
+  collection runs, while the component owns the durable run row and the
+  `log.tickCollection` state transition.
+- [x] **Focused regressions:** direct component tests cover reminder,
+  escalation, expiry, and post-expiry no-op; mounted wrapper tests prove
+  scheduled ticks fire, completed runs ignore later ticks, and expired component
+  tokens are refused by `/collect`.
 
 ### 2026-06-07 — component-owned DAG wait/scheduler wakeups
 - [x] **Goal 43 shipped:** component-owned `wait` steps now persist `waiting`

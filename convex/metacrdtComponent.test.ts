@@ -882,6 +882,103 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     );
   });
 
+  test("component-owned collection timers remind, escalate, expire, and no-op after submit", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = mountedTest();
+
+      await t.mutation(api.metacrdtComponent.defineOwnedForm, {
+        form: "owned_timer",
+        title: "Owned Timer",
+        fields: [{ name: "value", label: "Value", type: "string" }],
+      });
+      await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+        e: "component-timer:worker",
+        type: "Worker",
+        name: "Timer Worker",
+      });
+
+      const waiting = await t.mutation(api.metacrdtComponent.startOwnedCollect, {
+        subject: "component-timer:worker",
+        form: "owned_timer",
+        scope: "client:acme",
+        reminderSeconds: 1,
+        escalateSeconds: 2,
+      });
+      await flush(t);
+
+      const escalated = await t.query(api.metacrdtComponent.listOwnedCollections, {
+        subject: "component-timer:worker",
+      });
+      expect(escalated).toContainEqual(
+        expect.objectContaining({
+          runId: waiting.runId,
+          status: "waiting",
+          step: "escalated",
+          reminderSeconds: 1,
+          escalateSeconds: 2,
+          remindedAt: expect.any(Number),
+          escalatedAt: expect.any(Number),
+        }),
+      );
+
+      const expiring = await t.mutation(api.metacrdtComponent.startOwnedCollect, {
+        subject: "component-timer:worker",
+        form: "owned_timer",
+        scope: "client:globex",
+        reminderSeconds: 1,
+        escalateSeconds: 2,
+        expireSeconds: 3,
+      });
+      expect(
+        await t.mutation(api.forms.submitCollection, {
+          token: expiring.token,
+          values: { value: "submitted before timers" },
+        }),
+      ).toEqual({ ok: true });
+      await flush(t);
+
+      const afterSubmit = await t.query(api.metacrdtComponent.listOwnedCollections, {
+        subject: "component-timer:worker",
+      });
+      const completed = afterSubmit.find((run) => run.runId === expiring.runId);
+      expect(completed).toMatchObject({
+        status: "completed",
+        context: { value: "submitted before timers" },
+      });
+      expect(completed?.remindedAt).toBeUndefined();
+      expect(completed?.escalatedAt).toBeUndefined();
+      expect(completed?.expiredAt).toBeUndefined();
+
+      const expiringOpen = await t.mutation(api.metacrdtComponent.startOwnedCollect, {
+        subject: "component-timer:worker",
+        form: "owned_timer",
+        scope: "client:initech",
+        reminderSeconds: 1,
+        escalateSeconds: 2,
+        expireSeconds: 3,
+      });
+      await flush(t);
+
+      const expired = await t.query(api.metacrdtComponent.listOwnedCollections, {
+        subject: "component-timer:worker",
+      });
+      expect(expired).toContainEqual(
+        expect.objectContaining({
+          runId: expiringOpen.runId,
+          status: "expired",
+          step: "expired",
+          expiredAt: expect.any(Number),
+        }),
+      );
+      expect(
+        await t.query(api.forms.collectionByToken, { token: expiringOpen.token }),
+      ).toEqual({ found: false, reason: "expired" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("plans component-owned compliance and issues missing collection runs", async () => {
     const t = mountedTest();
 

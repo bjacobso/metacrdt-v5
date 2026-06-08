@@ -13,6 +13,9 @@ const componentInternal = internal as unknown as {
     getCurrentEntity: any;
     listCurrentEntities: any;
     rebuildProjections: any;
+    issueCollection: any;
+    tickCollection: any;
+    listCollections: any;
     recordDagRun: any;
     listDagRuns: any;
   };
@@ -565,5 +568,81 @@ describe("@metacrdt/convex component-owned protocol log", () => {
     });
     expect(attrEvents).toHaveLength(1);
     expect(attrEvents[0]).toMatchObject({ e: "worker:3", a: "worker.status" });
+  });
+
+  test("ticks component-owned collection reminders, escalations, and expiry", async () => {
+    const t = initComponentTest();
+    const issued = await t.mutation(componentInternal.log.issueCollection, {
+      actorId: actor.actorId,
+      actorType: actor.actorType,
+      subject: "worker:collect-timer",
+      form: "i9",
+      scope: "employer:acme",
+      reminderSeconds: 1,
+      escalateSeconds: 2,
+      expireMs: 3_000,
+      now: 60_000,
+    });
+
+    expect(issued.reused).toBe(false);
+
+    const reminded = await t.mutation(componentInternal.log.tickCollection, {
+      runId: issued.runId,
+      phase: "reminder",
+      now: 61_000,
+    });
+    expect(reminded).toMatchObject({
+      runId: issued.runId,
+      status: "waiting",
+      step: "reminded",
+      reminderSeconds: 1,
+      escalateSeconds: 2,
+      expireSeconds: 3,
+      remindedAt: 61_000,
+    });
+
+    const escalated = await t.mutation(componentInternal.log.tickCollection, {
+      runId: issued.runId,
+      phase: "escalate",
+      now: 62_000,
+    });
+    expect(escalated).toMatchObject({
+      runId: issued.runId,
+      status: "waiting",
+      step: "escalated",
+      escalatedAt: 62_000,
+    });
+
+    const expired = await t.mutation(componentInternal.log.tickCollection, {
+      runId: issued.runId,
+      phase: "expire",
+      now: 63_000,
+    });
+    expect(expired).toMatchObject({
+      runId: issued.runId,
+      status: "expired",
+      step: "expired",
+      expiredAt: 63_000,
+    });
+
+    expect(
+      await t.mutation(componentInternal.log.tickCollection, {
+        runId: issued.runId,
+        phase: "reminder",
+        now: 64_000,
+      }),
+    ).toBeNull();
+
+    const listed = await t.query(componentInternal.log.listCollections, {
+      subject: "worker:collect-timer",
+    });
+    expect(listed[0]).toMatchObject({
+      runId: issued.runId,
+      status: "expired",
+      step: "expired",
+      remindedAt: 61_000,
+      escalatedAt: 62_000,
+      expiredAt: 63_000,
+    });
   });
 });

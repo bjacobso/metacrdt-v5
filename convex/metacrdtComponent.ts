@@ -119,11 +119,24 @@ const ownedCollectionRunValidator = v.object({
   status: v.string(),
   issuedAt: v.number(),
   updatedAt: v.number(),
+  step: v.optional(v.string()),
+  reminderSeconds: v.optional(v.number()),
+  escalateSeconds: v.optional(v.number()),
+  expireSeconds: v.optional(v.number()),
+  remindedAt: v.optional(v.number()),
+  escalatedAt: v.optional(v.number()),
+  expiredAt: v.optional(v.number()),
   token: v.string(),
   tokenExpiresAt: v.optional(v.number()),
   tokenConsumedAt: v.optional(v.number()),
   context: v.optional(v.any()),
 });
+
+const ownedCollectionTickPhase = v.union(
+  v.literal("reminder"),
+  v.literal("escalate"),
+  v.literal("expire"),
+);
 
 const runOwnedActionResultValidator = v.object({
   action: v.string(),
@@ -239,6 +252,11 @@ const startOwnedFlowResultValidator = v.object({
 
 const ownedFlowWakeResultValidator = v.union(
   startOwnedFlowResultValidator,
+  v.null(),
+);
+
+const ownedCollectionTickResultValidator = v.union(
+  ownedCollectionRunValidator,
   v.null(),
 );
 
@@ -420,6 +438,53 @@ type CollectResult = {
   collectUrl: string;
   reused: boolean;
 };
+
+const OWNED_COLLECTION_DEFAULTS = {
+  reminderSeconds: 10,
+  escalateSeconds: 30,
+};
+
+type OwnedCollectionTimerOptions = {
+  reminderSeconds?: number;
+  escalateSeconds?: number;
+  expireSeconds?: number;
+};
+
+async function scheduleOwnedCollectionTimers(
+  ctx: MutationCtx,
+  collect: CollectResult,
+  opts: OwnedCollectionTimerOptions = {},
+): Promise<void> {
+  if (collect.reused) return;
+
+  const reminderSeconds = Math.max(
+    0,
+    opts.reminderSeconds ?? OWNED_COLLECTION_DEFAULTS.reminderSeconds,
+  );
+  const escalateSeconds = Math.max(
+    0,
+    opts.escalateSeconds ?? OWNED_COLLECTION_DEFAULTS.escalateSeconds,
+  );
+
+  await ctx.scheduler.runAfter(
+    reminderSeconds * 1000,
+    internal.metacrdtComponent.tickOwnedCollection,
+    { runId: collect.runId, phase: "reminder" },
+  );
+  await ctx.scheduler.runAfter(
+    escalateSeconds * 1000,
+    internal.metacrdtComponent.tickOwnedCollection,
+    { runId: collect.runId, phase: "escalate" },
+  );
+
+  if (opts.expireSeconds !== undefined) {
+    await ctx.scheduler.runAfter(
+      Math.max(0, opts.expireSeconds) * 1000,
+      internal.metacrdtComponent.tickOwnedCollection,
+      { runId: collect.runId, phase: "expire" },
+    );
+  }
+}
 
 type OwnedDagRun = {
   runId: string;
@@ -970,6 +1035,8 @@ export const startOwnedCollect = mutation({
     subject: v.string(),
     form: v.string(),
     scope: v.string(),
+    reminderSeconds: v.optional(v.number()),
+    escalateSeconds: v.optional(v.number()),
     expireSeconds: v.optional(v.number()),
   },
   returns: collectResultValidator,
@@ -981,7 +1048,7 @@ export const startOwnedCollect = mutation({
     if (entity === null) {
       throw new Error(`component-owned entity ${args.subject} not found`);
     }
-    return await ctx.runMutation(
+    const collect = await ctx.runMutation(
       components.metacrdt.log.issueCollection,
       withoutUndefined({
         ...actor,
@@ -990,7 +1057,31 @@ export const startOwnedCollect = mutation({
         scope: args.scope,
         expireMs:
           args.expireSeconds === undefined ? undefined : args.expireSeconds * 1000,
+        reminderSeconds:
+          args.reminderSeconds ?? OWNED_COLLECTION_DEFAULTS.reminderSeconds,
+        escalateSeconds:
+          args.escalateSeconds ?? OWNED_COLLECTION_DEFAULTS.escalateSeconds,
       }),
+    );
+    await scheduleOwnedCollectionTimers(ctx, collect, {
+      reminderSeconds: args.reminderSeconds,
+      escalateSeconds: args.escalateSeconds,
+      expireSeconds: args.expireSeconds,
+    });
+    return collect;
+  },
+});
+
+export const tickOwnedCollection = internalMutation({
+  args: {
+    runId: v.string(),
+    phase: ownedCollectionTickPhase,
+  },
+  returns: ownedCollectionTickResultValidator,
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(
+      components.metacrdt.log.tickCollection,
+      args,
     );
   },
 });
@@ -1034,6 +1125,8 @@ export const ownedCompliancePlan = query({
 export const issueOwnedOpenCollections = mutation({
   args: {
     worker: v.string(),
+    reminderSeconds: v.optional(v.number()),
+    escalateSeconds: v.optional(v.number()),
     expireSeconds: v.optional(v.number()),
   },
   returns: ownedComplianceIssueResultValidator,
@@ -1054,8 +1147,17 @@ export const issueOwnedOpenCollections = mutation({
             args.expireSeconds === undefined
               ? undefined
               : args.expireSeconds * 1000,
+          reminderSeconds:
+            args.reminderSeconds ?? OWNED_COLLECTION_DEFAULTS.reminderSeconds,
+          escalateSeconds:
+            args.escalateSeconds ?? OWNED_COLLECTION_DEFAULTS.escalateSeconds,
         }),
       );
+      await scheduleOwnedCollectionTimers(ctx, issued, {
+        reminderSeconds: args.reminderSeconds,
+        escalateSeconds: args.escalateSeconds,
+        expireSeconds: args.expireSeconds,
+      });
       items.push({
         form: item.form,
         scope: item.scope,
@@ -1351,6 +1453,16 @@ async function runOwnedFlowFromStep(
           ),
         );
       } else {
+        const reminderSeconds =
+          typeof cfg.reminderSeconds === "number"
+            ? cfg.reminderSeconds
+            : undefined;
+        const escalateSeconds =
+          typeof cfg.escalateSeconds === "number"
+            ? cfg.escalateSeconds
+            : undefined;
+        const expireSeconds =
+          typeof cfg.expireSeconds === "number" ? cfg.expireSeconds : undefined;
         const collect = await ctx.runMutation(
           components.metacrdt.log.issueCollection,
           withoutUndefined({
@@ -1358,8 +1470,19 @@ async function runOwnedFlowFromStep(
             subject: args.subject,
             form,
             scope,
+            expireMs:
+              expireSeconds === undefined ? undefined : expireSeconds * 1000,
+            reminderSeconds:
+              reminderSeconds ?? OWNED_COLLECTION_DEFAULTS.reminderSeconds,
+            escalateSeconds:
+              escalateSeconds ?? OWNED_COLLECTION_DEFAULTS.escalateSeconds,
           }),
         );
+        await scheduleOwnedCollectionTimers(ctx, collect, {
+          reminderSeconds,
+          escalateSeconds,
+          expireSeconds,
+        });
         events.push(
           ownedFlowEvent(
             step.id,
@@ -1570,30 +1693,33 @@ export const runOwnedAction = mutation({
       );
     }
 
-    const collect =
-      def.opensForm !== undefined
-        ? await ctx.runMutation(
-            components.metacrdt.log.issueCollection,
-            withoutUndefined({
-              ...actor,
-              subject: args.entity,
-              form: resolveActionString(
-                "form",
-                def.opensForm.form,
-                args.entity,
-                def.fields,
-                actionArgs,
-              ),
-              scope: resolveActionString(
-                "scope",
-                def.opensForm.scope,
-                args.entity,
-                def.fields,
-                actionArgs,
-              ),
-            }),
-          )
-        : undefined;
+    let collect: CollectResult | undefined;
+    if (def.opensForm !== undefined) {
+      collect = await ctx.runMutation(
+        components.metacrdt.log.issueCollection,
+        withoutUndefined({
+          ...actor,
+          subject: args.entity,
+          form: resolveActionString(
+            "form",
+            def.opensForm.form,
+            args.entity,
+            def.fields,
+            actionArgs,
+          ),
+          scope: resolveActionString(
+            "scope",
+            def.opensForm.scope,
+            args.entity,
+            def.fields,
+            actionArgs,
+          ),
+          reminderSeconds: OWNED_COLLECTION_DEFAULTS.reminderSeconds,
+          escalateSeconds: OWNED_COLLECTION_DEFAULTS.escalateSeconds,
+        }),
+      );
+      await scheduleOwnedCollectionTimers(ctx, collect);
+    }
 
     return withoutUndefined({ action: args.action, asserted, collect });
   },

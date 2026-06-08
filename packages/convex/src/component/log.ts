@@ -144,11 +144,24 @@ const collectionRunValidator = v.object({
   status: v.string(),
   issuedAt: v.number(),
   updatedAt: v.number(),
+  step: v.optional(v.string()),
+  reminderSeconds: v.optional(v.number()),
+  escalateSeconds: v.optional(v.number()),
+  expireSeconds: v.optional(v.number()),
+  remindedAt: v.optional(v.number()),
+  escalatedAt: v.optional(v.number()),
+  expiredAt: v.optional(v.number()),
   token: v.string(),
   tokenExpiresAt: v.optional(v.number()),
   tokenConsumedAt: v.optional(v.number()),
   context: v.optional(v.any()),
 });
+
+const collectionTickPhase = v.union(
+  v.literal("reminder"),
+  v.literal("escalate"),
+  v.literal("expire"),
+);
 
 const dagRunStatus = v.union(
   v.literal("running"),
@@ -486,6 +499,13 @@ function collectionRunSummary(
     status: run.status,
     issuedAt: run.issuedAt,
     updatedAt: run.updatedAt,
+    step: run.step,
+    reminderSeconds: run.reminderSeconds,
+    escalateSeconds: run.escalateSeconds,
+    expireSeconds: run.expireSeconds,
+    remindedAt: run.remindedAt,
+    escalatedAt: run.escalatedAt,
+    expiredAt: run.expiredAt,
     token: run.token,
     tokenExpiresAt: run.tokenExpiresAt,
     tokenConsumedAt: run.tokenConsumedAt,
@@ -815,6 +835,8 @@ export const issueCollection = mutation({
     form: v.string(),
     scope: v.string(),
     expireMs: v.optional(v.number()),
+    reminderSeconds: v.optional(v.number()),
+    escalateSeconds: v.optional(v.number()),
     now: v.optional(v.number()),
   },
   returns: collectionResultValidator,
@@ -846,11 +868,54 @@ export const issueCollection = mutation({
         status: "waiting" as const,
         issuedAt: now,
         updatedAt: now,
+        step: "issued",
+        reminderSeconds: args.reminderSeconds,
+        escalateSeconds: args.escalateSeconds,
+        expireSeconds:
+          args.expireMs === undefined ? undefined : args.expireMs / 1000,
         token,
         tokenExpiresAt: now + (args.expireMs ?? DEFAULT_TOKEN_TTL_MS),
       }),
     );
     return { runId, token, collectUrl: `/collect?token=${token}`, reused: false };
+  },
+});
+
+export const tickCollection = mutation({
+  args: {
+    runId: v.id("flowRuns"),
+    phase: collectionTickPhase,
+    now: v.optional(v.number()),
+  },
+  returns: v.union(collectionRunValidator, v.null()),
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (run === null || run.status !== "waiting") return null;
+
+    const now = args.now ?? Date.now();
+    if (args.phase === "expire") {
+      await ctx.db.patch(run._id, {
+        status: "expired",
+        step: "expired",
+        updatedAt: now,
+        expiredAt: now,
+      });
+    } else if (args.phase === "reminder") {
+      await ctx.db.patch(run._id, {
+        step: "reminded",
+        updatedAt: now,
+        remindedAt: now,
+      });
+    } else {
+      await ctx.db.patch(run._id, {
+        step: "escalated",
+        updatedAt: now,
+        escalatedAt: now,
+      });
+    }
+
+    const next = await ctx.db.get(run._id);
+    return next === null ? null : collectionRunSummary(next);
   },
 });
 

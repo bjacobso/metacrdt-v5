@@ -184,9 +184,11 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           actorId: string;
           actorType: "user" | "system" | "agent" | "migration";
+          escalateSeconds?: number;
           expireMs?: number;
           form: string;
           now?: number;
+          reminderSeconds?: number;
           scope: string;
           subject: string;
         },
@@ -199,11 +201,18 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         { limit?: number; subject?: string },
         Array<{
           context?: any;
+          escalateSeconds?: number;
+          escalatedAt?: number;
+          expireSeconds?: number;
+          expiredAt?: number;
           form: string;
           issuedAt: number;
+          remindedAt?: number;
+          reminderSeconds?: number;
           runId: string;
           scope: string;
           status: string;
+          step?: string;
           subject: string;
           token: string;
           tokenConsumedAt?: number;
@@ -359,6 +368,36 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         { now?: number; token: string; values: any },
         { ok: true } | { ok: false; reason: string },
+        Name
+      >;
+      tickCollection: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          now?: number;
+          phase: "reminder" | "escalate" | "expire";
+          runId: string;
+        },
+        {
+          context?: any;
+          escalateSeconds?: number;
+          escalatedAt?: number;
+          expireSeconds?: number;
+          expiredAt?: number;
+          form: string;
+          issuedAt: number;
+          remindedAt?: number;
+          reminderSeconds?: number;
+          runId: string;
+          scope: string;
+          status: string;
+          step?: string;
+          subject: string;
+          token: string;
+          tokenConsumedAt?: number;
+          tokenExpiresAt?: number;
+          updatedAt: number;
+        } | null,
         Name
       >;
     };
