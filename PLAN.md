@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 63 (production fact comparison reads from the event log) has
+**Current goal:** Goal 64 (production typed entity table reads from the event log) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -10,12 +10,14 @@ already-proven `entityFromEventLog` object fold into production
 `api.facts.getEntity`. Goal 62 moved production bitemporal entity reads
 (`entityAsOf`, `entityFactsAsOf`) to protocol-shaped `factEvents`. Goal 63 moved
 production fact comparisons (`api.facts.compareFacts`) to the same event-log
-point fold, while leaving typed/listing reads on `facts` / `currentFacts` until a
-later goal. The next active goal should be chosen from the remaining TODO
-candidates: typed entity list/search reads (`queryEntities`), provider-backed
-login UI / production auth, live Cloudflare deployment/auth, or a carefully
-scoped Confect wrapper now that the main production base fact reads have moved
-to event-log folds.
+point fold. Goal 64 moved the production typed entity table
+(`api.entities.queryEntities`) to event-log-backed Datalog/filtering plus
+event-log-backed row loading and sorting, while leaving type discovery, picker
+lists, and type-attribute discovery on `currentFacts` until later goals. The next
+active goal should be chosen from the remaining TODO candidates: type discovery /
+picker reads, provider-backed login UI / production auth, live Cloudflare
+deployment/auth, or a carefully scoped Confect wrapper now that the main
+production base fact reads have moved to event-log folds.
 
 This plan is the operational goal file. Read it with:
 
@@ -101,6 +103,10 @@ arguments.
   bitemporal coordinates by running the same event-log point fold twice,
   preserving read authorization and the existing `{ before, after, changed,
   denied }` response shape.
+- Production `api.entities.queryEntities` uses the event-log-base + derived
+  Datalog source for type membership and filters, then loads table row attributes
+  and sort values from protocol-shaped `factEvents` instead of `currentFacts`,
+  preserving pagination, sorting, compiled query reporting, and denied markers.
 - `api.facts.entityFromEventLog` folds a host entity directly from
   protocol-shaped `factEvents` with `@metacrdt/core`, including schema
   cardinality facts from the same log, and redacts through the same read-auth
@@ -139,7 +145,7 @@ arguments.
   shared event-log triple source instead of scanning `facts.by_a`, preserving
   path provenance through compatibility `factId`s while still materializing
   closure rows into `derivedFacts`.
-- Convex backend tests are green: 145 tests at last verification.
+- Convex backend tests are green: 147 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -421,7 +427,8 @@ arguments.
 - Production `getEntity` now uses the same bounded event-log fold as
   `entityFromEventLog`; production `entityAsOf` and `entityFactsAsOf` also fold
   from protocol-shaped `factEvents`.
-- Typed entity list/search reads still use `facts` / `currentFacts`.
+- Type discovery (`listEntityTypes`), picker lists (`listEntities`), and
+  type-attribute discovery (`typeAttributes`) still use `currentFacts`.
 - `entityFromEventLog` remains intentionally bounded and proof/read-model
   oriented, returning coordinate/skipped-legacy counts that production
   `getEntity` does not expose.
@@ -5288,6 +5295,111 @@ TODO.md
 
 ---
 
+## Goal 64 — Production Typed Entity Table Reads from the Event Log
+
+**Status:** shipped in the Convex reference runtime.
+
+**Objective:** make production `api.entities.queryEntities` use
+protocol-shaped `factEvents` for typed entity membership/filtering, row loading,
+and sort values instead of the `facts` / `currentFacts` projections.
+
+This is the table read behind the schema-driven Entities page. The previous
+read-path goals moved point facts, object reads, bitemporal object reads, and
+fact comparisons. This slice moves the primary typed table/list read while
+leaving cheaper type discovery and picker APIs for later.
+
+### Scope
+
+Backend:
+
+```text
+convex/entities.ts
+  queryEntities
+  loadAttributes
+```
+
+Tests:
+
+```text
+convex/appconfig.test.ts
+convex/readAuth.test.ts
+```
+
+Docs:
+
+```text
+README.md
+PLAN.md
+TODO.md
+```
+
+### Semantics
+
+- `queryEntities` keeps its existing public shape:
+  `{ page, total, compiled, continueCursor, isDone }`.
+- Type membership and filters run through Datalog with
+  `eventLogBaseWithDerivedTripleSource`, preserving the old base+derived query
+  semantics while moving base facts off `facts`.
+- Row attributes are loaded from `eventLogTripleSource` so table cells do not
+  trust `currentFacts`.
+- Sort values are loaded from `eventLogTripleSource` for the requested sort
+  attribute. Read authorization is enforced for sort lookups, so unreadable
+  attributes sort as missing instead of leaking values.
+- Row redaction still uses `redactAttributeMap`, preserving `denied` markers in
+  entity table rows.
+
+### Non-Goals
+
+- Do not replace `listEntityTypes`, `listEntities`, or `typeAttributes` in this
+  slice.
+- Do not remove or stop maintaining `facts` / `currentFacts`.
+- Do not backfill legacy `factEvents` without protocol metadata.
+- Do not migrate this code to Confect in this slice.
+
+### Implementation
+
+- [x] Inject `eventLogBaseWithDerivedTripleSource` into the `queryEntities`
+  filter Datalog call.
+- [x] Replace row loading with an event-log-base fold over `[id, ?a, ?v]`.
+- [x] Replace sort value lookup with an event-log-base fold over
+  `[?e, sort.attribute, ?v]`.
+- [x] Preserve pagination, compiled query reporting, and row redaction.
+
+### Acceptance Criteria
+
+- For ordinary protocol-shaped writes, `queryEntities` still returns the same
+  schema-driven rows used by the Entities page.
+- If `currentFacts` is corrupted or removed for a listed entity, production
+  `queryEntities` still returns that entity and its visible table cells from
+  `factEvents`.
+- PII/read-grant behavior remains unchanged: ungranted sensitive attributes are
+  omitted from table rows and reported in `denied`; granted rows include values.
+
+### Verification
+
+- `npx vitest run convex/appconfig.test.ts convex/readAuth.test.ts convex/triples.test.ts`
+  passed (34 tests).
+- Broader gate passed:
+  - `npx convex codegen` passed.
+  - `npm test` passed.
+  - `npm run test:convex-package` passed.
+  - `npm run test:core` passed.
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+  - `git diff --check` passed.
+
+### Definition of Done
+
+Goal 64 is complete when production `api.entities.queryEntities` no longer uses
+`facts` / `currentFacts` for type membership/filtering, row attributes, or sort
+values; compatibility/read-auth tests pass; docs record the remaining
+projection-backed type discovery / picker APIs; and the change is committed and
+pushed.
+
+---
+
 ## Goal 63 — Production Fact Comparison Reads from the Event Log
 
 **Status:** shipped in the Convex reference runtime.
@@ -5489,7 +5601,7 @@ TODO.md
 
 Goal 62 is complete when production `entityAsOf` and `entityFactsAsOf` no longer
 read the `facts` projection, all compatibility/read-auth tests pass, docs record
-the remaining projection-backed `compareFacts` / `queryEntities` surface, and
+the then-remaining projection-backed `compareFacts` / `queryEntities` surface, and
 the change is committed and pushed.
 
 ---
@@ -5616,8 +5728,8 @@ Goal 51.
 
 This was the next host read-path migration step after Goal 59. Datalog now
 solves base facts from the event log, and generic fact point reads do the same.
-Object-level `getEntity` / `queryEntities` reads remain on `currentFacts` for a
-later goal.
+Object-level `getEntity` / `queryEntities` reads remained on `currentFacts` for
+later goals at the time this slice shipped.
 
 ### Why This Before Confect
 
@@ -5691,8 +5803,8 @@ TODO.md
 ### Non-Goals
 
 - Do not replace `getEntity`, `entityAsOf`, `entityFactsAsOf`, or
-  `queryEntities` yet. Those still use `facts` / `currentFacts` until a later
-  object-read goal.
+  `queryEntities` in this slice. Those were intentionally left for later
+  object/list read goals.
 - Do not remove or stop maintaining `facts` / `currentFacts`.
 - Do not rewrite `queryFactsFromEventLog`'s proof return shape unless needed to
   share implementation safely.

@@ -2,6 +2,10 @@ import { query } from "./_generated/server";
 import { QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { COMPARISON_OPS, project, runWhere } from "./lib/engine";
+import {
+  eventLogBaseWithDerivedTripleSource,
+  eventLogTripleSource,
+} from "./lib/eventLogTripleSource";
 import { META, typeNameOf } from "./lib/meta";
 import { Origin, entityOrigin, isSystemEntity, typeOrigin } from "./lib/origin";
 import { redactAttributeMap, type DeniedAttribute } from "./lib/readAuth";
@@ -38,10 +42,6 @@ function coerce(raw: string): unknown {
   }
 }
 
-function firstValue(vals: unknown[]): unknown {
-  return vals.length > 0 ? vals[0] : undefined;
-}
-
 function compareForSort(a: unknown, b: unknown): number {
   if (a === undefined && b === undefined) return 0;
   if (a === undefined) return 1; // missing sorts last
@@ -54,16 +54,20 @@ function compareForSort(a: unknown, b: unknown): number {
 async function loadAttributes(
   ctx: QueryCtx,
   e: string,
+  coord: { txTime: number; validTime: number } = {
+    txTime: Date.now(),
+    validTime: Date.now(),
+  },
 ): Promise<{
   attributes: Record<string, unknown[]>;
   denied: DeniedAttribute[];
 }> {
-  const rows = await ctx.db
-    .query("currentFacts")
-    .withIndex("by_e", (q) => q.eq("e", e))
-    .collect();
+  const bindings = await runWhere(ctx, [[e, "?a", "?v"]], coord, {}, {
+    source: eventLogTripleSource,
+  });
+  const rows = project(bindings, ["?a", "?v"]);
   const attrs: Record<string, unknown[]> = {};
-  for (const r of rows) (attrs[r.a] ??= []).push(r.v);
+  for (const r of rows) (attrs[String(r.a)] ??= []).push(r.v);
   return await redactAttributeMap(ctx, e, attrs);
 }
 
@@ -343,19 +347,32 @@ export const queryEntities = query({
     const coord = { txTime: Date.now(), validTime: Date.now() };
     const bindings = await runWhere(ctx, where, coord, {}, {
       enforceReadAuth: true,
+      source: eventLogBaseWithDerivedTripleSource,
     });
-    let ids = project(bindings, ["?e"]).map((r) => String(r.e));
+    let ids = [...new Set(project(bindings, ["?e"]).map((r) => String(r.e)))];
 
-    // Sort by an attribute via a single indexed scan (id -> value map), or by
-    // id for a stable default.
+    // Sort by an attribute via the event-log base source (id -> first visible
+    // value map), or by id for a stable default.
     if (args.sort) {
-      const valRows = await ctx.db
-        .query("currentFacts")
-        .withIndex("by_a", (q) => q.eq("a", args.sort!.attribute))
-        .take(SAMPLE);
+      const idSet = new Set(ids);
+      const sortRows = project(
+        await runWhere(ctx, [["?e", args.sort.attribute, "?v"]], coord, {}, {
+          enforceReadAuth: true,
+          source: eventLogTripleSource,
+        }),
+        ["?e", "?v"],
+      );
+      const valuesById = new Map<string, unknown[]>();
+      for (const row of sortRows) {
+        const id = String(row.e);
+        if (!idSet.has(id)) continue;
+        const values = valuesById.get(id) ?? [];
+        values.push(row.v);
+        valuesById.set(id, values);
+      }
       const valueOf = new Map<string, unknown>();
-      for (const r of valRows) {
-        if (!valueOf.has(r.e)) valueOf.set(r.e, r.v);
+      for (const [id, values] of valuesById) {
+        valueOf.set(id, [...values].sort(compareForSort)[0]);
       }
       const dir = args.sort.dir === "desc" ? -1 : 1;
       ids.sort(
@@ -370,7 +387,7 @@ export const queryEntities = query({
     const page = await Promise.all(
       pageIds.map(async (id) => ({
         id,
-        ...(await loadAttributes(ctx, id)),
+        ...(await loadAttributes(ctx, id, coord)),
       })),
     );
 

@@ -81,10 +81,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `factEvents` instead of reading `currentFacts`. Production `entityAsOf` and
   `entityFactsAsOf` now fold bitemporal entity state from protocol-shaped
   `factEvents` instead of reading `facts`. Production `compareFacts` now runs the
-  event-log point fold at both requested coordinates. Remaining: production
-  typed/listing reads still use the hand-maintained `facts` / `currentFacts`
-  projections; closure semi-naive add still receives the changed projection
-  `factId`; derived rows are still stored in `derivedFacts`.
+  event-log point fold at both requested coordinates. Production
+  `api.entities.queryEntities` now uses event-log-backed Datalog for
+  membership/filters and event-log base folds for row attributes + sort values.
+  Remaining: type discovery / picker / type-attribute discovery still use the
+  hand-maintained `currentFacts` projection; closure semi-naive add still
+  receives the changed projection `factId`; derived rows are still stored in
+  `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -342,6 +345,17 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 64 shipped:** production `api.entities.queryEntities` now uses
+  `eventLogBaseWithDerivedTripleSource` for typed membership/filters and
+  `eventLogTripleSource` for row attributes + sort values, rather than trusting
+  `facts` / `currentFacts` for the Entities table.
+- [x] **Typed table projection-corruption proof.** `convex/appconfig.test.ts`
+  now deletes `currentFacts` for a `Placement` row and asserts
+  `queryEntities({ type: "Placement" })` still returns its visible table cells
+  from `factEvents`.
+- [x] **Typed table read-auth proof.** `convex/readAuth.test.ts` now checks
+  `queryEntities({ type: "Worker" })` redacts `i9/ssn` and reports a denied marker
+  before a grant, then includes the value after the grant.
 - [x] **Goal 63 shipped:** production `api.facts.compareFacts` now compares
   `before` and `after` by folding protocol-shaped `factEvents` at each
   coordinate, not by scanning the `facts` projection. It preserves the existing

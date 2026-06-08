@@ -109,6 +109,22 @@ describe("config-as-code + origin + entity detail", () => {
       const first = rows.page.find((r) => r.id === "placement:p1");
       expect(first?.attributes.worker).toEqual(["worker:maria"]);
       expect(first?.attributes.employer).toEqual(["employer:acme"]);
+
+      await t.run(async (ctx) => {
+        const current = await ctx.db
+          .query("currentFacts")
+          .withIndex("by_e", (q) => q.eq("e", "placement:p1"))
+          .collect();
+        for (const row of current) await ctx.db.delete(row._id);
+      });
+
+      const afterProjectionWipe = await t.query(api.entities.queryEntities, {
+        type: "Placement",
+        pageSize: 10,
+      });
+      const fromLog = afterProjectionWipe.page.find((r) => r.id === "placement:p1");
+      expect(fromLog?.attributes.worker).toEqual(["worker:maria"]);
+      expect(fromLog?.attributes.employer).toEqual(["employer:acme"]);
     } finally {
       vi.useRealTimers();
     }

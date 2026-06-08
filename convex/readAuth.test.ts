@@ -35,11 +35,24 @@ describe("attribute-level read authorization", () => {
       const t = convexTest(schema, modules);
       const writer = t.withIdentity({ tokenIdentifier: "system" });
       await seedPiiSubmission(writer);
+      await writer.mutation(api.facts.assertFact, {
+        e: "worker:t1",
+        a: "type",
+        value: "Worker",
+      });
 
       const anon = await t.query(api.facts.getEntity, { e: "worker:t1" });
       expect(anon.attributes["i9/ssn"]).toBeUndefined();
       expect(anon.attributes["i9/dob"]).toEqual(["1990-01-01"]);
       expect(anon.denied).toEqual([{ a: "i9/ssn", reason: "pii" }]);
+
+      const publicEntities = await t.query(api.entities.queryEntities, {
+        type: "Worker",
+      });
+      const publicWorker = publicEntities.page.find((r) => r.id === "worker:t1");
+      expect(publicWorker?.attributes["i9/ssn"]).toBeUndefined();
+      expect(publicWorker?.attributes["i9/dob"]).toEqual(["1990-01-01"]);
+      expect(publicWorker?.denied).toEqual([{ a: "i9/ssn", reason: "pii" }]);
 
       const noGrant = t.withIdentity({ tokenIdentifier: "user:hr" });
       const stillDenied = await noGrant.query(api.facts.entityFactsAsOf, {
@@ -61,6 +74,13 @@ describe("attribute-level read authorization", () => {
       });
       expect(allowed.attributes["i9/ssn"]).toEqual(["123-45-6789"]);
       expect(allowed.denied).toEqual([]);
+
+      const grantedEntities = await noGrant.query(api.entities.queryEntities, {
+        type: "Worker",
+      });
+      const grantedWorker = grantedEntities.page.find((r) => r.id === "worker:t1");
+      expect(grantedWorker?.attributes["i9/ssn"]).toEqual(["123-45-6789"]);
+      expect(grantedWorker?.denied).toEqual([]);
 
       const publicFacts = await t.query(api.facts.queryFacts, {
         e: "worker:t1",
