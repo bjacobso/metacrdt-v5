@@ -653,6 +653,20 @@ export function extendProvenancedBinding<
   };
 }
 
+export function passesNegationCandidates<
+  SourceId extends string,
+  EventSourceId extends string = string,
+>(
+  clause: NotClause,
+  binding: Binding,
+  candidates: QueryTriple<SourceId, EventSourceId>[],
+): boolean {
+  for (const triple of candidates) {
+    if (unifyPattern(clause.pattern, binding, triple) !== null) return false;
+  }
+  return true;
+}
+
 export type ResultPage<T> = {
   page: T[];
   isDone: boolean;

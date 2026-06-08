@@ -8,11 +8,11 @@ import {
   dedupeProvenancedBindings,
   extendProvenancedBinding,
   parseClauses,
+  passesNegationCandidates,
   patternInputForBinding,
   patternVars,
   project,
   satisfiesCompare,
-  unifyPattern,
   valueKey,
   type AnyClause,
   type Binding,
@@ -37,6 +37,7 @@ export {
   extendProvenancedBinding,
   isEntityLocalRule,
   paginateRows,
+  passesNegationCandidates,
   patternInputForBinding,
   project,
   valueKey,
@@ -235,10 +236,7 @@ async function passesNegation(
     readFilter,
     source,
   );
-  for (const t of candidates) {
-    if (unifyPattern(clause.pattern, binding, t) !== null) return false;
-  }
-  return true;
+  return passesNegationCandidates(clause, binding, candidates);
 }
 
 // --- the join scheduler -----------------------------------------------------

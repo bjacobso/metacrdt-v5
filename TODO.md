@@ -153,6 +153,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   now owns `QueryTriple` and `extendProvenancedBinding`, unifying matched triples
   with solved states and merging fact/event provenance for positive joins. Convex
   still owns candidate fetching, negation checks, read auth, and async scheduling.
+- [x] **`@metacrdt/query` negation candidate check extracted** — the package now
+  owns `passesNegationCandidates`, applying typed pattern unification to
+  already-fetched candidate triples. Convex still owns candidate fetching, read
+  auth, and source semantics.
 - [ ] Then peel off, as they stabilize: more `@metacrdt/query` solver/rule AST
   seams, then `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/views`, and
   `@metacrdt/agent`.
@@ -422,6 +426,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 91 shipped:** `@metacrdt/query` negation candidate check. Added
+  `passesNegationCandidates`; Convex `passesNegation` still fetches candidates
+  through the injected source and read-auth path, then delegates the typed
+  candidate-match check to the package.
 - [x] **Goal 90 shipped:** `@metacrdt/query` provenanced pattern extension. Added
   `QueryTriple` and `extendProvenancedBinding`; Convex positive pattern joins now
   ask the package to unify the matched triple with the current state and merge

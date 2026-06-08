@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 90 (`@metacrdt/query` Provenanced Pattern Extension) has
+**Current goal:** Goal 91 (`@metacrdt/query` Negation Candidate Check) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -92,7 +92,11 @@ the source lookup, indexes, read authorization, and provenance. Goal 90 extracts
 provenance-preserving pattern extension into `@metacrdt/query`: `QueryTriple` and
 `extendProvenancedBinding` now unify a matched triple with a solved state and
 merge fact/event provenance in the package, while Convex still owns candidate
-fetching, negation checks, read authorization, and async join scheduling. The next active
+fetching, negation checks, read authorization, and async join scheduling. Goal 91
+extracts negation candidate checking into `@metacrdt/query`:
+`passesNegationCandidates` applies typed pattern unification to already-fetched
+candidates and returns whether the negated clause survives, while Convex still
+owns candidate fetching, read authorization, and source semantics. The next active
 goal should be chosen from the
 remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
@@ -188,6 +192,7 @@ arguments.
   - provenance-preserving solved-binding dedupe and source-list merging
   - pattern input construction for target triple sources
   - provenanced pattern extension for positive joins
+  - negation candidate checking over fetched triples
   - Convex compatibility re-export through `convex/lib/engine.ts`
 - New Convex writes stamp protocol metadata on `factEvents`:
   `eventId`, HLC, `replicaId`, `targetEventId`, and `causalRefs` where
@@ -8267,6 +8272,53 @@ authorization, and async join scheduling in Convex.
   `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
 - A live `datalog:datalog` joined-pattern query returned rows through the
   deployed package-backed provenanced pattern extension path.
+
+---
+
+## Goal 91 — `@metacrdt/query` Negation Candidate Check
+
+**Status:** shipped as the pure negation-match boundary.
+
+**Objective:** move the target-neutral "do any fetched candidates match this
+negated pattern under the current binding?" check from the Convex solver into
+`@metacrdt/query`, while keeping candidate fetching, read authorization, and
+source semantics in Convex.
+
+### Semantics
+
+- `packages/query` now owns `passesNegationCandidates`.
+- The helper accepts a parsed `NotClause`, the current binding, and already
+  fetched candidate triples.
+- It preserves the existing negation behavior:
+  - run typed `unifyPattern` between the negated pattern and each candidate;
+  - return `false` as soon as any candidate unifies;
+  - return `true` when no candidate unifies.
+- `convex/lib/engine.ts` still owns `passesNegation` as the async adapter that
+  fetches candidates through the injected `TripleSource`; it now delegates the
+  pure match check to the package helper.
+
+### Non-Goals
+
+- Do not move `passesNegation`, `fetchPattern`, `TripleSource`, read auth,
+  projected/event-log source behavior, or source provenance into the package.
+- Do not change negation safety, query syntax, result shapes, or source
+  filtering.
+
+### Verification
+
+- `npm run test:query` passed (15 package tests).
+- `npx tsc --noEmit -p packages/query/tsconfig.json` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npm run test:core` passed (46 core tests).
+- `npm run test:schema` passed (8 schema tests).
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
+- A live `datalog:datalog` query with `not` returned rows through the deployed
+  package-backed negation candidate check path.
 
 ---
 

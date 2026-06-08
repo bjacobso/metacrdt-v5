@@ -11,6 +11,7 @@ import {
   extendProvenancedBinding,
   isEntityLocalRule,
   paginateRows,
+  passesNegationCandidates,
   parseClause,
   parseClauses,
   patternInputForBinding,
@@ -250,6 +251,42 @@ describe("@metacrdt/query rows", () => {
         },
       ),
     ).toBeNull();
+  });
+
+  test("checks negation against fetched candidates with typed unification", () => {
+    const clause = parseClause({ not: ["?e", "worker.status", "?status"] });
+    expect(clause.kind).toBe("not");
+    if (clause.kind !== "not") return;
+
+    expect(
+      passesNegationCandidates(
+        clause,
+        { e: "worker:maria", status: "active" },
+        [
+          {
+            e: "worker:maria",
+            a: "worker.status",
+            v: "active",
+            prov: ["fact:active"],
+          },
+        ],
+      ),
+    ).toBe(false);
+
+    expect(
+      passesNegationCandidates(
+        clause,
+        { e: "worker:maria", status: "1" },
+        [
+          {
+            e: "worker:maria",
+            a: "worker.status",
+            v: 1,
+            prov: ["fact:number"],
+          },
+        ],
+      ),
+    ).toBe(true);
   });
 
   test("paginates deterministic rows with bounded page size", () => {
