@@ -75,9 +75,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   preserving path provenance through compatibility `factId`s. Production
   `datalog`, `datalogPage`, `aggregate`, and `aggregatePage` now use the shared
   event-log-base + materialized-derived source for base facts.
-  Remaining: general production fact/entity reads still use the hand-maintained
-  `facts` / `currentFacts` projections; closure semi-naive add still receives the
-  changed projection `factId`; derived rows are still stored in `derivedFacts`.
+  **Active next slice:** Goal 60 promotes production `api.facts.queryFacts` to
+  the event-log point-query path while preserving its existing return shape and
+  read-auth behavior. Remaining after that: production entity/current-state reads
+  still use the hand-maintained `facts` / `currentFacts` projections; closure
+  semi-naive add still receives the changed projection `factId`; derived rows are
+  still stored in `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages

@@ -1,11 +1,12 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 59 (production Datalog reads base facts from the event log)
-has shipped.
-The next active goal should be chosen from the remaining TODO candidates:
-provider-backed login UI / production auth, live Cloudflare deployment/auth, or
-continuing the host read-path migration from projections to direct event-log
-folds.
+**Current goal:** Goal 60 — production `queryFacts` reads from the event log.
+
+Goal 59 shipped production Datalog base reads from protocol-shaped
+`factEvents`. The next narrow host-runtime slice is to promote the already-proven
+`queryFactsFromEventLog` point-query path into production `api.facts.queryFacts`,
+while leaving object/current-state entity reads on `facts` / `currentFacts` until
+a later goal.
 
 This plan is the operational goal file. Read it with:
 
@@ -398,9 +399,8 @@ arguments.
 - `facts` and `currentFacts` are still maintained as imperative projections,
   not folded directly from raw core-shaped events.
 - `entityFromEventLog` is intentionally bounded and proof/read-model oriented.
-- `queryFactsFromEventLog` is also bounded and proof/read-model oriented; Datalog
-  has moved base reads to event-log solving, but general fact query production
-  reads still use the `facts` projection.
+- `queryFactsFromEventLog` is bounded and proof/read-model oriented; production
+  `queryFacts` still uses the `facts` projection until Goal 60 ships.
 - `datalogFromEventLog` is bounded and base-fact-only; production Datalog now
   uses the event-log-base + materialized-derived source.
 - The `*FromEventLogWithDerived` Datalog proof APIs still depend on materialized
@@ -5261,6 +5261,166 @@ TODO.md
 
 ---
 
+## Goal 60 — Production Fact Point Queries Read from the Event Log
+
+**Status:** planned and ready to execute.
+
+**Objective:** make production `api.facts.queryFacts` answer bounded
+bitemporal point queries from protocol-shaped `factEvents` instead of from the
+folded `facts` projection, reusing the proof semantics already established by
+Goal 51.
+
+This is the next host read-path migration step after Goal 59. Datalog now solves
+base facts from the event log; generic fact point reads should do the same before
+object-level `getEntity` / `queryEntities` reads move off `currentFacts`.
+
+### Why This Before Confect
+
+Confect can improve the Convex target's schema, service, and error boundaries,
+but it does not change what source of truth production reads use. Converting the
+current Convex logic to Confect before `queryFacts` is event-log backed would
+move the same projection dependency behind a different authoring surface.
+
+Goal 60 keeps the correctness surface small:
+
+- one public read API changes source
+- no schema migration
+- no component boundary change
+- no Effect/Confect migration
+- no production entity UI rewrite
+
+Once this is shipped, Confect has a cleaner host-runtime boundary to wrap:
+production base fact reads and production Datalog reads will both be event-log
+folds, while entity/current-state projections remain the explicit next frontier.
+
+### Scope
+
+Backend:
+
+```text
+convex/facts.ts
+  queryFacts
+  shared event-log point-query helper extracted from queryFactsFromEventLog
+```
+
+Tests:
+
+```text
+convex/triples.test.ts
+convex/readAuth.test.ts (if PII/read-grant behavior needs a focused assertion)
+```
+
+Docs:
+
+```text
+README.md
+PLAN.md
+TODO.md
+```
+
+### Semantics
+
+- `queryFacts` keeps its existing public API shape:
+  - optional `e`
+  - optional `a`
+  - optional `value`
+  - optional `txTime`
+  - optional `validTime`
+  - optional `includeTombstoned`
+  - optional `includeRetracted`
+  - optional `limit`
+- The returned rows remain fact-like projection-compatible rows so existing
+  callers do not need to change immediately.
+- Candidate events are fetched from `factEvents` with the same bounded strategy
+  used by `queryFactsFromEventLog`.
+- Protocol rows are reconstructed through `@metacrdt/convex` and folded with
+  `@metacrdt/core.visibleAsserts`.
+- Attribute/value filtering happens over the visible assert events.
+- Read authorization is checked per returned `(e, a)` using the same
+  server-derived principal logic as the current projection-backed `queryFacts`.
+- Legacy/non-verifiable rows are tolerated according to the current policy:
+  skipped for the event-log fold and counted only on the explicit proof API.
+  Production `queryFacts` should preserve its old return shape, so it should not
+  add `skippedLegacyEvents` unless the public API is intentionally widened.
+
+### Non-Goals
+
+- Do not replace `getEntity`, `entityAsOf`, `entityFactsAsOf`, or
+  `queryEntities` yet. Those still use `facts` / `currentFacts` until a later
+  object-read goal.
+- Do not remove or stop maintaining `facts` / `currentFacts`.
+- Do not rewrite `queryFactsFromEventLog`'s proof return shape unless needed to
+  share implementation safely.
+- Do not backfill legacy `factEvents`.
+- Do not scan unbounded event logs or add broad new indexes.
+- Do not migrate this code to Confect in this slice.
+
+### Implementation Plan
+
+1. **Extract the event-log point-query fold helper.**
+   Pull the logic currently inside `queryFactsFromEventLog` into a local helper
+   that can return two shapes:
+   - production-compatible fact rows for `queryFacts`
+   - proof rows plus `skippedLegacyEvents` for `queryFactsFromEventLog`
+
+2. **Preserve API compatibility.**
+   `queryFacts` should continue returning an array. It must not start returning
+   `{ facts, skippedLegacyEvents }`.
+
+3. **Keep read auth identical.**
+   Verify the helper still calls `readPrincipal` and `canReadAttribute` before
+   returning each event-log-derived fact.
+
+4. **Keep include flags exact.**
+   `includeRetracted` should expose historical assertions that have later
+   protocol retract events. `includeTombstoned` should expose tombstoned asserts
+   only when requested.
+
+5. **Leave projection helpers in place.**
+   `fetchCandidateFacts` can remain for entity/current-state reads and tests
+   that still intentionally compare projection behavior. This goal only changes
+   production `queryFacts`.
+
+### Acceptance Criteria
+
+- For ordinary protocol-shaped writes, `queryFacts` returns the same visible
+  `(e, a, v)` rows as before.
+- If the `facts` projection is corrupted or empty for an entity, production
+  `queryFacts` still returns the visible assertion from `factEvents`.
+- `queryFactsFromEventLog` remains available as an explicit proof/debug API.
+- `includeRetracted` returns both the superseded/retracted historical assertion
+  and the current assertion for a cardinality-one attribute.
+- Attribute/value filtering works through the production event-log path.
+- PII/read-grant behavior remains unchanged: ungranted sensitive attributes are
+  omitted or denied exactly as before.
+- Convex typecheck and focused backend tests pass.
+
+### Verification Gate
+
+Run before committing:
+
+```bash
+npx convex codegen
+npx tsc --noEmit -p convex/tsconfig.json
+npx vitest run convex/triples.test.ts convex/readAuth.test.ts convex/datalog.test.ts
+npm test
+npm run test:convex-package
+npm run test:core
+npx tsc --noEmit -p packages/convex/tsconfig.json
+npx tsc --noEmit -p tsconfig.json
+npm run build
+git diff --check
+```
+
+### Definition of Done
+
+Goal 60 is complete when production `api.facts.queryFacts` no longer reads the
+`facts` projection for base fact point queries, all compatibility/read-auth
+tests pass, docs record the remaining projection-backed entity/current-state
+surface, and the change is committed and pushed.
+
+---
+
 ## Goal 59 — Production Datalog Reads Base Facts from the Event Log
 
 **Status:** shipped for production row/page/aggregate Datalog APIs in the Convex
@@ -5821,11 +5981,13 @@ or intentionally moved out of this repo's scope. Each shipped slice must update
 `PLAN.md` / `TODO.md`, pass the relevant test/typecheck/build gate, and be
 committed/pushed with the verification recorded.
 
-Goal 59 is complete: production Datalog row/page/aggregate APIs now solve base
-facts through the shared event-log-base + materialized-derived source, so
-corrupted base `facts` no longer break production Datalog joins. Generic
-fact/entity reads and projection consumers still keep `facts` / `currentFacts`
-alive for now.
+Goal 60 is the active objective. It is complete when production
+`api.facts.queryFacts` answers base fact point queries from protocol-shaped
+`factEvents`, preserves its existing array return shape and read-authorization
+behavior, survives a corrupted `facts` projection in tests, and the remaining
+projection-backed entity/current-state surface is documented.
 
-The next shipped slice should update this section with its own concrete
-definition of done before implementation starts.
+After Goal 60, the next host read-path migration target should be object/current
+entity reads (`getEntity`, `entityAsOf`, `entityFactsAsOf`, `queryEntities`) or,
+if product priority wins, provider-backed login UI / live Cloudflare deployment
+auth. Confect migration should wait until this production read-path slice lands.
