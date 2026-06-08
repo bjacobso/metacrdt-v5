@@ -131,7 +131,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `listOwnedCollections` exposes those runs, `/collect` submits them into
   component-owned state, and `/component/e/:id` shows the component-owned run
   list.
-- [ ] **Goal 39: component-owned compliance issue/reuse** — compute
+- [x] **Goal 39: component-owned compliance issue/reuse** — compute
   `reuse`/`collect` decisions for component-owned Workers from host configured
   `require.*` rules plus component-owned placement/scope/evidence state, then
   issue missing evidence as component-owned collection runs without creating host
@@ -264,17 +264,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ## Log
 
-### 2026-06-07 — Goal 39 selected: component-owned compliance issue/reuse
-- [x] **PLAN.md is actionable again.** Goal 39 is now the active objective:
-  compute component-owned Worker compliance plans from configured host
-  `require.*` rules plus component-owned placement/scope/evidence state.
-- [x] **Bounded before DAG migration.** The plan explicitly stops short of
-  component-owned rule materialization, parked multi-step flows, schedulers, and
-  generic Datalog over component state. It only issues/reuses component-owned
-  collection runs for missing evidence.
-- [x] **Acceptance criteria are testable.** The required proof is
-  collect→submit→reuse entirely in component-owned state, with no host
-  `flowRuns` rows and no regression to host compliance or host `/collect`.
+### 2026-06-07 — component-owned compliance issue/reuse
+- [x] **Goal 39 shipped:** `api.metacrdtComponent.ownedCompliancePlan` computes
+  `reuse`/`collect` decisions for component-owned Workers from configured host
+  `require.*` rules plus component-owned Worker/Placement/scope/evidence state.
+- [x] **Missing evidence issues component-owned collection links.**
+  `api.metacrdtComponent.issueOwnedOpenCollections` recomputes the plan in a
+  host-authenticated mutation, calls the component-owned `issueCollection`, and
+  reuses waiting component runs for the same `(worker, form, scope)`.
+- [x] **UI and tests prove the seam.** `/component/e/:id` shows the Component
+  compliance card for Workers; focused tests prove collect→submit→reuse entirely
+  in component-owned state, with no host `flowRuns` row and no host `/collect`
+  regression.
 
 ### 2026-06-07 — component-owned collection run/token storage
 - [x] **Goal 37 shipped:** the installed `@metacrdt/convex` component now owns

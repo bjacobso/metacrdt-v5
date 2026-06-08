@@ -595,6 +595,193 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     );
   });
 
+  test("plans component-owned compliance and issues missing collection runs", async () => {
+    const t = mountedTest();
+
+    await t.mutation(api.rules.defineRule, {
+      name: "require.owned_i9",
+      where: [
+        ["?p", "type", "Placement"],
+        ["?p", "worker", "?w"],
+        ["?p", "employer", "?s"],
+      ],
+      emit: { e: "?w", a: "requires.owned_i9", v: "?s" },
+      dependsOnAttributes: ["type", "worker", "employer"],
+      materialization: "manual",
+    });
+    await t.mutation(api.rules.defineRule, {
+      name: "require.owned_handbook",
+      where: [
+        ["?p", "type", "Placement"],
+        ["?p", "worker", "?w"],
+        ["?p", "client", "?s"],
+      ],
+      emit: { e: "?w", a: "requires.owned_handbook", v: "?s" },
+      dependsOnAttributes: ["type", "worker", "client"],
+      materialization: "manual",
+    });
+    await t.mutation(api.metacrdtComponent.defineOwnedForm, {
+      form: "owned_i9",
+      title: "Owned I-9",
+      fields: [{ name: "legalName", label: "Legal name", type: "string" }],
+    });
+    await t.mutation(api.metacrdtComponent.defineOwnedForm, {
+      form: "owned_handbook",
+      title: "Owned Handbook",
+      fields: [{ name: "ack", label: "Acknowledged", type: "boolean" }],
+    });
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-compliance:worker",
+      type: "Worker",
+      name: "Compliance Worker",
+    });
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-compliance:employer",
+      type: "Employer",
+      name: "Compliance Employer",
+    });
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-compliance:client",
+      type: "Client",
+      name: "Compliance Client",
+    });
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-compliance:placement",
+      type: "Placement",
+      attributes: [
+        { a: "worker", value: "component-compliance:worker" },
+        { a: "employer", value: "component-compliance:employer" },
+        { a: "client", value: "component-compliance:client" },
+      ],
+    });
+
+    const initial = await t.query(api.metacrdtComponent.ownedCompliancePlan, {
+      worker: "component-compliance:worker",
+    });
+    expect(initial.summary).toEqual({
+      reuse: 0,
+      collect: 2,
+      total: 2,
+      unsupported: 0,
+    });
+    expect(initial.items.map((item) => `${item.form}@${item.scope}`).sort()).toEqual([
+      "owned_handbook@component-compliance:client",
+      "owned_i9@component-compliance:employer",
+    ]);
+    expect(initial.items.every((item) => item.decision === "collect")).toBe(true);
+
+    const issued = await t.mutation(
+      api.metacrdtComponent.issueOwnedOpenCollections,
+      { worker: "component-compliance:worker" },
+    );
+    expect(issued.issued).toBe(2);
+    expect(issued.reused).toBe(0);
+    const i9 = issued.items.find((item) => item.form === "owned_i9")!;
+    const handbook = issued.items.find((item) => item.form === "owned_handbook")!;
+    expect(i9.collectUrl).toMatch(/^\/collect\?token=/);
+    expect(handbook.collectUrl).toMatch(/^\/collect\?token=/);
+
+    const hostRunsForComponentTokens = await t.run(async (ctx) => {
+      const rows = [];
+      for (const token of issued.items.map((item) => item.token)) {
+        rows.push(
+          await ctx.db
+            .query("flowRuns")
+            .withIndex("by_token", (q) => q.eq("token", token))
+            .first(),
+        );
+      }
+      return rows;
+    });
+    expect(hostRunsForComponentTokens).toEqual([null, null]);
+
+    const secondIssue = await t.mutation(
+      api.metacrdtComponent.issueOwnedOpenCollections,
+      { worker: "component-compliance:worker" },
+    );
+    expect(secondIssue.issued).toBe(0);
+    expect(secondIssue.reused).toBe(2);
+    expect(secondIssue.items.map((item) => item.token).sort()).toEqual(
+      issued.items.map((item) => item.token).sort(),
+    );
+
+    await t.mutation(api.forms.submitCollection, {
+      token: i9.token,
+      values: { legalName: "Compliance Worker" },
+    });
+
+    const afterSubmission = await t.query(
+      api.metacrdtComponent.ownedCompliancePlan,
+      { worker: "component-compliance:worker" },
+    );
+    expect(afterSubmission.summary).toEqual({
+      reuse: 1,
+      collect: 1,
+      total: 2,
+      unsupported: 0,
+    });
+    expect(
+      afterSubmission.items.find((item) => item.form === "owned_i9"),
+    ).toMatchObject({
+      decision: "reuse",
+      scope: "component-compliance:employer",
+      placements: ["component-compliance:placement"],
+    });
+    expect(
+      afterSubmission.items.find((item) => item.form === "owned_handbook"),
+    ).toMatchObject({
+      decision: "collect",
+      scope: "component-compliance:client",
+    });
+
+    const componentEntity = await t.query(
+      api.metacrdtComponent.getOwnedCurrentEntity,
+      { e: "component-compliance:worker" },
+    );
+    expect(componentEntity?.attributes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          a: "submitted.owned_i9",
+          values: ["component-compliance:employer"],
+        }),
+      ]),
+    );
+  });
+
+  test("component-owned compliance reports unsupported requirement shapes", async () => {
+    const t = mountedTest();
+
+    await t.mutation(api.rules.defineRule, {
+      name: "require.bad_component_shape",
+      where: [["?x", "type", "Worker"]],
+      emit: { e: "?w", a: "requires.bad_component_shape", v: "?s" },
+      dependsOnAttributes: ["type"],
+      materialization: "manual",
+    });
+    await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-compliance-unsupported:worker",
+      type: "Worker",
+      name: "Unsupported Worker",
+    });
+
+    const plan = await t.query(api.metacrdtComponent.ownedCompliancePlan, {
+      worker: "component-compliance-unsupported:worker",
+    });
+    expect(plan.items).toEqual([]);
+    expect(plan.summary).toEqual({
+      reuse: 0,
+      collect: 0,
+      total: 0,
+      unsupported: 1,
+    });
+    expect(plan.unsupported).toMatchObject([
+      {
+        rule: "require.bad_component_shape",
+        reason: "missing Placement type or worker clause",
+      },
+    ]);
+  });
+
   test("component-owned missing current entity returns null", async () => {
     const t = mountedTest();
 

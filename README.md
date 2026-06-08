@@ -189,6 +189,10 @@ Built today:
   tokens and submit evidence into the installed `@metacrdt/convex` component log
 - standalone component-owned collect runs, listed on component entity pages and
   submitted through the same public `/collect` route
+- component-owned compliance issue/reuse: component Worker pages compute
+  `reuse`/`collect` decisions from configured host requirement rules over
+  component-owned placement/scope/evidence state, then issue missing evidence as
+  component-owned collection links
 - single-use, expiring collection tokens for the public `/collect` page
 - Tailwind + React Router research-preview UI
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility
@@ -293,7 +297,14 @@ are resolved from the app's `flowRuns` table; component-owned action tokens are
 resolved from the installed `@metacrdt/convex` component, whose submission path
 appends evidence facts into component-owned state and consumes the component
 token. Standalone component-owned collect runs use the same component token path
-and are listed on `/component/e/:id`. The older host `collectionTarget:
+and are listed on `/component/e/:id`.
+
+Component-owned compliance now uses the existing configured host requirement
+rules as semantics while keeping operational data inside the component. For a
+component-owned Worker, the reference wrapper reads component-owned placements
+and scope entities, checks component-owned `submitted.<form>` evidence, returns
+`reuse`/`collect` decisions, and issues missing component-owned collection
+links without creating host `flowRuns` rows. The older host `collectionTarget:
 "component"` bridge remains supported for already-issued transition tokens.
 
 ---

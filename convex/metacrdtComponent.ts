@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { components } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import {
@@ -125,6 +125,51 @@ const runOwnedActionResultValidator = v.object({
   collect: v.optional(collectResultValidator),
 });
 
+const ownedComplianceDecision = v.union(
+  v.literal("reuse"),
+  v.literal("collect"),
+);
+
+const ownedComplianceItemValidator = v.object({
+  form: v.string(),
+  scope: v.string(),
+  decision: ownedComplianceDecision,
+  placements: v.array(v.string()),
+  reason: v.string(),
+});
+
+const ownedCompliancePlanValidator = v.object({
+  worker: v.string(),
+  items: v.array(ownedComplianceItemValidator),
+  unsupported: v.array(
+    v.object({
+      rule: v.string(),
+      reason: v.string(),
+    }),
+  ),
+  summary: v.object({
+    reuse: v.number(),
+    collect: v.number(),
+    total: v.number(),
+    unsupported: v.number(),
+  }),
+});
+
+const ownedComplianceIssueItemValidator = v.object({
+  form: v.string(),
+  scope: v.string(),
+  token: v.string(),
+  collectUrl: v.string(),
+  reused: v.boolean(),
+});
+
+const ownedComplianceIssueResultValidator = v.object({
+  worker: v.string(),
+  issued: v.number(),
+  reused: v.number(),
+  items: v.array(ownedComplianceIssueItemValidator),
+});
+
 const ownedCurrentFactValidator = v.object({
   factId: v.string(),
   e: v.string(),
@@ -212,6 +257,295 @@ function withoutUndefined<T extends Record<string, unknown>>(obj: T): T {
     if (value !== undefined) out[key] = value;
   }
   return out as T;
+}
+
+type ComponentReadCtx = QueryCtx | MutationCtx;
+
+type OwnedEntity = {
+  e: string;
+  facts: Array<{
+    factId: string;
+    e: string;
+    a: string;
+    v: unknown;
+    assertedAt: number;
+    validFrom: number;
+    validTo?: number;
+    txTime: number;
+    updatedAt: number;
+    assertEventId: string;
+  }>;
+  attributes: Array<{
+    a: string;
+    values: unknown[];
+    facts: Array<{
+      factId: string;
+      e: string;
+      a: string;
+      v: unknown;
+      assertedAt: number;
+      validFrom: number;
+      validTo?: number;
+      txTime: number;
+      updatedAt: number;
+      assertEventId: string;
+    }>;
+  }>;
+};
+
+type OwnedEntityMap = Map<string, unknown[]>;
+
+type RequirementSpec = {
+  form: string;
+  scopeAttr: string;
+  guard?: { attr: string; value: unknown };
+};
+
+type ParsedRequirement =
+  | { ok: true; rule: string; requirement: RequirementSpec }
+  | { ok: false; rule: string; reason: string };
+
+type OwnedCompliancePlan = {
+  worker: string;
+  items: Array<{
+    form: string;
+    scope: string;
+    decision: "reuse" | "collect";
+    placements: string[];
+    reason: string;
+  }>;
+  unsupported: Array<{ rule: string; reason: string }>;
+  summary: {
+    reuse: number;
+    collect: number;
+    total: number;
+    unsupported: number;
+  };
+};
+
+function isPattern(x: unknown): x is [unknown, unknown, unknown] {
+  return Array.isArray(x) && x.length === 3;
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function entityMap(entity: OwnedEntity | null): OwnedEntityMap {
+  const attrs: OwnedEntityMap = new Map();
+  if (entity === null) return attrs;
+  for (const attr of entity.attributes) attrs.set(attr.a, attr.values);
+  return attrs;
+}
+
+function firstString(attrs: OwnedEntityMap, a: string): string | undefined {
+  const value = attrs.get(a)?.find((v) => typeof v === "string");
+  return typeof value === "string" ? value : undefined;
+}
+
+function hasValue(attrs: OwnedEntityMap, a: string, v: unknown): boolean {
+  return (attrs.get(a) ?? []).some((value) => sameValue(value, v));
+}
+
+function hasType(attrs: OwnedEntityMap, type: string): boolean {
+  return hasValue(attrs, "type", type);
+}
+
+function parseRequirementRule(rule: Doc<"rules">): ParsedRequirement {
+  if (!rule.name.startsWith("require.")) {
+    return { ok: false, rule: rule.name, reason: "not a requirement rule" };
+  }
+  const form = rule.name.slice("require.".length);
+  if (rule.where === undefined || rule.emit === undefined) {
+    return { ok: false, rule: rule.name, reason: "missing where or emit" };
+  }
+  if (
+    rule.emit.e !== "?w" ||
+    rule.emit.a !== `requires.${form}` ||
+    rule.emit.v !== "?s"
+  ) {
+    return {
+      ok: false,
+      rule: rule.name,
+      reason: "emit shape is not a component compliance requirement",
+    };
+  }
+
+  const patterns = rule.where.filter(isPattern);
+  const hasPlacementType = patterns.some(
+    ([e, a, v]) => e === "?p" && a === "type" && v === "Placement",
+  );
+  const hasWorker = patterns.some(
+    ([e, a, v]) => e === "?p" && a === "worker" && v === "?w",
+  );
+  if (!hasPlacementType || !hasWorker) {
+    return {
+      ok: false,
+      rule: rule.name,
+      reason: "missing Placement type or worker clause",
+    };
+  }
+
+  const scopes = patterns.filter(
+    ([e, a, v]) =>
+      e === "?p" &&
+      typeof a === "string" &&
+      a !== "type" &&
+      a !== "worker" &&
+      v === "?s",
+  );
+  if (scopes.length !== 1 || typeof scopes[0]?.[1] !== "string") {
+    return {
+      ok: false,
+      rule: rule.name,
+      reason: "expected exactly one placement scope clause",
+    };
+  }
+
+  const guards = patterns.filter(
+    ([e, a, v]) =>
+      e === "?s" &&
+      typeof a === "string" &&
+      !(typeof v === "string" && v.startsWith("?")),
+  );
+  if (guards.length > 1) {
+    return {
+      ok: false,
+      rule: rule.name,
+      reason: "multiple guards are not yet supported",
+    };
+  }
+
+  const guard =
+    guards.length === 1 && typeof guards[0]?.[1] === "string"
+      ? { attr: guards[0][1], value: guards[0][2] }
+      : undefined;
+  return {
+    ok: true,
+    rule: rule.name,
+    requirement: {
+      form,
+      scopeAttr: scopes[0][1],
+      ...(guard === undefined ? {} : { guard }),
+    },
+  };
+}
+
+async function loadOwnedEntity(
+  ctx: ComponentReadCtx,
+  e: string,
+): Promise<OwnedEntity | null> {
+  return await ctx.runQuery(components.metacrdt.log.getCurrentEntity, { e });
+}
+
+async function componentPlacementIdsForWorker(
+  ctx: ComponentReadCtx,
+  worker: string,
+): Promise<string[]> {
+  const rows = await ctx.runQuery(components.metacrdt.log.listCurrent, {
+    a: "worker",
+    limit: 500,
+  });
+  return [
+    ...new Set(
+      rows
+        .filter((row) => row.v === worker)
+        .map((row) => row.e)
+        .sort(),
+    ),
+  ];
+}
+
+async function buildOwnedCompliancePlan(
+  ctx: ComponentReadCtx,
+  worker: string,
+): Promise<OwnedCompliancePlan> {
+  const workerEntity = await loadOwnedEntity(ctx, worker);
+  if (workerEntity === null) {
+    throw new Error(`component-owned worker ${worker} not found`);
+  }
+  const workerAttrs = entityMap(workerEntity);
+  if (!hasType(workerAttrs, "Worker")) {
+    throw new Error(`component-owned entity ${worker} is not a Worker`);
+  }
+
+  const rules = await ctx.db
+    .query("rules")
+    .withIndex("by_enabled", (q) => q.eq("enabled", true))
+    .take(1000);
+  const requirements: RequirementSpec[] = [];
+  const unsupported: OwnedCompliancePlan["unsupported"] = [];
+  for (const rule of rules) {
+    if (!rule.name.startsWith("require.")) continue;
+    const parsed = parseRequirementRule(rule);
+    if (parsed.ok) requirements.push(parsed.requirement);
+    else unsupported.push({ rule: parsed.rule, reason: parsed.reason });
+  }
+  requirements.sort((a, b) => `${a.form}\u0000${a.scopeAttr}`.localeCompare(
+    `${b.form}\u0000${b.scopeAttr}`,
+  ));
+  unsupported.sort((a, b) => a.rule.localeCompare(b.rule));
+
+  const entityCache = new Map<string, OwnedEntity | null>([[worker, workerEntity]]);
+  async function cachedEntity(e: string): Promise<OwnedEntity | null> {
+    if (entityCache.has(e)) return entityCache.get(e) ?? null;
+    const entity = await loadOwnedEntity(ctx, e);
+    entityCache.set(e, entity);
+    return entity;
+  }
+
+  const itemMap = new Map<string, OwnedCompliancePlan["items"][number]>();
+  const placementIds = await componentPlacementIdsForWorker(ctx, worker);
+  for (const placementId of placementIds) {
+    const placement = await cachedEntity(placementId);
+    const placementAttrs = entityMap(placement);
+    if (!hasType(placementAttrs, "Placement")) continue;
+    for (const req of requirements) {
+      const scope = firstString(placementAttrs, req.scopeAttr);
+      if (scope === undefined) continue;
+      if (req.guard !== undefined) {
+        const scopeEntity = await cachedEntity(scope);
+        if (!hasValue(entityMap(scopeEntity), req.guard.attr, req.guard.value)) {
+          continue;
+        }
+      }
+      const decision = hasValue(workerAttrs, `submitted.${req.form}`, scope)
+        ? "reuse"
+        : "collect";
+      const key = `${req.form}\u0000${scope}`;
+      const existing = itemMap.get(key);
+      const placements = [
+        ...new Set([...(existing?.placements ?? []), placementId]),
+      ].sort();
+      itemMap.set(key, {
+        form: req.form,
+        scope,
+        decision,
+        placements,
+        reason:
+          decision === "reuse"
+            ? `current submitted.${req.form} fact matches this scope`
+            : `no current submitted.${req.form} fact matches this scope`,
+      });
+    }
+  }
+
+  const items = [...itemMap.values()].sort((a, b) =>
+    `${a.form}\u0000${a.scope}`.localeCompare(`${b.form}\u0000${b.scope}`),
+  );
+  const reuse = items.filter((item) => item.decision === "reuse").length;
+  const collect = items.filter((item) => item.decision === "collect").length;
+  return {
+    worker,
+    items,
+    unsupported,
+    summary: {
+      reuse,
+      collect,
+      total: items.length,
+      unsupported: unsupported.length,
+    },
+  };
 }
 
 function componentRow(row: Doc<"factEvents">) {
@@ -454,6 +788,58 @@ export const listOwnedCollections = query({
       components.metacrdt.log.listCollections,
       withoutUndefined(args),
     ),
+});
+
+export const ownedCompliancePlan = query({
+  args: {
+    worker: v.string(),
+  },
+  returns: ownedCompliancePlanValidator,
+  handler: async (ctx, args) => {
+    return await buildOwnedCompliancePlan(ctx, args.worker);
+  },
+});
+
+export const issueOwnedOpenCollections = mutation({
+  args: {
+    worker: v.string(),
+    expireSeconds: v.optional(v.number()),
+  },
+  returns: ownedComplianceIssueResultValidator,
+  handler: async (ctx, args) => {
+    const actor = await actorContext(ctx);
+    const plan = await buildOwnedCompliancePlan(ctx, args.worker);
+    const items = [];
+    for (const item of plan.items) {
+      if (item.decision !== "collect") continue;
+      const issued = await ctx.runMutation(
+        components.metacrdt.log.issueCollection,
+        withoutUndefined({
+          ...actor,
+          subject: args.worker,
+          form: item.form,
+          scope: item.scope,
+          expireMs:
+            args.expireSeconds === undefined
+              ? undefined
+              : args.expireSeconds * 1000,
+        }),
+      );
+      items.push({
+        form: item.form,
+        scope: item.scope,
+        token: issued.token,
+        collectUrl: issued.collectUrl,
+        reused: issued.reused,
+      });
+    }
+    return {
+      worker: args.worker,
+      issued: items.filter((item) => !item.reused).length,
+      reused: items.filter((item) => item.reused).length,
+      items,
+    };
+  },
 });
 
 export const setOwnedWorkerStatus = mutation({

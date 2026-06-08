@@ -18,7 +18,21 @@ export default function ComponentEntity() {
   const [actionResults, setActionResults] = useState<
     Record<string, { collectUrl?: string; reused?: boolean }>
   >({});
+  const [issueResult, setIssueResult] = useState<{
+    issued: number;
+    reused: number;
+    items: Array<{
+      form: string;
+      scope: string;
+      token: string;
+      collectUrl: string;
+      reused: boolean;
+    }>;
+  } | null>(null);
   const runOwnedAction = useMutation(api.metacrdtComponent.runOwnedAction);
+  const issueOwnedOpenCollections = useMutation(
+    api.metacrdtComponent.issueOwnedOpenCollections,
+  );
   const entity = useQuery(api.metacrdtComponent.getOwnedCurrentEntity, {
     e: id,
   });
@@ -36,6 +50,10 @@ export default function ComponentEntity() {
   const actions = useQuery(
     api.actions.actionsForType,
     primaryType ? { type: primaryType } : "skip",
+  );
+  const compliance = useQuery(
+    api.metacrdtComponent.ownedCompliancePlan,
+    primaryType === "Worker" ? { worker: id } : "skip",
   );
   const name =
     entity?.attributes.find((attr) => attr.a === "name")?.values[0] ?? undefined;
@@ -72,11 +90,22 @@ export default function ComponentEntity() {
     }
   }
 
+  async function issueComplianceCollections() {
+    setBusy("compliance");
+    try {
+      const result = await issueOwnedOpenCollections({ worker: id });
+      setIssueResult(result);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (
     entity === undefined ||
     events === undefined ||
     collections === undefined ||
-    (primaryType !== undefined && actions === undefined)
+    (primaryType !== undefined && actions === undefined) ||
+    (primaryType === "Worker" && compliance === undefined)
   ) {
     return <p className="text-[13px] text-muted">Loading…</p>;
   }
@@ -240,6 +269,92 @@ export default function ComponentEntity() {
               </div>
             ))}
           </div>
+        </Card>
+      )}
+
+      {primaryType === "Worker" && compliance !== undefined && (
+        <Card>
+          <CardHeader
+            title="Component compliance"
+            hint="configured requirements over component-owned state"
+            right={
+              compliance.summary.collect > 0 ? (
+                <Button
+                  disabled={busy === "compliance"}
+                  onClick={issueComplianceCollections}
+                >
+                  Issue open collections
+                </Button>
+              ) : undefined
+            }
+          />
+          {compliance.items.length === 0 ? (
+            <p className="px-5 py-4 text-[13px] text-muted">
+              No configured requirements currently match this component-owned
+              Worker.
+            </p>
+          ) : (
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="border-b border-line-soft text-left text-[11px] uppercase text-muted">
+                  <th className="px-5 py-2 font-medium">Decision</th>
+                  <th className="px-5 py-2 font-medium">Form</th>
+                  <th className="px-5 py-2 font-medium">Scope</th>
+                  <th className="px-5 py-2 font-medium">Placements</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line-soft">
+                {compliance.items.map((item) => (
+                  <tr key={`${item.form}:${item.scope}`}>
+                    <td className="px-5 py-2.5">
+                      <Chip tone={item.decision === "reuse" ? "data" : "configured"}>
+                        {item.decision}
+                      </Chip>
+                    </td>
+                    <td className="px-5 py-2.5 font-medium text-ink">
+                      {item.form}
+                      <div className="mt-0.5 text-[12px] font-normal text-muted">
+                        {item.reason}
+                      </div>
+                    </td>
+                    <td className="px-5 py-2.5">
+                      <Mono>{item.scope}</Mono>
+                    </td>
+                    <td className="px-5 py-2.5">
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.placements.map((placement) => (
+                          <Mono key={placement}>{shortId(placement)}</Mono>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {compliance.unsupported.length > 0 && (
+            <div className="border-t border-line-soft px-5 py-3 text-[12px] text-muted">
+              Unsupported requirement rules:{" "}
+              {compliance.unsupported
+                .map((rule) => `${rule.rule} (${rule.reason})`)
+                .join(", ")}
+            </div>
+          )}
+          {issueResult !== null && (
+            <div className="border-t border-line-soft px-5 py-3 text-[12px] text-orange-ink">
+              Issued {issueResult.issued}; reused {issueResult.reused}.{" "}
+              {issueResult.items.map((item) => (
+                <a
+                  key={`${item.form}:${item.scope}`}
+                  className="mr-2 font-medium underline"
+                  href={item.collectUrl}
+                >
+                  {item.form}/{shortId(item.scope)}
+                  {item.reused ? " reused" : ""}
+                </a>
+              ))}
+            </div>
+          )}
         </Card>
       )}
 
