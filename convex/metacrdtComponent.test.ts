@@ -251,6 +251,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     });
 
     expect(result.status).toBe("completed");
+    expect(result.runId).toBeTruthy();
     expect(result.asserted).toHaveLength(1);
     expect(result.events.map((event) => event.kind)).toEqual([
       "asserted",
@@ -270,6 +271,22 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       subject: "owned-flow:worker",
     });
     expect(hostRuns).toEqual([]);
+
+    const ownedRuns = await t.query(api.metacrdtComponent.listOwnedFlowRuns, {
+      subject: "owned-flow:worker",
+    });
+    expect(ownedRuns).toHaveLength(1);
+    expect(ownedRuns[0]).toMatchObject({
+      runId: result.runId,
+      flowDefName: "owned_tiny",
+      subject: "owned-flow:worker",
+      status: "completed",
+      currentStepId: "done",
+    });
+    expect(ownedRuns[0].events.map((event) => event.kind).sort()).toEqual([
+      "asserted",
+      "completed",
+    ]);
   });
 
   test("parks a component-owned collect flow, then resumes from submitted facts", async () => {
@@ -341,6 +358,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
         reused: false,
       },
     });
+    expect(first.runId).toBeTruthy();
     expect(first.asserted).toEqual([]);
 
     const submitted = await t.mutation(api.forms.submitCollection, {
@@ -356,6 +374,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     });
 
     expect(resumed.status).toBe("completed");
+    expect(resumed.runId).toBe(first.runId);
     expect(resumed.events.map((event) => event.kind)).toEqual([
       "collect-satisfied",
       "branch",
@@ -390,6 +409,24 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       subject: "owned-flow:alien",
     });
     expect(hostRuns).toEqual([]);
+
+    const ownedRuns = await t.query(api.metacrdtComponent.listOwnedFlowRuns, {
+      subject: "owned-flow:alien",
+    });
+    expect(ownedRuns).toHaveLength(1);
+    expect(ownedRuns[0]).toMatchObject({
+      runId: first.runId,
+      flowDefName: "owned_collect_branch",
+      status: "completed",
+      currentStepId: "done",
+    });
+    expect(ownedRuns[0].events.map((event) => event.kind).sort()).toEqual([
+      "action",
+      "branch",
+      "collect-issued",
+      "collect-satisfied",
+      "completed",
+    ]);
   });
 
   test("sets component-owned worker status through app wrapper", async () => {

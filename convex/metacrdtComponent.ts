@@ -202,7 +202,31 @@ const ownedFlowEventValidator = v.object({
   message: v.optional(v.string()),
 });
 
+const ownedDagEventValidator = v.object({
+  eventId: v.string(),
+  runId: v.string(),
+  ts: v.number(),
+  stepId: v.string(),
+  type: v.string(),
+  kind: v.string(),
+  message: v.optional(v.string()),
+});
+
+const ownedDagRunValidator = v.object({
+  runId: v.string(),
+  flowDefName: v.string(),
+  subject: v.string(),
+  status: v.string(),
+  currentStepId: v.optional(v.string()),
+  startedAt: v.number(),
+  updatedAt: v.number(),
+  completedAt: v.optional(v.number()),
+  context: v.optional(v.any()),
+  events: v.array(ownedDagEventValidator),
+});
+
 const startOwnedFlowResultValidator = v.object({
+  runId: v.optional(v.string()),
   flowDefName: v.string(),
   subject: v.string(),
   status: ownedFlowStatus,
@@ -391,9 +415,31 @@ type CollectResult = {
   reused: boolean;
 };
 
+type OwnedDagRun = {
+  runId: string;
+  flowDefName: string;
+  subject: string;
+  status: string;
+  currentStepId?: string;
+  startedAt: number;
+  updatedAt: number;
+  completedAt?: number;
+  context?: unknown;
+  events: Array<{
+    eventId: string;
+    runId: string;
+    ts: number;
+    stepId: string;
+    type: string;
+    kind: string;
+    message?: string;
+  }>;
+};
+
 type OwnedFlowStatus = "completed" | "waiting" | "unsupported";
 
 type OwnedFlowResult = {
+  runId?: string;
   flowDefName: string;
   subject: string;
   status: OwnedFlowStatus;
@@ -951,6 +997,19 @@ export const listOwnedCollections = query({
     ),
 });
 
+export const listOwnedFlowRuns = query({
+  args: {
+    subject: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(ownedDagRunValidator),
+  handler: async (ctx, args) =>
+    await ctx.runQuery(
+      components.metacrdt.log.listDagRuns,
+      withoutUndefined(args),
+    ),
+});
+
 export const ownedCompliancePlan = query({
   args: {
     worker: v.string(),
@@ -1102,6 +1161,30 @@ function ownedFlowEvent(
     : { stepId, type, kind, message };
 }
 
+async function recordOwnedDagRun(
+  ctx: MutationCtx,
+  args: {
+    flowDefName: string;
+    subject: string;
+    status: OwnedFlowStatus;
+    currentStepId?: string;
+    context: Record<string, unknown>;
+    events: OwnedFlowEvent[];
+  },
+): Promise<OwnedDagRun> {
+  return await ctx.runMutation(
+    components.metacrdt.log.recordDagRun,
+    withoutUndefined({
+      flowDefName: args.flowDefName,
+      subject: args.subject,
+      status: args.status,
+      currentStepId: args.currentStepId,
+      context: args.context,
+      events: args.events,
+    }),
+  );
+}
+
 /**
  * Bounded component-owned DAG runner. It reuses host `flowDefs` as configuration,
  * but executes against component-owned facts and component-owned collection tokens.
@@ -1142,35 +1225,51 @@ export const startOwnedFlow = mutation({
     const events: OwnedFlowEvent[] = [];
     let stepId = def.startStepId;
 
+    const finish = async (
+      status: OwnedFlowStatus,
+      currentStepId: string | undefined,
+      collect?: CollectResult,
+    ): Promise<OwnedFlowResult> => {
+      const run = await recordOwnedDagRun(ctx, {
+        flowDefName: args.flowDefName,
+        subject: args.subject,
+        status,
+        currentStepId,
+        context,
+        events,
+      });
+      return withoutUndefined({
+        runId: run.runId,
+        flowDefName: args.flowDefName,
+        subject: args.subject,
+        status,
+        currentStepId,
+        collect,
+        asserted,
+        events,
+      });
+    };
+
     for (let i = 0; i < 50; i++) {
       const step = def.steps.find((s) => s.id === stepId);
       if (step === undefined || step.type === "done") {
         events.push(ownedFlowEvent(stepId || "done", "done", "completed"));
-        return {
-          flowDefName: args.flowDefName,
-          subject: args.subject,
-          status: "completed",
-          currentStepId: stepId || "done",
-          asserted,
-          events,
-        };
+        return await finish("completed", stepId || "done");
       }
 
       const cfg = recordOrEmpty(step.config);
       if (step.type === "assert") {
         const attr = cfg.a;
         if (typeof attr !== "string") {
-          return {
-            flowDefName: args.flowDefName,
-            subject: args.subject,
-            status: "unsupported",
-            currentStepId: step.id,
-            asserted,
-            events: [
-              ...events,
-              ownedFlowEvent(step.id, step.type, "unsupported", "assert missing string attr"),
-            ],
-          };
+          events.push(
+            ownedFlowEvent(
+              step.id,
+              step.type,
+              "unsupported",
+              "assert missing string attr",
+            ),
+          );
+          return await finish("unsupported", step.id);
         }
         const value = resolveFlowValue(cfg.v, args.subject, context);
         const result = await ctx.runMutation(
@@ -1218,30 +1317,21 @@ export const startOwnedFlow = mutation({
           ),
         );
         if (!stepId) {
-          return {
-            flowDefName: args.flowDefName,
-            subject: args.subject,
-            status: "completed",
-            currentStepId: "done",
-            asserted,
-            events,
-          };
+          return await finish("completed", "done");
         }
         continue;
       } else if (step.type === "collect") {
         const form = cfg.form;
         if (typeof form !== "string") {
-          return {
-            flowDefName: args.flowDefName,
-            subject: args.subject,
-            status: "unsupported",
-            currentStepId: step.id,
-            asserted,
-            events: [
-              ...events,
-              ownedFlowEvent(step.id, step.type, "unsupported", "collect missing string form"),
-            ],
-          };
+          events.push(
+            ownedFlowEvent(
+              step.id,
+              step.type,
+              "unsupported",
+              "collect missing string form",
+            ),
+          );
+          return await finish("unsupported", step.id);
         }
         const scope = collectScope(cfg, args.subject, context);
         if (hasValue(attrs, `submitted.${form}`, scope)) {
@@ -1271,15 +1361,7 @@ export const startOwnedFlow = mutation({
               `${form} for ${scope}`,
             ),
           );
-          return {
-            flowDefName: args.flowDefName,
-            subject: args.subject,
-            status: "waiting",
-            currentStepId: step.id,
-            collect,
-            asserted,
-            events,
-          };
+          return await finish("waiting", step.id, collect);
         }
       } else if (step.type === "action") {
         if (typeof cfg.resultAttr === "string") {
@@ -1317,66 +1399,38 @@ export const startOwnedFlow = mutation({
           );
         }
       } else if (step.type === "wait") {
-        return {
-          flowDefName: args.flowDefName,
-          subject: args.subject,
-          status: "unsupported",
-          currentStepId: step.id,
-          asserted,
-          events: [
-            ...events,
-            ownedFlowEvent(
-              step.id,
-              step.type,
-              "unsupported",
-              "component-owned waits require a persisted scheduler",
-            ),
-          ],
-        };
+        events.push(
+          ownedFlowEvent(
+            step.id,
+            step.type,
+            "unsupported",
+            "component-owned waits require a persisted scheduler",
+          ),
+        );
+        return await finish("unsupported", step.id);
       } else {
-        return {
-          flowDefName: args.flowDefName,
-          subject: args.subject,
-          status: "unsupported",
-          currentStepId: step.id,
-          asserted,
-          events: [
-            ...events,
-            ownedFlowEvent(
-              step.id,
-              String(step.type),
-              "unsupported",
-              `unsupported step type ${String(step.type)}`,
-            ),
-          ],
-        };
+        events.push(
+          ownedFlowEvent(
+            step.id,
+            String(step.type),
+            "unsupported",
+            `unsupported step type ${String(step.type)}`,
+          ),
+        );
+        return await finish("unsupported", step.id);
       }
 
       stepId = step.next ?? "";
       if (!stepId) {
         events.push(ownedFlowEvent("done", "done", "completed"));
-        return {
-          flowDefName: args.flowDefName,
-          subject: args.subject,
-          status: "completed",
-          currentStepId: "done",
-          asserted,
-          events,
-        };
+        return await finish("completed", "done");
       }
     }
 
-    return {
-      flowDefName: args.flowDefName,
-      subject: args.subject,
-      status: "unsupported",
-      currentStepId: stepId,
-      asserted,
-      events: [
-        ...events,
-        ownedFlowEvent(stepId, "loop", "unsupported", "flow exceeded 50 steps"),
-      ],
-    };
+    events.push(
+      ownedFlowEvent(stepId, "loop", "unsupported", "flow exceeded 50 steps"),
+    );
+    return await finish("unsupported", stepId);
   },
 });
 

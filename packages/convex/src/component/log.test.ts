@@ -11,7 +11,10 @@ const componentInternal = internal as unknown as {
     listEvents: any;
     listCurrent: any;
     getCurrentEntity: any;
+    listCurrentEntities: any;
     rebuildProjections: any;
+    recordDagRun: any;
+    listDagRuns: any;
   };
 };
 
@@ -450,6 +453,84 @@ describe("@metacrdt/convex component-owned protocol log", () => {
         a: "worker.status",
       }),
     ).toEqual([]);
+  });
+
+  test("persists component-owned DAG run timelines separately from collection tokens", async () => {
+    const t = initComponentTest();
+    const first = await t.mutation(componentInternal.log.recordDagRun, {
+      flowDefName: "owned_flow",
+      subject: "worker:flow",
+      status: "waiting",
+      currentStepId: "collect",
+      context: { employer: "employer:acme" },
+      now: 50_000,
+      events: [
+        {
+          stepId: "collect",
+          type: "collect",
+          kind: "collect-issued",
+          message: "owned_i9 for employer:acme",
+        },
+      ],
+    });
+
+    expect(first).toMatchObject({
+      flowDefName: "owned_flow",
+      subject: "worker:flow",
+      status: "waiting",
+      currentStepId: "collect",
+      startedAt: 50_000,
+      updatedAt: 50_000,
+      events: [
+        expect.objectContaining({
+          stepId: "collect",
+          kind: "collect-issued",
+        }),
+      ],
+    });
+
+    const second = await t.mutation(componentInternal.log.recordDagRun, {
+      flowDefName: "owned_flow",
+      subject: "worker:flow",
+      status: "completed",
+      currentStepId: "done",
+      context: { employer: "employer:acme" },
+      now: 51_000,
+      events: [
+        {
+          stepId: "collect",
+          type: "collect",
+          kind: "collect-satisfied",
+        },
+        {
+          stepId: "done",
+          type: "done",
+          kind: "completed",
+        },
+      ],
+    });
+
+    expect(second.runId).toBe(first.runId);
+    expect(second).toMatchObject({
+      status: "completed",
+      currentStepId: "done",
+      completedAt: 51_000,
+    });
+    expect(second.events.map((event: { kind: string }) => event.kind).sort()).toEqual([
+      "collect-issued",
+      "collect-satisfied",
+      "completed",
+    ]);
+
+    const listed = await t.query(componentInternal.log.listDagRuns, {
+      subject: "worker:flow",
+    });
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({
+      runId: first.runId,
+      status: "completed",
+      flowDefName: "owned_flow",
+    });
   });
 
   test("filters component-owned events by entity and attribute", async () => {

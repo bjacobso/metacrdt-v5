@@ -65,6 +65,10 @@ export default function ComponentEntity() {
     subject: id,
     limit: 20,
   });
+  const flowRuns = useQuery(api.metacrdtComponent.listOwnedFlowRuns, {
+    subject: id,
+    limit: 20,
+  });
   const types =
     entity?.attributes.find((attr) => attr.a === "type")?.values.map(String) ?? [];
   const primaryType = types[0];
@@ -153,6 +157,7 @@ export default function ComponentEntity() {
     entity === undefined ||
     events === undefined ||
     collections === undefined ||
+    flowRuns === undefined ||
     (primaryType !== undefined && actions === undefined) ||
     (primaryType !== undefined && flows === undefined) ||
     (primaryType === "Worker" && compliance === undefined)
@@ -399,6 +404,61 @@ export default function ComponentEntity() {
           )}
         </Card>
       )}
+
+      <Card>
+        <CardHeader
+          title="Component flow runs"
+          hint="component-owned DAG timeline rows"
+        />
+        {flowRuns.length === 0 ? (
+          <p className="px-5 py-4 text-[13px] text-muted">
+            No component-owned DAG flow runs for this entity.
+          </p>
+        ) : (
+          <ul className="divide-y divide-line-soft">
+            {flowRuns.map((run) => (
+              <li key={run.runId} className="px-5 py-3">
+                <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                  <Chip
+                    tone={
+                      run.status === "completed"
+                        ? "data"
+                        : run.status === "waiting"
+                          ? "configured"
+                          : "system"
+                    }
+                  >
+                    {run.status}
+                  </Chip>
+                  <span className="font-medium text-ink">{run.flowDefName}</span>
+                  {run.currentStepId && (
+                    <>
+                      <span className="text-muted">at</span>
+                      <Mono>{run.currentStepId}</Mono>
+                    </>
+                  )}
+                  <span className="ml-auto text-[12px] text-muted">
+                    {new Date(run.updatedAt).toLocaleString()}
+                  </span>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+                  <Mono>{run.runId}</Mono>
+                </div>
+                {run.events.length > 0 && (
+                  <ul className="mt-2 space-y-1 text-[12px] text-muted">
+                    {run.events.map((event) => (
+                      <li key={event.eventId}>
+                        <Mono>{event.stepId}</Mono> {event.kind}
+                        {event.message ? ` - ${event.message}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       {primaryType === "Worker" && compliance !== undefined && (
         <Card>

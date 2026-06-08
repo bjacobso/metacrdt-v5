@@ -228,6 +228,32 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         }>,
         Name
       >;
+      listDagRuns: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number; subject?: string },
+        Array<{
+          completedAt?: number;
+          context?: any;
+          currentStepId?: string;
+          events: Array<{
+            eventId: string;
+            kind: string;
+            message?: string;
+            runId: string;
+            stepId: string;
+            ts: number;
+            type: string;
+          }>;
+          flowDefName: string;
+          runId: string;
+          startedAt: number;
+          status: string;
+          subject: string;
+          updatedAt: number;
+        }>,
+        Name
+      >;
       listEvents: FunctionReference<
         "query",
         "internal",
@@ -260,6 +286,46 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {},
         { currentFacts: number; events: number; facts: number },
+        Name
+      >;
+      recordDagRun: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          context?: any;
+          currentStepId?: string;
+          events: Array<{
+            kind: string;
+            message?: string;
+            stepId: string;
+            type: string;
+          }>;
+          flowDefName: string;
+          now?: number;
+          runId?: string;
+          status: "running" | "waiting" | "completed" | "unsupported";
+          subject: string;
+        },
+        {
+          completedAt?: number;
+          context?: any;
+          currentStepId?: string;
+          events: Array<{
+            eventId: string;
+            kind: string;
+            message?: string;
+            runId: string;
+            stepId: string;
+            ts: number;
+            type: string;
+          }>;
+          flowDefName: string;
+          runId: string;
+          startedAt: number;
+          status: string;
+          subject: string;
+          updatedAt: number;
+        },
         Name
       >;
       submitCollection: FunctionReference<

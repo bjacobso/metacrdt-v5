@@ -123,4 +123,41 @@ export default defineSchema({
     .index("by_target", ["subject", "form", "scope"])
     .index("by_subject", ["subject"])
     .index("by_status", ["status"]),
+
+  // Component-owned DAG run/timeline storage. These are operational process
+  // rows; step effects still enter the protocol log as facts. Timeline entries
+  // live in a child table so a long-running process cannot rewrite an unbounded
+  // array on the run document.
+  flowDagRuns: defineTable({
+    flowDefName: v.string(),
+    subject: v.string(),
+    status: v.union(
+      v.literal("running"),
+      v.literal("waiting"),
+      v.literal("completed"),
+      v.literal("unsupported"),
+    ),
+    currentStepId: v.optional(v.string()),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    context: v.optional(value),
+  })
+    .index("by_subject", ["subject"])
+    .index("by_subject_and_flowDefName_and_status", [
+      "subject",
+      "flowDefName",
+      "status",
+    ])
+    .index("by_status", ["status"])
+    .index("by_updatedAt", ["updatedAt"]),
+
+  flowDagEvents: defineTable({
+    runId: v.id("flowDagRuns"),
+    ts: v.number(),
+    stepId: v.string(),
+    type: v.string(),
+    kind: v.string(),
+    message: v.optional(v.string()),
+  }).index("by_run", ["runId"]),
 });

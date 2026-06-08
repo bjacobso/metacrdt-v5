@@ -17,6 +17,8 @@ import {
 import type { Event } from "@metacrdt/core";
 import type { ConvexTransactionRow, ProtocolFactEventRow } from "../types.js";
 
+declare const crypto: { randomUUID(): string };
+
 const actorType = v.union(
   v.literal("user"),
   v.literal("system"),
@@ -146,6 +148,43 @@ const collectionRunValidator = v.object({
   tokenExpiresAt: v.optional(v.number()),
   tokenConsumedAt: v.optional(v.number()),
   context: v.optional(v.any()),
+});
+
+const dagRunStatus = v.union(
+  v.literal("running"),
+  v.literal("waiting"),
+  v.literal("completed"),
+  v.literal("unsupported"),
+);
+
+const dagEventInputValidator = v.object({
+  stepId: v.string(),
+  type: v.string(),
+  kind: v.string(),
+  message: v.optional(v.string()),
+});
+
+const dagEventValidator = v.object({
+  eventId: v.id("flowDagEvents"),
+  runId: v.id("flowDagRuns"),
+  ts: v.number(),
+  stepId: v.string(),
+  type: v.string(),
+  kind: v.string(),
+  message: v.optional(v.string()),
+});
+
+const dagRunValidator = v.object({
+  runId: v.id("flowDagRuns"),
+  flowDefName: v.string(),
+  subject: v.string(),
+  status: v.string(),
+  currentStepId: v.optional(v.string()),
+  startedAt: v.number(),
+  updatedAt: v.number(),
+  completedAt: v.optional(v.number()),
+  context: v.optional(v.any()),
+  events: v.array(dagEventValidator),
 });
 
 const rebuildResultValidator = v.object({
@@ -451,6 +490,41 @@ function collectionRunSummary(
     tokenExpiresAt: run.tokenExpiresAt,
     tokenConsumedAt: run.tokenConsumedAt,
     context: run.context,
+  });
+}
+
+function dagEventSummary(row: Doc<"flowDagEvents">): typeof dagEventValidator.type {
+  return withoutUndefined({
+    eventId: row._id,
+    runId: row.runId,
+    ts: row.ts,
+    stepId: row.stepId,
+    type: row.type,
+    kind: row.kind,
+    message: row.message,
+  });
+}
+
+async function dagRunSummary(
+  ctx: QueryCtx | MutationCtx,
+  run: Doc<"flowDagRuns">,
+): Promise<typeof dagRunValidator.type> {
+  const eventRows = await ctx.db
+    .query("flowDagEvents")
+    .withIndex("by_run", (q) => q.eq("runId", run._id))
+    .order("desc")
+    .take(50);
+  return withoutUndefined({
+    runId: run._id,
+    flowDefName: run.flowDefName,
+    subject: run.subject,
+    status: run.status,
+    currentStepId: run.currentStepId,
+    startedAt: run.startedAt,
+    updatedAt: run.updatedAt,
+    completedAt: run.completedAt,
+    context: run.context,
+    events: eventRows.map(dagEventSummary),
   });
 }
 
@@ -822,6 +896,129 @@ export const listCollections = query({
             .order("desc")
             .take(take);
     return rows.map(collectionRunSummary);
+  },
+});
+
+export const recordDagRun = mutation({
+  args: {
+    runId: v.optional(v.id("flowDagRuns")),
+    flowDefName: v.string(),
+    subject: v.string(),
+    status: dagRunStatus,
+    currentStepId: v.optional(v.string()),
+    context: v.optional(v.any()),
+    events: v.array(dagEventInputValidator),
+    now: v.optional(v.number()),
+  },
+  returns: dagRunValidator,
+  handler: async (ctx, args) => {
+    const now = args.now ?? Date.now();
+    const existing =
+      args.runId === undefined
+        ? (
+            await Promise.all([
+              ctx.db
+                .query("flowDagRuns")
+                .withIndex("by_subject_and_flowDefName_and_status", (q) =>
+                  q
+                    .eq("subject", args.subject)
+                    .eq("flowDefName", args.flowDefName)
+                    .eq("status", "waiting"),
+                )
+                .order("desc")
+                .take(1),
+              ctx.db
+                .query("flowDagRuns")
+                .withIndex("by_subject_and_flowDefName_and_status", (q) =>
+                  q
+                    .eq("subject", args.subject)
+                    .eq("flowDefName", args.flowDefName)
+                    .eq("status", "running"),
+                )
+                .order("desc")
+                .take(1),
+            ])
+          )
+            .flat()
+            .sort((a, b) => b.updatedAt - a.updatedAt)[0]
+        : await ctx.db.get(args.runId);
+
+    const runId =
+      existing === null || existing === undefined
+        ? await ctx.db.insert(
+            "flowDagRuns",
+            withoutUndefined({
+              flowDefName: args.flowDefName,
+              subject: args.subject,
+              status: args.status,
+              currentStepId: args.currentStepId,
+              startedAt: now,
+              updatedAt: now,
+              completedAt:
+                args.status === "completed" || args.status === "unsupported"
+                  ? now
+                  : undefined,
+              context: args.context,
+            }),
+          )
+        : existing._id;
+
+    if (existing !== null && existing !== undefined) {
+      await ctx.db.patch(
+        runId,
+        withoutUndefined({
+          status: args.status,
+          currentStepId: args.currentStepId,
+          updatedAt: now,
+          completedAt:
+            args.status === "completed" || args.status === "unsupported"
+              ? now
+              : undefined,
+          context: args.context,
+        }),
+      );
+    }
+
+    for (const event of args.events) {
+      await ctx.db.insert(
+        "flowDagEvents",
+        withoutUndefined({
+          runId,
+          ts: now,
+          stepId: event.stepId,
+          type: event.type,
+          kind: event.kind,
+          message: event.message,
+        }),
+      );
+    }
+
+    const run = await ctx.db.get(runId);
+    if (run === null) throw new Error(`component DAG run ${runId} not found`);
+    return await dagRunSummary(ctx, run);
+  },
+});
+
+export const listDagRuns = query({
+  args: {
+    subject: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(dagRunValidator),
+  handler: async (ctx, args) => {
+    const take = Math.max(1, Math.min(args.limit ?? 20, 100));
+    const rows =
+      args.subject === undefined
+        ? await ctx.db.query("flowDagRuns").order("desc").take(take)
+        : await ctx.db
+            .query("flowDagRuns")
+            .withIndex("by_subject", (q) => q.eq("subject", args.subject!))
+            .order("desc")
+            .take(take);
+
+    const out = [];
+    for (const run of rows) out.push(await dagRunSummary(ctx, run));
+    return out;
   },
 });
 

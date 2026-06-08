@@ -1,11 +1,10 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 41 (component-owned DAG flow starter/resumer) has
-shipped.
+**Current goal:** Goal 42 (persisted component-owned DAG run/timeline storage)
+has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth,
-persisted component-owned DAG scheduler/timeline, or another parked Query/Rules
-item.
+component-owned wait/scheduler support, or another parked Query/Rules item.
 
 This plan is the operational goal file. Read it with:
 
@@ -110,6 +109,9 @@ arguments.
     grouping current facts by attribute over the component projection
   - component-owned typed entity discovery via `log.listCurrentEntities`,
     listing entities from current `type` facts and attaching current names
+  - component-owned DAG run/timeline tables plus `log.recordDagRun` and
+    `log.listDagRuns` for persisted process history separate from collection
+    capability tokens
   - a reference-app wrapper, `api.metacrdtComponent.verifyEvents`, that mounts
     the component as `components.metacrdt` while keeping table ownership and
     public API naming in the host app
@@ -320,9 +322,10 @@ arguments.
   facts now live inside the component. A bounded component-owned DAG
   starter/resumer can run host flow definitions over component-owned state,
   including `assert`, `notify`, subject-local `branch`, synchronous `action`, and
-  `collect` parking through component collection tokens. Host-owned DAG flows
-  still use the host `flowRuns` table, and a persisted component-owned DAG
-  scheduler/timeline remains future work.
+  `collect` parking through component collection tokens. The component now owns
+  persisted DAG run/timeline rows for that starter/resumer. Host-owned DAG flows
+  still use the host `flowRuns` table, and component-owned waits/reminders/
+  scheduler wakeups remain future work.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime.
 - Multi-replica sync is specified and now implemented as in-memory
@@ -4060,6 +4063,115 @@ Live smoke:
 
 ---
 
+## Goal 42 — Persisted Component-Owned DAG Run/Timeline Storage
+
+**Status:** shipped as component-owned operational run rows and child timeline
+rows. Scheduler behavior is still explicitly future work.
+
+**Objective:** keep component-owned DAG process history inside the installed
+`@metacrdt/convex` component, separate from collection-token capability rows.
+
+### Scope
+
+Component package:
+
+```text
+packages/convex/src/component/schema.ts
+  flowDagRuns
+  flowDagEvents
+
+packages/convex/src/component/log.ts
+  recordDagRun
+  listDagRuns
+```
+
+Reference app wrapper:
+
+```text
+convex/metacrdtComponent.ts
+  startOwnedFlow persists its execution summary
+  listOwnedFlowRuns
+```
+
+Frontend:
+
+```text
+src/pages/ComponentEntity.tsx
+  Component flow runs timeline card
+```
+
+Tests:
+
+```text
+packages/convex/src/component/log.test.ts
+convex/metacrdtComponent.test.ts
+```
+
+### Semantics
+
+- `flowDagRuns` stores one bounded operational run row with `flowDefName`,
+  `subject`, `status`, `currentStepId`, timestamps, and optional context.
+- `flowDagEvents` stores timeline entries as child rows, avoiding unbounded arrays
+  on the run document.
+- `log.recordDagRun` creates a new run or reuses the newest active
+  `waiting`/`running` run for the same `(subject, flowDefName)`, appends timeline
+  rows, and updates status/current step.
+- `startOwnedFlow` records every completed/waiting/unsupported execution summary
+  through `log.recordDagRun` and returns the persisted `runId`.
+- Rerunning a flow after collection submission updates the existing waiting
+  component DAG run to `completed` rather than creating a host `flowRuns` row.
+- `listOwnedFlowRuns` exposes persisted component DAG runs and recent timeline
+  events to the component entity page.
+
+### Non-Goals
+
+- Do not implement component-owned `wait` scheduler wakeups.
+- Do not implement reminder/escalation timers for component DAG runs.
+- Do not migrate host `flows.startFlow` runs.
+- Do not store timeline arrays directly on `flowDagRuns`.
+- Do not treat collection-token `flowRuns` as DAG run records.
+
+### Acceptance Criteria
+
+- `@metacrdt/convex` owns DAG run/timeline tables and component functions for
+  recording/listing them.
+- An assert-only component flow produces a completed persisted component DAG run.
+- A collect flow produces a waiting persisted component DAG run, then rerunning
+  after `/collect` submission updates that same run to completed.
+- Component entity pages show persisted component DAG run history separately from
+  collection capability rows.
+- Host `flowRuns` remain untouched by component-owned DAG execution.
+
+### Verification
+
+- `npm run test:convex-package` passed (32 tests).
+- `npx vitest run convex/metacrdtComponent.test.ts convex/forms.test.ts convex/flowdag.test.ts`
+  passed (26 focused tests).
+- `npm run test:core` passed (46 tests).
+- `npm run test:runtime` passed (18 tests).
+- `npm run test:local` passed (13 tests).
+- `npm run test:cloudflare` passed (12 tests).
+- `npm run test:forma` passed (9 tests).
+- `npm test` passed (17 backend test files, 115 tests).
+- `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex dev --once` deployed backend/component schema and functions to
+  `chatty-hare-94`.
+- `npx @convex-dev/static-hosting upload` deployed the frontend to
+  `https://chatty-hare-94.convex.site`.
+
+Live smoke:
+
+- `curl -I https://chatty-hare-94.convex.site` returned HTTP 200.
+- `npx convex run metacrdtComponent:listOwnedFlowRuns '{"limit":5}'` returned
+  the deployed wrapper shape (`[]` before any live component DAG runs).
+- `npx convex run flows:flowsForType '{"type":"Worker"}'` returned the deployed
+  onboarding flow definition shape.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -4103,7 +4215,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Goal 39: component-owned compliance issue/reuse.
 - [x] Goal 40: component-owned compliance materialization.
 - [x] Goal 41: component-owned DAG flow starter/resumer.
-- [ ] Persisted component-owned DAG flow runner / scheduler after Goal 41.
+- [x] Goal 42: persisted component-owned DAG run/timeline storage.
+- [ ] Component-owned waits/reminders/scheduler wakeups after Goal 42.
 
 ### Auth / Privacy
 
@@ -4161,10 +4274,10 @@ or intentionally moved out of this repo's scope. Each shipped slice must update
 `PLAN.md` / `TODO.md`, pass the relevant test/typecheck/build gate, and be
 committed/pushed with the verification recorded.
 
-Goal 41 is complete: component-owned detail pages can run configured host flow
-definitions against component-owned state, park at component-owned collection
-tokens, resume by rerunning after submission, and preserve host `flowRuns`
-behavior.
+Goal 42 is complete: component-owned DAG flow execution now records component-
+owned run/timeline rows in the installed component, reuses the waiting run when a
+rerun resumes after collection submission, displays that process history on
+component entity pages, and preserves host `flowRuns` behavior.
 
 The next shipped slice should update this section with its own concrete
 definition of done before implementation starts.

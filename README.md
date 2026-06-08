@@ -119,7 +119,8 @@ Current packages:
   component-owned state, including actions that open collection-token forms whose
   definitions and submissions fold back into component-owned current state. The
   component detail path can also run configured host flow definitions over
-  component-owned state as a bounded starter/resumer.
+  component-owned state as a bounded starter/resumer with persisted
+  component-owned DAG run/timeline rows.
   Includes Confect sidecar guidance.
 - **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
   authoring language extracted from Open Ontology: reader, formatter, evaluator,
@@ -202,6 +203,9 @@ Built today:
   configured host flow definitions over component-owned state, park at
   component-owned collection tokens, and resume by rerunning after submission
   without creating host `flowRuns` rows
+- persisted component-owned DAG process history: flow executions write
+  component-owned run rows plus child timeline rows and render them on component
+  entity pages
 - single-use, expiring collection tokens for the public `/collect` page
 - Tailwind + React Router research-preview UI
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility

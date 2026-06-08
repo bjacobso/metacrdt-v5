@@ -144,6 +144,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   flow definitions over component-owned state, support assert/notify/subject-local
   branch/synchronous action/collect/done, park at component-owned collection
   tokens, and resume by rerunning after submission without host `flowRuns`.
+- [x] **Goal 42: persisted component-owned DAG run/timeline storage** —
+  `@metacrdt/convex` owns `flowDagRuns` and `flowDagEvents`; `startOwnedFlow`
+  records each execution into component-owned process history, reusing a waiting
+  run when a rerun resumes after collection submission.
 - [x] **Datalog disjunction** — Datalog `where` bodies now support bounded
   `{ or: [[...clauses], ...] }` branches. Branches run from the current binding,
   union/dedupe their bindings with provenance merged, and continue into later
@@ -183,7 +187,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   hello/delta catch-up, directed deltas, lifecycle cleanup, and multi-hop gossip.
 - [ ] Targets: live Cloudflare deployment/auth and migrating more reference
   runtime business logic onto `@metacrdt/convex` component-owned state
-  (component-owned flows / compliance remain).
+  (component-owned waits/scheduler remain).
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -246,8 +250,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Choose the next active goal: Goal 39, component-owned compliance
   issue/reuse.
 - [x] After Goal 40, choose component-owned DAG flow starter/resumer.
-- [ ] After Goal 41, choose between provider-backed login UI / production auth,
-  live Cloudflare deployment/auth, persisted component-owned DAG scheduler, or a
+- [x] After Goal 41, choose persisted component-owned DAG run/timeline storage.
+- [ ] After Goal 42, choose between provider-backed login UI / production auth,
+  live Cloudflare deployment/auth, component-owned wait/scheduler support, or a
   parked Query/Rules item.
 
 **Docs**
@@ -273,6 +278,17 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — persisted component-owned DAG run/timeline storage
+- [x] **Goal 42 shipped:** `@metacrdt/convex` now owns `flowDagRuns` and
+  `flowDagEvents` tables plus `log.recordDagRun` / `log.listDagRuns`.
+- [x] **Flow starter writes process history.** `api.metacrdtComponent.startOwnedFlow`
+  records every waiting/completed/unsupported execution summary into the
+  component; rerunning after collection submission updates the existing waiting
+  run to completed.
+- [x] **UI and tests cover the timeline.** `/component/e/:id` shows Component
+  flow runs separately from collection capability rows; package and reference
+  tests prove run/timeline persistence and host `flowRuns` isolation.
 
 ### 2026-06-07 — component-owned DAG flow starter/resumer
 - [x] **Goal 41 shipped:** `api.metacrdtComponent.startOwnedFlow` interprets
