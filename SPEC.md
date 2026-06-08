@@ -43,6 +43,53 @@ An implementation MAY conform at increasing levels; each subsumes the prior.
 
 ---
 
+### 1.2 Reference implementation discipline
+
+The protocol above is language- and framework-neutral: any implementation that
+satisfies the normative L1–L5 rules conforms, regardless of how it is built.
+
+This repository's **canonical reference implementation** additionally commits to
+one implementation discipline — it is **Effect-native, top to bottom**. The
+following is normative *for this repo* and non-normative for the protocol:
+
+- **Services & Layers.** Runtime capabilities (event store, clock, sequencer,
+  scheduler, transport, auth) are expressed as Effect services behind
+  `Context.Tag`s and wired with `Layer`s. Targets *provide* Layers; features and
+  the harness depend on the tags, never on concretions.
+- **Schema everywhere.** Every external boundary — function arguments, returns,
+  errors, stored rows, and wire messages — is described with `effect/Schema`.
+  Errors are `Schema.TaggedError` / `Data.TaggedError` carried in the Effect
+  error channel, not thrown.
+- **Effectful tests.** Suites, including the `@metacrdt/testkit` conformance
+  checks, run as Effect programs under `@effect/vitest`.
+- **Confect at the Convex target.** Convex functions are authored through Confect
+  so Schema/Effect reach the database boundary.
+- **Effect v4 (deferred target).** The intended baseline is the Effect v4 line,
+  pinned for reference as the `.context/effect-v4` submodule
+  (`effect-TS/effect-smol`). The repo currently builds on Effect v3 because
+  Confect (`@confect/*@8`) peer-depends on `effect@^3`. The v4 migration is
+  **gated on a v4-compatible Confect release**; until then new code targets v3
+  APIs and the v4 submodule serves only as the forward reference.
+
+**The kernel is Schema-only, not monadic.** `@metacrdt/core` adopts `effect/Schema`
+for its *type definitions* (e.g. `Event`, `Hlc`, `Value`, `EventId`) — exposed as
+an optional surface so non-Effect embedders can still use the kernel bare — but
+its fold, order, merge, and visibility functions remain plain, synchronous,
+deterministic computation. They are never routed through the `Effect` monad. The
+Effect runtime begins at the boundary *around* core (`@metacrdt/runtime` services
+and above), not inside the fold.
+
+**Determinism is preserved, not waived.** Effectfulness MUST NOT compromise the
+convergence guarantee. `@metacrdt/core` and every deterministic fold remain pure
+in the sense that matters for §4–§5: no ambient wall-clock, no randomness, and no
+I/O inside the fold. Physical time, identity, and randomness stay *inputs*
+(injected through services or parameters), so two replicas that have observed the
+same events MUST still compute identical state. "Effectful" describes how
+computation is structured and wired; it introduces no nondeterminism into the
+kernel.
+
+---
+
 ## 2. Terminology
 
 - **Entity** — anything with identity, addressed by an `EntityId`.

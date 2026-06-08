@@ -1,7 +1,13 @@
 # PLAN.md — MetaCRDT Execution Goal
 
 **Current goal:** Goal 110 (Node Shared SQL Lifecycle Plan) has
-shipped.
+shipped. The repository now also carries a **standing objective — Goal 111,
+Effect-Native Substrate** (SPEC §1.2): every new or touched unit adopts Effect
+services/`Layer`s, `effect/Schema`, tagged errors, and `@effect/vitest`, while
+`@metacrdt/core` stays a Schema-only deterministic fold (no Effect monad). The
+**Effect v4** bump is held until Confect ships a v4-compatible release; the repo
+stays on `effect@3` meanwhile, with `.context/effect-v4` pinned as the forward
+reference.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
 `factEvents`. Goal 60 promoted the already-proven `queryFactsFromEventLog`
@@ -202,13 +208,23 @@ MetaCRDT names a primitive:
 
 The repository should make that statement true in code:
 
-1. `@metacrdt/core` defines the pure deterministic protocol kernel.
+1. `@metacrdt/core` defines the deterministic protocol kernel.
 2. The Convex reference runtime writes core-shaped events.
 3. Read projections are rebuildable deterministic folds of those events.
 4. Later runtime targets (Cloudflare Durable Objects, browser/local-first, Node)
    can import the same core and converge to the same projections.
-5. Confect/Effect improves the Convex target's schema, error, and service
-   boundaries without becoming the protocol or infecting `@metacrdt/core`.
+5. The whole repository is **Effect-native, top to bottom**: services and
+   `Layer`s for every runtime capability, `effect/Schema` at every boundary,
+   tagged errors in the Effect error channel, Effect-based tests
+   (`@effect/vitest`), and Confect at the Convex target. This is the standing
+   implementation discipline (SPEC §1.2). Effect **v4** is the intended baseline
+   (`.context/effect-v4`) but the bump is **gated on a v4-compatible Confect**;
+   the repo stays on `effect@3` until then.
+6. **`@metacrdt/core` is the exception: Schema-only, never monadic.** Core adopts
+   `effect/Schema` for its type definitions (as an optional surface) but its
+   fold/order/merge/visibility stay plain, synchronous, deterministic functions —
+   no `Effect` monad in the kernel, no ambient clocks/randomness/I/O — so
+   replicas that observe the same events still converge (SPEC §1.2, §4–5).
 
 The immediate technical gap is now choosing the next runtime/product slice. The
 protocol kernel is extracted, the Convex write/read paths are core-shaped enough
@@ -9306,6 +9322,92 @@ event/meta tables and indexes.
 
 ---
 
+## Goal 111 — Effect-Native Substrate (standing objective)
+
+**Objective:** make the whole repository Effect-native top to bottom — services
+and `Layer`s, `effect/Schema` at every boundary, tagged errors, Effect-based
+tests, and Confect at the Convex target — without compromising determinism. This
+is the standing implementation discipline (SPEC §1.2, North Star #5–6, Working
+Rule #8), not a one-shot migration: code adopts it as it is written or touched.
+
+### Reference Material
+
+- `.context/effect-v4` — pinned `effect-TS/effect-smol` (the Effect v4 line) as
+  the forward API/source reference, plus its `MIGRATION.md` and
+  `migration/*.md` rename maps for the eventual v3→v4 bump.
+
+### Version Posture (decided)
+
+- **Core = Schema-only, pure fold.** `@metacrdt/core` adopts `effect/Schema` for
+  type definitions (optional surface) but never wraps the fold in `Effect`. The
+  Effect monad starts at `@metacrdt/runtime` and above.
+- **Effect v4 bump is held.** `@confect/*@8` peer-depends on `effect@^3`, so the
+  repo stays on `effect@3` until a v4-compatible Confect ships. Write v3 APIs
+  now; the eventual bump is tracked as its own sub-objective below.
+
+### Current State (from the per-package Effect audit)
+
+- **Effect-native already:** `@metacrdt/forma` (evaluator/type-inference run in
+  Effect with `Layer`/`Context.Tag` and `Data.TaggedError`), and the root
+  `confect/` sidecar (`Schema` args/returns, `Schema.TaggedError`, `Effect.gen`,
+  `Layer.provide`).
+- **The keystone gap:** `@metacrdt/runtime`'s service contracts (`EventStore`,
+  `RuntimeClock`, `RuntimeSequencer`, `Scheduler`, `Transport`) are plain TS
+  interfaces returning `Promise`, wired by constructor injection — not
+  `Context.Tag`s + `Layer`s. This is the highest-leverage conversion: every
+  target (`convex`, `cloudflare`, `local`, `node`) and `testkit` implement these
+  contracts, so Effect-ifying them here propagates the services/Layer model
+  across the whole target axis.
+- **Zero Effect today (by current design):** `core`, `schema`, `query`,
+  `convex` (package), `cloudflare`, `local`, `node`, `testkit`.
+
+### Migration Order (each step additive, tests green between)
+
+1. **Runtime as services.** Re-express the `@metacrdt/runtime` contracts as
+   Effect services behind `Context.Tag`s with `Layer` providers; keep
+   determinism (clock/seq are injected services, never ambient).
+2. **Targets provide Layers.** `convex` / `cloudflare` / `local` / `node` expose
+   their stores/clocks/sequencers/transports as `Layer`s satisfying the runtime
+   tags.
+3. **Schema at the boundaries.** Describe event rows, args/returns, and wire
+   messages with `effect/Schema`; convert thrown errors to tagged errors in the
+   Effect channel. `core`/`schema`/`query` may adopt `Schema` for value/clause
+   types while staying pure.
+4. **Effect tests.** Move suites — starting with `@metacrdt/testkit` — onto
+   `@effect/vitest`, running conformance as Effect programs over provided Layers.
+5. **Confect breadth.** Widen Confect from the current sidecar toward the primary
+   authoring style for the Convex target (continues Goal 2 / Goal 8).
+6. **Effect v4 bump (blocked — gated on Confect v4).** When `@confect/*` ships a
+   release that peer-depends on `effect@^4`, bump `effect` + `@effect/vitest` +
+   any `@effect/*` to the matching `4.0.0-beta.x`, then apply the mechanical
+   renames from `.context/effect-v4/migration/*`: `Context.Tag`/`GenericTag` →
+   `Context.Service`, `effect/Either` → `effect/Result`, the `catch*` and
+   Schema-v4 renames. Surface area today: forma (~60 files, mostly unaffected
+   imports), the `confect/` sidecar (~15 files), and any new Effect code.
+
+### Acceptance Criteria (per touched unit)
+
+- New/edited runtime capabilities are `Context.Tag` services with `Layer`
+  providers; no new plain-`Promise` service interface is added.
+- New external boundaries use `effect/Schema`; new errors are tagged and travel
+  in the Effect error channel.
+- New/edited test files run under `@effect/vitest`.
+- `@metacrdt/core` and folds remain deterministic: no ambient clock/random/I/O;
+  the `@metacrdt/testkit` convergence checks still pass.
+- Effect v4 APIs are verified against `.context/effect-v4`.
+
+### Non-Goals
+
+- A big-bang rewrite of all ten packages at once.
+- Introducing nondeterminism into the kernel for the sake of uniformity.
+- Wrapping `@metacrdt/core`'s fold in the `Effect` monad. Core is Schema-only;
+  `Schema` for its types may live behind an optional subpath so non-Effect
+  embedders keep using the kernel bare. No Convex, DOM, or I/O ever enters core.
+- Bumping `effect` to v4 while Confect is still v3-only (would break the Convex
+  sidecar). The bump waits for v4-compatible Confect.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -9389,9 +9491,23 @@ These remain valuable, but they should not interrupt the current goal.
 
 1. **Protocol before framework.**
    Fix MetaCRDT write semantics before Confect migration.
-2. **Core stays pure.**
-   No Convex, Effect, DOM, `Date.now()`, `Math.random()`, or runtime I/O in
-   `@metacrdt/core`.
+2. **Core stays deterministic.**
+   `@metacrdt/core` may be *structured* with Effect (and `effect/Schema`), but
+   MUST stay free of Convex, DOM, `Date.now()`, `Math.random()`, and runtime
+   I/O. Physical time, identity, and randomness remain injected inputs, never
+   ambient. Determinism — not dependency-freeness — is the invariant the
+   convergence guarantee rests on (SPEC §1.2).
+8. **Effect-native, top to bottom (except the core fold).**
+   Every runtime capability is an Effect service (v4: `Context.Service`; v3:
+   `Context.Tag`), wired with `Layer`s that targets provide; every external
+   boundary (args, returns, errors, rows, wire messages) is described with
+   `effect/Schema`; errors are tagged and live in the Effect error channel, not
+   thrown; tests run under `@effect/vitest`; Convex functions are authored
+   through Confect. Plain-TS/Promise contracts migrate to this discipline as
+   they are touched. **`@metacrdt/core` is exempt from the monad** (Working Rule
+   #2 / North Star #6): Schema-only, pure fold. The Effect **v4** bump is held
+   until Confect is v4-compatible; until then write v3 APIs and consult
+   `.context/effect-v4` only as the forward reference.
 3. **Adapters live at the edge.**
    Convex row/document adaptation belongs in `convex/` now, later
    `@metacrdt/convex`.
