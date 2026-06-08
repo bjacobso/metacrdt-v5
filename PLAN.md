@@ -1,11 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 20 (`@metacrdt/local` IndexedDB-compatible async
-persistence) has
+**Current goal:** Goal 21 (`@metacrdt/local` SQLite-compatible persistence) has
 shipped. The next active goal should be chosen from the remaining TODO
-candidates: full app write authorization, SQLite local persistence, p2p
-transport, live Cloudflare deployment/auth, or a state-owning `@metacrdt/convex`
-component slice.
+candidates: full app write authorization, p2p transport, live Cloudflare
+deployment/auth, or a state-owning `@metacrdt/convex` component slice.
 
 This plan is the operational goal file. Read it with:
 
@@ -146,10 +144,14 @@ arguments.
     for IndexedDB-compatible browser persistence
   - exposes `createIndexedDbLocalFirstRuntime` and
     `startIndexedDbLocalFirstRuntime`
+  - includes a dependency-free structural `SqliteRuntimeStorage` adapter for
+    prepare/get/run-style SQLite clients
+  - exposes `createSqliteLocalFirstRuntime` and
+    `startSqliteLocalFirstRuntime`
   - package-local tests prove peer convergence over a BroadcastChannel-compatible
     bus, hello/delta catch-up for late replicas, restart durability,
     broadcast-disabled local persistence, and async IndexedDB-compatible
-    persistence
+    persistence, plus SQLite-backed persistence and convergence
 - `applyConfig` now behaves as a true section-scoped reconciler:
   - configured artifact ownership is tracked on `config:default`
   - explicitly supplied config sections compute desired sets
@@ -213,7 +215,7 @@ arguments.
   local-first target. `@metacrdt/cloudflare` now provides Durable Object
   storage-backed runtime services, a structural WebSocket relay shell, and a
   Worker-facing router/DO class example, but not a live deployed service, auth,
-  SQLite local persistence, or p2p cross-device networking.
+  or p2p cross-device networking.
 - Full app login/write authorization is not configured; unauthenticated callers
   are treated as `anonymous`, so PII is denied by default but general public
   writes remain demo-grade.
@@ -2024,6 +2026,59 @@ packages/runtime/src/local.ts
 
 ---
 
+## Goal 21 — `@metacrdt/local` SQLite-Compatible Persistence
+
+**Status:** shipped as a dependency-free structural SQLite adapter.
+
+**Objective:** make local persistence work for SQLite-backed local/node-like
+targets without adding a native database dependency to this repo. The adapter
+targets the common `prepare()` + `get()` / `run()` shape and plugs into the same
+async local runtime services used by IndexedDB.
+
+### Scope
+
+Package additions:
+
+```text
+packages/local/
+  src/sqlite.ts       # structural SQLite key/value storage adapter
+  src/sqlite.test.ts  # fake SQLite persistence + local-first tests
+```
+
+### Acceptance Criteria
+
+- Export structural SQLite types:
+  - `SqliteDatabaseLike`;
+  - `SqliteStatementLike`;
+  - `SqliteStorageOptions`.
+- Export storage/runtime helpers:
+  - `SqliteRuntimeStorage`;
+  - `sqliteStorage`;
+  - `createSqliteLocalFirstRuntime`;
+  - `startSqliteLocalFirstRuntime`.
+- Keep the package native-dependency-free:
+  - no SQLite package dependency;
+  - adapter accepts a host-provided database client.
+- Initialize a key/value table by default using a validated table name.
+- Support:
+  - `getItem`;
+  - `setItem`;
+  - `removeItem`.
+- Add tests proving:
+  - SQLite key/value get/set/remove behavior;
+  - unsafe table names are rejected;
+  - runtime event log, HLC, and `seq` persist over SQLite storage;
+  - SQLite local-first runtimes converge over BroadcastChannel.
+- Do **not** add p2p or live Cloudflare deployment/auth in this slice.
+
+### Verification
+
+- `npm run test:local` passed (13 tests).
+- Local package typecheck passed.
+- Full gate for this slice is recorded in the commit that shipped it.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -2047,7 +2102,7 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] `@metacrdt/local` browser/local-first package over localStorage +
   BroadcastChannel.
 - [x] IndexedDB-compatible async local persistence adapter.
-- [ ] SQLite local persistence adapter.
+- [x] SQLite-compatible local persistence adapter.
 - [ ] Live Cloudflare deployment / auth / p2p transport targets.
 - [ ] Full registered `@metacrdt/convex` component/function surface.
 

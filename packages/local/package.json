@@ -1,7 +1,7 @@
 {
   "name": "@metacrdt/local",
   "version": "0.1.0",
-  "description": "MetaCRDT browser/local-first target: localStorage/IndexedDB persistence composed with BroadcastChannel anti-entropy.",
+  "description": "MetaCRDT local-first target: localStorage, IndexedDB, and SQLite-compatible persistence composed with BroadcastChannel anti-entropy.",
   "type": "module",
   "license": "MIT",
   "main": "./src/index.ts",

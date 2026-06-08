@@ -29,6 +29,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
   async event/HLC/seq services plus an IndexedDB key/value adapter.
+- [x] SQLite-compatible local persistence — `@metacrdt/local` now has a
+  dependency-free structural SQLite key/value adapter and local-first runtime.
 - [ ] Live Cloudflare deployment / auth and p2p transports (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
@@ -96,8 +98,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **IndexedDB-compatible async local persistence** — `packages/local` adds
   async local runtime services and an `IndexedDbRuntimeStorage` adapter while
   reusing the runtime local event encoding/key helpers.
-- [ ] Targets: SQLite local persistence, live Cloudflare deployment/auth, p2p
-  transport, and a state-owning `@metacrdt/convex` component/function surface.
+- [x] **SQLite-compatible local persistence** — `packages/local` adds a
+  native-dependency-free structural SQLite adapter plus SQLite local-first
+  runtime helpers over the async local runtime path.
+- [ ] Targets: live Cloudflare deployment/auth, p2p transport, and a
+  state-owning `@metacrdt/convex` component/function surface.
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -155,9 +160,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   outside the hardened collection-token path.
 
 **Next goal candidates**
-- [ ] Choose the next active goal: full app write authorization,
-  SQLite local persistence, p2p transport, live Cloudflare deployment/auth, or a
-  state-owning `@metacrdt/convex` component slice.
+- [ ] Choose the next active goal: full app write authorization, p2p transport,
+  live Cloudflare deployment/auth, or a state-owning `@metacrdt/convex`
+  component slice.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -182,6 +187,20 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — @metacrdt/local SQLite-compatible persistence
+- [x] **Added dependency-free SQLite storage.** `packages/local/src/sqlite.ts`
+  defines `SqliteDatabaseLike`, `SqliteStatementLike`, `SqliteRuntimeStorage`,
+  and `sqliteStorage` for prepare/get/run-style SQLite clients supplied by the
+  host app.
+- [x] **Added SQLite local-first runtime helpers.**
+  `createSqliteLocalFirstRuntime` / `startSqliteLocalFirstRuntime` plug SQLite
+  storage into the same async event store, HLC, sequencer, and BroadcastChannel
+  path as IndexedDB.
+- [x] Tests cover key/value get/set/remove, unsafe table-name rejection, runtime
+  restart durability for event log/HLC/`seq`, and BroadcastChannel convergence
+  between SQLite-backed local-first replicas. Deferred: p2p networking and live
+  Cloudflare deployment/auth.
 
 ### 2026-06-07 — @metacrdt/local IndexedDB-compatible async persistence
 - [x] **Added async local runtime services.** `packages/local/src/async.ts`

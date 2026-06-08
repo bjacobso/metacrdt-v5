@@ -29,6 +29,7 @@ import {
   type RuntimeServices,
 } from "@metacrdt/runtime";
 import { indexedDbStorage, type IndexedDbStorageOptions } from "./indexedDb.js";
+import { sqliteStorage, type SqliteStorageOptions } from "./sqlite.js";
 
 export interface AsyncLocalRuntimeStorage {
   getItem(key: string): Promise<string | null>;
@@ -295,6 +296,25 @@ export type IndexedDbLocalFirstRuntime = Omit<AsyncLocalRuntime, "transport"> & 
   stop(): void;
 };
 
+export type SqliteLocalFirstRuntimeOptions = Omit<
+  AsyncLocalRuntimeOptions,
+  "storage"
+> & {
+  storage?: AsyncLocalRuntimeStorage;
+  sqlite?: SqliteStorageOptions;
+  channel?: BroadcastChannelLike;
+  channelName?: string;
+  broadcast?: boolean;
+  transport?: BroadcastTransportOptions;
+  announceOnStart?: boolean;
+};
+
+export type SqliteLocalFirstRuntime = Omit<AsyncLocalRuntime, "transport"> & {
+  transport?: BroadcastChannelTransport;
+  start(): Promise<void>;
+  stop(): void;
+};
+
 function browserBroadcastChannel(name: string): BroadcastChannelLike {
   if (typeof globalThis.BroadcastChannel === "undefined") {
     throw new Error(
@@ -355,6 +375,67 @@ export async function startIndexedDbLocalFirstRuntime(
   options: IndexedDbLocalFirstRuntimeOptions,
 ): Promise<IndexedDbLocalFirstRuntime> {
   const runtime = await createIndexedDbLocalFirstRuntime(options);
+  await runtime.start();
+  return runtime;
+}
+
+/**
+ * SQLite/local-first target. The package stays native-dependency-free by
+ * accepting a structural SQLite client and adapting it to async key/value
+ * storage before composing the same BroadcastChannel transport.
+ */
+export async function createSqliteLocalFirstRuntime(
+  options: SqliteLocalFirstRuntimeOptions,
+): Promise<SqliteLocalFirstRuntime> {
+  if (options.storage === undefined && options.sqlite === undefined) {
+    throw new Error(
+      "@metacrdt/local SQLite runtime requires `sqlite` or `storage`",
+    );
+  }
+  const namespace = options.namespace ?? "metacrdt";
+  const base = await createAsyncLocalRuntime({
+    name: options.name ?? "local",
+    replicaId: options.replicaId,
+    storage: options.storage ?? (await sqliteStorage(options.sqlite!)),
+    namespace,
+    wall: options.wall,
+    capabilities: options.capabilities,
+  });
+
+  let transport: BroadcastChannelTransport | undefined;
+  let runtime: Omit<AsyncLocalRuntime, "transport"> & {
+    transport?: BroadcastChannelTransport;
+  } = base;
+
+  if (options.broadcast ?? true) {
+    const transportOptions: BroadcastTransportOptions = {
+      ...options.transport,
+      announceOnStart:
+        options.announceOnStart ?? options.transport?.announceOnStart ?? true,
+    };
+    runtime = attachBroadcastTransport(
+      base,
+      options.channel ?? browserBroadcastChannel(options.channelName ?? `${namespace}:sync`),
+      transportOptions,
+    ) as typeof runtime;
+    transport = runtime.transport;
+  }
+
+  return Object.assign(runtime, {
+    transport,
+    async start() {
+      await transport?.start();
+    },
+    stop() {
+      transport?.stop();
+    },
+  });
+}
+
+export async function startSqliteLocalFirstRuntime(
+  options: SqliteLocalFirstRuntimeOptions,
+): Promise<SqliteLocalFirstRuntime> {
+  const runtime = await createSqliteLocalFirstRuntime(options);
   await runtime.start();
   return runtime;
 }

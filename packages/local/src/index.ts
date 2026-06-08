@@ -156,15 +156,26 @@ export {
   AsyncLocalSequencer,
   createAsyncLocalRuntime,
   createIndexedDbLocalFirstRuntime,
+  createSqliteLocalFirstRuntime,
   startIndexedDbLocalFirstRuntime,
+  startSqliteLocalFirstRuntime,
   type AsyncLocalRuntime,
   type AsyncLocalRuntimeOptions,
   type AsyncLocalRuntimeStorage,
   type IndexedDbLocalFirstRuntime,
   type IndexedDbLocalFirstRuntimeOptions,
+  type SqliteLocalFirstRuntime,
+  type SqliteLocalFirstRuntimeOptions,
 } from "./async.js";
 export {
   IndexedDbRuntimeStorage,
   indexedDbStorage,
   type IndexedDbStorageOptions,
 } from "./indexedDb.js";
+export {
+  SqliteRuntimeStorage,
+  sqliteStorage,
+  type SqliteDatabaseLike,
+  type SqliteStatementLike,
+  type SqliteStorageOptions,
+} from "./sqlite.js";
