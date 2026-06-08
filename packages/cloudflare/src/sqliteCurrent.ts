@@ -42,6 +42,9 @@ import type {
   DurableObjectSqliteDagRun,
   DurableObjectSqliteDagRunStatus,
   DurableObjectSqliteDagStore,
+  DurableObjectSqliteFlowWaitTick,
+  DurableObjectSqliteFlowWaitTickStatus,
+  DurableObjectSqliteFlowWaitTimerStore,
   DurableObjectSqliteRuntime,
   DurableObjectSqliteTimerStore,
 } from "./durableObjectSqlite.js";
@@ -191,6 +194,40 @@ export const DurableObjectSqliteFireCollectionTickArgsSchema = Schema.Struct({
   firedAt: Schema.optionalWith(Schema.Number, { exact: true }),
 });
 
+export const DurableObjectSqliteFlowWaitTickStatusSchema = Schema.Literal(
+  "pending",
+  "fired",
+  "skipped",
+);
+
+export const DurableObjectSqliteScheduleFlowWaitTickArgsSchema = Schema.Struct({
+  id: Schema.String,
+  runId: Schema.String,
+  stepId: Schema.String,
+  eventId: Schema.String,
+  fireAt: Schema.Number,
+  scheduledAt: Schema.optionalWith(Schema.Number, { exact: true }),
+});
+
+export const DurableObjectSqliteFlowWaitTickByIdArgsSchema = Schema.Struct({
+  id: Schema.String,
+});
+
+export const DurableObjectSqliteListFlowWaitTicksArgsSchema = Schema.Struct({
+  runId: Schema.optionalWith(Schema.String, { exact: true }),
+  stepId: Schema.optionalWith(Schema.String, { exact: true }),
+  status: Schema.optionalWith(DurableObjectSqliteFlowWaitTickStatusSchema, {
+    exact: true,
+  }),
+  dueAt: Schema.optionalWith(Schema.Number, { exact: true }),
+  limit: Schema.optionalWith(Schema.Number, { exact: true }),
+});
+
+export const DurableObjectSqliteFireFlowWaitTickArgsSchema = Schema.Struct({
+  id: Schema.String,
+  firedAt: Schema.optionalWith(Schema.Number, { exact: true }),
+});
+
 export const DurableObjectSqliteDagRunStatusSchema = Schema.Literal(
   "running",
   "waiting",
@@ -286,6 +323,14 @@ export type DurableObjectSqliteListCollectionTicksArgs =
   typeof DurableObjectSqliteListCollectionTicksArgsSchema.Type;
 export type DurableObjectSqliteFireCollectionTickArgs =
   typeof DurableObjectSqliteFireCollectionTickArgsSchema.Type;
+export type DurableObjectSqliteScheduleFlowWaitTickArgs =
+  typeof DurableObjectSqliteScheduleFlowWaitTickArgsSchema.Type;
+export type DurableObjectSqliteFlowWaitTickByIdArgs =
+  typeof DurableObjectSqliteFlowWaitTickByIdArgsSchema.Type;
+export type DurableObjectSqliteListFlowWaitTicksArgs =
+  typeof DurableObjectSqliteListFlowWaitTicksArgsSchema.Type;
+export type DurableObjectSqliteFireFlowWaitTickArgs =
+  typeof DurableObjectSqliteFireFlowWaitTickArgsSchema.Type;
 export type DurableObjectSqliteRecordDagRunArgs =
   typeof DurableObjectSqliteRecordDagRunArgsSchema.Type;
 export type DurableObjectSqliteDagRunByIdArgs =
@@ -336,6 +381,11 @@ export type DurableObjectSqliteSubmitCollectionResult = {
 export type DurableObjectSqliteFireCollectionTickResult = {
   readonly tick: DurableObjectSqliteCollectionTick;
   readonly collection?: DurableObjectSqliteCollection;
+};
+
+export type DurableObjectSqliteFireFlowWaitTickResult = {
+  readonly tick: DurableObjectSqliteFlowWaitTick;
+  readonly run?: DurableObjectSqliteDagRun;
 };
 
 export type DurableObjectSqliteCurrentSurfaceOptions = {
@@ -393,6 +443,18 @@ export type DurableObjectSqliteCurrentSurface = {
   fireCollectionTick(
     args: DurableObjectSqliteFireCollectionTickArgs,
   ): Promise<DurableObjectSqliteFireCollectionTickResult>;
+  scheduleFlowWaitTick(
+    args: DurableObjectSqliteScheduleFlowWaitTickArgs,
+  ): Promise<DurableObjectSqliteFlowWaitTick>;
+  flowWaitTickById(
+    args: DurableObjectSqliteFlowWaitTickByIdArgs,
+  ): Promise<DurableObjectSqliteFlowWaitTick | undefined>;
+  listFlowWaitTicks(
+    args?: DurableObjectSqliteListFlowWaitTicksArgs,
+  ): Promise<DurableObjectSqliteFlowWaitTick[]>;
+  fireFlowWaitTick(
+    args: DurableObjectSqliteFireFlowWaitTickArgs,
+  ): Promise<DurableObjectSqliteFireFlowWaitTickResult>;
   recordDagRun(
     args: DurableObjectSqliteRecordDagRunArgs,
   ): Promise<DurableObjectSqliteDagRun>;
@@ -1018,6 +1080,178 @@ export function fireDurableObjectSqliteCollectionTickEffect(
   });
 }
 
+export function scheduleDurableObjectSqliteFlowWaitTickEffect(
+  dag: DurableObjectSqliteDagStore,
+  flowWaitTimers: DurableObjectSqliteFlowWaitTimerStore,
+  args: DurableObjectSqliteScheduleFlowWaitTickArgs,
+  defaultScheduledAt: number,
+): Effect.Effect<
+  DurableObjectSqliteFlowWaitTick,
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "scheduleFlowWaitTick",
+      DurableObjectSqliteScheduleFlowWaitTickArgsSchema,
+      args,
+    );
+    const run = yield* Effect.tryPromise({
+      try: () => dag.get(decoded.runId),
+      catch: (cause) => surfaceError("scheduleFlowWaitTick", cause),
+    });
+    if (run === undefined) {
+      return yield* Effect.fail(
+        surfaceError(
+          "scheduleFlowWaitTick",
+          new Error(`unknown DAG run: ${decoded.runId}`),
+        ),
+      );
+    }
+    return yield* Effect.tryPromise({
+      try: () =>
+        flowWaitTimers.schedule({
+          id: decoded.id,
+          runId: decoded.runId,
+          stepId: decoded.stepId,
+          eventId: decoded.eventId,
+          fireAt: decoded.fireAt,
+          scheduledAt: decoded.scheduledAt ?? defaultScheduledAt,
+        }),
+      catch: (cause) => surfaceError("scheduleFlowWaitTick", cause),
+    });
+  });
+}
+
+export function getDurableObjectSqliteFlowWaitTickByIdEffect(
+  flowWaitTimers: DurableObjectSqliteFlowWaitTimerStore,
+  args: DurableObjectSqliteFlowWaitTickByIdArgs,
+): Effect.Effect<
+  DurableObjectSqliteFlowWaitTick | undefined,
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "flowWaitTickById",
+      DurableObjectSqliteFlowWaitTickByIdArgsSchema,
+      args,
+    );
+    return yield* Effect.tryPromise({
+      try: () => flowWaitTimers.get(decoded.id),
+      catch: (cause) => surfaceError("flowWaitTickById", cause),
+    });
+  });
+}
+
+export function listDurableObjectSqliteFlowWaitTicksEffect(
+  flowWaitTimers: DurableObjectSqliteFlowWaitTimerStore,
+  args: DurableObjectSqliteListFlowWaitTicksArgs = {},
+): Effect.Effect<
+  DurableObjectSqliteFlowWaitTick[],
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "listFlowWaitTicks",
+      DurableObjectSqliteListFlowWaitTicksArgsSchema,
+      args,
+    );
+    return yield* Effect.tryPromise({
+      try: () =>
+        flowWaitTimers.list({
+          runId: decoded.runId,
+          stepId: decoded.stepId,
+          status: decoded.status as DurableObjectSqliteFlowWaitTickStatus | undefined,
+          dueAt: decoded.dueAt,
+          limit: limit(decoded.limit, 100, 1000),
+        }),
+      catch: (cause) => surfaceError("listFlowWaitTicks", cause),
+    });
+  });
+}
+
+export function fireDurableObjectSqliteFlowWaitTickEffect(
+  dag: DurableObjectSqliteDagStore,
+  flowWaitTimers: DurableObjectSqliteFlowWaitTimerStore,
+  args: DurableObjectSqliteFireFlowWaitTickArgs,
+  defaultFiredAt: number,
+): Effect.Effect<
+  DurableObjectSqliteFireFlowWaitTickResult,
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "fireFlowWaitTick",
+      DurableObjectSqliteFireFlowWaitTickArgsSchema,
+      args,
+    );
+    const firedAt = decoded.firedAt ?? defaultFiredAt;
+    const tick = yield* Effect.tryPromise({
+      try: () => flowWaitTimers.get(decoded.id),
+      catch: (cause) => surfaceError("fireFlowWaitTick", cause),
+    });
+    if (tick === undefined) {
+      return yield* Effect.fail(
+        surfaceError(
+          "fireFlowWaitTick",
+          new Error(`unknown flow wait tick: ${decoded.id}`),
+        ),
+      );
+    }
+    const run = yield* Effect.tryPromise({
+      try: () => dag.get(tick.runId),
+      catch: (cause) => surfaceError("fireFlowWaitTick", cause),
+    });
+    if (tick.status !== "pending") {
+      return {
+        tick,
+        ...(run === undefined ? {} : { run }),
+      };
+    }
+    if (run === undefined) {
+      const skipped = yield* Effect.tryPromise({
+        try: () => flowWaitTimers.mark(tick.id, "skipped", firedAt, "unknown DAG run"),
+        catch: (cause) => surfaceError("fireFlowWaitTick", cause),
+      });
+      return { tick: skipped };
+    }
+    if (run.status !== "waiting") {
+      const skipped = yield* Effect.tryPromise({
+        try: () =>
+          flowWaitTimers.mark(tick.id, "skipped", firedAt, `DAG run ${run.status}`),
+        catch: (cause) => surfaceError("fireFlowWaitTick", cause),
+      });
+      return { tick: skipped, run };
+    }
+    const fired = yield* Effect.tryPromise({
+      try: () => flowWaitTimers.mark(tick.id, "fired", firedAt),
+      catch: (cause) => surfaceError("fireFlowWaitTick", cause),
+    });
+    const updatedRun = yield* Effect.tryPromise({
+      try: () =>
+        dag.record({
+          runId: run.runId,
+          flowDefName: run.flowDefName,
+          subject: run.subject,
+          status: "running",
+          currentStepId: tick.stepId,
+          context: run.context,
+          events: [
+            {
+              eventId: tick.eventId,
+              stepId: tick.stepId,
+              type: "timer",
+              kind: "flow-wait",
+              message: `flow wait timer ${tick.id} fired`,
+            },
+          ],
+          now: firedAt,
+        }),
+      catch: (cause) => surfaceError("fireFlowWaitTick", cause),
+    });
+    return { tick: fired, run: updatedRun };
+  });
+}
+
 export function recordDurableObjectSqliteDagRunEffect(
   dag: DurableObjectSqliteDagStore,
   args: DurableObjectSqliteRecordDagRunArgs,
@@ -1463,6 +1697,38 @@ export function createDurableObjectSqliteCurrentSurface(
         fireDurableObjectSqliteCollectionTickEffect(
           runtime.collections,
           runtime.timers,
+          args,
+          coord().txTime,
+        ),
+      ),
+    scheduleFlowWaitTick: (args) =>
+      runCollection(
+        scheduleDurableObjectSqliteFlowWaitTickEffect(
+          runtime.dag,
+          runtime.flowWaitTimers,
+          args,
+          coord().txTime,
+        ),
+      ),
+    flowWaitTickById: (args) =>
+      runCollection(
+        getDurableObjectSqliteFlowWaitTickByIdEffect(
+          runtime.flowWaitTimers,
+          args,
+        ),
+      ),
+    listFlowWaitTicks: (args = {}) =>
+      runCollection(
+        listDurableObjectSqliteFlowWaitTicksEffect(
+          runtime.flowWaitTimers,
+          args,
+        ),
+      ),
+    fireFlowWaitTick: (args) =>
+      runCollection(
+        fireDurableObjectSqliteFlowWaitTickEffect(
+          runtime.dag,
+          runtime.flowWaitTimers,
           args,
           coord().txTime,
         ),

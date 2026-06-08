@@ -233,12 +233,17 @@ current facade exposes `recordDagRun`, `getDagRun`, and `listDagRuns` without
 claiming flow execution/resume or alarm wakeups. Goal 127 adds collection timer
 alarm multiplexing: a structural helper arms the single DO alarm to the earliest
 pending collection timer row, drains due rows through `fireCollectionTick`, and
-re-arms or deletes the host alarm without claiming flow-wait alarm plumbing. The
-next active goal should be chosen from the remaining TODO candidates:
+re-arms or deletes the host alarm without claiming flow-wait alarm plumbing.
+Goal 128 adds flow-wait timer rows and alarm drainage: caller-identified
+`flow_wait_timers` rows can be scheduled/listed/fired, firing a waiting DAG run
+records a deterministic wakeup timeline event and moves it back to `running`,
+and the DO alarm multiplexer now chooses the earliest pending collection or
+flow-wait timer without executing flow steps/actions. The next active goal
+should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite historical SQL-indexed-query/operational parity
-(flow execution/resume, flow-wait alarms, live fanout),
+(flow execution/resume, live fanout),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9453,6 +9458,54 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 128 — Cloudflare DO SQLite Flow-Wait Alarm Plumbing
+
+**Status:** shipped.
+
+**Objective:** extend the Durable Object SQLite operational timer substrate from
+collection-only ticks to flow-wait ticks, so host alarms can wake waiting DAG
+runs at deterministic times without implementing the full flow interpreter or
+action execution.
+
+### What Shipped
+
+- Added a separate `flow_wait_timers` SQLite table/store with caller-provided
+  tick ids and caller-provided DAG wakeup event ids.
+- Added current-surface methods:
+  - `scheduleFlowWaitTick`
+  - `flowWaitTickById`
+  - `listFlowWaitTicks`
+  - `fireFlowWaitTick`
+- `fireFlowWaitTick`:
+  - marks unknown DAG runs as skipped;
+  - marks non-waiting DAG runs as skipped with a reason;
+  - marks a pending wait tick as fired when its DAG run is still `waiting`;
+  - appends a deterministic `timer` / `flow-wait` DAG timeline event using the
+    stored caller-provided event id;
+  - moves the DAG run back to `running` at the fired timestamp so a host can
+    observe resume work without this slice executing steps or actions.
+- Extended `createDurableObjectSqliteAlarmMultiplexer` so the single DO alarm is
+  armed to the earliest pending collection tick or flow-wait tick, drains due
+  ticks of either kind, then re-arms/deletes the host alarm.
+- Exported the new store, schemas, Effect helpers, facade types, and alarm fire
+  result type from `@metacrdt/cloudflare`.
+
+### Non-Goals
+
+- Do not implement the Cloudflare DAG interpreter, step runner, action executor,
+  collection/DAG control flow, or full resume loop.
+- Do not add live-query fanout or historical SQL-indexed query-provider parity.
+- Do not touch root `convex/`.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with coverage for
+  flow-wait persistence/listing, fired/skipped behavior, DAG timeline wakeup
+  recording, and alarm ordering across flow-wait and collection ticks.
 
 ---
 

@@ -49,6 +49,18 @@ type StoredCollectionTick = {
   reason: string | null;
 };
 
+type StoredFlowWaitTick = {
+  id: string;
+  run_id: string;
+  step_id: string;
+  event_id: string;
+  fire_at: number;
+  status: "pending" | "fired" | "skipped";
+  scheduled_at: number;
+  fired_at: number | null;
+  reason: string | null;
+};
+
 type StoredDagRun = {
   run_id: string;
   flow_def_name: string;
@@ -138,6 +150,16 @@ function collectionTickStatusBinding(
   throw new Error(`expected collection tick status binding for ${name}`);
 }
 
+function flowWaitTickStatusBinding(
+  value: unknown,
+  name: string,
+): StoredFlowWaitTick["status"] {
+  if (value === "pending" || value === "fired" || value === "skipped") {
+    return value;
+  }
+  throw new Error(`expected flow wait tick status binding for ${name}`);
+}
+
 function dagRunStatusBinding(value: unknown, name: string): StoredDagRun["status"] {
   if (
     value === "running" ||
@@ -160,6 +182,7 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
   readonly projection = new Map<string, StoredProjectionRow>();
   readonly collections = new Map<string, StoredCollection>();
   readonly collectionTicks = new Map<string, StoredCollectionTick>();
+  readonly flowWaitTicks = new Map<string, StoredFlowWaitTick>();
   readonly dagRuns = new Map<string, StoredDagRun>();
   readonly dagEvents = new Map<string, StoredDagEvent>();
   readonly meta = new Map<string, string>();
@@ -178,6 +201,9 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
       return cursor();
     }
 
+    if (sql.includes("_flow_wait_timers")) {
+      return this.execFlowWaitTicks(sql, bindings);
+    }
     if (sql.includes("_timers")) return this.execCollectionTicks(sql, bindings);
     if (sql.includes("_flow_dag_events")) {
       return this.execDagEvents(sql, bindings);
@@ -579,6 +605,94 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
           bindings[bindingIndex++],
           "collection tick due_at",
         );
+        rows = rows.filter((row) => row.fire_at <= dueAt);
+      }
+    }
+
+    return cursor(
+      rows.sort((a, b) => {
+        const fire = a.fire_at - b.fire_at;
+        return fire !== 0 ? fire : a.id.localeCompare(b.id);
+      }),
+    );
+  }
+
+  private execFlowWaitTicks(
+    sql: string,
+    bindings: readonly unknown[],
+  ): DurableObjectSqlCursorLike {
+    if (sql.startsWith("insert into")) {
+      const [
+        idRaw,
+        runIdRaw,
+        stepIdRaw,
+        eventIdRaw,
+        fireAtRaw,
+        statusRaw,
+        scheduledAtRaw,
+        firedAtRaw,
+        reasonRaw,
+      ] = bindings;
+      const id = stringBinding(idRaw, "flow wait tick id");
+      if (this.flowWaitTicks.has(id)) {
+        throw new Error(`flow wait tick already exists: ${id}`);
+      }
+      this.flowWaitTicks.set(id, {
+        id,
+        run_id: stringBinding(runIdRaw, "flow wait tick run_id"),
+        step_id: stringBinding(stepIdRaw, "flow wait tick step_id"),
+        event_id: stringBinding(eventIdRaw, "flow wait tick event_id"),
+        fire_at: numberBinding(fireAtRaw, "flow wait tick fire_at"),
+        status: flowWaitTickStatusBinding(statusRaw, "flow wait tick status"),
+        scheduled_at: numberBinding(scheduledAtRaw, "flow wait tick scheduled_at"),
+        fired_at: nullableNumberBinding(firedAtRaw, "flow wait tick fired_at"),
+        reason: nullableStringBinding(reasonRaw, "flow wait tick reason"),
+      });
+      return cursor();
+    }
+
+    if (sql.startsWith("update")) {
+      const [statusRaw, firedAtRaw, reasonRaw, idRaw] = bindings;
+      const id = stringBinding(idRaw, "flow wait tick id");
+      const existing = this.flowWaitTicks.get(id);
+      if (existing) {
+        this.flowWaitTicks.set(id, {
+          ...existing,
+          status: flowWaitTickStatusBinding(statusRaw, "flow wait tick status"),
+          fired_at: numberBinding(firedAtRaw, "flow wait tick fired_at"),
+          reason: nullableStringBinding(reasonRaw, "flow wait tick reason"),
+        });
+      }
+      return cursor();
+    }
+
+    let rows = [...this.flowWaitTicks.values()];
+    if (sql.includes("where id = ?")) {
+      rows = rows.filter(
+        (row) => row.id === stringBinding(bindings[0], "flow wait tick id"),
+      );
+    } else {
+      let bindingIndex = 0;
+      if (sql.includes("run_id = ?")) {
+        const runId = stringBinding(bindings[bindingIndex++], "flow wait run_id");
+        rows = rows.filter((row) => row.run_id === runId);
+      }
+      if (sql.includes("step_id = ?")) {
+        const stepId = stringBinding(
+          bindings[bindingIndex++],
+          "flow wait step_id",
+        );
+        rows = rows.filter((row) => row.step_id === stepId);
+      }
+      if (sql.includes("status = ?")) {
+        const status = flowWaitTickStatusBinding(
+          bindings[bindingIndex++],
+          "flow wait tick status",
+        );
+        rows = rows.filter((row) => row.status === status);
+      }
+      if (sql.includes("fire_at <= ?")) {
+        const dueAt = numberBinding(bindings[bindingIndex++], "flow wait due_at");
         rows = rows.filter((row) => row.fire_at <= dueAt);
       }
     }

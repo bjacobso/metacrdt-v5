@@ -150,10 +150,15 @@ After implementation:
   `@metacrdt/cloudflare` now exports a structural alarm multiplexer that arms
   `ctx.storage.setAlarm` to the earliest pending collection timer row, drains
   due ticks through `fireCollectionTick`, and re-arms or deletes the host alarm.
+- [x] **Goal 128 shipped: flow-wait timer rows over DO alarms** —
+  `@metacrdt/cloudflare` now has caller-identified `flow_wait_timers` rows plus
+  current-surface methods to schedule, read, list, and fire flow-wait ticks.
+  Firing a still-waiting DAG run records a deterministic wakeup timeline event,
+  moves the run back to `running`, and the alarm multiplexer now chooses the
+  earliest pending collection or flow-wait timer row.
 - [ ] **Remaining Cloudflare Phase D parity** — flow execution/resume semantics,
-  flow-wait alarm plumbing, live-query fanout, and historical SQL-indexed
-  query-provider optimization remain open; do not claim full parity until those
-  are implemented.
+  live-query fanout, and historical SQL-indexed query-provider optimization
+  remain open; do not claim full parity until those are implemented.
 
 **Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
 - [x] Commutative supersession — centralized Convex writes now stamp
@@ -219,6 +224,12 @@ After implementation:
   `createDurableObjectSqliteAlarmMultiplexer` uses the earliest pending
   collection timer row as the single DO alarm, drains due ticks through the
   existing collection tick firing path, then re-arms or deletes the alarm.
+- [x] Cloudflare Durable Object SQLite flow-wait alarm plumbing —
+  `flow_wait_timers` rows persist caller-provided wait tick and wakeup event ids;
+  the current facade can schedule/list/fire them, firing a waiting DAG run
+  records a `timer` / `flow-wait` timeline event and returns the run to
+  `running`, and the DO alarm multiplexer now drains collection and flow-wait
+  ticks in earliest-fire order.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -229,7 +240,7 @@ After implementation:
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — historical
   SQL-indexed query-provider optimization, flow execution/resume semantics,
-  flow-wait alarm plumbing, and live-query WebSocket fanout/plumbing (see
+  and live-query WebSocket fanout/plumbing (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).

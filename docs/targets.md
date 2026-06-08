@@ -139,7 +139,7 @@ On open hosts the adapter is a selectable dependency.
 | SQLite-wasm | `local` | done |
 | SQLite (server) | `node` | done (structural driver API + shared lifecycle plan) |
 | Postgres | `node` | done (structural `query(sql, params)` adapter + shared lifecycle plan) |
-| DO SQLite | `cloudflare` | started (runtime-service substrate + projection/persistence conformance + log/current/query surface, including projection-backed current Datalog reads, collection capability rows with optional assertion lowering, collection timer rows, collection alarm multiplexing, and DAG run/timeline rows; full operational flow execution/resume parity planned in [cloudflare-target.md](./cloudflare-target.md)) |
+| DO SQLite | `cloudflare` | started (runtime-service substrate + projection/persistence conformance + log/current/query surface, including projection-backed current Datalog reads, collection capability rows with optional assertion lowering, collection timer rows, collection/flow-wait alarm multiplexing, and DAG run/timeline rows; full operational flow execution/resume parity planned in [cloudflare-target.md](./cloudflare-target.md)) |
 | Convex tables | `convex` | done (managed) |
 | FoundationDB | — | archive unless a real need appears |
 
@@ -283,7 +283,7 @@ a sibling target.
    current-coordinate projection replacement. Target-event lookup is now part of
    the EventStore contract and DO SQLite uses it for bounded coordinate folds;
    next is the optimized historical SQL-indexed query provider plus
-  flow execution/resume, flow-wait alarm, and live-query surface over SQLite
+  flow execution/resume and live-query surface over SQLite
    ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal
    enough repeated DDL/query-generation logic beyond the current Node lifecycle

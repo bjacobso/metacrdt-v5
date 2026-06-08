@@ -976,6 +976,175 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
     });
   });
 
+  test("current surface persists and fires flow-wait ticks over SQLite rows", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:flow-wait",
+      wall: () => 875,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.recordDagRun({
+      runId: "dag:worker:wait:1",
+      flowDefName: "owned_flow",
+      subject: "worker:wait",
+      status: "waiting",
+      currentStepId: "sleep",
+      context: { waited: false },
+      now: 30_000,
+      events: [
+        {
+          eventId: "dag:event:worker:wait:1:entered",
+          stepId: "sleep",
+          type: "timer",
+          kind: "wait-entered",
+        },
+      ],
+    });
+
+    const scheduled = await surface.scheduleFlowWaitTick({
+      id: "flow-wait:worker:wait:1:sleep",
+      runId: "dag:worker:wait:1",
+      stepId: "sleep",
+      eventId: "dag:event:worker:wait:1:woke",
+      fireAt: 35_000,
+      scheduledAt: 30_000,
+    });
+    expect(scheduled).toEqual({
+      id: "flow-wait:worker:wait:1:sleep",
+      runId: "dag:worker:wait:1",
+      stepId: "sleep",
+      eventId: "dag:event:worker:wait:1:woke",
+      fireAt: 35_000,
+      status: "pending",
+      scheduledAt: 30_000,
+      firedAt: null,
+    });
+    await expect(
+      surface.listFlowWaitTicks({ status: "pending", dueAt: 35_000 }),
+    ).resolves.toEqual([scheduled]);
+
+    const fired = await surface.fireFlowWaitTick({
+      id: "flow-wait:worker:wait:1:sleep",
+      firedAt: 35_000,
+    });
+    expect(fired.tick).toMatchObject({
+      id: "flow-wait:worker:wait:1:sleep",
+      status: "fired",
+      firedAt: 35_000,
+    });
+    expect(fired.run).toMatchObject({
+      runId: "dag:worker:wait:1",
+      status: "running",
+      currentStepId: "sleep",
+      updatedAt: 35_000,
+    });
+    expect(fired.run?.events.map((event) => event.kind)).toEqual([
+      "wait-entered",
+      "flow-wait",
+    ]);
+
+    await surface.scheduleFlowWaitTick({
+      id: "flow-wait:worker:wait:1:already-running",
+      runId: "dag:worker:wait:1",
+      stepId: "sleep",
+      eventId: "dag:event:worker:wait:1:already-running",
+      fireAt: 36_000,
+      scheduledAt: 35_000,
+    });
+    await expect(
+      surface.fireFlowWaitTick({
+        id: "flow-wait:worker:wait:1:already-running",
+        firedAt: 36_000,
+      }),
+    ).resolves.toMatchObject({
+      tick: {
+        id: "flow-wait:worker:wait:1:already-running",
+        status: "skipped",
+        firedAt: 36_000,
+        reason: "DAG run running",
+      },
+      run: { status: "running" },
+    });
+  });
+
+  test("alarm multiplexer drains flow-wait ticks before later collection ticks", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:flow-wait-alarm",
+      wall: () => 890,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+    const alarms = new FakeAlarmStorage();
+
+    await surface.recordDagRun({
+      runId: "dag:worker:flow-alarm:1",
+      flowDefName: "owned_flow",
+      subject: "worker:flow-alarm",
+      status: "waiting",
+      currentStepId: "pause",
+      now: 40_000,
+      events: [],
+    });
+    await surface.scheduleFlowWaitTick({
+      id: "flow-wait:worker:flow-alarm:pause",
+      runId: "dag:worker:flow-alarm:1",
+      stepId: "pause",
+      eventId: "dag:event:worker:flow-alarm:woke",
+      fireAt: 42_000,
+      scheduledAt: 40_000,
+    });
+    await surface.issueCollection({
+      token: "collection:worker:flow-alarm:onboard",
+      subject: "worker:flow-alarm",
+      form: "forms:onboarding",
+      issuedAt: 40_000,
+      expiresAt: 45_000,
+    });
+    await surface.scheduleCollectionTick({
+      id: "tick:worker:flow-alarm:expire",
+      token: "collection:worker:flow-alarm:onboard",
+      phase: "expire",
+      fireAt: 45_000,
+      scheduledAt: 40_000,
+    });
+
+    const mux = createDurableObjectSqliteAlarmMultiplexer(alarms, surface, {
+      now: () => 42_000,
+    });
+    await expect(mux.arm()).resolves.toMatchObject({
+      nextAlarmAt: 42_000,
+      nextTickKind: "flow-wait",
+      nextTick: { id: "flow-wait:worker:flow-alarm:pause" },
+    });
+
+    const drained = await mux.drain();
+    expect(drained.fired).toHaveLength(1);
+    expect(drained.fired[0]).toMatchObject({
+      kind: "flow-wait",
+      tick: {
+        id: "flow-wait:worker:flow-alarm:pause",
+        status: "fired",
+        firedAt: 42_000,
+      },
+      run: { status: "running" },
+    });
+    expect(drained.rearm).toMatchObject({
+      nextAlarmAt: 45_000,
+      nextTickKind: "collection",
+      nextTick: { id: "tick:worker:flow-alarm:expire" },
+    });
+    expect(alarms.setCalls).toEqual([42_000, 45_000]);
+  });
+
   test("current surface persists DAG run timelines over SQLite rows", async () => {
     const sql = new FakeDurableObjectSqlStorage();
     const runtime = await createDurableObjectSqliteRuntime({

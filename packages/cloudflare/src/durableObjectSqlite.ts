@@ -58,6 +58,7 @@ export type DurableObjectSqliteRuntime = RuntimeServices & {
   projection: DurableObjectSqliteProjectionStore;
   collections: DurableObjectSqliteCollectionStore;
   timers: DurableObjectSqliteTimerStore;
+  flowWaitTimers: DurableObjectSqliteFlowWaitTimerStore;
   dag: DurableObjectSqliteDagStore;
   clock: DurableObjectSqliteClock;
   sequencer: DurableObjectSqliteSequencer;
@@ -145,6 +146,40 @@ export type DurableObjectSqliteCollectionTickFilter = {
   readonly limit?: number;
 };
 
+export type DurableObjectSqliteFlowWaitTickStatus =
+  | "pending"
+  | "fired"
+  | "skipped";
+
+export type DurableObjectSqliteFlowWaitTick = {
+  readonly id: string;
+  readonly runId: string;
+  readonly stepId: string;
+  readonly eventId: string;
+  readonly fireAt: number;
+  readonly status: DurableObjectSqliteFlowWaitTickStatus;
+  readonly scheduledAt: number;
+  readonly firedAt: number | null;
+  readonly reason?: string;
+};
+
+export type DurableObjectSqliteScheduleFlowWaitTickInput = {
+  readonly id: string;
+  readonly runId: string;
+  readonly stepId: string;
+  readonly eventId: string;
+  readonly fireAt: number;
+  readonly scheduledAt: number;
+};
+
+export type DurableObjectSqliteFlowWaitTickFilter = {
+  readonly runId?: string;
+  readonly stepId?: string;
+  readonly status?: DurableObjectSqliteFlowWaitTickStatus;
+  readonly dueAt?: number;
+  readonly limit?: number;
+};
+
 export type DurableObjectSqliteDagRunStatus =
   | "running"
   | "waiting"
@@ -202,6 +237,7 @@ type SqlPlan = {
     projection: string;
     collections: string;
     timers: string;
+    flowWaitTimers: string;
     flowDagRuns: string;
     flowDagEvents: string;
   };
@@ -218,6 +254,9 @@ type SqlPlan = {
     timersByToken: string;
     timersByStatusFireAt: string;
     timersByPhase: string;
+    flowWaitTimersByRun: string;
+    flowWaitTimersByStatusFireAt: string;
+    flowWaitTimersByStep: string;
     dagRunsBySubject: string;
     dagRunsBySubjectFlowStatus: string;
     dagRunsByStatus: string;
@@ -242,6 +281,7 @@ function plan(prefix = "metacrdt"): SqlPlan {
       projection: identifier(`${prefix}_projection`),
       collections: identifier(`${prefix}_collections`),
       timers: identifier(`${prefix}_timers`),
+      flowWaitTimers: identifier(`${prefix}_flow_wait_timers`),
       flowDagRuns: identifier(`${prefix}_flow_dag_runs`),
       flowDagEvents: identifier(`${prefix}_flow_dag_events`),
     },
@@ -258,6 +298,11 @@ function plan(prefix = "metacrdt"): SqlPlan {
       timersByToken: identifier(`${prefix}_timers_by_token`),
       timersByStatusFireAt: identifier(`${prefix}_timers_by_status_fire_at`),
       timersByPhase: identifier(`${prefix}_timers_by_phase`),
+      flowWaitTimersByRun: identifier(`${prefix}_flow_wait_timers_by_run`),
+      flowWaitTimersByStatusFireAt: identifier(
+        `${prefix}_flow_wait_timers_by_status_fire_at`,
+      ),
+      flowWaitTimersByStep: identifier(`${prefix}_flow_wait_timers_by_step`),
       dagRunsBySubject: identifier(`${prefix}_flow_dag_runs_by_subject`),
       dagRunsBySubjectFlowStatus: identifier(
         `${prefix}_flow_dag_runs_by_subject_flow_status`,
@@ -352,6 +397,14 @@ function collectionTickStatus(
     : undefined;
 }
 
+function flowWaitTickStatus(
+  value: string | undefined,
+): DurableObjectSqliteFlowWaitTickStatus | undefined {
+  return value === "pending" || value === "fired" || value === "skipped"
+    ? value
+    : undefined;
+}
+
 function dagRunStatus(
   value: string | undefined,
 ): DurableObjectSqliteDagRunStatus | undefined {
@@ -438,6 +491,45 @@ function decodeCollectionTick(
     id,
     token,
     phase,
+    fireAt,
+    status,
+    scheduledAt,
+    firedAt,
+    ...(reason === undefined ? {} : { reason }),
+  };
+}
+
+function decodeFlowWaitTick(
+  row: unknown,
+): DurableObjectSqliteFlowWaitTick | undefined {
+  const id = textColumn(row, "id");
+  const runId = textColumn(row, "run_id");
+  const stepId = textColumn(row, "step_id");
+  const eventId = textColumn(row, "event_id");
+  const fireAt = numberColumn(row, "fire_at");
+  const status = flowWaitTickStatus(textColumn(row, "status"));
+  const scheduledAt = numberColumn(row, "scheduled_at");
+  const firedAt = numberColumn(row, "fired_at");
+  const reason = textColumn(row, "reason");
+  if (
+    id === undefined ||
+    runId === undefined ||
+    stepId === undefined ||
+    eventId === undefined ||
+    fireAt === undefined ||
+    fireAt === null ||
+    status === undefined ||
+    scheduledAt === undefined ||
+    scheduledAt === null ||
+    firedAt === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    id,
+    runId,
+    stepId,
+    eventId,
     fireAt,
     status,
     scheduledAt,
@@ -1147,6 +1239,140 @@ export class DurableObjectSqliteTimerStore {
   }
 }
 
+export class DurableObjectSqliteFlowWaitTimerStore {
+  private readonly plan: SqlPlan;
+
+  constructor(
+    private readonly sql: DurableObjectSqlStorageLike,
+    tablePrefix = "metacrdt",
+  ) {
+    this.plan = plan(tablePrefix);
+  }
+
+  async initialize(): Promise<void> {
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS ${this.plan.tables.flowWaitTimers} (` +
+        "id TEXT PRIMARY KEY NOT NULL, " +
+        "run_id TEXT NOT NULL, " +
+        "step_id TEXT NOT NULL, " +
+        "event_id TEXT NOT NULL, " +
+        "fire_at REAL NOT NULL, " +
+        "status TEXT NOT NULL CHECK (status IN ('pending', 'fired', 'skipped')), " +
+        "scheduled_at REAL NOT NULL, " +
+        "fired_at REAL NULL, " +
+        "reason TEXT NULL" +
+        ")",
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.flowWaitTimersByRun} ` +
+        `ON ${this.plan.tables.flowWaitTimers} (run_id)`,
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.flowWaitTimersByStatusFireAt} ` +
+        `ON ${this.plan.tables.flowWaitTimers} (status, fire_at)`,
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.flowWaitTimersByStep} ` +
+        `ON ${this.plan.tables.flowWaitTimers} (run_id, step_id)`,
+    );
+  }
+
+  async schedule(
+    input: DurableObjectSqliteScheduleFlowWaitTickInput,
+  ): Promise<DurableObjectSqliteFlowWaitTick> {
+    const existing = await this.get(input.id);
+    if (existing !== undefined) {
+      throw new Error(`flow wait tick already exists: ${input.id}`);
+    }
+    this.sql.exec(
+      `INSERT INTO ${this.plan.tables.flowWaitTimers} (` +
+        "id, run_id, step_id, event_id, fire_at, status, scheduled_at, fired_at, reason" +
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      input.id,
+      input.runId,
+      input.stepId,
+      input.eventId,
+      input.fireAt,
+      "pending",
+      input.scheduledAt,
+      null,
+      null,
+    );
+    const row = await this.get(input.id);
+    if (row === undefined) {
+      throw new Error(`failed to schedule flow wait tick: ${input.id}`);
+    }
+    return row;
+  }
+
+  async get(id: string): Promise<DurableObjectSqliteFlowWaitTick | undefined> {
+    return decodeFlowWaitTick(
+      rows(
+        this.sql.exec(
+          `SELECT id, run_id, step_id, event_id, fire_at, status, scheduled_at, fired_at, reason ` +
+            `FROM ${this.plan.tables.flowWaitTimers} WHERE id = ?`,
+          id,
+        ),
+      )[0],
+    );
+  }
+
+  async list(
+    filter: DurableObjectSqliteFlowWaitTickFilter = {},
+  ): Promise<DurableObjectSqliteFlowWaitTick[]> {
+    const clauses: string[] = [];
+    const bindings: unknown[] = [];
+    if (filter.runId !== undefined) {
+      clauses.push("run_id = ?");
+      bindings.push(filter.runId);
+    }
+    if (filter.stepId !== undefined) {
+      clauses.push("step_id = ?");
+      bindings.push(filter.stepId);
+    }
+    if (filter.status !== undefined) {
+      clauses.push("status = ?");
+      bindings.push(filter.status);
+    }
+    if (filter.dueAt !== undefined) {
+      clauses.push("fire_at <= ?");
+      bindings.push(filter.dueAt);
+    }
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const rowsOut = rows(
+      this.sql.exec(
+        `SELECT id, run_id, step_id, event_id, fire_at, status, scheduled_at, fired_at, reason ` +
+          `FROM ${this.plan.tables.flowWaitTimers}${where} ORDER BY fire_at, id`,
+        ...bindings,
+      ),
+    )
+      .map(decodeFlowWaitTick)
+      .filter((row): row is DurableObjectSqliteFlowWaitTick => row !== undefined);
+    return rowsOut.slice(0, Math.max(1, Math.min(filter.limit ?? 100, 1000)));
+  }
+
+  async mark(
+    id: string,
+    status: DurableObjectSqliteFlowWaitTickStatus,
+    firedAt: number,
+    reason?: string,
+  ): Promise<DurableObjectSqliteFlowWaitTick> {
+    this.sql.exec(
+      `UPDATE ${this.plan.tables.flowWaitTimers} ` +
+        "SET status = ?, fired_at = ?, reason = ? WHERE id = ?",
+      status,
+      firedAt,
+      reason ?? null,
+      id,
+    );
+    const row = await this.get(id);
+    if (row === undefined) {
+      throw new Error(`failed to update flow wait tick: ${id}`);
+    }
+    return row;
+  }
+}
+
 export class DurableObjectSqliteDagStore {
   private readonly plan: SqlPlan;
 
@@ -1482,6 +1708,10 @@ export async function createDurableObjectSqliteRuntime(
     tablePrefix,
   );
   const timers = new DurableObjectSqliteTimerStore(options.sql, tablePrefix);
+  const flowWaitTimers = new DurableObjectSqliteFlowWaitTimerStore(
+    options.sql,
+    tablePrefix,
+  );
   const dag = new DurableObjectSqliteDagStore(options.sql, tablePrefix);
   const meta = new DurableObjectSqliteMetaStore(options.sql, tablePrefix);
   if (options.initialize ?? true) {
@@ -1489,6 +1719,7 @@ export async function createDurableObjectSqliteRuntime(
     await projection.initialize();
     await collections.initialize();
     await timers.initialize();
+    await flowWaitTimers.initialize();
     await dag.initialize();
     await meta.initialize();
   }
@@ -1510,6 +1741,7 @@ export async function createDurableObjectSqliteRuntime(
     projection,
     collections,
     timers,
+    flowWaitTimers,
     dag,
     clock: await DurableObjectSqliteClock.create(
       meta,
