@@ -524,4 +524,55 @@ describe("transitive closure", () => {
       vi.useRealTimers();
     }
   });
+
+  test("full recompute on correction replaces stale closure pairs", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await assert(t, "a", "route", "b");
+      const bc = await t.mutation(api.facts.assertFact, {
+        e: "b",
+        a: "route",
+        value: "c",
+      });
+      await t.mutation(api.rules.defineTransitiveRule, {
+        name: "routeClosure",
+        baseAttribute: "route",
+        closureAttribute: "route+",
+        maxDepth: 16,
+      });
+      await flush(t);
+
+      let reach = await t.query(api.datalog.datalog, {
+        where: [["a", "route+", "?z"]],
+        select: ["?z"],
+      });
+      expect(reach.map((r) => r.z).sort()).toEqual(["b", "c"]);
+
+      await t.mutation(api.facts.correctFact, {
+        factId: bc.factId,
+        newValue: "d",
+        reason: "route correction",
+      });
+      await flush(t);
+
+      reach = await t.query(api.datalog.datalog, {
+        where: [["a", "route+", "?z"]],
+        select: ["?z"],
+      });
+      expect(reach.map((r) => r.z).sort()).toEqual(["b", "d"]);
+
+      const stale = await t.run(async (ctx) => {
+        return (
+          await ctx.db
+            .query("derivedFacts")
+            .withIndex("by_a_v", (q) => q.eq("a", "route+").eq("v", "c"))
+            .collect()
+        ).filter((row) => !row.stale);
+      });
+      expect(stale).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

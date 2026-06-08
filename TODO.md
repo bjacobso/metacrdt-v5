@@ -171,6 +171,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   over deterministic projected Datalog rows and aggregate group rows. Cursors are
   engine offsets, not database cursors; `LIMITS.maxPageSize` caps oversized page
   requests.
+- [x] **Cross-entity rule affected-output recompute** — variable-emitting
+  cross-entity Datalog rules now replace only output entities affected by a
+  changed source fact, discovered from prior provenance and current solved
+  bindings. Corrections notify materialization as tombstone-old + assert-new.
+  Unsupported/constant-emitting rules still fall back to full recompute.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
@@ -207,6 +212,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [ ] Targets: live Cloudflare deployment/auth and migrating more reference
   runtime business logic onto `@metacrdt/convex` component-owned state
   (component-owned collect reminder/escalation/expiry timers now shipped).
+- [ ] Query/rules: DRed/counting for transitive closure deletions. Closure
+  deletions/corrections are currently correct by full recompute.
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -299,6 +306,17 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — cross-entity rule affected-output recompute
+- [x] **Goal 47 shipped:** variable-emitting cross-entity Datalog rules now
+  identify affected output entities from old derived provenance plus current
+  solved bindings, then replace only those entities' derived output.
+- [x] **Correction semantics tightened.** `correctFact` now notifies
+  materialization as tombstone-old + assert-new, matching the protocol shape and
+  allowing stale outputs justified by the old fact to be removed incrementally.
+- [x] **Closure correctness remains conservative.** Added coverage proving a
+  corrected edge removes stale closure pairs and adds replacement pairs; DRed /
+  counting for closure deletions stays open.
 
 ### 2026-06-08 — Datalog / aggregate result pagination
 - [x] **Goal 46 shipped:** `datalogPage` and `aggregatePage` return

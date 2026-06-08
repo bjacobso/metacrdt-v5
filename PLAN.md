@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 46 (Datalog / aggregate result pagination)
+**Current goal:** Goal 47 (cross-entity rule affected-output recompute)
 has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth, or
@@ -79,7 +79,7 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 125 tests at last verification.
+- Convex backend tests are green: 127 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -252,6 +252,16 @@ arguments.
     `LIMITS.maxPageSize` cap
   - this is result pagination over the fully solved bounded query, not a
     database cursor or incremental solver stream
+- Cross-entity Datalog rule invalidation is affected-output scoped:
+  - entity-local rules still replace only the changed entity's output
+  - variable-emitting cross-entity rules discover affected output entities from
+    old provenance and current solved bindings
+  - those rules replace only the affected output entities instead of deleting
+    every derived row for the rule
+  - constant-emitting or unsupported rules still fall back to conservative full
+    recompute
+  - corrections notify materialization as tombstone-old + assert-new so stale
+    outputs and replacement outputs are both visible to the incremental path
 - Config history/diff exists:
   - `configHistory.currentManifest` reconstructs the current owned-artifact
     manifest from `config:default`
@@ -364,6 +374,8 @@ arguments.
   treated as `anonymous` for reads, PII is denied by default, and general public
   writes now fail with `Not authenticated`. The hardened collection-token path
   remains the intentional anonymous write surface.
+- Transitive-closure deletions and corrections are correct but conservative:
+  they still use full closure recompute, not DRed/counting.
 - Confect is integrated as a narrow sidecar spike:
   - `confect/` defines a typed Effect Schema function group.
   - `convex/metacrdtConfect.ts` manually mounts the generated registered
@@ -4597,6 +4609,102 @@ convex/aggregate.test.ts
 
 ---
 
+## Goal 47 — Cross-Entity Rule Affected-Output Recompute
+
+**Status:** shipped in the Convex materializer.
+
+**Objective:** move cross-entity Datalog rules off the coarse "mark every
+derived row stale and recompute the whole rule" fallback when the rule emits a
+variable entity. The materializer now identifies which emitted entities could
+have changed and replaces only those outputs.
+
+### Scope
+
+Materializer:
+
+```text
+convex/materialize.ts
+  processFactChange
+  recomputeRuleForEntities
+  affectedOutputEntitiesForFact
+```
+
+Correction notification:
+
+```text
+convex/facts.ts
+  correctFact
+```
+
+Tests:
+
+```text
+convex/triples.test.ts
+convex/datalog.test.ts
+```
+
+### Semantics
+
+- Entity-local Datalog rules keep the existing single-entity path.
+- Cross-entity Datalog rules whose `emit.e` is a variable now compute affected
+  output entities from two sources:
+  - old `derivedFacts.sourceFactIds` containing the changed fact, which catches
+    removals and retractions
+  - current solved bindings whose provenance contains the changed fact, which
+    catches additions
+- The scheduled recompute seeds the emitted entity variable for each affected
+  output entity, deletes only that entity's derived output for the rule, and
+  re-emits current results for that entity.
+- Corrections notify the materializer as the protocol primitives they are:
+  tombstone-old and assert-new.
+- Constant-emitting or unsupported cross-entity rules still use full recompute.
+- Closure deletion/correction behavior is unchanged: it remains correct via full
+  transitive-closure recompute.
+
+### Non-Goals
+
+- Do not implement DRed/counting for transitive closure deletions in this slice.
+- Do not make the Datalog solver recursive.
+- Do not remove the conservative full-recompute fallback.
+- Do not migrate host-owned rules into the `@metacrdt/convex` component.
+
+### Acceptance Criteria
+
+- A cross-entity rule that emits `?w` from a `Placement` join updates only the
+  affected Worker output when a non-output Placement fact changes.
+- Corrections remove stale outputs justified by the old fact and add outputs
+  justified by the replacement fact.
+- Pending invalidations are cleared after affected-output recompute.
+- Closure correction still removes stale reachability pairs and adds replacement
+  pairs via full recompute.
+- Existing entity-local rule materialization, closure incremental-add, closure
+  retraction, provenance, and Datalog behavior remain unchanged.
+
+### Verification
+
+- `npx vitest run convex/triples.test.ts convex/datalog.test.ts convex/provenance.test.ts`
+  passed (38 focused tests).
+- Full gate passed:
+  - `npm run test:core` passed (46 tests).
+  - `npm run test:convex-package` passed.
+  - `npm test` passed (17 backend test files, 127 tests).
+  - `npm run test:runtime` passed.
+  - `npm run test:local` passed.
+  - `npm run test:cloudflare` passed.
+  - `npm run test:forma` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+- Deployed with `npx convex dev --once` and
+  `npx @convex-dev/static-hosting upload`.
+- Live smoke passed:
+  - `curl -I https://chatty-hare-94.convex.site` returned `HTTP/2 200`.
+  - `npx convex run datalog:explainDatalog ...` reached the deployed Datalog
+    module after the materializer deploy.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -4656,7 +4764,8 @@ These remain valuable, but they should not interrupt the current goal.
   no separate incremental solver stream yet).
 - [x] Computed predicates: arithmetic, string ops.
 - [x] Disjunction.
-- [ ] Cross-entity rule incremental recompute.
+- [x] Cross-entity rule incremental recompute for variable-emitting rules
+  (affected output entities only; unsupported shapes fall back to full).
 - [ ] DRed/counting for transitive closure deletions.
 
 ### UX

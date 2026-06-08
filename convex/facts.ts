@@ -628,14 +628,23 @@ export const correctFact = mutation({
     const cardinality = await cardinalityOf(ctx, old.a);
     await upsertCurrentFact(ctx, newFact, cardinality, now);
 
-    // A correction changes an edge (old value removed, new added), so closures
-    // must fully recompute — mark it as such.
+    // A correction is protocol-level tombstone-old + assert-new. Notify the
+    // materializer about both sides so incremental rule paths can discover stale
+    // outputs justified by the old fact and new outputs justified by the
+    // replacement.
+    await ctx.scheduler.runAfter(0, internal.materialize.processFactChange, {
+      e: old.e,
+      a: old.a,
+      factId: old._id,
+      txTime: now,
+      changeKind: "tombstone",
+    });
     await ctx.scheduler.runAfter(0, internal.materialize.processFactChange, {
       e: old.e,
       a: old.a,
       factId: newFactId,
       txTime: now,
-      changeKind: "correction",
+      changeKind: "assert",
     });
 
     return { txId, oldFactId: old._id, newFactId };

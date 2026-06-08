@@ -412,42 +412,100 @@ describe("rule materialization", () => {
   test("derives a violation, then clears it via correction (incremental)", async () => {
     vi.useFakeTimers();
     try {
-    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
-    await t.mutation(api.rules.defineRule, {
-      name: "missing_i9",
-      where: [
-        ["?e", "employee.status", "active"],
-        ["?e", "i9.completed", false],
-      ],
-      emit: { e: "?e", a: "compliance.violation", v: "missing_i9" },
-      dependsOnAttributes: ["employee.status", "i9.completed"],
-    });
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await t.mutation(api.rules.defineRule, {
+        name: "missing_i9",
+        where: [
+          ["?e", "employee.status", "active"],
+          ["?e", "i9.completed", false],
+        ],
+        emit: { e: "?e", a: "compliance.violation", v: "missing_i9" },
+        dependsOnAttributes: ["employee.status", "i9.completed"],
+      });
 
-    await t.mutation(api.facts.assertFact, {
-      e: "w:1",
-      a: "employee.status",
-      value: "active",
-    });
-    const i9 = await t.mutation(api.facts.assertFact, {
-      e: "w:1",
-      a: "i9.completed",
-      value: false,
-    });
-    await flush(t);
+      await t.mutation(api.facts.assertFact, {
+        e: "w:1",
+        a: "employee.status",
+        value: "active",
+      });
+      const i9 = await t.mutation(api.facts.assertFact, {
+        e: "w:1",
+        a: "i9.completed",
+        value: false,
+      });
+      await flush(t);
 
-    let derived = await t.query(api.rules.derivedForEntity, { e: "w:1" });
-    expect(derived.map((d) => d.v)).toEqual(["missing_i9"]);
+      let derived = await t.query(api.rules.derivedForEntity, { e: "w:1" });
+      expect(derived.map((d) => d.v)).toEqual(["missing_i9"]);
 
-    // Correct the I-9 to completed → rule re-materializes and clears it.
-    await t.mutation(api.facts.correctFact, {
-      factId: i9.factId,
-      newValue: true,
-      reason: "I-9 actually completed",
-    });
-    await flush(t);
+      // Correct the I-9 to completed → rule re-materializes and clears it.
+      await t.mutation(api.facts.correctFact, {
+        factId: i9.factId,
+        newValue: true,
+        reason: "I-9 actually completed",
+      });
+      await flush(t);
 
-    derived = await t.query(api.rules.derivedForEntity, { e: "w:1" });
-    expect(derived).toEqual([]);
+      derived = await t.query(api.rules.derivedForEntity, { e: "w:1" });
+      expect(derived).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("cross-entity join rules replace affected output entities", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await t.mutation(api.rules.defineRule, {
+        name: "requires_client_ack",
+        where: [
+          ["?p", "type", "Placement"],
+          ["?p", "worker", "?w"],
+          ["?p", "client", "?client"],
+        ],
+        emit: { e: "?w", a: "requires.client_ack", v: "?client" },
+        dependsOnAttributes: ["type", "worker", "client"],
+      });
+
+      await t.mutation(api.facts.assertFact, {
+        e: "placement:1",
+        a: "type",
+        value: "Placement",
+      });
+      await t.mutation(api.facts.assertFact, {
+        e: "placement:1",
+        a: "worker",
+        value: "worker:1",
+      });
+      const client = await t.mutation(api.facts.assertFact, {
+        e: "placement:1",
+        a: "client",
+        value: "client:a",
+      });
+      await flush(t);
+
+      let derived = await t.query(api.rules.derivedForEntity, {
+        e: "worker:1",
+      });
+      expect(derived.map((d) => d.v)).toEqual(["client:a"]);
+
+      await t.mutation(api.facts.correctFact, {
+        factId: client.factId,
+        newValue: "client:b",
+        reason: "placement moved clients",
+      });
+      await flush(t);
+
+      derived = await t.query(api.rules.derivedForEntity, {
+        e: "worker:1",
+      });
+      expect(derived.map((d) => d.v)).toEqual(["client:b"]);
+
+      const pending = await t.run(async (ctx) => {
+        return await ctx.db.query("ruleInvalidations").collect();
+      });
+      expect(pending.every((row) => row.processedAt !== undefined)).toBe(true);
     } finally {
       vi.useRealTimers();
     }

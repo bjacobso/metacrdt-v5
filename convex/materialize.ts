@@ -88,11 +88,31 @@ export const processFactChange = internalMutation({
           { ruleId: rule._id, e: args.e },
         );
       } else {
-        // Cross-entity join: a change anywhere can affect any output row.
-        await markAllDerivedStale(ctx, rule._id);
-        await ctx.scheduler.runAfter(0, internal.materialize.recomputeRule, {
-          ruleId: rule._id,
-        });
+        const affectedEntities = await affectedOutputEntitiesForFact(
+          ctx,
+          rule,
+          args.factId,
+        );
+        if (affectedEntities !== null) {
+          for (const e of affectedEntities) {
+            await markEntityDerivedStale(ctx, rule._id, e);
+          }
+          await ctx.scheduler.runAfter(
+            0,
+            internal.materialize.recomputeRuleForEntities,
+            {
+              ruleId: rule._id,
+              entities: affectedEntities,
+            },
+          );
+        } else {
+          // Constant-emitting or otherwise unsupported cross-entity rules still
+          // need the conservative full recompute.
+          await markAllDerivedStale(ctx, rule._id);
+          await ctx.scheduler.runAfter(0, internal.materialize.recomputeRule, {
+            ruleId: rule._id,
+          });
+        }
       }
     }
 
@@ -152,39 +172,65 @@ export const recomputeRule = internalMutation({
 export const recomputeRuleForEntity = internalMutation({
   args: { ruleId: v.id("rules"), e: v.string() },
   handler: async (ctx, args) => {
-    const rule = await ctx.db.get("rules", args.ruleId);
-    if (!rule || !rule.enabled || rule.emit === undefined) return;
-    const entityVar = rule.emit.e.startsWith("?")
-      ? rule.emit.e.slice(1)
-      : null;
-    if (entityVar === null) {
-      // Not entity-local after all; fall back to a full recompute.
-      await ctx.scheduler.runAfter(0, internal.materialize.recomputeRule, {
-        ruleId: args.ruleId,
-      });
-      return;
-    }
+    await recomputeRuleForEntityList(ctx, args.ruleId, [args.e], args.e);
+  },
+});
 
-    const now = Date.now();
-    const coord = { txTime: now, validTime: now };
-    const solved = await solveWhere(ctx, (rule.where ?? []) as unknown[], coord, {
-      [entityVar]: args.e,
+/**
+ * Incremental recompute scoped to a set of output entities. This is valid for
+ * any rule whose `emit.e` is a variable, including cross-entity joins: seeding
+ * the emitted entity variable recomputes only that output entity while still
+ * allowing the solver to join through related entities as needed.
+ */
+export const recomputeRuleForEntities = internalMutation({
+  args: { ruleId: v.id("rules"), entities: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    await recomputeRuleForEntityList(ctx, args.ruleId, args.entities);
+  },
+});
+
+async function recomputeRuleForEntityList(
+  ctx: MutationCtx,
+  ruleId: Id<"rules">,
+  entities: string[],
+  invalidationEntity?: string,
+): Promise<void> {
+  const rule = await ctx.db.get("rules", ruleId);
+  if (!rule || !rule.enabled || rule.emit === undefined) return;
+  const entityVar = rule.emit.e.startsWith("?")
+    ? rule.emit.e.slice(1)
+    : null;
+  if (entityVar === null) {
+    // Cannot scope by output entity; fall back to a full recompute.
+    await ctx.scheduler.runAfter(0, internal.materialize.recomputeRule, {
+      ruleId,
     });
+    return;
+  }
+
+  const now = Date.now();
+  const coord = { txTime: now, validTime: now };
+  const unique = [...new Set(entities)];
+  for (const e of unique) {
+    const solved = await solveWhere(
+      ctx,
+      (rule.where ?? []) as unknown[],
+      coord,
+      { [entityVar]: e },
+    );
 
     // Replace just this entity's derived output for this rule.
     const prior = await ctx.db
       .query("derivedFacts")
-      .withIndex("by_rule_e", (q) =>
-        q.eq("ruleId", args.ruleId).eq("e", args.e),
-      )
+      .withIndex("by_rule_e", (q) => q.eq("ruleId", ruleId).eq("e", e))
       .collect();
     for (const d of prior) await ctx.db.delete("derivedFacts", d._id);
 
     await emitSolved(ctx, rule, solved, now);
+  }
 
-    await clearInvalidations(ctx, args.ruleId, now, args.e);
-  },
-});
+  await clearInvalidations(ctx, ruleId, now, invalidationEntity);
+}
 
 /**
  * Materialize the transitive closure of a base attribute as derived facts.
@@ -362,6 +408,93 @@ export const incrementalClosureAdd = internalMutation({
 });
 
 // --- helpers ----------------------------------------------------------------
+
+/**
+ * For a variable-emitting Datalog rule, find the output entities that could be
+ * affected by one changed source fact. Old derived rows whose provenance included
+ * the fact cover removals/retractions; current solved bindings whose provenance
+ * includes the fact cover additions. Returns `null` when the rule cannot be
+ * scoped by output entity and needs a full recompute.
+ */
+async function affectedOutputEntitiesForFact(
+  ctx: MutationCtx,
+  rule: Doc<"rules">,
+  factId: Id<"facts">,
+): Promise<string[] | null> {
+  if (rule.emit === undefined) return null;
+  const entityVar = rule.emit.e.startsWith("?")
+    ? rule.emit.e.slice(1)
+    : null;
+  if (entityVar === null) return null;
+
+  const fact = await ctx.db.get(factId);
+  if (!fact) return null;
+
+  const affected = new Set<string>();
+  const factKey = factId as unknown as string;
+
+  const negated = negatedSubjectsForAttribute(
+    (rule.where ?? []) as unknown[],
+    fact.a,
+  );
+  for (const subject of negated) {
+    if (subject === `?${entityVar}`) {
+      affected.add(fact.e);
+    } else {
+      // A changed negated fact can remove outputs, but this rule shape does not
+      // tell us which emitted entities are affected without solving the whole
+      // rule's prior state. Use the conservative path.
+      return null;
+    }
+  }
+
+  const prior = await ctx.db
+    .query("derivedFacts")
+    .withIndex("by_rule", (q) => q.eq("ruleId", rule._id))
+    .collect();
+  for (const row of prior) {
+    const sources = (row.sourceFactIds ?? []) as unknown as string[];
+    if (sources.includes(factKey)) affected.add(row.e);
+  }
+
+  const now = Date.now();
+  const solved = await solveWhere(ctx, (rule.where ?? []) as unknown[], {
+    txTime: now,
+    validTime: now,
+  });
+  for (const s of solved) {
+    const sources = s.sources as unknown as string[];
+    if (!sources.includes(factKey)) continue;
+    const e = resolveTerm(rule.emit.e, s.binding);
+    if (e !== undefined && e !== null) affected.add(String(e));
+  }
+
+  return [...affected];
+}
+
+function negatedSubjectsForAttribute(where: unknown[], attr: string): unknown[] {
+  const subjects: unknown[] = [];
+  for (const clause of where) {
+    if (clause && typeof clause === "object" && !Array.isArray(clause)) {
+      if ("not" in clause) {
+        const pattern = (clause as { not: unknown }).not;
+        if (Array.isArray(pattern) && pattern.length === 3 && pattern[1] === attr) {
+          subjects.push(pattern[0]);
+        }
+      } else if ("or" in clause) {
+        const branches = (clause as { or: unknown }).or;
+        if (Array.isArray(branches)) {
+          for (const branch of branches) {
+            if (Array.isArray(branch)) {
+              subjects.push(...negatedSubjectsForAttribute(branch, attr));
+            }
+          }
+        }
+      }
+    }
+  }
+  return subjects;
+}
 
 /**
  * Emit a rule's derived facts, deduped by (entity, value): multiple bindings
