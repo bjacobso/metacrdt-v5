@@ -254,6 +254,15 @@ export function clauseBoundVars(clause: AnyClause): string[] {
   return [];
 }
 
+export function advanceBoundVars(
+  bound: ReadonlySet<string>,
+  clause: AnyClause,
+): Set<string> {
+  const next = new Set(bound);
+  for (const vn of clauseBoundVars(clause)) next.add(vn);
+  return next;
+}
+
 export function branchExternalRequiredVars(branch: AnyClause[]): string[] {
   const produced = new Set<string>();
   for (const clause of branch) {

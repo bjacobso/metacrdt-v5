@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 94 (`@metacrdt/query` Intermediate Row Limit Guard) has
+**Current goal:** Goal 95 (`@metacrdt/query` Bound Variable Advancement) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -110,8 +110,12 @@ row limits, async scheduling, and source semantics. Goal 94 extracts the shared
 intermediate-row limit guard into `@metacrdt/query`:
 `assertIntermediateRowsWithinLimit` owns the package-wide limit comparison and
 error text, while Convex still owns where the guard is applied in the positive
-pattern and disjunction branches. The next active goal should be chosen from the
-remaining TODO candidates:
+pattern and disjunction branches. Goal 95 extracts bound-variable advancement
+into `@metacrdt/query`: `advanceBoundVars` returns the next scheduler bound-var
+set after a pattern, compute, or disjunction clause, while Convex still owns the
+async solver loop, clause execution, source IO, read authorization, and branch
+recursion. The next active goal should be chosen from the remaining TODO
+candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
 the next projection dependency (closure/derived provenance or remaining
@@ -209,6 +213,7 @@ arguments.
   - negation candidate checking over fetched triples
   - compare/compute state transitions over provenanced solved bindings
   - shared intermediate-row limit guard
+  - bound-variable advancement for scheduler state
   - Convex compatibility re-export through `convex/lib/engine.ts`
 - New Convex writes stamp protocol metadata on `factEvents`:
   `eventId`, HLC, `replicaId`, `targetEventId`, and `causalRefs` where
@@ -8484,6 +8489,55 @@ recursion, and source semantics in Convex.
   `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
 - A live `datalog:datalog` positive-join query returned rows through the
   deployed solver path that now calls the package-owned row-limit guard.
+
+---
+
+## Goal 95 — `@metacrdt/query` Bound Variable Advancement
+
+**Status:** shipped as the pure scheduler-state boundary.
+
+**Objective:** move target-neutral "which variables become bound after this
+clause executes?" bookkeeping from the Convex solver loop into
+`@metacrdt/query`, while keeping clause execution, source fetching, read
+authorization, branch recursion, and async scheduling in Convex.
+
+### Semantics
+
+- `packages/query` now owns `advanceBoundVars`.
+- The helper accepts the current bound-var set and a parsed clause.
+- It returns a new `Set<string>`; it does not mutate the input set.
+- It uses existing `clauseBoundVars` semantics:
+  - pattern clauses bind their pattern vars;
+  - compute clauses bind their `as` var when present;
+  - disjunction clauses bind the union of vars bound by their branches;
+  - compare and negation clauses bind no vars.
+- `convex/lib/engine.ts` now calls this helper after pattern, compute, and
+  disjunction clauses finish running.
+
+### Non-Goals
+
+- Do not move `solveParsedWhere`, `chooseNextClausePosition` call/splice logic,
+  clause execution, source IO, read authorization, negation IO, disjunction
+  recursion, or intermediate-row guard placement into the package.
+- Do not change unsafe-query behavior, clause ordering, result shapes, or
+  variable binding semantics.
+
+### Verification
+
+- `npm run test:query` passed (20 package tests).
+- `npx tsc --noEmit -p packages/query/tsconfig.json` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npm run test:core` passed (46 core tests).
+- `npm run test:schema` passed (8 schema tests).
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
+- A live `datalog:datalog` query with a disjunction followed by a pattern
+  returned rows through the deployed package-backed bound-variable advancement
+  path.
 
 ---
 

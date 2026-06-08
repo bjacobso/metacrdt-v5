@@ -2,17 +2,16 @@ import { Doc, Id } from "../_generated/dataModel";
 import { QueryCtx, MutationCtx } from "../_generated/server";
 import {
   LIMITS,
+  advanceBoundVars,
   applyComputeStates,
   assertIntermediateRowsWithinLimit,
   chooseNextClausePosition,
-  clauseBoundVars,
   dedupeProvenancedBindings,
   extendPatternCandidates,
   filterCompareStates,
   parseClauses,
   passesNegationCandidates,
   patternInputForBinding,
-  patternVars,
   project,
   valueKey,
   type AnyClause,
@@ -29,6 +28,7 @@ export {
   COMPARISON_OPS,
   COMPUTE_OPS,
   LIMITS,
+  advanceBoundVars,
   aggregateBindings,
   applyComputeStates,
   assertIntermediateRowsWithinLimit,
@@ -44,6 +44,7 @@ export {
   paginateRows,
   passesNegationCandidates,
   patternInputForBinding,
+  patternVars,
   project,
   valueKey,
   type AggOp,
@@ -287,7 +288,7 @@ async function solveParsedWhere(
   source: TripleSource,
 ): Promise<SolvedBinding[]> {
   const remaining = clauses.map((_, i) => i);
-  const bound = new Set<string>(Object.keys(seed));
+  let bound = new Set<string>(Object.keys(seed));
   let states: SolvedBinding[] = [
     { binding: { ...seed }, sources: seedSources, eventSources: seedEventSources },
   ];
@@ -312,13 +313,13 @@ async function solveParsedWhere(
         next.push(...extendPatternCandidates(clause, st, candidates));
         assertIntermediateRowsWithinLimit(next.length);
       }
-      for (const vn of patternVars(clause)) bound.add(vn);
+      bound = advanceBoundVars(bound, clause);
       states = next;
     } else if (clause.kind === "compare") {
       states = filterCompareStates(clause, states);
     } else if (clause.kind === "compute") {
       states = applyComputeStates(clause, states);
-      for (const vn of clauseBoundVars(clause)) bound.add(vn);
+      bound = advanceBoundVars(bound, clause);
     } else if (clause.kind === "not") {
       const kept: SolvedBinding[] = [];
       for (const st of states) {
@@ -355,7 +356,7 @@ async function solveParsedWhere(
         assertIntermediateRowsWithinLimit(next.length);
       }
       states = dedupeProvenancedBindings(next);
-      for (const vn of clauseBoundVars(clause)) bound.add(vn);
+      bound = advanceBoundVars(bound, clause);
     }
 
     if (states.length === 0) break;

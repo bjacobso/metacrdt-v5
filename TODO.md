@@ -171,6 +171,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   owns `assertIntermediateRowsWithinLimit`, the shared `maxIntermediateRows`
   comparison and error text. Convex still owns when the guard runs in the
   positive-pattern and disjunction branches.
+- [x] **`@metacrdt/query` bound-variable advancement extracted** — the package now
+  owns `advanceBoundVars`, returning the next scheduler bound-var set after a
+  pattern, compute, or disjunction clause. Convex still owns clause execution,
+  source IO, read auth, and branch recursion.
 - [ ] Then peel off, as they stabilize: more `@metacrdt/query` solver/rule AST
   seams, then `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/views`, and
   `@metacrdt/agent`.
@@ -440,6 +444,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 95 shipped:** `@metacrdt/query` bound-variable advancement. Added
+  `advanceBoundVars`; Convex now asks the package to advance scheduler
+  bound-vars after pattern, compute, and disjunction clauses while retaining the
+  async solver loop and all source/auth/branch execution.
 - [x] **Goal 94 shipped:** `@metacrdt/query` intermediate row limit guard. Added
   `assertIntermediateRowsWithinLimit`; Convex pattern/disjunction branches call
   it at the same points as before, preserving the limit and error text while

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  advanceBoundVars,
   aggregateBindings,
   applyCompute,
   applyComputeStates,
@@ -164,6 +165,35 @@ describe("@metacrdt/query term and filter helpers", () => {
     expect(() =>
       chooseNextClausePosition([parseClause(["?salary", ">", 100])], [0], new Set()),
     ).toThrow(/query is unsafe/);
+  });
+
+  test("advances bound vars for clauses without mutating the input set", () => {
+    const pattern = parseClause(["?e", "type", "?type"]);
+    const compute = parseClause({ compute: ["lower", "?name"], as: "?lower" });
+    const disjunction = parseClause({
+      or: [
+        [["?e", "worker.status", "?status"]],
+        [["?e", "worker.role", "?role"]],
+      ],
+    });
+
+    const initial = new Set(["seed"]);
+    const afterPattern = advanceBoundVars(initial, pattern);
+    expect([...initial]).toEqual(["seed"]);
+    expect([...afterPattern].sort()).toEqual(["e", "seed", "type"]);
+
+    const afterCompute = advanceBoundVars(afterPattern, compute);
+    expect([...afterCompute].sort()).toEqual(["e", "lower", "seed", "type"]);
+
+    const afterOr = advanceBoundVars(afterCompute, disjunction);
+    expect([...afterOr].sort()).toEqual([
+      "e",
+      "lower",
+      "role",
+      "seed",
+      "status",
+      "type",
+    ]);
   });
 });
 
