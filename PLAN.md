@@ -248,12 +248,18 @@ for bounded patterns without claiming full SQL query-provider parity. Goal 130
 adds a narrow Cloudflare DAG resume surface: `listDagRuns` can filter by
 `flowDefName`, and `resumeDagRun` terminally transitions existing `running`
 DAG rows to `completed` or `unsupported` with caller-provided timeline events,
-without interpreting flow definitions or executing actions. The next active goal
-should be chosen from the remaining TODO candidates:
+without interpreting flow definitions or executing actions. Goal 131 adds the
+first Cloudflare live-query fanout seed: a structural SQLite live invalidation
+helper accepts coordinate subscriptions over WebSocket-shaped sockets and
+publishes deterministic invalidation messages from current-projection change
+summaries, without caching query results or executing queries on behalf of
+clients. The next active goal should be chosen from the remaining TODO
+candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (full SQL query-provider
-conformance, full flow interpreter/action execution, live fanout),
+conformance, full flow interpreter/action execution, full live-query result
+surface),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9468,6 +9474,49 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 131 — Cloudflare DO SQLite Live Invalidation Fanout Seed
+
+**Status:** shipped.
+
+**Objective:** add the first live-query transport surface for Cloudflare DO
+SQLite by broadcasting existing current-projection `(e, a)` change summaries to
+WebSocket-shaped clients with bounded coordinate subscriptions.
+
+### What Shipped
+
+- Added `sqliteLive.ts` with `DurableObjectSqliteLiveInvalidationFanout`, a
+  structural socket helper separate from the event-sync relay.
+- Added Effect Schema-validated client messages:
+  - `subscribe` with caller-provided or generated subscription ids and bounded
+    `e` and/or `a` filters;
+  - `unsubscribe` by subscription id.
+- Added tagged `DurableObjectSqliteLiveError` failures and Effect helpers:
+  `publishDurableObjectSqliteLiveInvalidationsEffect` plus a Promise wrapper.
+- `publishChanges` / `publishDurableObjectSqliteLiveInvalidations` fans out
+  deterministic `invalidate` messages containing the matching subscription ids
+  and deduped changed coordinates.
+- Focused Cloudflare tests prove direct and socket-driven subscriptions,
+  coordinate matching, unsubscribe behavior, empty/unmatched publish no-ops,
+  unbounded-subscription rejection, and malformed-message socket closure.
+
+### Non-Goals
+
+- Do not claim full live-query parity: this slice does not execute queries,
+  cache result sets, replay snapshots, persist subscriptions, or wire a Worker
+  route around the helper.
+- Do not merge this protocol with the anti-entropy event relay; event sync and
+  projection invalidation stay separate surfaces for now.
+- Do not implement full historical SQL query-provider conformance or a
+  Cloudflare flow interpreter/action executor.
+- Do not touch root `convex/`.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 44 Cloudflare tests.
 
 ---
 

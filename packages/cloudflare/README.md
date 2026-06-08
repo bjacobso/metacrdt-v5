@@ -44,6 +44,12 @@ implements them on Cloudflare.
   lifecycle helpers replace only the touched current coordinate through
   `ProjectionStoreService.replaceMatching`, while `rebuildCurrent` remains the
   full recovery rebuild.
+- **Durable Object SQLite live invalidation fanout** —
+  `DurableObjectSqliteLiveInvalidationFanout` plus Effect/Promise publish
+  helpers accept bounded `e` / `a` subscriptions over structural WebSocket
+  sockets and broadcast current-projection change summaries to matching
+  subscribers. This is invalidation transport, not query result caching or query
+  execution.
 - **WebSocket relay** — `DurableObjectWebSocketRelay` / `attachDurableObjectRelay`
   (`RelayConnection`, `RelayOptions`, `WebSocketLike`): accepts server sockets,
   answers version-vector hellos with deltas, merges client events through the
@@ -83,6 +89,7 @@ to the same projections as any other target.
 import {
   createDurableObjectRuntime,
   createDurableObjectSqliteCurrentSurface,
+  DurableObjectSqliteLiveInvalidationFanout,
   createDurableObjectRuntimeLayer,
   createDurableObjectSqliteRuntimeLayer,
   relayWorker,
@@ -142,8 +149,8 @@ runtime, and the same facade now exposes protocol event reads (`getEvent` /
 `aggregate`, `derivedRows`) plus projection-backed current Datalog reads
 (`queryCurrent`, `pageCurrent`, `aggregateCurrent`, `derivedRowsCurrent`) and
 deterministic `changed` summaries for current-projection rebuilds. The remaining
-parity plan — full historical SQL-indexed query optimization, live invalidation fanout,
-collection/flow surface, alarm multiplexing, and live frontend queries over DO
+parity plan — full historical SQL-indexed query optimization, full flow
+interpreter/action execution, and live frontend query result handling over DO
 WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 

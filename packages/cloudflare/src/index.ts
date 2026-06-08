@@ -171,6 +171,26 @@ export {
 } from "./sqliteQuery.js";
 
 export {
+  DurableObjectSqliteLiveClientMessageSchema,
+  DurableObjectSqliteLiveError,
+  DurableObjectSqliteLiveInvalidationFanout,
+  DurableObjectSqliteLiveSubscribeMessageSchema,
+  DurableObjectSqliteLiveSubscriptionFilterSchema,
+  DurableObjectSqliteLiveUnsubscribeMessageSchema,
+  publishDurableObjectSqliteLiveInvalidations,
+  publishDurableObjectSqliteLiveInvalidationsEffect,
+  type DurableObjectSqliteLiveClientMessage,
+  type DurableObjectSqliteLiveConnection,
+  type DurableObjectSqliteLiveFanoutOptions,
+  type DurableObjectSqliteLivePublishResult,
+  type DurableObjectSqliteLiveServerMessage,
+  type DurableObjectSqliteLiveSubscribeMessage,
+  type DurableObjectSqliteLiveSubscription,
+  type DurableObjectSqliteLiveSubscriptionFilter,
+  type DurableObjectSqliteLiveUnsubscribeMessage,
+} from "./sqliteLive.js";
+
+export {
   DurableObjectWebSocketRelay,
   attachDurableObjectRelay,
   type RelayConnection,
