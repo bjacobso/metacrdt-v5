@@ -1,10 +1,10 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 16 (`@metacrdt/cloudflare` Durable Object runtime
-services) has shipped. The next active goal should be chosen from the remaining
-TODO candidates: full app write authorization, a Cloudflare Worker/WebSocket
-relay shell, a full `@metacrdt/local` package, or a state-owning
-`@metacrdt/convex` component slice.
+**Current goal:** Goal 17 (`@metacrdt/cloudflare` Durable Object WebSocket relay
+shell) has shipped. The next active goal should be chosen from the remaining
+TODO candidates: full app write authorization, a deployed Cloudflare Worker
+example, a full `@metacrdt/local` package, or a state-owning `@metacrdt/convex`
+component slice.
 
 This plan is the operational goal file. Read it with:
 
@@ -128,8 +128,11 @@ configured actions can now take small typed arguments.
   - Durable Object storage-backed HLC clock
   - Durable Object storage-backed per-replica sequencer
   - async `createDurableObjectRuntime` target services over `@metacrdt/runtime`
+  - structural Durable Object WebSocket relay shell for hello/delta sync and
+    event fan-out
   - package-local tests proving restart durability, G-Set convergence, version
-    vectors, and stored event verification
+    vectors, stored event verification, WebSocket publish/catch-up, and protocol
+    filtering
 - `applyConfig` now behaves as a true section-scoped reconciler:
   - configured artifact ownership is tracked on `config:default`
   - explicitly supplied config sections compute desired sets
@@ -190,8 +193,8 @@ configured actions can now take small typed arguments.
   version-vector anti-entropy, and the localStorage target persists event/HLC/seq
   state. A BroadcastChannel transport now handles same-origin browser publish and
   hello/delta catch-up. `@metacrdt/cloudflare` now provides Durable Object
-  storage-backed runtime services, but not the Worker/WebSocket relay shell or
-  cross-device networking.
+  storage-backed runtime services and a structural WebSocket relay shell, but not
+  a deployed Worker example or p2p cross-device networking.
 - Full app login/write authorization is not configured; unauthenticated callers
   are treated as `anonymous`, so PII is denied by default but general public
   writes remain demo-grade.
@@ -1768,6 +1771,67 @@ real `state.storage` object with no protocol logic.
 
 ---
 
+## Goal 17 — `@metacrdt/cloudflare` Durable Object WebSocket Relay Shell
+
+**Status:** shipped as a structural WebSocket relay inside the Cloudflare target
+package.
+
+**Objective:** put the relay protocol logic next to the Durable Object runtime
+services without yet committing to Wrangler config, deployment shape, or a
+specific app worker. The class accepts Cloudflare-like server WebSockets,
+answers version-vector hellos with deltas, merges incoming client events through
+the DO runtime, and fans out accepted events to connected peers.
+
+### Scope
+
+Package additions:
+
+```text
+packages/cloudflare/
+  src/relay.ts       # structural WebSocket relay shell
+  src/relay.test.ts  # fake socket tests
+```
+
+The relay is structural: it depends on a `WebSocketLike` interface and
+`RuntimeServices`, not on Workers type packages. A future Worker/DO class can
+instantiate `createDurableObjectRuntime(state.storage)`, attach this relay, and
+return the accepted WebSocket response.
+
+### Acceptance Criteria
+
+- Add `WebSocketLike`, `RelayOptions`, and `RelayConnection` types.
+- Add `DurableObjectWebSocketRelay`:
+  - accepts server sockets and tracks connections;
+  - optionally sends an initial `hello` with the DO runtime version vector;
+  - implements `Transport.publish` so local DO operations fan out to sockets;
+  - handles client `hello` messages by sending `delta` responses computed with
+    `deltaSince`;
+  - handles client `events` / directed `delta` messages by merging through
+    `mergeFrom`;
+  - fans out accepted client events to other connected sockets;
+  - ignores foreign protocol messages and self messages;
+  - closes invalid JSON sockets with a protocol error.
+- Add `attachDurableObjectRelay`:
+  - composes the relay onto any runtime target;
+  - advertises the `transport` capability on the runtime profile.
+- Add tests proving:
+  - sockets are accepted and initial hellos are sent;
+  - local operations publish over the relay;
+  - client hellos receive deltas and are idempotent once caught up;
+  - client events merge into the DO runtime and fan out to other sockets;
+  - foreign protocols are ignored;
+  - invalid JSON closes and disconnects the socket.
+- Do **not** add Wrangler config, Worker routing, auth, or deployment scripts in
+  this slice.
+
+### Verification
+
+- `npm run test:cloudflare` passed (7 tests).
+- Cloudflare package typecheck passed.
+- Full gate for this slice is recorded in the commit that shipped it.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -1786,7 +1850,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Browser/localStorage runtime target seed (durable event log + HLC + seq).
 - [x] BroadcastChannel-compatible anti-entropy transport seed.
 - [x] `@metacrdt/cloudflare` Durable Object runtime services.
-- [ ] Cloudflare Worker/WebSocket relay shell.
+- [x] `@metacrdt/cloudflare` Durable Object WebSocket relay shell.
+- [ ] Deployed Cloudflare Worker example / Wrangler config.
 - [ ] Relay / p2p transport targets.
 - [ ] Full registered `@metacrdt/convex` component/function surface.
 - [ ] Full `@metacrdt/local` browser/local-first package (IndexedDB/SQLite and

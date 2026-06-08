@@ -21,7 +21,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   merge incoming events through the G-Set/HLC path.
 - [x] Cloudflare Durable Object runtime services — storage-backed event log, HLC,
   and per-replica `seq` in `@metacrdt/cloudflare`.
-- [ ] Durable Worker/WebSocket relay / p2p transports (see
+- [x] Cloudflare Durable Object WebSocket relay shell — structural server-socket
+  relay for hello/delta sync and event fan-out in `@metacrdt/cloudflare`.
+- [ ] Deployed Worker example / Wrangler config and p2p transports (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
 **Packaging / monorepo (map, not migration — see [docs/architecture.md](./docs/architecture.md))**
@@ -76,8 +78,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **`@metacrdt/cloudflare` Durable Object runtime services** —
   `packages/cloudflare` provides storage-backed event log, HLC, and per-replica
   sequencer services plus `createDurableObjectRuntime`.
-- [ ] Targets: Cloudflare Worker/WebSocket relay shell, full `@metacrdt/local`
-  (browser / IndexedDB or SQLite + transport), and a state-owning
+- [x] **`@metacrdt/cloudflare` Durable Object WebSocket relay shell** —
+  `packages/cloudflare/src/relay.ts` accepts server sockets, answers version
+  vector hellos with deltas, merges client events, and fans out accepted events.
+- [ ] Targets: deployed Cloudflare Worker example / Wrangler config, full
+  `@metacrdt/local` (browser / IndexedDB or SQLite + transport), and a state-owning
   `@metacrdt/convex` component/function surface.
 
 **Goal 5 — true `applyConfig` reconcile**
@@ -136,8 +141,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   outside the hardened collection-token path.
 
 **Next goal candidates**
-- [ ] Choose the next active goal: full app write authorization, Cloudflare
-  Worker/WebSocket relay, full `@metacrdt/local`, or a state-owning
+- [ ] Choose the next active goal: full app write authorization, deployed
+  Cloudflare Worker example, full `@metacrdt/local`, or a state-owning
   `@metacrdt/convex` component slice.
 
 **Docs**
@@ -163,6 +168,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — @metacrdt/cloudflare Durable Object WebSocket relay shell
+- [x] **Added a structural DO WebSocket relay.** `packages/cloudflare/src/relay.ts`
+  exports `WebSocketLike`, `DurableObjectWebSocketRelay`, and
+  `attachDurableObjectRelay`.
+- [x] **Relay behavior proved with fake server sockets.** Tests cover socket
+  acceptance, initial version-vector hello, local operation fan-out through
+  `Transport.publish`, client hello/delta catch-up, idempotence once caught up,
+  client event merge + fan-out, foreign protocol filtering, and invalid-JSON
+  disconnect.
+- [x] Still deferred: concrete Worker class/fetch routing, Wrangler config,
+  deployment scripts, auth, and p2p transport.
 
 ### 2026-06-07 — @metacrdt/cloudflare Durable Object runtime services
 - [x] **Added the first Cloudflare target package.** `packages/cloudflare`
