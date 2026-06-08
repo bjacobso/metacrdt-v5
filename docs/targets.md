@@ -72,9 +72,9 @@ On open hosts the adapter is a selectable dependency.
 - `@metacrdt/runtime`'s in-memory target/Layer — the reference harness.
 - `@metacrdt/testkit` — Effect Layer-backed conformance helpers for EventStore,
   anti-entropy, and deterministic fold convergence (currently proven against the
-  in-memory Layer, Cloudflare Durable Object Layer, async local Layer, and Node
-  memory/SQLite/Postgres Layers; compatibility `RuntimeServices` targets still
-  adapt through `runtimeServicesLayer`).
+  in-memory Layer, Convex component Layer, Cloudflare Durable Object Layer, async
+  local Layer, and Node memory/SQLite/Postgres Layers; compatibility
+  `RuntimeServices` targets still adapt through `runtimeServicesLayer`).
 
 ### Should exist next
 
@@ -221,10 +221,9 @@ a sibling target.
 1. **`@metacrdt/node`** + `memory` / `sqlite` / `postgres` adapters + shared SQL
    lifecycle plan + HTTP/SSE handler + packaged dev server — unlocks
    SDK/self-hosting work and another host for the testkit to exercise.
-2. **Goal 111 Convex Layer + expanded conformance** — Node/local/Cloudflare now
-   expose runtime Layers and `@metacrdt/testkit` runs conformance over those
-   Layers. Add the Convex target Layer when the component boundary is ready, then
-   add persistence, scheduler, transport, and query/projection suites whenever a
+2. **Goal 111 expanded conformance** — Convex/Node/local/Cloudflare now expose
+   runtime Layers and `@metacrdt/testkit` runs conformance over those Layers.
+   Add persistence, scheduler, transport, and query/projection suites whenever a
    second target exposes the relevant capability. This is what *proves* the
    "guaranteed to converge" claim across targets.
 3. **Cloudflare Phase B/C** — extract the shared fold into core, then the DO +

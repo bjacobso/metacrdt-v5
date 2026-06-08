@@ -3,10 +3,11 @@
 **Current goal:** Goal 111 (Effect-Native Substrate) steps 1–2 have advanced:
 `@metacrdt/runtime` has Effect v3 `Context.Tag` services, `Layer` helpers,
 tagged runtime errors, and memory/localStorage Layer providers; `@metacrdt/node`,
-`@metacrdt/local`, and `@metacrdt/cloudflare` now expose Effect Layer providers
-for their runtime targets; `@metacrdt/testkit` runs conformance over Layer-provided
-targets while compatibility `RuntimeServices` facades remain for already-shipped
-code. The standing objective remains SPEC §1.2: every new or touched unit adopts
+`@metacrdt/local`, `@metacrdt/cloudflare`, and `@metacrdt/convex` now expose
+Effect Layer providers for their runtime targets; `@metacrdt/testkit` runs
+conformance over Layer-provided targets while compatibility `RuntimeServices`
+facades remain for already-shipped code. The standing objective remains SPEC §1.2:
+every new or touched unit adopts
 Effect services/`Layer`s, `effect/Schema`, tagged errors, and Effect-based tests
 where the current dependency graph allows it, while
 `@metacrdt/core` stays a Schema-only deterministic fold (no Effect monad). The
@@ -9366,23 +9367,23 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   in-memory target, and `createLocalRuntimeLayer` exposes the localStorage seed.
   Existing Promise-shaped interfaces and helpers remain as compatibility
   facades.
-- **Target Layer providers started:** `@metacrdt/node` exposes memory, SQLite,
-  and Postgres runtime Layers; `@metacrdt/local` exposes localStorage, async,
-  IndexedDB, and SQLite-compatible runtime Layers; `@metacrdt/cloudflare`
-  exposes a Durable Object runtime Layer. Tests execute Effect programs through
-  those Layers.
+- **Target Layer providers shipped for current targets:** `@metacrdt/node`
+  exposes memory, SQLite, and Postgres runtime Layers; `@metacrdt/local` exposes
+  localStorage, async, IndexedDB, and SQLite-compatible runtime Layers;
+  `@metacrdt/cloudflare` exposes a Durable Object runtime Layer; `@metacrdt/convex`
+  exposes `createConvexComponentRuntimeLayer` over the component-owned raw
+  protocol log.
 - **Layer-backed conformance shipped:** `@metacrdt/testkit` now accepts
   `RuntimeLayerConformanceTarget` (`createLayer`) and runs EventStore /
   anti-entropy / deterministic-fold conformance through service tags. The older
   `RuntimeConformanceTarget` (`createRuntime`) remains as a compatibility
   adapter via `runtimeServicesLayer`.
-- **Remaining keystone work:** the Convex target package has not yet exposed a
-  Layer for its component-owned runtime surface, and conformance still covers
-  only the log/sync plane (not scheduler, transport, query/projection).
+- **Remaining keystone work:** conformance still covers only the log/sync plane
+  (not persistence restart semantics, scheduler, transport, query/projection).
 - **Zero Effect today (by current design):** `core`, `schema`, `query`, and the
   root Convex reference app stay pure/plain where appropriate. `runtime`,
-  `testkit`, and Node/local/Cloudflare target packages now use Effect v3 at their
-  service boundaries.
+  `testkit`, and Convex/Node/local/Cloudflare target packages now use Effect v3
+  at their service boundaries.
 
 ### Migration Order (each step additive, tests green between)
 
@@ -9393,8 +9394,8 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
    errors, and memory/localStorage Layers are shipped.
 2. **Targets provide Layers.** `convex` / `cloudflare` / `local` / `node` expose
    their stores/clocks/sequencers/transports as `Layer`s satisfying the runtime
-   tags. **Started:** Node, local, and Cloudflare Layers are shipped; Convex is
-   still pending.
+   tags. **Shipped for current targets:** Convex, Node, local, and Cloudflare
+   Layers exist and are exercised by tests.
 3. **Schema at the boundaries.** Describe event rows, args/returns, and wire
    messages with `effect/Schema`; convert thrown errors to tagged errors in the
    Effect channel. `core`/`schema`/`query` may adopt `Schema` for value/clause

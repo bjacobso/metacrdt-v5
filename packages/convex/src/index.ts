@@ -47,5 +47,13 @@ export {
   type ProtocolFactEventWriter,
   type ProtocolLifecycleKind,
 } from "./functions";
+export {
+  ConvexComponentEventStore,
+  createConvexComponentRuntime,
+  createConvexComponentRuntimeLayer,
+  type ConvexComponentRunner,
+  type ConvexComponentRuntimeOptions,
+  type ConvexComponentRuntimeRefs,
+} from "./runtime";
 export { hlcValidator, protocolMetadataValidators } from "./validators";
 export { confectSidecarWarning, type ManualConfectMountDecision } from "./confect";

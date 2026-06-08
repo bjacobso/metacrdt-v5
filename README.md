@@ -144,6 +144,9 @@ Current packages:
   component-owned state as a bounded starter/resumer with persisted
   component-owned DAG run/timeline rows, scheduled wait-step wakeups, and
   component-owned collection reminder/escalation/expiry timer state.
+  The component also exposes raw protocol EventStore functions plus
+  `createConvexComponentRuntimeLayer`, so its component-owned log passes the
+  shared Layer-backed `@metacrdt/testkit` conformance suite.
   Includes Confect sidecar guidance.
 - **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
   authoring language extracted from Open Ontology: reader, formatter, evaluator,
@@ -349,9 +352,9 @@ Built today:
 - Tailwind + React Router research-preview UI
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility
 - `@metacrdt/runtime` harness groundwork: target-neutral Effect services plus
-  in-memory/localStorage convergence test targets and Layers; Node/local/
-  Cloudflare target packages also expose runtime Layers and pass Layer-backed
-  `@metacrdt/testkit` conformance
+  in-memory/localStorage convergence test targets and Layers; Convex, Node,
+  local, and Cloudflare target packages also expose runtime Layers and pass
+  Layer-backed `@metacrdt/testkit` conformance
 - Confect/Effect sidecars for typed read/planning/protocol inspection:
   `metacrdt.verifyEvents`, `metacrdt.explainDerived`, and a read-only compliance
   dry-run planner. The dry-run planner is now event-log-backed and

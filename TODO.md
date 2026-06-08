@@ -51,10 +51,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   accepts `RuntimeLayerConformanceTarget` (`createLayer`) and runs EventStore /
   anti-entropy / deterministic-fold conformance over service tags. Compatibility
   `RuntimeServices` factories still adapt through `runtimeServicesLayer`.
-- [ ] **Goal 111 next: Convex target Layer + expanded suites** — add the Convex
-  target Layer when the component boundary is ready; then expand conformance to
-  persistence, scheduler, transport, and query/projection capabilities as second
-  implementations expose them.
+- [x] **Goal 111 Convex target Layer** — `@metacrdt/convex` now exposes raw
+  component-owned protocol EventStore functions (`appendRaw`, `getRawEvent`,
+  `listRawEvents`) and `createConvexComponentRuntimeLayer`; the component-owned
+  log passes Layer-backed `@metacrdt/testkit` conformance.
+- [ ] **Goal 111 next: expanded suites** — expand conformance to persistence
+  restart semantics, scheduler, transport, and query/projection capabilities as
+  second implementations expose them.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
@@ -497,6 +500,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — Goal 111 Convex target Layer
+- [x] **`@metacrdt/convex` now exposes a runtime Layer.** Added component-owned
+  raw protocol EventStore functions (`log.appendRaw`, `log.getRawEvent`,
+  `log.listRawEvents`) and package-side `createConvexComponentRuntimeLayer`,
+  which adapts a host Convex query/mutation runner + component refs into the
+  runtime service tags.
+- [x] **Convex joins shared conformance:** the component-owned raw protocol log
+  passes `@metacrdt/testkit` EventStore / anti-entropy / deterministic-fold
+  conformance through that Layer. Direct component tests also prove exact raw
+  append idempotency, raw get/list, and current projection maintenance for raw
+  assert events.
 
 ### 2026-06-08 — Goal 111 Layer-backed conformance
 - [x] **`@metacrdt/testkit` now runs conformance over Effect Layers.** Added
