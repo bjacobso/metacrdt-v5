@@ -38,6 +38,62 @@ describe("comparison predicates", () => {
     expect(high).toEqual([{ e: "p:1" }]);
   });
 
+  test("event-log Datalog source matches projection Datalog for base facts", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await assert(t, "el:p1", "type", "EventLogPerson");
+    await assert(t, "el:p1", "salary", 120000);
+    await assert(t, "el:p1", "bonus", 10000);
+    await assert(t, "el:p2", "type", "EventLogPerson");
+    await assert(t, "el:p2", "salary", 80000);
+    await assert(t, "el:p2", "bonus", 5000);
+    await assert(t, "el:p2", "status", "terminated");
+
+    const args = {
+      where: [
+        ["?e", "type", "EventLogPerson"],
+        ["?e", "salary", "?salary"],
+        ["?e", "bonus", "?bonus"],
+        { compute: ["+", "?salary", "?bonus"], as: "?total" },
+        ["?total", ">", 100000],
+        { not: ["?e", "status", "terminated"] },
+      ],
+      select: ["?e", "?total"],
+    };
+
+    expect(await t.query(api.datalog.datalog, args)).toEqual([
+      { e: "el:p1", total: 130000 },
+    ]);
+    expect(await t.query(api.datalog.datalogFromEventLog, args)).toEqual([
+      { e: "el:p1", total: 130000 },
+    ]);
+  });
+
+  test("event-log Datalog source survives corrupted facts projection", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await assert(t, "el:source", "type", "EventLogOnly");
+    await assert(t, "el:source", "status", "live");
+
+    await t.run(async (ctx) => {
+      const rows = await ctx.db
+        .query("facts")
+        .withIndex("by_e", (q) => q.eq("e", "el:source"))
+        .collect();
+      for (const row of rows) await ctx.db.patch(row._id, { retractedAt: Date.now() });
+    });
+
+    const args = {
+      where: [
+        ["?e", "type", "EventLogOnly"],
+        ["?e", "status", "live"],
+      ],
+      select: ["?e"],
+    };
+    expect(await t.query(api.datalog.datalog, args)).toEqual([]);
+    expect(await t.query(api.datalog.datalogFromEventLog, args)).toEqual([
+      { e: "el:source" },
+    ]);
+  });
+
   test("== and != operate on values", async () => {
     const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await assert(t, "p:1", "role", "admin");

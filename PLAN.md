@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 51 (host event-log fact query)
+**Current goal:** Goal 52 (event-log-backed Datalog proof query)
 has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth, or
@@ -88,7 +88,10 @@ arguments.
   directly over protocol-shaped `factEvents`, preserving `queryFacts`-style
   include-retracted/include-tombstoned semantics without reading the `facts`
   projection.
-- Convex backend tests are green: 132 tests at last verification.
+- `api.datalog.datalogFromEventLog` reuses the normal Datalog solver with an
+  injected triple source over protocol-shaped `factEvents`, proving joins,
+  compute predicates, and negation can run over the source log for base facts.
+- Convex backend tests are green: 134 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -371,6 +374,9 @@ arguments.
   production Datalog/materialization still read the `facts` projection.
 - `queryFactsFromEventLog` is also bounded and proof/read-model oriented; Datalog
   and rules have not moved to direct event-log solving.
+- `datalogFromEventLog` is bounded and base-fact-only in this slice; production
+  Datalog/rules still include materialized `derivedFacts` through the projection
+  path.
 - `@metacrdt/convex` now has adapter helpers, stateless protocol helpers, a
   component-owned protocol transaction/event log, and component-owned
   `facts`/`currentFacts` projections with opt-in cardinality-one reconciliation
@@ -5053,6 +5059,90 @@ TODO.md
 - `npx vitest run convex/triples.test.ts` passed (18 tests).
 - Broader gate passed:
   - `npm test` passed (17 backend test files, 132 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+
+---
+
+## Goal 52 — Event-Log-Backed Datalog Proof Query
+
+**Status:** shipped as a bounded proof/read-model query in the Convex reference
+runtime.
+
+**Objective:** reuse the existing Datalog solver over an injected event-log
+triple source, proving the query engine can run joins, filters, compute
+predicates, negation, and disjunction over source-log facts without reading the
+folded `facts` projection.
+
+### Scope
+
+Backend:
+
+```text
+convex/lib/engine.ts
+  TripleSource injection for solveWhere/runWhere
+
+convex/datalog.ts
+  datalogFromEventLog
+```
+
+Tests:
+
+```text
+convex/datalog.test.ts
+```
+
+Docs:
+
+```text
+README.md
+PLAN.md
+TODO.md
+```
+
+### Semantics
+
+- The default Datalog engine behavior is unchanged: production `datalog` still
+  reads visible triples from `facts ∪ derivedFacts`.
+- The solver now accepts an optional `TripleSource`, so callers can reuse the
+  same parser, join scheduler, comparisons, computed predicates, negation,
+  disjunction, projection, pagination, and aggregation helpers over another
+  source.
+- `datalogFromEventLog` supplies a source that fetches bounded candidate
+  `factEvents`, reconstructs protocol events through `@metacrdt/convex`, and
+  feeds visible assert events from `@metacrdt/core.visibleAsserts` into the
+  existing solver.
+- Read authorization is enforced through the same attribute-level check.
+- `datalogFromEventLog` is base-fact-only in this slice. Materialized
+  `derivedFacts` remain a projection-backed concern until rules/materialization
+  move to event-log folds.
+
+### Non-Goals
+
+- Do not replace production `datalog`, `aggregate`, rules, or materialization in
+  this slice.
+- Do not include `derivedFacts` in `datalogFromEventLog`.
+- Do not add unbounded scans or new global indexes.
+
+### Acceptance Criteria
+
+- Projection-backed Datalog and event-log-backed Datalog return the same result
+  for normal base-fact joins.
+- Compute predicates and negation work through the injected source.
+- If the `facts` projection is corrupted for an entity, production Datalog
+  returns no row while `datalogFromEventLog` still answers from `factEvents`.
+- Convex typecheck and focused Datalog tests pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/datalog.test.ts` passed (24 tests).
+- Broader gate passed:
+  - `npm test` passed (17 backend test files, 134 tests).
   - `npm run test:convex-package` passed (33 tests).
   - `npm run test:core` passed (46 tests).
   - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.

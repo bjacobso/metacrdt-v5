@@ -1,6 +1,13 @@
 import { query } from "./_generated/server";
+import { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
+import { fromEvents, visibleAsserts, type Event } from "@metacrdt/core";
+import {
+  protocolEventFromRows,
+  type ConvexTransactionRow,
+  type ProtocolFactEventRow,
+} from "@metacrdt/convex";
 import {
   LIMITS,
   aggregateBindings,
@@ -8,13 +15,131 @@ import {
   paginateRows,
   project,
   runWhere,
+  type PatternInput,
+  type Triple,
+  type TripleSource,
 } from "./lib/engine";
+import { valueKey } from "./lib/visibility";
+import { canReadAttribute } from "./lib/readAuth";
 
 // A clause is a [e, a, v] triple, a [term, op, term] comparison,
 // { compute: [op, ...args], as?: term } deterministic computed predicate,
 // { not: [e, a, v] } negation, or { or: [[...clauses], ...] } disjunction —
 // so clauses are heterogeneous (array | object).
 const whereValidator = v.array(v.any());
+
+function txForCore(tx: Doc<"transactions">): ConvexTransactionRow {
+  return {
+    _creationTime: tx._creationTime,
+    actorId: tx.actorId,
+    actorType: tx.actorType,
+    txTime: tx.txTime,
+    reason: tx.reason,
+  };
+}
+
+function rowForCore(row: Doc<"factEvents">): ProtocolFactEventRow {
+  return {
+    txTime: row.txTime,
+    eventId: row.eventId,
+    hlc: row.hlc,
+    replicaId: row.replicaId,
+    seq: row.seq,
+    targetEventId: row.targetEventId,
+    causalRefs: row.causalRefs,
+    kind: row.kind,
+    e: row.e,
+    a: row.a,
+    v: row.v,
+    validFrom: row.validFrom,
+    validTo: row.validTo,
+    reason: row.reason,
+  };
+}
+
+async function protocolEventsForRows(
+  ctx: Parameters<TripleSource>[0],
+  rows: Doc<"factEvents">[],
+): Promise<Event[]> {
+  const events: Event[] = [];
+  for (const row of rows) {
+    const tx = await ctx.db.get(row.txId);
+    if (tx === null) continue;
+    const ev = protocolEventFromRows(rowForCore(row), txForCore(tx));
+    if (ev !== null) events.push(ev);
+  }
+  return events;
+}
+
+async function fetchCandidateFactEvents(
+  ctx: Parameters<TripleSource>[0],
+  input: PatternInput,
+): Promise<Doc<"factEvents">[]> {
+  const { eConst, aConst } = input;
+  const n = LIMITS.maxClauseScan;
+  if (eConst !== undefined && aConst !== undefined) {
+    return await ctx.db
+      .query("factEvents")
+      .withIndex("by_e_a_tx", (q) =>
+        q.eq("e", String(eConst)).eq("a", String(aConst)),
+      )
+      .take(n);
+  }
+  if (aConst !== undefined) {
+    return await ctx.db
+      .query("factEvents")
+      .withIndex("by_a_tx", (q) => q.eq("a", String(aConst)))
+      .take(n);
+  }
+  if (eConst !== undefined) {
+    return await ctx.db
+      .query("factEvents")
+      .withIndex("by_e", (q) => q.eq("e", String(eConst)))
+      .take(n);
+  }
+  throw new Error(
+    "unbounded clause: each pattern must resolve its entity or attribute to a constant (directly or via an earlier join)",
+  );
+}
+
+const eventLogTripleSource: TripleSource = async (
+  ctx,
+  input,
+  coord,
+  readFilter,
+) => {
+  const rows = await fetchCandidateFactEvents(ctx, input);
+  const events = await protocolEventsForRows(ctx, rows);
+  const log = fromEvents(events);
+  const keys =
+    input.eConst !== undefined && input.aConst !== undefined
+      ? [[String(input.eConst), String(input.aConst)] as const]
+      : [...new Set(events.flatMap((ev) =>
+          ev.kind === "assert" && ev.e !== undefined && ev.a !== undefined
+            ? [`${ev.e}\u0000${ev.a}`]
+            : [],
+        ))].map((k) => k.split("\u0000") as [string, string]);
+
+  const out: Triple[] = [];
+  for (const [e, a] of keys) {
+    for (const ev of visibleAsserts(e, a, coord, log)) {
+      if (
+        input.vIsConst &&
+        valueKey(ev.v) !== valueKey(input.vConst)
+      ) {
+        continue;
+      }
+      if (
+        readFilter !== null &&
+        !(await canReadAttribute(ctx, readFilter.principal, ev.e!, ev.a!))
+      ) {
+        continue;
+      }
+      out.push({ e: ev.e!, a: ev.a!, v: ev.v, prov: [] });
+    }
+  }
+  return out;
+};
 
 /**
  * Bounded, non-recursive Datalog over facts ∪ materialized derived facts.
@@ -57,6 +182,39 @@ export const datalog = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
+    });
+    const rows = project(bindings, args.select);
+    if (rows.length > LIMITS.maxResultRows) {
+      throw new Error(
+        `query produced ${rows.length} rows, exceeding maxResultRows=${LIMITS.maxResultRows}`,
+      );
+    }
+    return rows;
+  },
+});
+
+/**
+ * Bounded Datalog over base facts folded directly from protocol-shaped
+ * `factEvents`. This is a proof/read-model surface for the projection-retirement
+ * path: it reuses the same solver but swaps the triple source from `facts` to the
+ * append-only event log. Materialized `derivedFacts` are intentionally excluded
+ * in this slice; the production `datalog` query remains facts ∪ derivedFacts.
+ */
+export const datalogFromEventLog = query({
+  args: {
+    where: whereValidator,
+    select: v.array(v.string()),
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const bindings = await runWhere(ctx, args.where, coord, {}, {
+      enforceReadAuth: true,
+      source: eventLogTripleSource,
     });
     const rows = project(bindings, args.select);
     if (rows.length > LIMITS.maxResultRows) {

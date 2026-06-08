@@ -51,7 +51,7 @@ export type SolvedBinding = { binding: Binding; sources: Id<"facts">[] };
  * contributes its own id; a derived-fact row contributes the base facts it was
  * itself derived from (so provenance always resolves to source facts).
  */
-type Triple = { e: string; a: string; v: unknown; prov: Id<"facts">[] };
+export type Triple = { e: string; a: string; v: unknown; prov: Id<"facts">[] };
 
 type Term =
   | { kind: "var"; name: string }
@@ -71,6 +71,18 @@ type AnyClause =
 
 type Ctx = QueryCtx | MutationCtx;
 type ReadFilter = { principal: string } | null;
+export type PatternInput = {
+  eConst?: unknown;
+  aConst?: unknown;
+  vConst?: unknown;
+  vIsConst: boolean;
+};
+export type TripleSource = (
+  ctx: Ctx,
+  input: PatternInput,
+  coord: BitemporalCoord,
+  readFilter: ReadFilter,
+) => Promise<Triple[]>;
 type ClauseDescription =
   | { kind: "pattern"; e: string; a: string; v: string }
   | { kind: "compare"; left: string; op: string; right: string }
@@ -302,20 +314,13 @@ function derivedVisible(
  * Fetch triples matching a pattern under the current binding, from both the
  * canonical fact log and materialized derived facts, via the best index.
  */
-async function fetchPattern(
+async function projectedTripleSource(
   ctx: Ctx,
-  clause: PatternClause,
-  binding: Binding,
+  input: PatternInput,
   coord: BitemporalCoord,
   readFilter: ReadFilter,
 ): Promise<Triple[]> {
-  const e = resolve(clause.e, binding);
-  const a = resolve(clause.a, binding);
-  const vv = resolve(clause.v, binding);
-  const eConst = e.kind === "const" ? e.value : undefined;
-  const aConst = a.kind === "const" ? a.value : undefined;
-  const vIsConst = vv.kind === "const";
-  const vConst = vIsConst ? (vv as { value: unknown }).value : undefined;
+  const { eConst, aConst, vConst, vIsConst } = input;
   const n = LIMITS.maxClauseScan;
 
   let out: Triple[];
@@ -387,6 +392,36 @@ async function fetchPattern(
     }
   }
   return filtered;
+}
+
+/**
+ * Fetch triples matching a pattern under the current binding. The source is
+ * injectable so proof/read-model queries can reuse the same solver over a
+ * different fact source (for example direct protocol event-log folds) without
+ * duplicating the join scheduler.
+ */
+async function fetchPattern(
+  ctx: Ctx,
+  clause: PatternClause,
+  binding: Binding,
+  coord: BitemporalCoord,
+  readFilter: ReadFilter,
+  source: TripleSource,
+): Promise<Triple[]> {
+  const e = resolve(clause.e, binding);
+  const a = resolve(clause.a, binding);
+  const vv = resolve(clause.v, binding);
+  return await source(
+    ctx,
+    {
+      eConst: e.kind === "const" ? e.value : undefined,
+      aConst: a.kind === "const" ? a.value : undefined,
+      vConst: vv.kind === "const" ? (vv as { value: unknown }).value : undefined,
+      vIsConst: vv.kind === "const",
+    },
+    coord,
+    readFilter,
+  );
 }
 
 // --- unification / comparison / negation -----------------------------------
@@ -620,8 +655,16 @@ async function passesNegation(
   binding: Binding,
   coord: BitemporalCoord,
   readFilter: ReadFilter,
+  source: TripleSource,
 ): Promise<boolean> {
-  const candidates = await fetchPattern(ctx, clause.pattern, binding, coord, readFilter);
+  const candidates = await fetchPattern(
+    ctx,
+    clause.pattern,
+    binding,
+    coord,
+    readFilter,
+    source,
+  );
   for (const t of candidates) {
     if (unify(clause.pattern, binding, t) !== null) return false;
   }
@@ -642,11 +685,12 @@ export async function solveWhere(
   where: unknown[],
   coord: BitemporalCoord,
   seed: Binding = {},
-  options: { enforceReadAuth?: boolean } = {},
+  options: { enforceReadAuth?: boolean; source?: TripleSource } = {},
 ): Promise<SolvedBinding[]> {
   const readFilter = options.enforceReadAuth
     ? { principal: await readPrincipal(ctx as QueryCtx) }
     : null;
+  const source = options.source ?? projectedTripleSource;
   return await solveParsedWhere(
     ctx,
     parseClauses(where),
@@ -654,6 +698,7 @@ export async function solveWhere(
     seed,
     readFilter,
     [],
+    source,
   );
 }
 
@@ -664,6 +709,7 @@ async function solveParsedWhere(
   seed: Binding,
   readFilter: ReadFilter,
   seedSources: Id<"facts">[],
+  source: TripleSource,
 ): Promise<SolvedBinding[]> {
   const remaining = clauses.map((_, i) => i);
   const bound = new Set<string>(Object.keys(seed));
@@ -710,6 +756,7 @@ async function solveParsedWhere(
           st.binding,
           coord,
           readFilter,
+          source,
         );
         for (const t of candidates) {
           const extended = unify(clause, st.binding, t);
@@ -743,7 +790,16 @@ async function solveParsedWhere(
     } else if (clause.kind === "not") {
       const kept: SolvedBinding[] = [];
       for (const st of states) {
-        if (await passesNegation(ctx, clause, st.binding, coord, readFilter)) {
+        if (
+          await passesNegation(
+            ctx,
+            clause,
+            st.binding,
+            coord,
+            readFilter,
+            source,
+          )
+        ) {
           kept.push(st);
         }
       }
@@ -759,6 +815,7 @@ async function solveParsedWhere(
             st.binding,
             readFilter,
             st.sources,
+            source,
           );
           next.push(...solved);
         }
@@ -818,7 +875,7 @@ export async function runWhere(
   where: unknown[],
   coord: BitemporalCoord,
   seed: Binding = {},
-  options: { enforceReadAuth?: boolean } = {},
+  options: { enforceReadAuth?: boolean; source?: TripleSource } = {},
 ): Promise<Binding[]> {
   const solved = await solveWhere(ctx, where, coord, seed, options);
   return solved.map((s) => s.binding);

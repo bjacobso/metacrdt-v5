@@ -60,8 +60,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `api.facts.entityFromEventLog` now folds a single host entity directly from
   protocol-shaped `factEvents` + schema cardinality events, and
   `api.facts.queryFactsFromEventLog` answers bounded bitemporal point queries
-  directly from protocol-shaped `factEvents`. Remaining: continue toward retiring
-  the hand-maintained `facts` projection for Datalog/rule reads.
+  directly from protocol-shaped `factEvents`. `api.datalog.datalogFromEventLog`
+  now reuses the Datalog solver with an injected event-log source for base facts.
+  Remaining: continue toward retiring the hand-maintained `facts` projection for
+  rules/materialization and derived Datalog reads.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -319,6 +321,16 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 52 shipped:** Datalog now has an injectable `TripleSource`, and
+  `api.datalog.datalogFromEventLog` runs the existing parser/join scheduler/
+  compute/negation path over protocol-shaped `factEvents` for base facts.
+- [x] **Solver reuse, not duplication.** Production `datalog` still reads
+  `facts ∪ derivedFacts`; the proof query swaps only the triple source and
+  deliberately excludes `derivedFacts` until rule/materialization folds move
+  over.
+- [x] **Datalog projection-corruption proof.** Tests corrupt host `facts`;
+  projection-backed Datalog returns no row while event-log-backed Datalog still
+  answers from `factEvents`.
 - [x] **Goal 51 shipped:** `api.facts.queryFactsFromEventLog` is the event-log
   counterpart to `queryFacts`: it reconstructs protocol rows, applies
   `@metacrdt/core.visibleAsserts`, preserves `includeRetracted` history
