@@ -1022,6 +1022,17 @@ export const listDagRuns = query({
   },
 });
 
+export const getDagRun = query({
+  args: {
+    runId: v.id("flowDagRuns"),
+  },
+  returns: v.union(dagRunValidator, v.null()),
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    return run === null ? null : await dagRunSummary(ctx, run);
+  },
+});
+
 export const submitCollection = mutation({
   args: {
     token: v.string(),

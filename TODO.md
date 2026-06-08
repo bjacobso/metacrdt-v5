@@ -148,6 +148,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `@metacrdt/convex` owns `flowDagRuns` and `flowDagEvents`; `startOwnedFlow`
   records each execution into component-owned process history, reusing a waiting
   run when a rerun resumes after collection submission.
+- [x] **Goal 43: component-owned DAG wait/scheduler wakeups** — `wait` steps now
+  park the component-owned DAG run, schedule `internal.metacrdtComponent.wakeOwnedFlow`,
+  resume the same run at the wait step's `next`, and continue writing
+  component-owned fact effects under a system actor.
 - [x] **Datalog disjunction** — Datalog `where` bodies now support bounded
   `{ or: [[...clauses], ...] }` branches. Branches run from the current binding,
   union/dedupe their bindings with provenance merged, and continue into later
@@ -187,7 +191,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   hello/delta catch-up, directed deltas, lifecycle cleanup, and multi-hop gossip.
 - [ ] Targets: live Cloudflare deployment/auth and migrating more reference
   runtime business logic onto `@metacrdt/convex` component-owned state
-  (component-owned waits/scheduler remain).
+  (component-owned collect reminder/escalation timers remain).
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -251,9 +255,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   issue/reuse.
 - [x] After Goal 40, choose component-owned DAG flow starter/resumer.
 - [x] After Goal 41, choose persisted component-owned DAG run/timeline storage.
-- [ ] After Goal 42, choose between provider-backed login UI / production auth,
-  live Cloudflare deployment/auth, component-owned wait/scheduler support, or a
-  parked Query/Rules item.
+- [x] After Goal 42, choose component-owned wait/scheduler support.
+- [ ] After Goal 43, choose between provider-backed login UI / production auth,
+  live Cloudflare deployment/auth, component-owned collect reminder/escalation
+  timers, or a parked Query/Rules item.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -278,6 +283,17 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — component-owned DAG wait/scheduler wakeups
+- [x] **Goal 43 shipped:** component-owned `wait` steps now persist `waiting`
+  run state, schedule `internal.metacrdtComponent.wakeOwnedFlow`, and resume the
+  same component DAG run at the wait step's `next`.
+- [x] **System actor resume path.** Scheduled wakes load the exact component run
+  via `log.getDagRun`, no-op if it is no longer waiting at a wait step, and write
+  resumed fact effects under `system:component-flow-scheduler`.
+- [x] **Focused regression:** a `wait -> assert -> done` component flow parks,
+  scheduled function draining completes the same run, writes component-owned
+  state, records `wait`/`asserted`/`completed`, and creates no host `flowRuns`.
 
 ### 2026-06-07 — persisted component-owned DAG run/timeline storage
 - [x] **Goal 42 shipped:** `@metacrdt/convex` now owns `flowDagRuns` and

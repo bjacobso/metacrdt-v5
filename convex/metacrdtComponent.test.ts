@@ -429,6 +429,85 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     ]);
   });
 
+  test("parks a component-owned wait flow and scheduled wake resumes the same run", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = mountedTest();
+
+      await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+        e: "owned-flow:waiter",
+        type: "Worker",
+        name: "Owned Flow Waiter",
+      });
+      await t.mutation(api.flows.defineFlow, {
+        name: "owned_wait_then_assert",
+        title: "Owned wait then assert",
+        subjectType: "Worker",
+        startStepId: "pause",
+        steps: [
+          {
+            id: "pause",
+            type: "wait",
+            config: { seconds: 1 },
+            next: "mark",
+          },
+          {
+            id: "mark",
+            type: "assert",
+            config: { a: "workflow.stage", v: "after-wait" },
+            next: "done",
+          },
+          { id: "done", type: "done" },
+        ],
+      });
+
+      const first = await t.mutation(api.metacrdtComponent.startOwnedFlow, {
+        flowDefName: "owned_wait_then_assert",
+        subject: "owned-flow:waiter",
+      });
+
+      expect(first).toMatchObject({
+        status: "waiting",
+        currentStepId: "pause",
+      });
+      expect(first.events.map((event) => event.kind)).toEqual(["wait"]);
+
+      await flush(t);
+
+      const runs = await t.query(api.metacrdtComponent.listOwnedFlowRuns, {
+        subject: "owned-flow:waiter",
+      });
+      expect(runs).toHaveLength(1);
+      expect(runs[0]).toMatchObject({
+        runId: first.runId,
+        status: "completed",
+        currentStepId: "done",
+      });
+      expect(runs[0].events.map((event) => event.kind).sort()).toEqual([
+        "asserted",
+        "completed",
+        "wait",
+      ]);
+
+      const entity = await t.query(api.metacrdtComponent.getOwnedCurrentEntity, {
+        e: "owned-flow:waiter",
+      });
+      expect(entity?.attributes).toContainEqual(
+        expect.objectContaining({
+          a: "workflow.stage",
+          values: ["after-wait"],
+        }),
+      );
+
+      const hostRuns = await t.query(api.flows.listFlows, {
+        subject: "owned-flow:waiter",
+      });
+      expect(hostRuns).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("sets component-owned worker status through app wrapper", async () => {
     const t = mountedTest();
 

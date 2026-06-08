@@ -125,6 +125,32 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         } | null,
         Name
       >;
+      getDagRun: FunctionReference<
+        "query",
+        "internal",
+        { runId: string },
+        {
+          completedAt?: number;
+          context?: any;
+          currentStepId?: string;
+          events: Array<{
+            eventId: string;
+            kind: string;
+            message?: string;
+            runId: string;
+            stepId: string;
+            ts: number;
+            type: string;
+          }>;
+          flowDefName: string;
+          runId: string;
+          startedAt: number;
+          status: string;
+          subject: string;
+          updatedAt: number;
+        } | null,
+        Name
+      >;
       getEvent: FunctionReference<
         "query",
         "internal",

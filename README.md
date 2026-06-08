@@ -120,7 +120,7 @@ Current packages:
   definitions and submissions fold back into component-owned current state. The
   component detail path can also run configured host flow definitions over
   component-owned state as a bounded starter/resumer with persisted
-  component-owned DAG run/timeline rows.
+  component-owned DAG run/timeline rows and scheduled wait-step wakeups.
   Includes Confect sidecar guidance.
 - **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
   authoring language extracted from Open Ontology: reader, formatter, evaluator,
@@ -206,6 +206,9 @@ Built today:
 - persisted component-owned DAG process history: flow executions write
   component-owned run rows plus child timeline rows and render them on component
   entity pages
+- component-owned DAG wait steps: waits park the component-owned run, schedule a
+  host internal wake, resume that same run, and continue writing component-owned
+  facts
 - single-use, expiring collection tokens for the public `/collect` page
 - Tailwind + React Router research-preview UI
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility

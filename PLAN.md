@@ -1,10 +1,11 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 42 (persisted component-owned DAG run/timeline storage)
-has shipped.
+**Current goal:** Goal 43 (component-owned DAG wait/scheduler wakeups) has
+shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth,
-component-owned wait/scheduler support, or another parked Query/Rules item.
+component-owned collect reminder/escalation timers, or another parked
+Query/Rules item.
 
 This plan is the operational goal file. Read it with:
 
@@ -79,7 +80,7 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 115 tests at last verification.
+- Convex backend tests are green: 116 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -322,10 +323,11 @@ arguments.
   facts now live inside the component. A bounded component-owned DAG
   starter/resumer can run host flow definitions over component-owned state,
   including `assert`, `notify`, subject-local `branch`, synchronous `action`, and
-  `collect` parking through component collection tokens. The component now owns
-  persisted DAG run/timeline rows for that starter/resumer. Host-owned DAG flows
-  still use the host `flowRuns` table, and component-owned waits/reminders/
-  scheduler wakeups remain future work.
+  `collect` parking through component collection tokens, and `wait` parking with
+  a host-scheduled internal wake. The component now owns persisted DAG
+  run/timeline rows for that starter/resumer. Host-owned DAG flows still use the
+  host `flowRuns` table, and component-owned collect reminder/escalation timers
+  remain future work.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime.
 - Multi-replica sync is specified and now implemented as in-memory
@@ -2720,7 +2722,7 @@ src/pages/Entities.tsx
 
 ### Verification
 
-- `npm run test:convex-package` passed (31 tests).
+- `npm run test:convex-package` passed (32 tests).
 - `npx vitest run convex/metacrdtComponent.test.ts` passed (9 tests).
 - `npx tsc --noEmit -p convex/tsconfig.json` passed.
 - `npx tsc --noEmit -p tsconfig.json` passed.
@@ -4047,7 +4049,7 @@ submitted, calling `startOwnedFlow` again sees the component-owned
 - `npm run test:local` passed (13 tests).
 - `npm run test:cloudflare` passed (12 tests).
 - `npm run test:forma` passed (9 tests).
-- `npm test` passed (17 backend test files, 115 tests).
+- `npm test` passed (17 backend test files, 116 tests).
 - `npx tsc --noEmit -p convex/tsconfig.json` passed.
 - `npx tsc --noEmit -p tsconfig.json` passed.
 - `npm run build` passed.
@@ -4146,13 +4148,13 @@ convex/metacrdtComponent.test.ts
 
 - `npm run test:convex-package` passed (32 tests).
 - `npx vitest run convex/metacrdtComponent.test.ts convex/forms.test.ts convex/flowdag.test.ts`
-  passed (26 focused tests).
+  passed (27 focused tests).
 - `npm run test:core` passed (46 tests).
 - `npm run test:runtime` passed (18 tests).
 - `npm run test:local` passed (13 tests).
 - `npm run test:cloudflare` passed (12 tests).
 - `npm run test:forma` passed (9 tests).
-- `npm test` passed (17 backend test files, 115 tests).
+- `npm test` passed (17 backend test files, 116 tests).
 - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
 - `npx tsc --noEmit -p convex/tsconfig.json` passed.
 - `npx tsc --noEmit -p tsconfig.json` passed.
@@ -4169,6 +4171,105 @@ Live smoke:
   the deployed wrapper shape (`[]` before any live component DAG runs).
 - `npx convex run flows:flowsForType '{"type":"Worker"}'` returned the deployed
   onboarding flow definition shape.
+
+---
+
+## Goal 43 — Component-Owned DAG Wait/Scheduler Wakeups
+
+**Status:** shipped for basic `wait` steps. Collection reminder/escalation timers
+remain future work.
+
+**Objective:** make component-owned DAG `wait` steps real: a flow can park in a
+component-owned DAG run, schedule a host internal wakeup, resume the same
+component-owned run at the wait step's `next`, and continue writing
+component-owned facts.
+
+### Scope
+
+Reference app wrapper:
+
+```text
+convex/metacrdtComponent.ts
+  startOwnedFlow
+  internal wakeOwnedFlow
+```
+
+Component package:
+
+```text
+packages/convex/src/component/log.ts
+  getDagRun
+```
+
+Tests:
+
+```text
+convex/metacrdtComponent.test.ts
+```
+
+### Semantics
+
+- `startOwnedFlow` still requires host write auth and derives the user actor
+  server-side.
+- The interpreter now runs through a shared helper used by both the public start
+  mutation and the internal wake mutation.
+- On a `wait` step:
+  - append a `wait` timeline event to the component-owned DAG run;
+  - record the run as `status = "waiting"` at that step;
+  - schedule `internal.metacrdtComponent.wakeOwnedFlow` after
+    `config.seconds ?? 5`;
+  - return a waiting result to the caller.
+- `wakeOwnedFlow({ runId })`:
+  - loads the exact component-owned DAG run by id;
+  - no-ops unless it is still waiting at a `wait` step;
+  - resumes from that step's `next`;
+  - writes any subsequent component-owned fact effects under
+    `actorId = system:component-flow-scheduler`;
+  - records completion/timeline events on the same component DAG run.
+
+### Non-Goals
+
+- Do not implement component-owned collect reminder/escalation timers.
+- Do not implement delayed external action callbacks.
+- Do not migrate host `flows.startFlow`.
+- Do not make component functions depend on host auth/env; the host wrapper still
+  owns scheduling and actors.
+
+### Acceptance Criteria
+
+- A component-owned `wait -> assert -> done` flow initially returns
+  `status = "waiting"`.
+- Draining scheduled functions resumes that same component-owned DAG run and
+  updates it to `completed`.
+- The resumed step writes component-owned current facts.
+- The persisted run timeline contains `wait`, `asserted`, and `completed` events.
+- No host `flowRuns` rows are created.
+
+### Verification
+
+- `npx vitest run convex/metacrdtComponent.test.ts convex/forms.test.ts convex/flowdag.test.ts`
+  passed (27 focused tests).
+- `npm run test:convex-package` passed (32 tests).
+- Full gate passed:
+  - `npm run test:core` passed (46 tests).
+  - `npm run test:convex-package` passed (32 tests).
+  - `npm test` passed (17 backend test files, 116 tests).
+  - `npm run test:runtime` passed (18 tests).
+  - `npm run test:local` passed (13 tests).
+  - `npm run test:cloudflare` passed (12 tests).
+  - `npm run test:forma` passed (9 tests).
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+- Deployed with `npx convex dev --once` and
+  `npx @convex-dev/static-hosting upload`.
+- Live smoke passed:
+  - `curl -I https://chatty-hare-94.convex.site` returned `HTTP/2 200`.
+  - `npx convex run metacrdtComponent:listOwnedFlowRuns '{"limit":5}'`
+    returned successfully.
+  - `npx convex run flows:flowsForType '{"type":"Worker"}'` returned the
+    configured Worker onboarding flow.
 
 ---
 
@@ -4216,7 +4317,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Goal 40: component-owned compliance materialization.
 - [x] Goal 41: component-owned DAG flow starter/resumer.
 - [x] Goal 42: persisted component-owned DAG run/timeline storage.
-- [ ] Component-owned waits/reminders/scheduler wakeups after Goal 42.
+- [x] Goal 43: component-owned DAG wait/scheduler wakeups.
+- [ ] Component-owned collect reminder/escalation timers after Goal 43.
 
 ### Auth / Privacy
 
@@ -4274,10 +4376,10 @@ or intentionally moved out of this repo's scope. Each shipped slice must update
 `PLAN.md` / `TODO.md`, pass the relevant test/typecheck/build gate, and be
 committed/pushed with the verification recorded.
 
-Goal 42 is complete: component-owned DAG flow execution now records component-
-owned run/timeline rows in the installed component, reuses the waiting run when a
-rerun resumes after collection submission, displays that process history on
-component entity pages, and preserves host `flowRuns` behavior.
+Goal 43 is complete: component-owned DAG wait steps now park component-owned DAG
+runs, schedule a host internal wakeup, resume the same run at the wait step's
+next step, write component-owned fact effects under a system actor, and preserve
+host `flowRuns` behavior.
 
 The next shipped slice should update this section with its own concrete
 definition of done before implementation starts.
