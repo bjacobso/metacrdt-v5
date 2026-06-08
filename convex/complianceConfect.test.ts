@@ -6,11 +6,11 @@ import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
-async function flush(t: ReturnType<typeof convexTest>) {
+async function flush(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
-async function setup(t: ReturnType<typeof convexTest>) {
+async function setup(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.mutation(api.appconfig.setupStaffing, {});
   await flush(t);
 }
@@ -26,7 +26,7 @@ function byKey(
   return new Map(items.map((i) => [`${i.form}@${i.scope}`, i]));
 }
 
-async function tableCounts(t: ReturnType<typeof convexTest>) {
+async function tableCounts(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   return await t.run(async (ctx) => ({
     transactions: (await ctx.db.query("transactions").collect()).length,
     factEvents: (await ctx.db.query("factEvents").collect()).length,
@@ -41,7 +41,7 @@ describe("Confect compliance planner", () => {
   test("dry-runs collect vs reuse without writing", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
 
       await t.mutation(api.compliance.submitForm, {
@@ -85,7 +85,7 @@ describe("Confect compliance planner", () => {
   test("hypothetical non-forklift placement omits the forklift requirement", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
       await t.mutation(api.facts.assertFact, {
         e: "worker:alex",
@@ -118,7 +118,7 @@ describe("Confect compliance planner", () => {
   test("unsupported requirement shapes surface typed Confect errors", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
       await t.mutation(api.rules.defineRule, {
         name: "require.bad",

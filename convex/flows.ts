@@ -10,6 +10,7 @@ import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { runWhere } from "./lib/engine";
 import { assertInTx, createTransaction } from "./facts";
+import { requireWritePrincipal } from "./lib/writeAuth";
 
 // A minimal durable workflow runner for the compliance `collect` step:
 //   issue → park (waiting) → resume on the matching submission fact → complete,
@@ -57,6 +58,7 @@ export const startCollect = mutation({
     expireSeconds: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireWritePrincipal(ctx);
     // Don't double-issue: reuse an existing live run for the same target.
     const existing = await ctx.db
       .query("flowRuns")
@@ -110,6 +112,7 @@ export const startCollect = mutation({
 export const issueAllOpen = mutation({
   args: { subject: v.string() },
   handler: async (ctx, args): Promise<{ issued: number }> => {
+    await requireWritePrincipal(ctx);
     const derived = (
       await ctx.db
         .query("derivedFacts")
@@ -233,6 +236,7 @@ export const resumeOnSubmission = internalMutation({
 export const cancelFlow = mutation({
   args: { runId: v.id("flowRuns") },
   handler: async (ctx, args) => {
+    await requireWritePrincipal(ctx);
     const run = await ctx.db.get("flowRuns", args.runId);
     if (!run || run.status !== "waiting") return;
     await ctx.db.patch("flowRuns", run._id, {
@@ -396,6 +400,7 @@ export const defineFlow = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireWritePrincipal(ctx);
     const existing = await ctx.db
       .query("flowDefs")
       .withIndex("by_name", (q) => q.eq("name", args.name))
@@ -427,6 +432,7 @@ export const startFlow = mutation({
     context: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    await requireWritePrincipal(ctx);
     const def = await ctx.db
       .query("flowDefs")
       .withIndex("by_name", (q) => q.eq("name", args.flowDefName))
@@ -628,6 +634,7 @@ export const resumeAction = internalMutation({
 export const setupDemoFlow = mutation({
   args: {},
   handler: async (ctx): Promise<{ flowDefId: Id<"flowDefs"> }> => {
+    await requireWritePrincipal(ctx);
     return await ctx.runMutation(internal.flows.defineOnboarding, {});
   },
 });

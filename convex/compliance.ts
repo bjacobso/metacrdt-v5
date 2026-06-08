@@ -2,6 +2,7 @@ import { mutation, query, internalMutation } from "./_generated/server";
 import { internal, api } from "./_generated/api";
 import { v } from "convex/values";
 import { assertInTx, createTransaction } from "./facts";
+import { requireWritePrincipal } from "./lib/writeAuth";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -49,6 +50,7 @@ function requirementDeps(f: FormDef): string[] {
 export const setupComplianceRules = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireWritePrincipal(ctx);
     for (const f of FORMS) {
       const reqWhere = requirementWhere(f);
       const reqDeps = requirementDeps(f);
@@ -75,6 +77,7 @@ export const setupComplianceRules = mutation({
 export const seedStaffingDemo = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireWritePrincipal(ctx);
     const now = Date.now();
     const txId = await createTransaction(ctx, {
       reason: "seed staffing demo",
@@ -134,11 +137,12 @@ export const submitForm = mutation({
     actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const actorId = await requireWritePrincipal(ctx);
     const now = Date.now();
     const def = FORMS.find((f) => f.form === args.form);
     const days = args.validForDays ?? def?.validityDays;
     const txId = await createTransaction(ctx, {
-      actorId: args.actorId,
+      actorId,
       reason: `submit ${args.form} for ${args.scope}`,
       now,
     });
@@ -179,6 +183,7 @@ export const recomputeCompliance = internalMutation({
 export const recomputeNow = mutation({
   args: {},
   handler: async (ctx): Promise<{ scheduled: number }> => {
+    await requireWritePrincipal(ctx);
     return await ctx.runMutation(internal.compliance.recomputeCompliance, {});
   },
 });

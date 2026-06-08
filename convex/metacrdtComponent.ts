@@ -4,6 +4,7 @@ import { components } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { loadActionDef, resolveActionValue } from "./lib/actionDefs";
 import { attrId, BUILTIN_CARDINALITY } from "./lib/meta";
+import { requireWritePrincipal } from "./lib/writeAuth";
 
 const hlcValidator = v.object({
   pt: v.number(),
@@ -144,9 +145,9 @@ const createOwnedAttributeValidator = v.object({
 });
 
 async function actorContext(ctx: MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
+  const actorId = await requireWritePrincipal(ctx);
   return {
-    actorId: identity?.tokenIdentifier ?? "anonymous",
+    actorId,
     actorType: "user" as const,
   };
 }
@@ -510,6 +511,8 @@ export const listOwnedCurrentEntities = query({
 export const rebuildOwnedProjections = mutation({
   args: {},
   returns: rebuildOwnedResultValidator,
-  handler: async (ctx) =>
-    await ctx.runMutation(components.metacrdt.log.rebuildProjections, {}),
+  handler: async (ctx) => {
+    await requireWritePrincipal(ctx);
+    return await ctx.runMutation(components.metacrdt.log.rebuildProjections, {});
+  },
 });

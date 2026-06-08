@@ -10,6 +10,7 @@ import {
   META_ATTRIBUTES,
 } from "./lib/meta";
 import { assertInTx, createTransaction, retractInTx } from "./facts";
+import { requireWritePrincipal } from "./lib/writeAuth";
 
 // Schema-as-facts: attribute definitions, entity-type definitions, and
 // type→attribute membership are all bitemporal triples. Nothing here writes to
@@ -70,6 +71,7 @@ export const defineAttribute = mutation({
     description: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireWritePrincipal(ctx);
     const now = Date.now();
     const txId = await createTransaction(ctx, {
       reason: `define attribute ${args.name}`,
@@ -103,6 +105,7 @@ export const defineAttribute = mutation({
 export const retireAttribute = mutation({
   args: { name: v.string(), reason: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    await requireWritePrincipal(ctx);
     const now = Date.now();
     const txId = await createTransaction(ctx, {
       reason: args.reason ?? `retire attribute ${args.name}`,
@@ -128,6 +131,7 @@ export const defineType = mutation({
     description: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireWritePrincipal(ctx);
     const now = Date.now();
     const txId = await createTransaction(ctx, {
       reason: `define type ${args.name}`,
@@ -157,6 +161,7 @@ export const defineType = mutation({
 export const bootstrapSchema = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireWritePrincipal(ctx);
     const now = Date.now();
     const txId = await createTransaction(ctx, {
       reason: "bootstrap meta-schema",

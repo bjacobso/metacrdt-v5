@@ -8,16 +8,21 @@ import metacrdtSchema from "../packages/convex/src/component/schema";
 const modules = import.meta.glob("./**/*.ts");
 const metacrdtModules = import.meta.glob("../packages/convex/src/component/**/*.ts");
 
-async function flush(t: ReturnType<typeof convexTest>) {
+async function flush(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
+}
+
+function mountedTest() {
+  const t = convexTest(schema, modules);
+  t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+  return t.withIdentity({ tokenIdentifier: "system" });
 }
 
 describe("@metacrdt/convex mounted component wrapper", () => {
   test("summarizes host factEvents through the installed component", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
-      t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+      const t = mountedTest();
       await t.mutation(api.facts.assertFact, {
         e: "component:worker",
         a: "worker.status",
@@ -47,8 +52,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("appends and lists component-owned protocol events through app wrappers", async () => {
-    const t = convexTest(schema, modules);
-    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+    const t = mountedTest();
 
     const asserted = await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
       e: "component-owned:worker",
@@ -93,8 +97,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("lists component-owned current projection through app wrapper", async () => {
-    const t = convexTest(schema, modules);
-    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+    const t = mountedTest();
 
     const asserted = await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
       e: "component-current:worker",
@@ -120,8 +123,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("reads component-owned current entity through app wrapper", async () => {
-    const t = convexTest(schema, modules);
-    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+    const t = mountedTest();
 
     await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
       e: "component-entity:worker",
@@ -147,8 +149,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("creates a component-owned entity through app wrapper", async () => {
-    const t = convexTest(schema, modules);
-    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+    const t = mountedTest();
 
     const created = await t.mutation(api.metacrdtComponent.createOwnedEntity, {
       e: "component-created:worker",
@@ -177,8 +178,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("lists component-owned current entities through app wrapper", async () => {
-    const t = convexTest(schema, modules);
-    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+    const t = mountedTest();
 
     await t.mutation(api.metacrdtComponent.createOwnedEntity, {
       e: "component-list:worker-a",
@@ -222,8 +222,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("sets component-owned worker status through app wrapper", async () => {
-    const t = convexTest(schema, modules);
-    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+    const t = mountedTest();
 
     await t.mutation(api.metacrdtComponent.createOwnedEntity, {
       e: "component-status:worker",
@@ -262,8 +261,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("runs configured actions against component-owned entities", async () => {
-    const t = convexTest(schema, modules);
-    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+    const t = mountedTest();
 
     await t.mutation(api.attributes.defineAttribute, {
       name: "worker.status",
@@ -329,8 +327,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("component-owned actions enforce appliesTo", async () => {
-    const t = convexTest(schema, modules);
-    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+    const t = mountedTest();
 
     await t.mutation(api.actions.defineAction, {
       name: "owned_worker_only",
@@ -352,8 +349,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("component-owned missing current entity returns null", async () => {
-    const t = convexTest(schema, modules);
-    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+    const t = mountedTest();
 
     expect(
       await t.query(api.metacrdtComponent.getOwnedCurrentEntity, {
@@ -363,8 +359,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("passes component-owned cardinality-one writes through app wrapper", async () => {
-    const t = convexTest(schema, modules);
-    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+    const t = mountedTest();
 
     await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
       e: "component-cardinality:worker",
@@ -404,8 +399,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("rebuilds component-owned projections through app wrapper", async () => {
-    const t = convexTest(schema, modules);
-    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+    const t = mountedTest();
 
     await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
       e: "component-rebuild:worker",

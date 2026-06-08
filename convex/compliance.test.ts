@@ -6,11 +6,11 @@ import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
-async function flush(t: ReturnType<typeof convexTest>) {
+async function flush(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
-async function bootstrap(t: ReturnType<typeof convexTest>) {
+async function bootstrap(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.mutation(api.compliance.setupComplianceRules, {});
   await t.mutation(api.compliance.seedStaffingDemo, {});
   await flush(t);
@@ -24,7 +24,7 @@ describe("compliance engine", () => {
   test("requirements dedupe by scope; guards and scopes shape the obligations", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await bootstrap(t);
       const c = await t.query(api.compliance.workerCompliance, {
         worker: "worker:maria",
@@ -50,7 +50,7 @@ describe("compliance engine", () => {
   test("submitting a form clears its task and reuses across placements", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await bootstrap(t);
 
       await t.mutation(api.compliance.submitForm, {
@@ -80,7 +80,7 @@ describe("compliance engine", () => {
   test("open tasks carry provenance (the placement facts that justify them)", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await bootstrap(t);
       const c = await t.query(api.compliance.workerCompliance, {
         worker: "worker:maria",
@@ -97,7 +97,7 @@ describe("compliance engine", () => {
   test("an expired submission does not satisfy the obligation", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await bootstrap(t);
 
       // A submission whose validity already lapsed (validTo in the past).

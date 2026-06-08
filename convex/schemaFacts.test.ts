@@ -8,7 +8,7 @@ const modules = import.meta.glob("./**/*.ts");
 
 describe("schema-as-facts: attribute definitions", () => {
   test("defineAttribute is reconstructable via getAttribute", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.attributes.defineAttribute, {
       name: "salary",
       valueType: "number",
@@ -25,7 +25,7 @@ describe("schema-as-facts: attribute definitions", () => {
   });
 
   test("redefining updates current and records the change in history", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.attributes.defineAttribute, {
       name: "salary",
       valueType: "number",
@@ -58,7 +58,7 @@ describe("schema-as-facts: attribute definitions", () => {
   });
 
   test("retireAttribute removes from current but keeps history", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.attributes.defineAttribute, {
       name: "ssn",
       valueType: "string",
@@ -78,7 +78,7 @@ describe("schema-as-facts: attribute definitions", () => {
 
 describe("schema-as-facts: bitemporal reconstruction", () => {
   test("attributeAsOf at txTime=0 predates the definition", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.attributes.defineAttribute, {
       name: "tier",
       valueType: "string",
@@ -98,7 +98,7 @@ describe("schema-as-facts: bitemporal reconstruction", () => {
 
 describe("schema-as-facts: entity types", () => {
   test("defineType declares a shape queryable via typeSchemaAsOf", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.attributes.defineAttribute, {
       name: "salary",
       valueType: "number",
@@ -125,7 +125,7 @@ describe("schema-as-facts: entity types", () => {
   });
 
   test("bootstrapSchema makes meta-attributes self-describing", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.attributes.bootstrapSchema, {});
     const cardinality = await t.query(api.attributes.getAttribute, {
       name: "cardinality",

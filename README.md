@@ -267,6 +267,15 @@ from Convex auth identity, check grant facts on that principal
 (`grants.read`), and omit/redact ungranted values with `Denied` markers. Internal
 materializers still fold raw facts so system derivations stay coherent.
 
+Write authorization is server-side. General public write mutations require a
+Convex auth identity and derive the transaction actor from
+`ctx.auth.getUserIdentity().tokenIdentifier`; caller-supplied `actorId` values are
+ignored for raw public fact writes. The isolated `/collect` flow is the intentional
+exception: possession of a valid, unexpired, unconsumed collection token is the
+write capability, so external evidence collection can remain login-free. A
+provider-backed login UI / production auth configuration is still a separate
+deployment decision.
+
 Generated UI reads the same schema facts. `typeSchemaAsOf` returns declared
 columns with attribute definitions, the entity browser uses those columns for
 tables, entity detail orders state by the primary type schema, and collection

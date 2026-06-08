@@ -10,7 +10,7 @@ describe("external collection", () => {
   test("define form → render-by-token → submit saves facts and resumes the flow", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await t.mutation(api.forms.defineForm, {
         form: "i9",
         title: "Form I-9",
@@ -71,7 +71,7 @@ describe("external collection", () => {
   test("collection tokens can expire before submission", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await t.mutation(api.forms.defineForm, {
         form: "i9",
         title: "Form I-9",

@@ -6,7 +6,7 @@ import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
-async function seedPiiSubmission(t: ReturnType<typeof convexTest>) {
+async function seedPiiSubmission(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.mutation(api.forms.defineForm, {
     form: "i9",
     title: "Form I-9",
@@ -33,7 +33,8 @@ describe("attribute-level read authorization", () => {
     vi.useFakeTimers();
     try {
       const t = convexTest(schema, modules);
-      await seedPiiSubmission(t);
+      const writer = t.withIdentity({ tokenIdentifier: "system" });
+      await seedPiiSubmission(writer);
 
       const anon = await t.query(api.facts.getEntity, { e: "worker:t1" });
       expect(anon.attributes["i9/ssn"]).toBeUndefined();
@@ -47,13 +48,13 @@ describe("attribute-level read authorization", () => {
       expect(stillDenied.facts.some((f) => f.a === "i9/ssn")).toBe(false);
       expect(stillDenied.denied).toEqual([{ a: "i9/ssn", reason: "pii" }]);
 
-      await t.mutation(api.facts.assertFact, {
+      await writer.mutation(api.facts.assertFact, {
         e: "user:hr",
         a: "grants.read",
         value: { e: "worker:t1", a: "i9/ssn" },
         reason: "grant HR read access to worker I-9 SSN",
       });
-      await t.finishAllScheduledFunctions(vi.runAllTimers);
+      await writer.finishAllScheduledFunctions(vi.runAllTimers);
 
       const allowed = await noGrant.query(api.facts.getEntity, {
         e: "worker:t1",
@@ -89,4 +90,3 @@ describe("attribute-level read authorization", () => {
     }
   });
 });
-

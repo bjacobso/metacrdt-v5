@@ -7,7 +7,7 @@ import schema from "./schema";
 const modules = import.meta.glob("./**/*.ts");
 
 async function person(
-  t: ReturnType<typeof convexTest>,
+  t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>,
   e: string,
   dept: string,
   salary: number,
@@ -19,7 +19,7 @@ async function person(
 
 describe("aggregation", () => {
   test("group-by with count, sum, avg", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await person(t, "p:1", "eng", 100);
     await person(t, "p:2", "eng", 200);
     await person(t, "p:3", "sales", 50);
@@ -44,7 +44,7 @@ describe("aggregation", () => {
   });
 
   test("no groupBy aggregates over all rows; min/max/countDistinct", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await person(t, "p:1", "eng", 100);
     await person(t, "p:2", "eng", 200);
     await person(t, "p:3", "sales", 50);
@@ -73,7 +73,7 @@ describe("aggregation", () => {
   });
 
   test("aggregation composes with comparison filters", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await person(t, "p:1", "eng", 100);
     await person(t, "p:2", "eng", 200);
     await person(t, "p:3", "eng", 40);

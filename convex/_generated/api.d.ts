@@ -28,6 +28,7 @@ import type * as lib_meta from "../lib/meta.js";
 import type * as lib_origin from "../lib/origin.js";
 import type * as lib_readAuth from "../lib/readAuth.js";
 import type * as lib_visibility from "../lib/visibility.js";
+import type * as lib_writeAuth from "../lib/writeAuth.js";
 import type * as materialize from "../materialize.js";
 import type * as metacrdtComponent from "../metacrdtComponent.js";
 import type * as metacrdtConfect from "../metacrdtConfect.js";
@@ -64,6 +65,7 @@ declare const fullApi: ApiFromModules<{
   "lib/origin": typeof lib_origin;
   "lib/readAuth": typeof lib_readAuth;
   "lib/visibility": typeof lib_visibility;
+  "lib/writeAuth": typeof lib_writeAuth;
   materialize: typeof materialize;
   metacrdtComponent: typeof metacrdtComponent;
   metacrdtConfect: typeof metacrdtConfect;

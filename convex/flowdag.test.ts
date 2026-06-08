@@ -6,11 +6,11 @@ import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
-async function flush(t: ReturnType<typeof convexTest>) {
+async function flush(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
-async function bootstrap(t: ReturnType<typeof convexTest>) {
+async function bootstrap(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.mutation(api.flows.setupDemoFlow, {});
   await t.mutation(api.forms.defineForm, {
     form: "i9",
@@ -29,7 +29,7 @@ async function bootstrap(t: ReturnType<typeof convexTest>) {
 }
 
 async function runOnboarding(
-  t: ReturnType<typeof convexTest>,
+  t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>,
   subject: string,
   citizenship: string,
 ) {
@@ -52,7 +52,7 @@ describe("general flow DAG", () => {
   test("collect parks the run until submission", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await bootstrap(t);
       await t.mutation(api.flows.startFlow, {
         flowDefName: "onboarding",
@@ -72,7 +72,7 @@ describe("general flow DAG", () => {
   test("branch TRUE path runs the E-Verify action step", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await bootstrap(t);
       const run = await runOnboarding(t, "w:alien", "authorized_alien");
 
@@ -92,7 +92,7 @@ describe("general flow DAG", () => {
   test("branch FALSE path skips the action step", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await bootstrap(t);
       const run = await runOnboarding(t, "w:citizen", "citizen");
 
@@ -109,7 +109,7 @@ describe("general flow DAG", () => {
   test("assert + wait steps execute and complete", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await t.mutation(api.flows.defineFlow, {
         name: "tiny",
         title: "Tiny",

@@ -6,13 +6,13 @@ import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
-async function flush(t: ReturnType<typeof convexTest>) {
+async function flush(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
 describe("rebuildProjections — events are the source of truth", () => {
   test("facts lifecycle and currentFacts are derivable from the log", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
 
     await t.mutation(api.attributes.defineAttribute, {
       name: "status",
@@ -79,7 +79,7 @@ describe("rebuildProjections — events are the source of truth", () => {
   test("rebuild recomputes derived facts", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await t.mutation(api.rules.defineRule, {
         name: "vip",
         where: [["?e", "tier", "gold"]],

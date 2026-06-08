@@ -6,7 +6,7 @@ import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
-async function flush(t: ReturnType<typeof convexTest>) {
+async function flush(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
@@ -14,7 +14,7 @@ describe("provenance", () => {
   test("a rule's derived fact records the source facts that justify it", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await t.mutation(api.rules.defineRule, {
         name: "missing_i9",
         where: [
@@ -55,7 +55,7 @@ describe("provenance", () => {
   test("transitive-closure pairs carry their full edge-path provenance", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       // a -> b -> c
       await t.mutation(api.facts.assertFact, { e: "a", a: "reportsTo", value: "b" });
       await t.mutation(api.facts.assertFact, { e: "b", a: "reportsTo", value: "c" });
@@ -86,7 +86,7 @@ describe("provenance", () => {
   test("incremental closure add propagates provenance", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await t.mutation(api.facts.assertFact, { e: "x", a: "links", value: "y" });
       await t.mutation(api.rules.defineTransitiveRule, {
         name: "linksClosure",

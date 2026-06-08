@@ -1,6 +1,7 @@
 import { mutation, query, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { assertInTx, createTransaction, retractInTx } from "./facts";
+import { requireWritePrincipal } from "./lib/writeAuth";
 
 // A form's field schema is itself a fact: (form:<name>, "formDef", {title, fields}).
 // Keeps definitions on the schema-as-facts thesis; the collection page renders
@@ -50,6 +51,7 @@ export const defineForm = mutation({
     fields: v.array(fieldValidator),
   },
   handler: async (ctx, args) => {
+    await requireWritePrincipal(ctx);
     const now = Date.now();
     const e = formEntity(args.form);
     const txId = await createTransaction(ctx, {

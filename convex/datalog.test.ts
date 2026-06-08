@@ -6,12 +6,12 @@ import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
-async function flush(t: ReturnType<typeof convexTest>) {
+async function flush(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
 async function assert(
-  t: ReturnType<typeof convexTest>,
+  t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>,
   e: string,
   a: string,
   value: unknown,
@@ -21,7 +21,7 @@ async function assert(
 
 describe("comparison predicates", () => {
   test("filters numeric bindings with > and <", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await assert(t, "p:1", "type", "Person");
     await assert(t, "p:1", "salary", 120000);
     await assert(t, "p:2", "type", "Person");
@@ -39,7 +39,7 @@ describe("comparison predicates", () => {
   });
 
   test("== and != operate on values", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await assert(t, "p:1", "role", "admin");
     await assert(t, "p:2", "role", "viewer");
 
@@ -56,7 +56,7 @@ describe("comparison predicates", () => {
 
 describe("negation", () => {
   test("not-clause excludes bindings with a matching fact", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await assert(t, "e:1", "type", "Employee");
     await assert(t, "e:2", "type", "Employee");
     await assert(t, "e:2", "status", "terminated");
@@ -72,7 +72,7 @@ describe("negation", () => {
   });
 
   test("unsafe query (negation var never bound) throws", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await expect(
       t.query(api.datalog.datalog, {
         where: [{ not: ["?ghost", "status", "x"] }],
@@ -84,7 +84,7 @@ describe("negation", () => {
 
 describe("disjunction", () => {
   test("or-clause unions branch results", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await assert(t, "w:1", "type", "Worker");
     await assert(t, "w:1", "worker.status", "active");
     await assert(t, "w:2", "type", "Worker");
@@ -108,7 +108,7 @@ describe("disjunction", () => {
   });
 
   test("or branches can bind variables and continue joining", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await assert(t, "worker:a", "type", "Worker");
     await assert(t, "worker:a", "primarySite", "site:1");
     await assert(t, "worker:b", "type", "Worker");
@@ -138,7 +138,7 @@ describe("disjunction", () => {
   });
 
   test("or branches support compare and not filters", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await assert(t, "p:1", "type", "Person");
     await assert(t, "p:1", "score", 95);
     await assert(t, "p:2", "type", "Person");
@@ -169,7 +169,7 @@ describe("disjunction", () => {
   });
 
   test("unsafe or branch throws", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await expect(
       t.query(api.datalog.datalog, {
         where: [
@@ -186,7 +186,7 @@ describe("disjunction", () => {
   });
 
   test("explainDatalog classifies or branches", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     const plan = await t.query(api.datalog.explainDatalog, {
       where: [
         {
@@ -213,7 +213,7 @@ describe("derived facts are queryable", () => {
   test("a rule's output can be joined in a later Datalog query", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await t.mutation(api.rules.defineRule, {
         name: "vip",
         where: [["?e", "tier", "gold"]],
@@ -244,7 +244,7 @@ describe("transitive closure", () => {
   test("materializes reachability and is queryable", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       // Chain: a -> b -> c -> d
       await assert(t, "a", "reportsTo", "b");
       await assert(t, "b", "reportsTo", "c");
@@ -279,7 +279,7 @@ describe("transitive closure", () => {
   test("incremental add extends the closure when an edge is asserted", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await assert(t, "x", "links", "y");
       await t.mutation(api.rules.defineTransitiveRule, {
         name: "linksClosure",
@@ -321,7 +321,7 @@ describe("transitive closure", () => {
   test("full recompute on retraction removes unreachable pairs", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await assert(t, "a", "chain", "b");
       const bc = await t.mutation(api.facts.assertFact, {
         e: "b",

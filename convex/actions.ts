@@ -10,6 +10,7 @@ import {
   resolveActionString,
   resolveActionValue,
 } from "./lib/actionDefs";
+import { requireWritePrincipal } from "./lib/writeAuth";
 
 // Actions: the synchronous, one-transaction cousin of a Flow. Where a flow is a
 // parked multi-step graph, an action is "assert these facts on this entity, now"
@@ -50,6 +51,7 @@ export const defineAction = mutation({
     opensForm: v.optional(opensFormValidator),
   },
   handler: async (ctx, args) => {
+    await requireWritePrincipal(ctx);
     const now = Date.now();
     const e = actionId(args.name);
     const txId = await createTransaction(ctx, {
@@ -131,11 +133,12 @@ export const runAction = mutation({
     args: v.optional(v.record(v.string(), v.any())),
   },
   handler: async (ctx, args) => {
+    const actorId = await requireWritePrincipal(ctx);
     const def = await loadActionDef(ctx, args.action);
     if (!def) throw new Error(`unknown action: ${args.action}`);
     const now = Date.now();
     const txId = await createTransaction(ctx, {
-      actorId: args.actorId ?? "user",
+      actorId,
       actorType: "user",
       reason: `action ${args.action} on ${args.entity}`,
       now,

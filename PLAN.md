@@ -1,9 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 32 (Datalog disjunction) has shipped. The
-next active goal should be chosen from the remaining TODO candidates: full app
-write authorization, live Cloudflare deployment/auth, or migrating more of the
-reference runtime onto component-owned state.
+**Current goal:** Goal 33 (backend write authorization) has shipped. The next
+active goal should be chosen from the remaining TODO candidates: provider-backed
+login UI, live Cloudflare deployment/auth, or migrating more of the reference
+runtime onto component-owned state.
 
 This plan is the operational goal file. Read it with:
 
@@ -251,6 +251,13 @@ arguments.
   - successful submission stamps `tokenConsumedAt`
   - token lookup refuses consumed/expired/not-waiting runs before exposing form
     definitions
+- Backend write authorization exists:
+  - public app write mutations require `ctx.auth.getUserIdentity()`
+  - raw public fact writes ignore spoofable `actorId` args and record the
+    server-derived `tokenIdentifier`
+  - component-owned write wrappers require the same authenticated principal
+    before passing actor context across the component boundary
+  - `/collect` submission remains token-authorized rather than login-authorized
 
 ### Not Yet True
 
@@ -274,9 +281,10 @@ arguments.
   local-first target. `@metacrdt/cloudflare` now provides Durable Object
   storage-backed runtime services, a structural WebSocket relay shell, and a
   Worker-facing router/DO class example, but not a live deployed service or auth.
-- Full app login/write authorization is not configured; unauthenticated callers
-  are treated as `anonymous`, so PII is denied by default but general public
-  writes remain demo-grade.
+- Full app login/provider UI is not configured; unauthenticated callers are
+  treated as `anonymous` for reads, PII is denied by default, and general public
+  writes now fail with `Not authenticated`. The hardened collection-token path
+  remains the intentional anonymous write surface.
 - Confect is integrated as a narrow sidecar spike:
   - `confect/` defines a typed Effect Schema function group.
   - `convex/metacrdtConfect.ts` manually mounts the generated registered
@@ -2905,6 +2913,82 @@ src/pages/DataModel.tsx
 
 ---
 
+## Goal 33 — Backend Write Authorization
+
+**Status:** shipped as server-side write gates over the Convex reference app.
+
+**Objective:** close the explicit live-site gap where unauthenticated callers
+could invoke public write mutations. General app writes now require Convex auth
+identity derived server-side; the isolated collection page remains governed by
+single-use/expiring collection tokens.
+
+### Scope
+
+Protected public mutation groups:
+
+```text
+convex/facts.ts              raw fact assert/retract/tombstone/correct
+convex/attributes.ts         schema-as-facts definitions
+convex/rules.ts              rule definitions / manual recompute
+convex/forms.ts              form definition
+convex/flows.ts              flow issue/start/cancel/definition/setup
+convex/compliance.ts         setup/seed/manual submission/recompute
+convex/actions.ts            action definition/execution
+convex/appconfig.ts          applyConfig/setupStaffing
+convex/metacrdtComponent.ts  host wrappers for component-owned writes/rebuild
+```
+
+Explicit non-scope:
+
+- Do not choose or install a provider in this slice. The repo has no existing
+  Clerk/Auth0/WorkOS/Convex Auth signal, and provider selection should be a
+  product/deployment decision.
+- Do not require login for `/collect`: possession of an unexpired, unconsumed
+  token is the capability for that isolated write path.
+- Do not add an `actorId` / `userId` argument escape hatch. Actor identity must
+  be derived from `ctx.auth.getUserIdentity().tokenIdentifier`.
+
+### Implementation Notes
+
+- `convex/lib/writeAuth.ts` exposes `requireWritePrincipal(ctx)`.
+- Public raw fact writes now record the authenticated `tokenIdentifier` as the
+  transaction actor, ignoring spoofable `actorId` args.
+- Config/bootstrap mutations are caller-authorized first, then continue to
+  record config/system semantics in the transaction log where appropriate.
+- Component-owned write wrappers require auth before passing actor context into
+  the `@metacrdt/convex` component.
+- Test harnesses now use authenticated Convex-test handles for setup/write
+  paths; `readAuth.test.ts` keeps a separate anonymous handle to prove PII
+  redaction still works without identity.
+
+### Acceptance Criteria
+
+- Anonymous callers cannot use general public write mutations.
+- Authenticated callers can write.
+- Public raw fact writes record the server-derived principal, not a caller
+  supplied `actorId`.
+- Component-owned write wrappers are also protected.
+- `/collect` submission still succeeds anonymously when the token is valid.
+- Existing public read behavior remains unchanged.
+- Convex tests, package tests, typechecks, build, backend deploy, static upload,
+  and live smoke pass.
+
+### Verification
+
+- `npx vitest run convex/writeAuth.test.ts` passed (4 tests).
+- `npm test` passed (17 backend test files, 107 tests).
+- `npm run test:core` passed (46 tests).
+- `npm run test:convex-package` passed (31 tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex dev --once` pushed the backend to `chatty-hare-94`.
+- `npx @convex-dev/static-hosting upload` uploaded the rebuilt static app.
+- Live smoke: `npx convex run facts:assertFact ...` fails with
+  `Not authenticated` at `requireWritePrincipal`.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -2945,7 +3029,8 @@ These remain valuable, but they should not interrupt the current goal.
 
 ### Auth / Privacy
 
-- [ ] Auth + write authorization for the live site.
+- [x] Backend write authorization for public mutations.
+- [ ] Provider-backed login UI / production auth configuration for the live app.
 - [x] Collect-token single-use / expiry hardening.
 
 ### Query / Rules

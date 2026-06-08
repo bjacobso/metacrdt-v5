@@ -201,13 +201,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Collect-token single-use / expiry hardening — new `/collect` links expire,
   successful submissions consume their token, and token lookup refuses consumed /
   expired / no-longer-waiting runs before exposing form definitions.
-- [ ] Auth + write authorization — the live site still takes public writes
-  outside the hardened collection-token path.
+- [x] Backend write authorization — general public write mutations now require
+  Convex auth identity and derive actors server-side; `/collect` remains
+  token-authorized.
+- [ ] Provider-backed login UI / production auth configuration for the live app.
 
 **Next goal candidates**
-- [ ] Choose the next active goal: full app write authorization, live Cloudflare
-  deployment/auth, or migrating more reference runtime business logic onto
-  `@metacrdt/convex` component-owned state.
+- [ ] Choose the next active goal: provider-backed login UI / production auth,
+  live Cloudflare deployment/auth, or migrating more reference runtime business
+  logic onto `@metacrdt/convex` component-owned state.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -232,6 +234,22 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — backend write authorization
+- [x] **General public writes require Convex auth identity.** Added
+  `convex/lib/writeAuth.ts` and gated public mutations in facts, attributes,
+  rules, forms, flows, compliance, actions, appconfig, and the
+  `metacrdtComponent` host wrappers with `ctx.auth.getUserIdentity()`.
+- [x] **Actors are server-derived.** Public raw fact writes ignore spoofable
+  caller-supplied `actorId` values and record the authenticated
+  `tokenIdentifier`; component-owned write wrappers derive the same principal
+  before crossing the component boundary.
+- [x] **Collection links remain the intentional anonymous write surface.**
+  `/collect` still succeeds with a valid unexpired/unconsumed token, without a
+  login requirement.
+- [x] **Tests cover the boundary.** `convex/writeAuth.test.ts` proves anonymous
+  general writes fail, authenticated writes succeed with the server-derived
+  principal, component wrappers are protected, and token collection still works.
 
 ### 2026-06-07 — @metacrdt/convex state-owned protocol log component
 - [x] **Packaged component now owns durable protocol state.**

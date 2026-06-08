@@ -10,7 +10,7 @@ describe("collect-step flow runner", () => {
   test("a submission resumes the waiting run to completed", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       const { runId } = await t.mutation(api.flows.startCollect, {
         subject: "worker:maria",
         form: "i9",
@@ -40,7 +40,7 @@ describe("collect-step flow runner", () => {
   });
 
   test("startCollect does not double-issue for the same target", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     const a = await t.mutation(api.flows.startCollect, {
       subject: "w:1",
       form: "i9",
@@ -56,7 +56,7 @@ describe("collect-step flow runner", () => {
   });
 
   test("startCollect reissues when the prior waiting token is expired", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     const a = await t.mutation(api.flows.startCollect, {
       subject: "w:expired",
       form: "i9",
@@ -75,7 +75,7 @@ describe("collect-step flow runner", () => {
   test("timer ticks fire reminder then escalation while waiting", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await t.mutation(api.flows.startCollect, {
         subject: "w:2",
         form: "handbook",
@@ -99,7 +99,7 @@ describe("collect-step flow runner", () => {
   test("expiry tick moves an unattended run to expired", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       const { runId } = await t.mutation(api.flows.startCollect, {
         subject: "w:3",
         form: "i9",
@@ -119,7 +119,7 @@ describe("collect-step flow runner", () => {
   test("issueAllOpen creates a run per open obligation", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await t.mutation(api.compliance.setupComplianceRules, {});
       await t.mutation(api.compliance.seedStaffingDemo, {});
       await t.finishAllScheduledFunctions(vi.runAllTimers);

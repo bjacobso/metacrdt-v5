@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { attrId, typeId } from "./lib/meta";
 import { assertInTx, createTransaction, retractInTx } from "./facts";
+import { requireWritePrincipal } from "./lib/writeAuth";
 
 // Config-as-code. A tenant declares its shape — entity types, attributes, forms,
 // flows, requirements, actions — as one literal, and applyConfig *lowers* it into
@@ -232,6 +233,7 @@ async function reconcileConfig(
 export const applyConfig = mutation({
   args: { config: v.any() },
   handler: async (ctx, args) => {
+    await requireWritePrincipal(ctx);
     const cfg = (args.config ?? {}) as {
       attributes?: Array<{
         name: string;
@@ -461,6 +463,7 @@ export const STAFFING_BLUEPRINT = {
 export const setupStaffing = mutation({
   args: {},
   handler: async (ctx): Promise<{ applied: unknown }> => {
+    await requireWritePrincipal(ctx);
     const applied = await ctx.runMutation(api.appconfig.applyConfig, {
       config: STAFFING_BLUEPRINT,
     });

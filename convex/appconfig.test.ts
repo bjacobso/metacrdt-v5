@@ -7,11 +7,11 @@ import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
-async function flush(t: ReturnType<typeof convexTest>) {
+async function flush(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
-async function setup(t: ReturnType<typeof convexTest>) {
+async function setup(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.mutation(api.appconfig.setupStaffing, {});
   await flush(t);
 }
@@ -20,7 +20,7 @@ describe("config-as-code + origin + entity detail", () => {
   test("applyConfig registers configured types; meta types are system", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
 
       const types = await t.query(api.entities.listEntityTypes, {});
@@ -42,7 +42,7 @@ describe("config-as-code + origin + entity detail", () => {
   test("listEntities origin filter splits data from system machinery", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
 
       const data = await t.query(api.entities.listEntities, { origin: "data" });
@@ -63,7 +63,7 @@ describe("config-as-code + origin + entity detail", () => {
   test("entityDetail computes flows, obligations, and state for a worker", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
 
       const d = await t.query(api.entities.entityDetail, { e: "worker:maria" });
@@ -83,7 +83,7 @@ describe("config-as-code + origin + entity detail", () => {
   test("configured type schema drives entity table columns", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
 
       const shape = await t.query(api.attributes.typeSchemaAsOf, {
@@ -117,7 +117,7 @@ describe("config-as-code + origin + entity detail", () => {
   test("runAction asserts the action's facts on the target entity", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
 
       await t.mutation(api.actions.runAction, {
@@ -144,7 +144,7 @@ describe("config-as-code + origin + entity detail", () => {
   test("runAction resolves configured action args into asserted facts", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
 
       await t.mutation(api.appconfig.applyConfig, {
@@ -204,7 +204,7 @@ describe("config-as-code + origin + entity detail", () => {
   test("runAction rejects unknown arg placeholders", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
 
       await t.mutation(api.appconfig.applyConfig, {
@@ -236,7 +236,7 @@ describe("config-as-code + origin + entity detail", () => {
   test("runAction can open a configured collection form", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
 
       await t.mutation(api.appconfig.applyConfig, {
@@ -295,7 +295,7 @@ describe("config-as-code + origin + entity detail", () => {
   test("system processes report live counts", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
       const procs = await t.query(api.system.listSystemProcesses, {});
       const reconciler = procs.find((p) => p.name === "compliance-reconciler");
@@ -311,7 +311,7 @@ describe("config-as-code + origin + entity detail", () => {
   test("applyConfig reconcile removes dropped requirements and obligations", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
 
       let detail = await t.query(api.entities.entityDetail, { e: "worker:maria" });
@@ -354,7 +354,7 @@ describe("config-as-code + origin + entity detail", () => {
   test("applyConfig reconcile removes dropped actions only when actions are present", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
 
       await t.mutation(api.appconfig.applyConfig, {
@@ -379,7 +379,7 @@ describe("config-as-code + origin + entity detail", () => {
   test("applyConfig reconcile removes configured type and attribute without deleting data", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await setup(t);
 
       await t.mutation(api.appconfig.applyConfig, {
@@ -410,7 +410,7 @@ describe("config-as-code + origin + entity detail", () => {
   test("config history diffs owned artifacts across applyConfig runs", async () => {
     vi.useFakeTimers();
     try {
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       vi.setSystemTime(1_000);
       await setup(t);
 

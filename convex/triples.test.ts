@@ -10,13 +10,13 @@ const modules = import.meta.glob("./**/*.ts");
 // Drain the scheduler, including cascades (assertFact → processFactChange →
 // recomputeRule*). finishAllScheduledFunctions advances fake timers until the
 // whole runAfter(0) chain has drained.
-async function flush(t: ReturnType<typeof convexTest>) {
+async function flush(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
 describe("cardinality-one", () => {
   test("a new assertion retracts the prior current fact but keeps history", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.attributes.defineAttribute, {
       name: "employee.status",
       valueType: "string",
@@ -58,7 +58,7 @@ describe("cardinality-one", () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(1_000);
-      const t = convexTest(schema, modules);
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await t.mutation(api.attributes.defineAttribute, {
         name: "status.sameTime",
         valueType: "string",
@@ -118,7 +118,7 @@ describe("cardinality-one", () => {
   });
 
   test("legacy facts without assertEventId still reconcile safely", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.attributes.defineAttribute, {
       name: "status.legacy",
       valueType: "string",
@@ -152,7 +152,7 @@ describe("cardinality-one", () => {
   });
 
   test("cardinality-many keeps multiple values", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     // No attribute registered → defaults to many.
     await t.mutation(api.facts.assertFact, { e: "e:1", a: "tag", value: "a" });
     await t.mutation(api.facts.assertFact, { e: "e:1", a: "tag", value: "b" });
@@ -163,7 +163,7 @@ describe("cardinality-one", () => {
 
 describe("event log is append-only", () => {
   test("new factEvents carry verifiable MetaCRDT protocol metadata", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     const { factId } = await t.mutation(api.facts.assertFact, {
       e: "e:proto",
       a: "status",
@@ -229,7 +229,7 @@ describe("event log is append-only", () => {
   });
 
   test("assert + cardinality-one replace produces assert, retract, assert", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.attributes.defineAttribute, {
       name: "s",
       valueType: "string",
@@ -252,7 +252,7 @@ describe("event log is append-only", () => {
   });
 
   test("correctFact is represented as tombstone + assert protocol events", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     const { factId } = await t.mutation(api.facts.assertFact, {
       e: "e:correct",
       a: "i9.completed",
@@ -293,7 +293,7 @@ describe("event log is append-only", () => {
   });
 
   test("replaying events reconstructs the current entity view", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.attributes.defineAttribute, {
       name: "status",
       valueType: "string",
@@ -326,7 +326,7 @@ describe("event log is append-only", () => {
 
 describe("tombstone", () => {
   test("removes from current and bitemporal-now, but is recoverable", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     const { factId } = await t.mutation(api.facts.assertFact, {
       e: "e:1",
       a: "ssn",
@@ -355,7 +355,7 @@ describe("tombstone", () => {
 
 describe("datalog", () => {
   test("multi-clause join across entities", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.facts.assertFact, {
       e: "emp:1",
       a: "type",
@@ -390,7 +390,7 @@ describe("datalog", () => {
   });
 
   test("explainDatalog classifies heterogeneous clauses", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     const plan = await t.query(api.datalog.explainDatalog, {
       where: [
         ["?e", "salary", "?s"],
@@ -412,7 +412,7 @@ describe("rule materialization", () => {
   test("derives a violation, then clears it via correction (incremental)", async () => {
     vi.useFakeTimers();
     try {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.rules.defineRule, {
       name: "missing_i9",
       where: [
@@ -456,7 +456,7 @@ describe("rule materialization", () => {
 
 describe("bitemporal comparison", () => {
   test("compareFacts distinguishes valid-time intervals", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     // cardinality-many "phase" with explicit, non-overlapping valid intervals.
     await t.mutation(api.facts.assertFact, {
       e: "e:1",

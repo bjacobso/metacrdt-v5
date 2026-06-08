@@ -9,6 +9,7 @@ import {
   readPrincipal,
   redactAttributeMap,
 } from "./lib/readAuth";
+import { requireWritePrincipal } from "./lib/writeAuth";
 import {
   assertEvent,
   CARDINALITY_ONE_SUPERSESSION_REASON,
@@ -396,9 +397,10 @@ export const assertFact = mutation({
     source: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const actorId = await requireWritePrincipal(ctx);
     const now = Date.now();
     const txId = await createTransaction(ctx, {
-      actorId: args.actorId,
+      actorId,
       reason: args.reason,
       source: args.source,
       now,
@@ -424,6 +426,7 @@ export const retractFact = mutation({
     actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const actorId = await requireWritePrincipal(ctx);
     const now = Date.now();
     const fact = await ctx.db.get("facts", args.factId);
     if (!fact) throw new Error(`fact ${args.factId} not found`);
@@ -432,7 +435,7 @@ export const retractFact = mutation({
     }
 
     const txId = await createTransaction(ctx, {
-      actorId: args.actorId,
+      actorId,
       reason: args.reason,
       now,
     });
@@ -482,12 +485,13 @@ export const tombstoneFact = mutation({
     actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const actorId = await requireWritePrincipal(ctx);
     const now = Date.now();
     const fact = await ctx.db.get("facts", args.factId);
     if (!fact) throw new Error(`fact ${args.factId} not found`);
 
     const txId = await createTransaction(ctx, {
-      actorId: args.actorId,
+      actorId,
       reason: args.reason,
       now,
     });
@@ -540,12 +544,13 @@ export const correctFact = mutation({
     actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const actorId = await requireWritePrincipal(ctx);
     const now = Date.now();
     const old = await ctx.db.get("facts", args.factId);
     if (!old) throw new Error(`fact ${args.factId} not found`);
 
     const txId = await createTransaction(ctx, {
-      actorId: args.actorId,
+      actorId,
       reason: args.reason,
       now,
     });

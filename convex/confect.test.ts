@@ -8,7 +8,7 @@ const modules = import.meta.glob("./**/*.ts");
 
 describe("Confect sidecar spike", () => {
   test("verifies protocol-shaped fact events through @metacrdt/core", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.facts.assertFact, {
       e: "worker:confect",
       a: "worker.status",
@@ -34,7 +34,7 @@ describe("Confect sidecar spike", () => {
   });
 
   test("surfaces typed Confect errors across the Convex boundary", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
 
     await expect(
       t.query(api.metacrdtConfect.verifyEvents, {

@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
+import { requireWritePrincipal } from "./lib/writeAuth";
 
 /**
  * Define (or replace by name) a Datalog rule whose output is materialized into
@@ -19,6 +20,7 @@ export const defineRule = mutation({
     enabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireWritePrincipal(ctx);
     const now = Date.now();
     const existing = await ctx.db
       .query("rules")
@@ -68,6 +70,7 @@ export const defineTransitiveRule = mutation({
     enabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireWritePrincipal(ctx);
     const now = Date.now();
     const existing = await ctx.db
       .query("rules")
@@ -109,6 +112,7 @@ export const defineTransitiveRule = mutation({
 export const recomputeRule = mutation({
   args: { ruleId: v.id("rules") },
   handler: async (ctx, args) => {
+    await requireWritePrincipal(ctx);
     await ctx.scheduler.runAfter(0, internal.materialize.recomputeRule, {
       ruleId: args.ruleId,
     });
