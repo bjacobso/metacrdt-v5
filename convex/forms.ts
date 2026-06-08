@@ -24,6 +24,20 @@ const fieldValidator = v.object({
   sensitive: v.optional(v.boolean()),
 });
 
+function tokenInvalidReason(
+  run: {
+    status: string;
+    tokenConsumedAt?: number;
+    tokenExpiresAt?: number;
+  },
+  now: number,
+): "used" | "expired" | "not waiting" | null {
+  if (run.tokenConsumedAt !== undefined) return "used";
+  if (run.tokenExpiresAt !== undefined && run.tokenExpiresAt <= now) return "expired";
+  if (run.status !== "waiting") return "not waiting";
+  return null;
+}
+
 function formEntity(form: string): string {
   return `form:${form}`;
 }
@@ -83,7 +97,8 @@ export const formFields = query({
 
 /**
  * Public, token-keyed view for the isolated collection page: the flow run's
- * target plus the form's fields. Magic-link style — no auth (demo-grade).
+ * target plus the form's fields. Magic-link style — hardened to only reveal
+ * waiting, unexpired, unconsumed collection runs.
  */
 export const collectionByToken = query({
   args: { token: v.string() },
@@ -93,6 +108,8 @@ export const collectionByToken = query({
       .withIndex("by_token", (q) => q.eq("token", args.token))
       .first();
     if (!run || !run.form || !run.scope) return { found: false as const };
+    const invalid = tokenInvalidReason(run, Date.now());
+    if (invalid) return { found: false as const, reason: invalid };
     const def = await loadFormDef(ctx, run.form);
     return {
       found: true as const,
@@ -109,7 +126,7 @@ export const collectionByToken = query({
 /**
  * Submit a collection: save each field value as a fact, then assert the
  * scope-keyed submission marker — which (via the event path) resumes the parked
- * flow and clears the obligation. Idempotent-ish: only acts on a waiting run.
+ * flow and clears the obligation. The token is single-use and may expire.
  */
 export const submitCollection = mutation({
   args: {
@@ -122,14 +139,23 @@ export const submitCollection = mutation({
       .withIndex("by_token", (q) => q.eq("token", args.token))
       .first();
     if (!run) return { ok: false as const, reason: "unknown token" };
-    if (run.status !== "waiting") {
-      return { ok: false as const, reason: "already submitted" };
-    }
     if (!run.form || !run.scope) {
       return { ok: false as const, reason: "run is not awaiting a collection" };
     }
 
     const now = Date.now();
+    const invalid = tokenInvalidReason(run, now);
+    if (invalid === "used") return { ok: false as const, reason: "already submitted" };
+    if (invalid === "expired") {
+      await ctx.db.patch("flowRuns", run._id, {
+        status: "expired",
+        step: "expired",
+        updatedAt: now,
+      });
+      return { ok: false as const, reason: "expired token" };
+    }
+    if (invalid) return { ok: false as const, reason: "already submitted" };
+
     const txId = await createTransaction(ctx, {
       actorId: run.subject,
       reason: `submit ${run.form}`,
@@ -151,7 +177,10 @@ export const submitCollection = mutation({
       value: run.scope,
     });
 
-    await ctx.db.patch("flowRuns", run._id, { context: values });
+    await ctx.db.patch("flowRuns", run._id, {
+      context: values,
+      tokenConsumedAt: now,
+    });
     return { ok: true as const };
   },
 });

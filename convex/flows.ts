@@ -19,6 +19,23 @@ import { assertInTx, createTransaction } from "./facts";
 // stand-in for a durable step engine (no BullMQ, no separate workflow service).
 
 const DEFAULTS = { reminderSeconds: 10, escalateSeconds: 30 };
+const DEFAULT_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function tokenExpiresAt(now: number, expireSeconds?: number): number {
+  return now + (expireSeconds !== undefined ? expireSeconds * 1000 : DEFAULT_TOKEN_TTL_MS);
+}
+
+function hasLiveToken(
+  run: { status: string; token?: string; tokenConsumedAt?: number; tokenExpiresAt?: number },
+  now: number,
+): boolean {
+  return (
+    run.status === "waiting" &&
+    run.token !== undefined &&
+    run.tokenConsumedAt === undefined &&
+    (run.tokenExpiresAt === undefined || run.tokenExpiresAt > now)
+  );
+}
 
 async function log(
   ctx: MutationCtx,
@@ -47,10 +64,10 @@ export const startCollect = mutation({
         q.eq("subject", args.subject).eq("form", args.form).eq("scope", args.scope),
       )
       .collect();
-    const live = existing.find((r) => r.status === "waiting");
+    const now = Date.now();
+    const live = existing.find((r) => hasLiveToken(r, now));
     if (live) return { runId: live._id, reused: true };
 
-    const now = Date.now();
     const reminderSeconds = args.reminderSeconds ?? DEFAULTS.reminderSeconds;
     const escalateSeconds = args.escalateSeconds ?? DEFAULTS.escalateSeconds;
     const runId = await ctx.db.insert("flowRuns", {
@@ -66,6 +83,7 @@ export const startCollect = mutation({
       escalateSeconds,
       expireSeconds: args.expireSeconds,
       token: crypto.randomUUID(),
+      tokenExpiresAt: tokenExpiresAt(now, args.expireSeconds),
     });
     await log(ctx, runId, "issued", `collect ${args.form} for ${args.scope}`);
 
@@ -121,10 +139,10 @@ export const startCollectInternal = internalMutation({
         q.eq("subject", args.subject).eq("form", args.form).eq("scope", args.scope),
       )
       .collect();
-    const live = existing.find((r) => r.status === "waiting");
+    const now = Date.now();
+    const live = existing.find((r) => hasLiveToken(r, now));
     if (live) return { runId: live._id, reused: true };
 
-    const now = Date.now();
     const runId = await ctx.db.insert("flowRuns", {
       flowName: "collect",
       subject: args.subject,
@@ -137,6 +155,7 @@ export const startCollectInternal = internalMutation({
       reminderSeconds: DEFAULTS.reminderSeconds,
       escalateSeconds: DEFAULTS.escalateSeconds,
       token: crypto.randomUUID(),
+      tokenExpiresAt: tokenExpiresAt(now),
     });
     await log(ctx, runId, "issued", `collect ${args.form} for ${args.scope}`);
     await ctx.scheduler.runAfter(DEFAULTS.reminderSeconds * 1000, internal.flows.tick, {
@@ -509,6 +528,7 @@ export const advanceFlow = internalMutation({
           form: String(cfg.form),
           scope,
           token: crypto.randomUUID(),
+          tokenExpiresAt: tokenExpiresAt(now),
           updatedAt: now,
         });
         await log(ctx, run._id, "issued", `collect ${cfg.form} for ${scope}`);

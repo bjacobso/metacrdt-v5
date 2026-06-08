@@ -1,9 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 11 (actions that open forms) has shipped. The next active
-goal should be chosen from the remaining TODO candidates:
-`@metacrdt/runtime` harness groundwork, auth/write hardening, or the next
-`@metacrdt/convex` function factory/component slice.
+**Current goal:** Goal 12 (collection-token hardening) has shipped. The next
+active goal should be chosen from the remaining TODO candidates:
+`@metacrdt/runtime` harness groundwork, full app write authorization, or the
+next `@metacrdt/convex` function factory/component slice.
 
 This plan is the operational goal file. Read it with:
 
@@ -135,6 +135,11 @@ configured actions can now take small typed arguments.
   - `runAction` issues or reuses the same waiting collection run/token used by
     flow collect steps
   - entity detail surfaces the returned `/collect` link immediately
+- Collection links are single-use and expiring:
+  - new `flowRuns` collection tokens carry `tokenExpiresAt`
+  - successful submission stamps `tokenConsumedAt`
+  - token lookup refuses consumed/expired/not-waiting runs before exposing form
+    definitions
 
 ### Not Yet True
 
@@ -148,8 +153,8 @@ configured actions can now take small typed arguments.
   until the package boundary is proven against more host-app usage.
 - Multi-replica sync is specified but not implemented.
 - Full app login/write authorization is not configured; unauthenticated callers
-  are treated as `anonymous`, so PII is denied by default but public writes remain
-  demo-grade.
+  are treated as `anonymous`, so PII is denied by default but general public
+  writes remain demo-grade.
 - Confect is integrated as a narrow sidecar spike:
   - `confect/` defines a typed Effect Schema function group.
   - `convex/metacrdtConfect.ts` manually mounts the generated registered
@@ -1426,6 +1431,43 @@ Backward-compatible action definition:
 
 ---
 
+## Goal 12 — Collection-Token Hardening
+
+**Status:** shipped in the Convex reference runtime.
+
+**Objective:** make `/collect?token=...` links single-use and expiring without
+changing the existing collection flow path. Flow collect steps, standalone
+compliance collections, and form-opening actions still park on `flowRuns`; the
+token now controls whether the public collection page can reveal and submit the
+form.
+
+### Acceptance Criteria
+
+- `flowRuns` stores optional `tokenExpiresAt` and `tokenConsumedAt`.
+- New collection tokens get an expiry timestamp:
+  - explicit `expireSeconds` uses that shorter window;
+  - otherwise a default 7-day TTL is applied.
+- `forms.collectionByToken` does not reveal form metadata for:
+  - consumed tokens;
+  - expired tokens;
+  - runs that are no longer waiting.
+- `forms.submitCollection` rejects consumed/expired tokens and marks expired
+  waiting runs as expired.
+- Successful collection submission stamps `tokenConsumedAt` before the event path
+  resumes the run.
+- Collection issuance idempotence reuses only waiting runs whose token is still
+  live; expired/consumed waiting runs can be reissued.
+- Existing legacy runs without `tokenExpiresAt` remain tolerated until used.
+- Tests cover single-use behavior and pre-submit expiry.
+- Full tests/typechecks/build/deploy pass.
+
+### Verification
+
+- Focused `npx vitest run forms flows flowdag appconfig` passed (24 tests).
+- Full gate for this slice is recorded in the commit that shipped it.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -1440,7 +1482,7 @@ These remain valuable, but they should not interrupt the current goal.
 ### Auth / Privacy
 
 - [ ] Auth + write authorization for the live site.
-- [ ] Collect-token single-use / expiry hardening.
+- [x] Collect-token single-use / expiry hardening.
 
 ### Query / Rules
 

@@ -217,6 +217,8 @@ export default defineSchema({
     expireSeconds: v.optional(v.number()),
     // Magic-link token for the isolated collection page.
     token: v.optional(v.string()),
+    tokenExpiresAt: v.optional(v.number()),
+    tokenConsumedAt: v.optional(v.number()),
     // Collected field values / flow variables.
     context: v.optional(v.any()),
     // Phase 2 (general DAG): which flow definition + current step.

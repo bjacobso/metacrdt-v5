@@ -102,12 +102,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Actions that open forms — action definitions can declare `opensForm`;
   `runAction` issues/reuses a waiting collect run and returns the `/collect`
   token link for the entity page.
-- [ ] Auth + write authorization — the live site takes public writes; the collect
-  token is demo-grade (no single-use / expiry).
+- [x] Collect-token single-use / expiry hardening — new `/collect` links expire,
+  successful submissions consume their token, and token lookup refuses consumed /
+  expired / no-longer-waiting runs before exposing form definitions.
+- [ ] Auth + write authorization — the live site still takes public writes
+  outside the hardened collection-token path.
 
 **Next goal candidates**
 - [ ] Choose the next active goal: `@metacrdt/runtime` harness groundwork,
-  auth/write hardening, or the next `@metacrdt/convex` function
+  full app write authorization, or the next `@metacrdt/convex` function
   factory/component slice.
 
 **Docs**
@@ -131,6 +134,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — Goal 12 collection-token hardening
+- [x] **Collection links are now single-use and expiring.** `flowRuns` stores
+  `tokenExpiresAt` / `tokenConsumedAt`; token lookup refuses consumed, expired,
+  and no-longer-waiting runs before returning form metadata; successful submit
+  consumes the token.
+- [x] **Issuance and tests updated.** Flow collects, standalone collects, and
+  form-opening actions stamp token expiry; idempotent issuance reuses only live
+  tokens. Tests cover post-submit single-use and pre-submit expiry.
 
 ### 2026-06-07 — Goal 11 actions that open forms
 - [x] **Configured actions can issue collection links.** `defineAction` stores

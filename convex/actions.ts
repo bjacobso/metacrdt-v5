@@ -57,6 +57,20 @@ const opensFormValidator = v.object({
   scope: v.any(),
 });
 
+const DEFAULT_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function hasLiveToken(
+  run: { status: string; token?: string; tokenConsumedAt?: number; tokenExpiresAt?: number },
+  now: number,
+): boolean {
+  return (
+    run.status === "waiting" &&
+    run.token !== undefined &&
+    run.tokenConsumedAt === undefined &&
+    (run.tokenExpiresAt === undefined || run.tokenExpiresAt > now)
+  );
+}
+
 function actionId(name: string): string {
   return `action:${name}`;
 }
@@ -174,7 +188,8 @@ async function issueCollectRun(
       q.eq("subject", args.subject).eq("form", args.form).eq("scope", args.scope),
     )
     .collect();
-  const live = existing.find((r) => r.status === "waiting" && r.token);
+  const now = Date.now();
+  const live = existing.find((r) => hasLiveToken(r, now));
   if (live) {
     return {
       runId: live._id,
@@ -184,7 +199,6 @@ async function issueCollectRun(
     };
   }
 
-  const now = Date.now();
   const token = crypto.randomUUID();
   const runId = await ctx.db.insert("flowRuns", {
     flowName: "collect",
@@ -196,6 +210,7 @@ async function issueCollectRun(
     issuedAt: now,
     updatedAt: now,
     token,
+    tokenExpiresAt: now + DEFAULT_TOKEN_TTL_MS,
   });
   await ctx.db.insert("flowEvents", {
     runId,

@@ -162,6 +162,7 @@ Built today:
   into asserted facts)
 - form-opening actions that issue/reuse `/collect` magic links through the same
   `flowRuns` path as flow collect steps
+- single-use, expiring collection tokens for the public `/collect` page
 - Tailwind + React Router research-preview UI
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility
 - Confect/Effect sidecar for typed compliance planning: a read-only dry-run

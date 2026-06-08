@@ -54,14 +54,51 @@ describe("external collection", () => {
       const after = await t.query(api.flows.listFlows, { subject: "worker:t1" });
       expect(after.find((f) => f._id === runId)!.status).toBe("completed");
 
-      // A second submit on a completed run is rejected.
+      // The token is single-use: after a successful submit it no longer renders
+      // the collection payload, and a second submit is rejected.
       const dup = await t.query(api.forms.collectionByToken, { token });
-      expect(dup.found && dup.status).toBe("completed");
+      expect(dup).toEqual({ found: false, reason: "used" });
       const res2 = await t.mutation(api.forms.submitCollection, {
         token,
         values: { ssn: "x" },
       });
       expect(res2.ok).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("collection tokens can expire before submission", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await t.mutation(api.forms.defineForm, {
+        form: "i9",
+        title: "Form I-9",
+        fields: [{ name: "ssn", label: "SSN", type: "string", required: true }],
+      });
+
+      await t.mutation(api.flows.startCollect, {
+        subject: "worker:t-expire",
+        form: "i9",
+        scope: "employer:acme",
+        expireSeconds: 0,
+      });
+      const flows = await t.query(api.flows.listFlows, {
+        subject: "worker:t-expire",
+      });
+      const token = flows[0].token!;
+
+      expect(await t.query(api.forms.collectionByToken, { token })).toEqual({
+        found: false,
+        reason: "expired",
+      });
+      expect(
+        await t.mutation(api.forms.submitCollection, {
+          token,
+          values: { ssn: "123" },
+        }),
+      ).toEqual({ ok: false, reason: "expired token" });
     } finally {
       vi.useRealTimers();
     }

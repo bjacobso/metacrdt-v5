@@ -55,6 +55,23 @@ describe("collect-step flow runner", () => {
     expect(b.runId).toBe(a.runId);
   });
 
+  test("startCollect reissues when the prior waiting token is expired", async () => {
+    const t = convexTest(schema, modules);
+    const a = await t.mutation(api.flows.startCollect, {
+      subject: "w:expired",
+      form: "i9",
+      scope: "e:1",
+      expireSeconds: 0,
+    });
+    const b = await t.mutation(api.flows.startCollect, {
+      subject: "w:expired",
+      form: "i9",
+      scope: "e:1",
+    });
+    expect(b.reused).toBe(false);
+    expect(b.runId).not.toBe(a.runId);
+  });
+
   test("timer ticks fire reminder then escalation while waiting", async () => {
     vi.useFakeTimers();
     try {
