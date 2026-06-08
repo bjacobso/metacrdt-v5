@@ -197,6 +197,9 @@ Built today:
 - configured action registry reads (`actionsForType`, `listActions`,
   `entityDetail.actions`, and `runAction` action-definition loading) now fold
   action definition facts from protocol-shaped `factEvents`
+- Overview dashboard base-fact summary counts now fold current type/submission/
+  placement-scope facts from protocol-shaped `factEvents` instead of reading
+  `currentFacts`
 - production fact point queries (`api.facts.queryFacts`) now fold base facts
   directly from protocol-shaped `factEvents` while preserving the old array
   return shape and read-authorization behavior; `queryFactsFromEventLog` remains

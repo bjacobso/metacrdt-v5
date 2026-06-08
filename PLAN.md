@@ -1,6 +1,7 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 67 (auth-aware frontend write gates) has shipped.
+**Current goal:** Goal 68 (overview summary reads from the event log) has
+shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
 `factEvents`. Goal 60 promoted the already-proven `queryFactsFromEventLog`
@@ -19,9 +20,12 @@ action registry reads (`actionsForType`, `listActions`, `runAction` action-def
 loading, and `entityDetail.actions`) to protocol-shaped `factEvents`. Goal 67
 added a provider-neutral frontend auth boundary and routed protected write
 controls through a shared auth-required UX instead of raw mutation failures.
-The next active goal should be chosen from the remaining TODO candidates:
-choosing/wiring the real auth provider and `convex/auth.config.ts`, live
-Cloudflare deployment/auth, or another carefully scoped Confect/domain wrapper.
+Goal 68 moved the Overview dashboard's base-fact summary counts to
+protocol-shaped `factEvents` instead of `currentFacts`. The next active goal
+should be chosen from the remaining TODO candidates: choosing/wiring the real
+auth provider and `convex/auth.config.ts`, live Cloudflare deployment/auth,
+another carefully scoped Confect/domain wrapper, or the next projection
+dependency (`configHistory`, read-grant lookup, or closure/derived provenance).
 
 This plan is the operational goal file. Read it with:
 
@@ -120,6 +124,10 @@ arguments.
   action-definition loading, and `entityDetail.actions`) read action definition
   facts from protocol-shaped `factEvents` instead of `currentFacts`, preserving
   action fields, form-opening metadata, and entity-detail contextual actions.
+- Overview dashboard base-fact summary counts (`configuredTypes`, `placements`,
+  `evidence`, `reusedScopes`) read current facts from protocol-shaped
+  `factEvents` instead of `currentFacts`; obligation counts still come from the
+  `derivedFacts` projection.
 - `api.facts.entityFromEventLog` folds a host entity directly from
   protocol-shaped `factEvents` with `@metacrdt/core`, including schema
   cardinality facts from the same log, and redacts through the same read-auth
@@ -448,9 +456,10 @@ arguments.
 - Production `getEntity` now uses the same bounded event-log fold as
   `entityFromEventLog`; production `entityAsOf` and `entityFactsAsOf` also fold
   from protocol-shaped `factEvents`.
-- Some non-primary operational/config read paths still use the disposable
-  projections, for example config-history scans over `facts` and overview/system
-  counts over `currentFacts`.
+- Some non-primary/support read paths still use disposable projections, for
+  example config-history scans over `facts`, read-grant / schema PII lookup uses
+  `currentFacts`, and some system/process counts still summarize materialized
+  `derivedFacts` / `flowRuns`.
 - `entityFromEventLog` remains intentionally bounded and proof/read-model
   oriented, returning coordinate/skipped-legacy counts that production
   `getEntity` does not expose.
@@ -6626,6 +6635,74 @@ Non-scope:
   `https://chatty-hare-94.convex.site`.
 - Live static smoke: fetched the deployed HTML and verified it references the
   rebuilt JS/CSS assets containing the auth-aware provider and write-gate code.
+
+---
+
+## Goal 68 — Overview Summary Reads from the Event Log
+
+**Status:** shipped for the Overview dashboard's base-fact summary counts.
+
+**Objective:** remove the Overview dashboard's dependency on the disposable
+`currentFacts` projection for base fact counts. Dashboard headline metrics should
+survive a corrupted/wiped current projection the same way the production entity
+and action registry reads now do.
+
+### Scope
+
+Backend:
+
+- `convex/overview.ts`
+  - `summary`
+
+Tests:
+
+- `convex/appconfig.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+
+### Semantics
+
+- `summary` reconstructs current type membership, `submitted.i9`, and placement
+  scope facts through `runWhere(..., { source: eventLogTripleSource })` at the
+  current bitemporal coordinate.
+- `configuredTypes`, `placements`, `evidence`, and `reusedScopes` no longer scan
+  `currentFacts`.
+- Existing obligation counts (`required`, `open`, `satisfiedPct`) still summarize
+  non-stale `derivedFacts`, because compliance obligations remain materialized
+  derived output.
+- `recentActivity` was already sourced from `transactions` + `factEvents` and is
+  unchanged.
+
+### Non-Goals
+
+- Do not remove or stop maintaining `currentFacts`.
+- Do not rewrite `configHistory` in this slice.
+- Do not rewrite read-grant / PII schema lookup in this slice.
+- Do not make `derivedFacts` unnecessary for dashboard obligation counts.
+
+### Acceptance Criteria
+
+- `overview.summary` does not query `currentFacts`.
+- Wiping `currentFacts` after setup does not change Overview summary counts.
+- Focused appconfig tests and Convex typecheck pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/appconfig.test.ts` passed (16 tests).
+- Full gate passed:
+  - `npm test` passed (17 backend test files, 150 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
 
 ---
 

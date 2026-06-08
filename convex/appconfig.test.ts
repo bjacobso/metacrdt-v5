@@ -406,6 +406,36 @@ describe("config-as-code + origin + entity detail", () => {
     }
   });
 
+  test("overview summary survives a wiped currentFacts projection", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await setup(t);
+
+      const before = await t.query(api.overview.summary, {});
+      expect(before.configuredTypes).toBeGreaterThan(0);
+      expect(before.placements).toBeGreaterThan(0);
+
+      await t.run(async (ctx) => {
+        const rows = await ctx.db.query("currentFacts").collect();
+        for (const row of rows) await ctx.db.delete(row._id);
+      });
+
+      const after = await t.query(api.overview.summary, {});
+      expect(after).toMatchObject({
+        configuredTypes: before.configuredTypes,
+        placements: before.placements,
+        reusedScopes: before.reusedScopes,
+        evidence: before.evidence,
+        required: before.required,
+        open: before.open,
+        satisfiedPct: before.satisfiedPct,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("applyConfig reconcile removes dropped requirements and obligations", async () => {
     vi.useFakeTimers();
     try {

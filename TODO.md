@@ -89,10 +89,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   type/name/attribute facts from `factEvents`. Configured action registry reads
   (`actionsForType`, `listActions`, `entityDetail.actions`, and `runAction`
   definition loading) now read action definition facts from `factEvents`.
-  Remaining: non-primary operational/config read paths such as config-history
-  scans and overview/system counts still use disposable projections; closure
-  semi-naive add still receives the changed projection `factId`; derived rows are
-  still stored in `derivedFacts`.
+  Overview dashboard base-fact summary counts now read current facts from
+  `factEvents` too. Remaining: support reads such as config-history scans over
+  `facts`, read-grant / schema PII lookup over `currentFacts`, closure semi-naive
+  add still receives the changed projection `factId`, and derived rows are still
+  stored in `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -354,6 +355,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 68 shipped:** `overview.summary` now reconstructs current
+  type/submission/placement-scope facts through the event-log triple source
+  instead of scanning `currentFacts`; obligation counts still summarize
+  materialized `derivedFacts`.
+- [x] **Overview projection-corruption proof.** `convex/appconfig.test.ts` now
+  wipes `currentFacts` and asserts the dashboard summary counts remain identical
+  to the pre-wipe result.
 - [x] **Goal 67 shipped:** frontend admin routes now run inside Convex's
   auth-aware provider shape with an explicit no-provider hook; `src/auth.tsx`
   centralizes the auth-required modal and `useWriteGate`.

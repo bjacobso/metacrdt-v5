@@ -2,51 +2,77 @@ import { query } from "./_generated/server";
 import { v } from "convex/values";
 import { typeOrigin } from "./lib/origin";
 import { typeNameOf } from "./lib/meta";
+import { project, runWhere } from "./lib/engine";
+import { eventLogTripleSource } from "./lib/eventLogTripleSource";
 
 const TYPE_ATTR = "type";
 const SAMPLE = 1000;
+
+type Row = Record<string, unknown>;
+
+async function currentRows(
+  ctx: Parameters<typeof runWhere>[0],
+  where: unknown[],
+  select: string[],
+): Promise<Row[]> {
+  const now = Date.now();
+  return project(
+    await runWhere(
+      ctx,
+      where,
+      { txTime: now, validTime: now },
+      {},
+      { source: eventLogTripleSource },
+    ),
+    select,
+  );
+}
 
 /** Headline counts for the Overview dashboard. */
 export const summary = query({
   args: {},
   handler: async (ctx) => {
-    const typeRows = await ctx.db
-      .query("currentFacts")
-      .withIndex("by_a", (q) => q.eq("a", TYPE_ATTR))
-      .take(SAMPLE);
+    const typeRows = await currentRows(ctx, [["?e", TYPE_ATTR, "?type"]], [
+      "?e",
+      "?type",
+    ]);
 
     // Configured types: declared type:<Name> registry entries.
     const configured = new Set(
       typeRows
-        .filter((r) => r.v === "EntityType")
-        .map((r) => typeNameOf(r.e)),
+        .filter((r) => r.type === "EntityType" && typeof r.e === "string")
+        .map((r) => typeNameOf(r.e as string)),
     );
     const configuredTypes = [...configured].filter(
       (t) => typeOrigin(t, true) === "configured",
     ).length;
 
     // Active placements.
-    const placements = typeRows.filter((r) => r.v === "Placement").length;
+    const placementEntities = new Set(
+      typeRows
+        .filter((r) => r.type === "Placement" && typeof r.e === "string")
+        .map((r) => r.e as string),
+    );
+    const placements = placementEntities.size;
 
     // Evidence (submissions) currently on record — these are what reuse keys off.
-    const submitted = await ctx.db
-      .query("currentFacts")
-      .withIndex("by_a", (q) => q.eq("a", "submitted.i9"))
-      .take(SAMPLE);
+    const submitted = await currentRows(ctx, [["?e", "submitted.i9", "?v"]], [
+      "?e",
+      "?v",
+    ]);
     const allSubmitted = typeRows.length; // placeholder; refined below
 
     // Reuse: a submission scope shared by more than one placement means the
     // evidence was reused rather than re-collected. Count distinct reused scopes.
-    const placementRows = typeRows.filter((r) => r.v === "Placement");
     const scopeUse = new Map<string, number>();
-    for (const p of placementRows) {
-      const facts = await ctx.db
-        .query("currentFacts")
-        .withIndex("by_e", (q) => q.eq("e", p.e))
-        .collect();
-      for (const f of facts) {
-        if (["employer", "client", "job", "venue"].includes(f.a)) {
-          const key = `${f.a}:${String(f.v)}`;
+    for (const attr of ["employer", "client", "job", "venue"]) {
+      const rows = await currentRows(ctx, [["?e", attr, "?scope"]], [
+        "?e",
+        "?scope",
+      ]);
+      for (const row of rows.slice(0, SAMPLE)) {
+        if (typeof row.e === "string" && placementEntities.has(row.e)) {
+          const key = `${attr}:${String(row.scope)}`;
           scopeUse.set(key, (scopeUse.get(key) ?? 0) + 1);
         }
       }
