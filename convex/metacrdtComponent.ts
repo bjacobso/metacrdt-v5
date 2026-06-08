@@ -85,6 +85,11 @@ const appendOwnedResultValidator = v.object({
   factId: v.optional(v.string()),
 });
 
+const createOwnedEntityResultValidator = v.object({
+  e: v.string(),
+  asserted: v.array(appendOwnedResultValidator),
+});
+
 const ownedCurrentFactValidator = v.object({
   factId: v.string(),
   e: v.string(),
@@ -114,6 +119,12 @@ const rebuildOwnedResultValidator = v.object({
   events: v.number(),
   facts: v.number(),
   currentFacts: v.number(),
+});
+
+const createOwnedAttributeValidator = v.object({
+  a: v.string(),
+  value: v.any(),
+  cardinality: v.optional(cardinality),
 });
 
 async function actorContext(ctx: MutationCtx) {
@@ -250,6 +261,50 @@ export const appendOwnedAssert = mutation({
         cardinality: args.cardinality,
       }),
     );
+  },
+});
+
+export const createOwnedEntity = mutation({
+  args: {
+    e: v.string(),
+    type: v.string(),
+    name: v.optional(v.string()),
+    attributes: v.optional(v.array(createOwnedAttributeValidator)),
+  },
+  returns: createOwnedEntityResultValidator,
+  handler: async (ctx, args) => {
+    const actor = await actorContext(ctx);
+    const asserted = [];
+    const rows = [
+      { a: "type", value: args.type, cardinality: "one" as const },
+      ...(args.name === undefined
+        ? []
+        : [{ a: "name", value: args.name, cardinality: "one" as const }]),
+      ...(args.attributes ?? []),
+    ];
+
+    if (rows.length > 12) {
+      throw new Error("createOwnedEntity supports at most 12 initial facts");
+    }
+
+    for (const row of rows) {
+      asserted.push(
+        await ctx.runMutation(
+          components.metacrdt.log.appendAssert,
+          withoutUndefined({
+            ...actor,
+            e: args.e,
+            a: row.a,
+            v: row.value,
+            reason: `create component-owned ${args.type}`,
+            source: "metacrdtComponent.createOwnedEntity",
+            cardinality: row.cardinality ?? "one",
+          }),
+        ),
+      );
+    }
+
+    return { e: args.e, asserted };
   },
 });
 

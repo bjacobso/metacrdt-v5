@@ -146,6 +146,36 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     });
   });
 
+  test("creates a component-owned entity through app wrapper", async () => {
+    const t = convexTest(schema, modules);
+    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+
+    const created = await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+      e: "component-created:worker",
+      type: "Worker",
+      name: "Ava Reed",
+      attributes: [
+        { a: "worker.status", value: "active" },
+        { a: "worker.role", value: "driver" },
+      ],
+    });
+    expect(created.e).toBe("component-created:worker");
+    expect(created.asserted).toHaveLength(4);
+
+    const entity = await t.query(api.metacrdtComponent.getOwnedCurrentEntity, {
+      e: "component-created:worker",
+    });
+    expect(entity).toMatchObject({
+      e: "component-created:worker",
+      attributes: [
+        expect.objectContaining({ a: "name", values: ["Ava Reed"] }),
+        expect.objectContaining({ a: "type", values: ["Worker"] }),
+        expect.objectContaining({ a: "worker.role", values: ["driver"] }),
+        expect.objectContaining({ a: "worker.status", values: ["active"] }),
+      ],
+    });
+  });
+
   test("component-owned missing current entity returns null", async () => {
     const t = convexTest(schema, modules);
     t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);

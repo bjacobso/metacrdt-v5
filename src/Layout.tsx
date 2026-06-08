@@ -1,6 +1,6 @@
-import { ReactNode, useEffect, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
-import { useQuery } from "convex/react";
+import { FormEvent, ReactNode, useEffect, useState } from "react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import {
   LayoutGrid,
@@ -14,8 +14,11 @@ import {
   Search,
   CircleDot,
   Server,
+  Plus,
+  X,
 } from "lucide-react";
 import CommandMenu from "./CommandMenu";
+import { Button, Input } from "./ui";
 
 type Item = {
   to: string;
@@ -85,16 +88,67 @@ const TITLES: Record<string, string> = {
 
 const ICON = "h-[18px] w-[18px]";
 
+function slug(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
 export default function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const [commandOpen, setCommandOpen] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
+  const [newName, setNewName] = useState("Ava Reed");
+  const [newType, setNewType] = useState("Worker");
+  const [newStatus, setNewStatus] = useState("active");
+  const [newRole, setNewRole] = useState("driver");
+  const [creating, setCreating] = useState(false);
+  const createOwnedEntity = useMutation(api.metacrdtComponent.createOwnedEntity);
   const compliance = useQuery(api.compliance.workerCompliance, {
     worker: "worker:maria",
   });
   const defs = useQuery(api.flows.listFlowDefs, {});
 
   const title =
-    TITLES[pathname] ?? (pathname.startsWith("/e/") ? "Entity" : "Triple Store");
+    TITLES[pathname] ??
+    (pathname.startsWith("/component/e/")
+      ? "Component entity"
+      : pathname.startsWith("/e/")
+        ? "Entity"
+        : "Triple Store");
+
+  async function createEntity(ev: FormEvent) {
+    ev.preventDefault();
+    const type = newType.trim() || "Entity";
+    const name = newName.trim();
+    const suffix = Date.now().toString(36);
+    const e = `${type.toLowerCase()}:${slug(name || type) || "entity"}-${suffix}`;
+    const attributes = [
+      ...(newStatus.trim()
+        ? [{ a: `${type.toLowerCase()}.status`, value: newStatus.trim() }]
+        : []),
+      ...(newRole.trim()
+        ? [{ a: `${type.toLowerCase()}.role`, value: newRole.trim() }]
+        : []),
+    ];
+    setCreating(true);
+    try {
+      await createOwnedEntity({
+        e,
+        type,
+        name: name || undefined,
+        attributes,
+      });
+      setNewOpen(false);
+      navigate(`/component/e/${encodeURIComponent(e)}`);
+    } finally {
+      setCreating(false);
+    }
+  }
 
   const workspace: Item[] = [
     { to: "/", label: "Overview", icon: <LayoutGrid className={ICON} /> },
@@ -182,6 +236,10 @@ export default function Layout({ children }: { children: ReactNode }) {
             </kbd>
           </button>
           <div className="flex items-center gap-3">
+            <Button variant="primary" onClick={() => setNewOpen(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              New entity
+            </Button>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-[12px] font-medium text-ink">
               <CircleDot className="h-3.5 w-3.5 text-green" />
               Live
@@ -195,6 +253,78 @@ export default function Layout({ children }: { children: ReactNode }) {
         </main>
       </div>
       <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} />
+      {newOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-brand/40 px-4">
+          <form
+            onSubmit={createEntity}
+            className="w-full max-w-md rounded-ds border border-line bg-surface shadow-pop"
+          >
+            <div className="flex items-center justify-between border-b border-line-soft px-5 py-3.5">
+              <div>
+                <h2 className="text-[15px] font-semibold text-ink">
+                  New component entity
+                </h2>
+                <p className="text-[12px] text-muted">@metacrdt/convex state</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNewOpen(false)}
+                className="rounded-md p-1 text-muted hover:bg-line-soft hover:text-ink"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-3 p-5">
+              <label className="block text-[12px] font-medium text-ink-2">
+                Type
+                <Input
+                  value={newType}
+                  onChange={(e) => setNewType(e.target.value)}
+                  className="mt-1 w-full"
+                />
+              </label>
+              <label className="block text-[12px] font-medium text-ink-2">
+                Name
+                <Input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="mt-1 w-full"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-[12px] font-medium text-ink-2">
+                  Status
+                  <Input
+                    value={newStatus}
+                    onChange={(e) => setNewStatus(e.target.value)}
+                    className="mt-1 w-full"
+                  />
+                </label>
+                <label className="block text-[12px] font-medium text-ink-2">
+                  Role
+                  <Input
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value)}
+                    className="mt-1 w-full"
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-line-soft px-5 py-3.5">
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => setNewOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button variant="primary" type="submit" disabled={creating}>
+                {creating ? "Creating…" : "Create"}
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import Layout from "./Layout";
 import Overview from "./pages/Overview";
 import Entities from "./pages/Entities";
 import EntityDetail from "./pages/EntityDetail";
+import ComponentEntity from "./pages/ComponentEntity";
 import Compliance from "./pages/Compliance";
 import Flows from "./pages/Flows";
 import TransactionLog from "./pages/TransactionLog";
@@ -60,6 +61,7 @@ export default function App() {
         <Route path="/" element={<Overview />} />
         <Route path="/entities" element={<Entities />} />
         <Route path="/e/:id" element={<EntityDetail />} />
+        <Route path="/component/e/:id" element={<ComponentEntity />} />
         <Route path="/compliance" element={<Compliance />} />
         <Route path="/flows" element={<Flows />} />
         <Route path="/transactions" element={<TransactionLog />} />

@@ -93,6 +93,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `log.getCurrentEntity` and `api.metacrdtComponent.getOwnedCurrentEntity` group
   component-owned current facts by attribute for a single entity. This is the
   first object-level read API over component-owned state.
+- [x] **Component-backed New Entity path** — the app header now creates bounded
+  component-owned entities through `api.metacrdtComponent.createOwnedEntity` and
+  routes to `/component/e/:id`, which reads current state + event history from
+  `@metacrdt/convex` component-owned tables.
 - [x] **`@metacrdt/runtime` harness groundwork** — `packages/runtime` owns
   target-neutral service contracts (`EventStore`, `RuntimeClock`, `Scheduler`,
   `Transport`), capability metadata, operation helpers over `@metacrdt/core`, and
@@ -281,6 +285,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   exposes the grouped entity read through the reference app boundary.
 - [x] Tests prove grouped multi-attribute reads, retracted-current exclusion,
   missing-entity `null`, and mounted app wrapper behavior.
+
+### 2026-06-07 — component-backed New Entity path
+- [x] **Reference app now has an end-to-end component-owned write/read path.**
+  The header `New entity` button opens a modal, calls
+  `api.metacrdtComponent.createOwnedEntity`, then navigates to
+  `/component/e/:id`.
+- [x] **Component-created entities have their own detail route.**
+  `src/pages/ComponentEntity.tsx` reads grouped component current state and the
+  component protocol event log, clearly labeled as component-owned.
+- [x] Backend wrapper test proves `type`, `name`, and initial attributes are
+  written into component-owned state and read back through
+  `getOwnedCurrentEntity`.
 
 ### 2026-06-07 — @metacrdt/runtime p2p DataChannel transport
 - [x] **Added structural p2p transport.** `packages/runtime/src/p2p.ts` defines

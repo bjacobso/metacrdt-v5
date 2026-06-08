@@ -1,9 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 27 (`@metacrdt/convex` component-owned entity read
-surface) has shipped. The next active goal should be chosen from the remaining
-TODO candidates: full app write authorization, live Cloudflare deployment/auth,
-or migrating more of the reference runtime onto component-owned state.
+**Current goal:** Goal 28 (component-backed New Entity path) has shipped. The
+next active goal should be chosen from the remaining TODO candidates: full app
+write authorization, live Cloudflare deployment/auth, or migrating more of the
+reference runtime onto component-owned state.
 
 This plan is the operational goal file. Read it with:
 
@@ -78,7 +78,7 @@ arguments.
   with causal refs, not as a new core event kind.
 - Cardinality-one current projection reconciles candidates by `@metacrdt/core`
   `≺` order and retracts projection losers.
-- Convex backend tests are green: 93 tests at last verification.
+- Convex backend tests are green: 94 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - Open Ontology is a pinned submodule under
@@ -110,7 +110,8 @@ arguments.
     the component as `components.metacrdt` while keeping table ownership and
     public API naming in the host app
   - reference-app wrappers for app-auth-derived writes into the component-owned
-    protocol log, current projection/entity reads, and rebuild
+    protocol log, current projection/entity reads, rebuild, and bounded
+    component-owned entity creation
   - an explicit Confect sidecar warning/helper documenting the manual-mount
     lesson from Goal 2
   - package-local tests for deterministic event reconstruction, legacy fallback
@@ -191,6 +192,12 @@ arguments.
   - entity detail orders state by the primary type's declared schema, then appends
     extra runtime facts
   - collection forms were already rendered from form definitions
+- A bounded component-backed New Entity path exists:
+  - the header button opens a creation form
+  - the host wrapper writes initial facts into `@metacrdt/convex`
+    component-owned state
+  - `/component/e/:id` reads grouped current state and event history from the
+    component
 - Config history/diff exists:
   - `configHistory.currentManifest` reconstructs the current owned-artifact
     manifest from `config:default`
@@ -2478,6 +2485,86 @@ convex/metacrdtComponent.ts
 
 ---
 
+## Goal 28 — Component-Backed New Entity Path
+
+**Status:** shipped as the first frontend path writing and reading
+component-owned state end-to-end.
+
+**Objective:** stop treating `@metacrdt/convex` component-owned state as only a
+backend demo surface. The app header's New Entity control now creates a bounded
+component-owned entity, then routes to a component-owned detail page that reads
+the component projection and protocol event log.
+
+### Scope
+
+Backend wrapper:
+
+```text
+convex/metacrdtComponent.ts
+  createOwnedEntity({ e, type, name?, attributes? })
+```
+
+Frontend:
+
+```text
+src/Layout.tsx
+  New entity modal
+
+src/pages/ComponentEntity.tsx
+  /component/e/:id
+```
+
+### Acceptance Criteria
+
+- `api.metacrdtComponent.createOwnedEntity`:
+  - derives actor identity server-side;
+  - writes `type` with `cardinality: "one"`;
+  - optionally writes `name` with `cardinality: "one"`;
+  - writes a bounded list of initial attributes into component-owned state;
+  - returns the entity id and append results.
+- The header "New entity" button:
+  - opens a modal form;
+  - calls the wrapper, not component functions directly;
+  - navigates to `/component/e/:id` after creation.
+- `/component/e/:id`:
+  - reads current grouped component-owned state via
+    `api.metacrdtComponent.getOwnedCurrentEntity`;
+  - reads component-owned protocol events via
+    `api.metacrdtComponent.listOwnedEvents`;
+  - labels the route clearly as component-owned so it is not confused with the
+    host-owned Entities page.
+- Tests prove backend wrapper creation produces current grouped component state.
+
+### Non-Goals
+
+- Do not migrate the host-owned Entities list/detail pages yet.
+- Do not make component-created entities participate in host-owned compliance
+  rules or Datalog projections yet.
+- Do not add full auth/write authorization in this slice.
+
+### Verification
+
+- `npx vitest run convex/metacrdtComponent.test.ts` passed (8 tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run test:convex-package` passed (30 tests).
+- `npm test` passed (94 Convex/backend tests).
+- `npm run test:core` passed (46 tests).
+- `npm run build` passed.
+- `npx convex dev --once` deployed the backend to `chatty-hare-94`.
+- `npx @convex-dev/static-hosting upload` deployed the frontend to
+  `https://chatty-hare-94.convex.site`.
+- Live Chrome smoke passed:
+  - custom-name create produced `worker:goal-28-smoke-0707`, routed to
+    `/component/e/...`, rendered component-owned
+    `type`/`name`/`worker.status`/`worker.role`, and showed four append-only
+    component event rows;
+  - default-name create after the timestamp-suffix fix produced a fresh
+    `worker:ava-reed-...` id and rendered the same component-owned state/event
+    log shape.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -2509,6 +2596,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Opt-in component-owned cardinality-one projection semantics.
 - [x] Component-owned projection rebuild from the component protocol log.
 - [x] Component-owned entity current-state read surface.
+- [x] First component-backed frontend write/read path (`New entity` →
+  `/component/e/:id`).
 - [ ] Migrate more reference runtime business logic onto component-owned state.
 
 ### Auth / Privacy
@@ -2528,7 +2617,7 @@ These remain valuable, but they should not interrupt the current goal.
 
 - [x] Search / command menu.
 - [ ] Guided demo tour.
-- [ ] "New entity" flow.
+- [x] "New entity" flow.
 
 ### Docs
 
