@@ -64,7 +64,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   now reuses the Datalog solver with an injected event-log source for base facts,
   the event-log proof surface includes paged Datalog and aggregate variants, and
   `api.datalog.datalogFromEventLogWithDerived` now joins event-log base facts with
-  materialized `derivedFacts`.
+  materialized `derivedFacts`; mixed-source page/aggregate variants are shipped as
+  `datalogPageFromEventLogWithDerived`, `aggregateFromEventLogWithDerived`, and
+  `aggregatePageFromEventLogWithDerived`.
   Remaining: continue toward retiring the hand-maintained `facts` projection for
   rule/materialization output and derived provenance.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
@@ -324,6 +326,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 55 shipped:** `api.datalog.datalogPageFromEventLogWithDerived`,
+  `aggregateFromEventLogWithDerived`, and
+  `aggregatePageFromEventLogWithDerived` give the event-log-base +
+  materialized-derived proof source the same page and aggregate shapes as the
+  production Datalog API.
+- [x] **Mixed-source page/aggregate parity.** Tests prove deterministic paging of
+  derived joins, aggregate parity with production `aggregate`, aggregate-page
+  splitting over deterministic group rows, and continued base-only exclusion of
+  `derivedFacts`.
 - [x] **Goal 54 shipped:** `api.datalog.datalogFromEventLogWithDerived` composes
   the event-log base fact source with projected `derivedFacts`, so proof Datalog
   can join source-log base facts with materialized rule output.

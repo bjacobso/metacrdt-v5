@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 54 (event-log base + derived Datalog proof query)
+**Current goal:** Goal 55 (event-log base + derived Datalog page/aggregate parity)
 has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth, or
@@ -94,11 +94,14 @@ arguments.
 - `api.datalog.datalogPageFromEventLog`, `aggregateFromEventLog`, and
   `aggregatePageFromEventLog` extend the same event-log triple source to paged
   projected rows and aggregate group rows for base facts.
-- `api.datalog.datalogFromEventLogWithDerived` joins base facts folded from
+- `api.datalog.datalogFromEventLogWithDerived`,
+  `datalogPageFromEventLogWithDerived`, `aggregateFromEventLogWithDerived`, and
+  `aggregatePageFromEventLogWithDerived` join base facts folded from
   protocol-shaped `factEvents` with the existing materialized `derivedFacts`
   projection, proving production-style base+derived Datalog can drop the base
-  `facts` projection first.
-- Convex backend tests are green: 139 tests at last verification.
+  `facts` projection first across row, page, aggregate, and aggregate-page read
+  shapes.
+- Convex backend tests are green: 142 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -384,8 +387,9 @@ arguments.
 - `datalogFromEventLog` is bounded and base-fact-only in this slice; production
   Datalog/rules still include materialized `derivedFacts` through the projection
   path.
-- `datalogFromEventLogWithDerived` still depends on materialized `derivedFacts`;
-  rule/materialization output has not become a direct event-log fold.
+- The `*FromEventLogWithDerived` Datalog proof APIs still depend on materialized
+  `derivedFacts`; rule/materialization output has not become a direct event-log
+  fold.
 - `@metacrdt/convex` now has adapter helpers, stateless protocol helpers, a
   component-owned protocol transaction/event log, and component-owned
   `facts`/`currentFacts` projections with opt-in cardinality-one reconciliation
@@ -5232,6 +5236,82 @@ TODO.md
   - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
   - `npx tsc --noEmit -p tsconfig.json` passed.
 - `npm run build` passed.
+
+---
+
+## Goal 55 — Event-Log Base + Derived Datalog Page/Aggregate Parity
+
+**Status:** shipped as parity proof APIs over the mixed event-log-base +
+materialized-derived source.
+
+**Objective:** extend Goal 54 from one-shot projected rows to the same bounded
+page and aggregate shapes already available for production Datalog and base-only
+event-log Datalog. This keeps the proof surface aligned with the real query API
+while base facts stop depending on the `facts` projection.
+
+### Scope
+
+Backend:
+
+- `convex/datalog.ts`
+  - `datalogPageFromEventLogWithDerived`
+  - `aggregateFromEventLogWithDerived`
+  - `aggregatePageFromEventLogWithDerived`
+
+Tests:
+
+- `convex/datalog.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+
+### Semantics
+
+- All three APIs reuse the existing Datalog solver and `paginateRows` /
+  `aggregateBindings` helpers.
+- Base facts come from protocol-shaped `factEvents` through the shared
+  event-log triple source.
+- Derived facts come from existing `derivedFacts`, filtered by stale state,
+  valid-time, constant value, and read authorization.
+- Cursor behavior and aggregate group ordering are the same deterministic engine
+  cursor behavior used by the production page/aggregate APIs.
+- The APIs remain proof/read-model surfaces; they do not replace production
+  `datalog`, and they do not make rule materialization itself projection-free.
+
+### Non-Goals
+
+- Do not move rule materialization to direct event-log folds.
+- Do not change production `datalog` / `datalogPage` / `aggregate` behavior.
+- Do not rewrite derived provenance; `sourceFactIds` remain projection fact ids.
+- Do not add recursive/event-log rule evaluation in this slice.
+
+### Acceptance Criteria
+
+- `datalogPageFromEventLogWithDerived` pages deterministic projected rows for a
+  query joining event-log base facts with materialized derived facts.
+- `aggregateFromEventLogWithDerived` matches production `aggregate` for a query
+  joining event-log base facts with materialized derived facts.
+- `aggregatePageFromEventLogWithDerived` pages deterministic aggregate groups
+  for the mixed source.
+- Base-only event-log Datalog still excludes `derivedFacts`.
+- Convex typecheck and focused Datalog tests pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/datalog.test.ts` passed (32 tests).
+- Broader gate passed:
+  - `npm test` passed (17 backend test files, 142 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
 
 ---
 

@@ -380,6 +380,32 @@ export const datalogPageFromEventLog = query({
 });
 
 /**
+ * Paginated variant of `datalogFromEventLogWithDerived` over deterministic
+ * projected rows. Base facts come from the protocol event log; derived facts
+ * still come from materialized `derivedFacts`.
+ */
+export const datalogPageFromEventLogWithDerived = query({
+  args: {
+    where: whereValidator,
+    select: v.array(v.string()),
+    paginationOpts: paginationOptsValidator,
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const bindings = await runWhere(ctx, args.where, coord, {}, {
+      enforceReadAuth: true,
+      source: eventLogBaseWithDerivedTripleSource,
+    });
+    return paginateRows(project(bindings, args.select), args.paginationOpts);
+  },
+});
+
+/**
  * Aggregation over a Datalog body: solve the `where`, group by `groupBy`
  * variables, and compute aggregates per group.
  *
@@ -473,6 +499,50 @@ export const aggregateFromEventLog = query({
   },
 });
 
+/**
+ * Aggregation variant of `datalogFromEventLogWithDerived`. Base facts come from
+ * protocol events; derived facts still come from the `derivedFacts` projection.
+ */
+export const aggregateFromEventLogWithDerived = query({
+  args: {
+    where: whereValidator,
+    groupBy: v.optional(v.array(v.string())),
+    aggregates: v.array(
+      v.object({
+        op: v.union(
+          v.literal("count"),
+          v.literal("countDistinct"),
+          v.literal("sum"),
+          v.literal("avg"),
+          v.literal("min"),
+          v.literal("max"),
+        ),
+        var: v.optional(v.string()),
+        as: v.string(),
+      }),
+    ),
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const bindings = await runWhere(ctx, args.where, coord, {}, {
+      enforceReadAuth: true,
+      source: eventLogBaseWithDerivedTripleSource,
+    });
+    const rows = aggregateBindings(bindings, args.groupBy ?? [], args.aggregates);
+    if (rows.length > LIMITS.maxResultRows) {
+      throw new Error(
+        `aggregate produced ${rows.length} groups, exceeding maxResultRows=${LIMITS.maxResultRows}`,
+      );
+    }
+    return rows;
+  },
+});
+
 /** Paginated variant of `aggregate` over the deterministic group rows. */
 export const aggregatePage = query({
   args: {
@@ -503,6 +573,45 @@ export const aggregatePage = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
+    });
+    return paginateRows(
+      aggregateBindings(bindings, args.groupBy ?? [], args.aggregates),
+      args.paginationOpts,
+    );
+  },
+});
+
+/** Paginated aggregation variant of `aggregateFromEventLogWithDerived`. */
+export const aggregatePageFromEventLogWithDerived = query({
+  args: {
+    where: whereValidator,
+    groupBy: v.optional(v.array(v.string())),
+    aggregates: v.array(
+      v.object({
+        op: v.union(
+          v.literal("count"),
+          v.literal("countDistinct"),
+          v.literal("sum"),
+          v.literal("avg"),
+          v.literal("min"),
+          v.literal("max"),
+        ),
+        var: v.optional(v.string()),
+        as: v.string(),
+      }),
+    ),
+    paginationOpts: paginationOptsValidator,
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const bindings = await runWhere(ctx, args.where, coord, {}, {
+      enforceReadAuth: true,
+      source: eventLogBaseWithDerivedTripleSource,
     });
     return paginateRows(
       aggregateBindings(bindings, args.groupBy ?? [], args.aggregates),

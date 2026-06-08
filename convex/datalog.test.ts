@@ -392,6 +392,66 @@ describe("result pagination", () => {
         "event-paged:4",
       ]);
   });
+
+  test("datalogPageFromEventLogWithDerived pages mixed base and derived rows", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await t.mutation(api.rules.defineRule, {
+        name: "event_log_derived_page_bucket",
+        where: [
+          ["?e", "type", "EventLogDerivedPagedWorker"],
+          ["?e", "status", "active"],
+        ],
+        emit: { e: "?e", a: "derived.pageBucket", v: "ready" },
+        dependsOnAttributes: ["type", "status"],
+      });
+      for (let i = 0; i < 5; i++) {
+        await assert(t, `event-derived-paged:${i}`, "type", "EventLogDerivedPagedWorker");
+        await assert(t, `event-derived-paged:${i}`, "status", "active");
+      }
+      await flush(t);
+
+      const query = {
+        where: [
+          ["?e", "type", "EventLogDerivedPagedWorker"],
+          ["?e", "derived.pageBucket", "ready"],
+        ],
+        select: ["?e"],
+      };
+      const first = await t.query(api.datalog.datalogPageFromEventLogWithDerived, {
+        ...query,
+        paginationOpts: { numItems: 2, cursor: null },
+      });
+      const second = await t.query(api.datalog.datalogPageFromEventLogWithDerived, {
+        ...query,
+        paginationOpts: { numItems: 2, cursor: first.continueCursor },
+      });
+      const third = await t.query(api.datalog.datalogPageFromEventLogWithDerived, {
+        ...query,
+        paginationOpts: { numItems: 2, cursor: second.continueCursor },
+      });
+
+      expect(first.page).toHaveLength(2);
+      expect(second.page).toHaveLength(2);
+      expect(third.page).toHaveLength(1);
+      expect(third.isDone).toBe(true);
+      expect([...first.page, ...second.page, ...third.page].map((r) => r.e).sort())
+        .toEqual([
+          "event-derived-paged:0",
+          "event-derived-paged:1",
+          "event-derived-paged:2",
+          "event-derived-paged:3",
+          "event-derived-paged:4",
+        ]);
+      expect(await t.query(api.datalog.datalogPageFromEventLog, {
+        ...query,
+        paginationOpts: { numItems: 10, cursor: null },
+      })).toMatchObject({ page: [], isDone: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("aggregation", () => {
@@ -463,6 +523,97 @@ describe("aggregation", () => {
       "b",
       "c",
     ]);
+  });
+
+  test("aggregateFromEventLogWithDerived matches production aggregate", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await t.mutation(api.rules.defineRule, {
+        name: "event_log_derived_aggregate_region",
+        where: [
+          ["?e", "type", "EventLogDerivedAggWorker"],
+          ["?e", "region", "?region"],
+        ],
+        emit: { e: "?e", a: "derived.region", v: "?region" },
+        dependsOnAttributes: ["type", "region"],
+      });
+      for (const [id, region] of [
+        ["1", "north"],
+        ["2", "north"],
+        ["3", "south"],
+      ] as const) {
+        await assert(t, `event-derived-agg:${id}`, "type", "EventLogDerivedAggWorker");
+        await assert(t, `event-derived-agg:${id}`, "region", region);
+      }
+      await flush(t);
+
+      const args = {
+        where: [
+          ["?e", "type", "EventLogDerivedAggWorker"],
+          ["?e", "derived.region", "?region"],
+        ],
+        groupBy: ["?region"],
+        aggregates: [{ op: "count" as const, as: "headcount" }],
+      };
+      const projected = await t.query(api.datalog.aggregate, args);
+      const fromLog = await t.query(api.datalog.aggregateFromEventLogWithDerived, args);
+      expect(fromLog.sort((a, b) => String(a.region).localeCompare(String(b.region))))
+        .toEqual(projected.sort((a, b) => String(a.region).localeCompare(String(b.region))));
+      expect(await t.query(api.datalog.aggregateFromEventLog, args)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("aggregatePageFromEventLogWithDerived pages mixed aggregate groups", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await t.mutation(api.rules.defineRule, {
+        name: "event_log_derived_aggregate_page_group",
+        where: [
+          ["?e", "type", "EventLogDerivedAggPageWorker"],
+          ["?e", "region", "?region"],
+        ],
+        emit: { e: "?e", a: "derived.pageRegion", v: "?region" },
+        dependsOnAttributes: ["type", "region"],
+      });
+      for (const region of ["a", "b", "c"]) {
+        await assert(t, `event-derived-agg-page:${region}`, "type", "EventLogDerivedAggPageWorker");
+        await assert(t, `event-derived-agg-page:${region}`, "region", region);
+      }
+      await flush(t);
+
+      const query = {
+        where: [
+          ["?e", "type", "EventLogDerivedAggPageWorker"],
+          ["?e", "derived.pageRegion", "?region"],
+        ],
+        groupBy: ["?region"],
+        aggregates: [{ op: "count" as const, as: "headcount" }],
+      };
+      const first = await t.query(api.datalog.aggregatePageFromEventLogWithDerived, {
+        ...query,
+        paginationOpts: { numItems: 2, cursor: null },
+      });
+      const second = await t.query(api.datalog.aggregatePageFromEventLogWithDerived, {
+        ...query,
+        paginationOpts: { numItems: 2, cursor: first.continueCursor },
+      });
+
+      expect(first.page).toHaveLength(2);
+      expect(first.isDone).toBe(false);
+      expect(second.page).toHaveLength(1);
+      expect(second.isDone).toBe(true);
+      expect([...first.page, ...second.page].map((r) => r.region).sort()).toEqual([
+        "a",
+        "b",
+        "c",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
