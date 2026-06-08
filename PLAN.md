@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 48 (counted closure deletion reconciliation)
+**Current goal:** Goal 49 (guided demo tour)
 has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth, or
@@ -82,6 +82,12 @@ arguments.
 - Convex backend tests are green: 128 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
+- The shell includes a route-aware guided demo tour:
+  - it opens once by default until skipped/finished
+  - the header `Tour` button can restart it
+  - steps navigate through Overview, Entities, Compliance, Flows, Data model,
+    and Transaction log
+  - `/collect` remains an isolated magic-link page with no admin chrome or tour
 - Open Ontology is a pinned submodule under
   [`.context/open-ontology`](./.context/open-ontology).
 - `@metacrdt/convex` exists in [`packages/convex`](./packages/convex) as the
@@ -4805,6 +4811,87 @@ convex/datalog.test.ts
 
 ---
 
+## Goal 49 — Guided Demo Tour
+
+**Status:** shipped in the React shell.
+
+**Objective:** close the UX backlog item for a guided demo tour by adding a
+route-aware walkthrough of the deployed MetaCRDT research preview. The tour
+should explain the substrate through the actual app surfaces without changing
+backend behavior.
+
+### Scope
+
+Frontend:
+
+```text
+src/GuidedTour.tsx
+src/Layout.tsx
+```
+
+Docs:
+
+```text
+README.md
+PLAN.md
+TODO.md
+```
+
+### Semantics
+
+- The tour is a layout-level overlay, not a route page.
+- It has six steps:
+  1. Overview — whole account / substrate summary
+  2. Entities — folded object state
+  3. Compliance — obligations as derived facts
+  4. Flows — durable DAGs that park and resume
+  5. Data model — config, system processes, Datalog, actions, provenance
+  6. Transaction log — audit and time as coordinates
+- Each step owns a route. Advancing the tour navigates to that route.
+- `Back`, `Next`, step dots, `Skip`, `Finish`, and close controls are available.
+- Skip/finish writes `metacrdt.tour.dismissed` in `localStorage` so the tour
+  does not auto-open again.
+- The header `Tour` button reopens the tour manually.
+- The isolated `/collect` page remains outside the shell and does not render the
+  tour.
+
+### Non-Goals
+
+- Do not add a browser-tour dependency.
+- Do not add DOM-element spotlight positioning in this slice; the route-level
+  walkthrough is intentionally stable across responsive layouts.
+- Do not change backend writes, auth, or demo data.
+
+### Acceptance Criteria
+
+- The app shell renders a `Tour` button.
+- First shell visit opens the tour unless it has been skipped/finished.
+- The tour can navigate forward/backward and route to the relevant pages.
+- Skip/finish dismisses future auto-open via localStorage.
+- Production build succeeds.
+
+### Verification
+
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- Full gate passed:
+  - `npm run test:core` passed (46 tests).
+  - `npm run test:convex-package` passed.
+  - `npm test` passed.
+  - `npm run test:runtime` passed.
+  - `npm run test:local` passed.
+  - `npm run test:cloudflare` passed.
+  - `npm run test:forma` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+- Deployed with `npx @convex-dev/static-hosting upload`.
+- Live smoke passed:
+  - `curl -I https://chatty-hare-94.convex.site` returned `HTTP/2 200`.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -4872,7 +4959,7 @@ These remain valuable, but they should not interrupt the current goal.
 ### UX
 
 - [x] Search / command menu.
-- [ ] Guided demo tour.
+- [x] Guided demo tour.
 - [x] "New entity" flow.
 
 ### Docs

@@ -295,6 +295,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 **Polish / loose threads**
 - [x] ⌘K search / command menu — header search opens a real command palette with
   page, entity, type, and flow commands.
+- [x] Guided demo tour — route-aware shell walkthrough across Overview,
+  Entities, Compliance, Flows, Data model, and Transaction log with one-time
+  localStorage dismissal and a restartable header button.
 - [ ] Wire the remaining decorative bits from the mockup: "New entity",
   "Describe an account".
 - [ ] Action/config diff-history polish.
@@ -311,6 +314,16 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — guided demo tour
+- [x] **Goal 49 shipped:** the app shell now has a route-aware guided tour that
+  walks the research preview through Overview, Entities, Compliance, Flows, Data
+  model, and Transaction log.
+- [x] **Dismissal and restart.** The tour auto-opens once until skipped or
+  finished, persists dismissal in `localStorage`, and can be restarted from the
+  header `Tour` button.
+- [x] **No backend coupling.** The tour is frontend-only and leaves `/collect`
+  isolated outside the admin shell.
 
 ### 2026-06-08 — counted closure deletion reconciliation
 - [x] **Goal 48 shipped:** closure-derived rows can carry `supportCount`, the

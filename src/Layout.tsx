@@ -16,8 +16,10 @@ import {
   Server,
   Plus,
   X,
+  HelpCircle,
 } from "lucide-react";
 import CommandMenu from "./CommandMenu";
+import GuidedTour, { tourDismissed } from "./GuidedTour";
 import { Button, Input } from "./ui";
 
 type Item = {
@@ -101,6 +103,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [commandOpen, setCommandOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(() => !tourDismissed());
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState("Ava Reed");
   const [newType, setNewType] = useState("Worker");
@@ -236,6 +239,10 @@ export default function Layout({ children }: { children: ReactNode }) {
             </kbd>
           </button>
           <div className="flex items-center gap-3">
+            <Button variant="ghost" onClick={() => setTourOpen(true)}>
+              <HelpCircle className="h-3.5 w-3.5" />
+              Tour
+            </Button>
             <Button variant="primary" onClick={() => setNewOpen(true)}>
               <Plus className="h-3.5 w-3.5" />
               New entity
@@ -253,6 +260,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         </main>
       </div>
       <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} />
+      <GuidedTour open={tourOpen} onClose={() => setTourOpen(false)} />
       {newOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-brand/40 px-4">
           <form
