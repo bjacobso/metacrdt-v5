@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.turbo/
 .confect-convex-target/
 
 .env.local

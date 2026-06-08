@@ -37,6 +37,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
 **Packaging / monorepo (map, not migration — see [docs/architecture.md](./docs/architecture.md))**
+- [x] **Package build/release tooling** — Turbo now orchestrates package
+  `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
+  for every `@metacrdt/*` package; exports point at `dist`; package payloads are
+  `dist`-only (Cloudflare keeps `wrangler.example.toml`); Vite remains the app
+  builder.
 - [x] **`@metacrdt/core` extracted** — `packages/core`, pure & dependency-free
   (sha256, base32, canonical encoding, HLC, Event + content addressing, the `≺`
   order, G-Set log/merge, the bitemporal fold; SPEC §4–5). 46 tests: CRDT laws,
@@ -456,6 +461,25 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — package build tooling
+- [x] **Goal 99 shipped:** Turbo + tsdown/Rolldown package builds. Added
+  `turbo.json`, root `build:packages` / `typecheck:packages` / `test:packages`
+  scripts, and per-package `build` scripts. Root `npm run build` now builds
+  packages before the Vite app; root `npm test` builds packages before running
+  the Convex backend suite.
+- [x] **Package exports now target built artifacts.** `@metacrdt/core`, `schema`,
+  `query`, `runtime`, `local`, `cloudflare`, `convex`, and `forma` publish
+  `dist` JS + declarations instead of raw `src/*.ts`. Forma uses Node-platform
+  `.mjs` / `.d.mts` output for its Node-facing language bootstrap; the other
+  packages use neutral ESM.
+- [x] **Package payloads tightened.** `files` is `dist`-only for packages, with
+  `wrangler.example.toml` retained for `@metacrdt/cloudflare`; npm pack dry-run
+  verified every package has `src=0` and `tests=0`.
+- [x] Verification: `npm test` (17 Convex files / 156 tests), `npm run build`,
+  `npx convex dev --once`, public import smoke across all package entry points,
+  `npm pack --dry-run --workspaces --json`, and a live `datalog:datalog` smoke
+  against `chatty-hare-94` all passed.
 
 ### 2026-06-08 — host event-log entity fold
 - [x] **Goal 98 shipped:** `@metacrdt/query` guarded positive-pattern extension.

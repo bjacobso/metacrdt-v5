@@ -378,6 +378,10 @@ Every folded package must satisfy:
 - [ ] New package is named `@metacrdt/*`.
 - [ ] README states ownership, non-ownership, dependencies, and relation to SPEC.
 - [ ] No source import from `.context/open-ontology`.
+- [ ] Package builds with tsdown/Rolldown into `dist` ESM + declarations.
+- [ ] Package `main`, `types`, and `exports` point at `dist`, not raw `src`.
+- [ ] `npm pack --dry-run` shows no `src` or test files in the published
+  payload unless a package explicitly documents why source must ship.
 - [ ] Tests ported or rewritten under the new package.
 - [ ] Dependency direction matches [architecture.md](./architecture.md).
 - [ ] Any old Open Ontology names are either removed or explicitly retained as

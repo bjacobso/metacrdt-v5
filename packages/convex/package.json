@@ -4,19 +4,35 @@
   "description": "MetaCRDT Convex target helpers: protocol metadata validators, Convex-row adapters, component-owned protocol log/current projection/cardinality functions, and optional Confect integration utilities.",
   "type": "module",
   "license": "MIT",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./convex.config.js": "./src/component/convex.config.ts",
-    "./convex.config": "./src/component/convex.config.ts",
-    "./_generated/component.js": "./src/component/_generated/component.ts",
-    "./_generated/component": "./src/component/_generated/component.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./convex.config.js": {
+      "types": "./dist/component/convex.config.d.ts",
+      "import": "./dist/component/convex.config.js"
+    },
+    "./convex.config": {
+      "types": "./dist/component/convex.config.d.ts",
+      "import": "./dist/component/convex.config.js"
+    },
+    "./_generated/component.js": {
+      "types": "./dist/component/_generated/component.d.ts",
+      "import": "./dist/component/_generated/component.js"
+    },
+    "./_generated/component": {
+      "types": "./dist/component/_generated/component.d.ts",
+      "import": "./dist/component/_generated/component.js"
+    }
   },
   "files": [
-    "src"
+    "dist"
   ],
   "scripts": {
+    "build": "tsdown src/index.ts src/component/convex.config.ts src/component/schema.ts src/component/protocol.ts src/component/log.ts src/component/_generated/component.ts --root src --format esm --dts --clean --platform neutral --target es2020 --unbundle",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"

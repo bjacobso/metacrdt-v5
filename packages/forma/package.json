@@ -4,39 +4,111 @@
   "description": "MetaCRDT Forma: the runtime-neutral Lisp/sexpr authoring language extracted from Open Ontology.",
   "type": "module",
   "license": "MIT",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
-    ".": "./src/index.ts",
-    "./reader": "./src/Reader.ts",
-    "./source": "./src/Source.ts",
-    "./session": "./src/Session.ts",
-    "./engine": "./src/Engine.ts",
-    "./artifact": "./src/Artifact.ts",
-    "./mechanics": "./src/Mechanics.ts",
-    "./sexpr": "./src/SExpr.ts",
-    "./expander": "./src/Expander.ts",
-    "./evaluator": "./src/Evaluator.ts",
-    "./vm": "./src/VM.ts",
-    "./builtins": "./src/Builtins.ts",
-    "./type": "./src/Type.ts",
-    "./elaboration": "./src/Elaboration.ts",
-    "./form": "./src/Form.ts",
-    "./core-expr": "./src/CoreExpr.ts",
-    "./env": "./src/Env.ts",
-    "./diagnostic": "./src/Diagnostic.ts",
-    "./formatter": "./src/Formatter.ts",
-    "./editor": "./src/Editor.ts",
-    "./lsp": "./src/LSP.ts",
-    "./codegen": "./src/CodeGen.ts",
-    "./descriptor-codegen": "./src/DescriptorCodegen.ts",
-    "./descriptor": "./src/Descriptor.ts"
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./reader": {
+      "types": "./dist/Reader.d.mts",
+      "import": "./dist/Reader.mjs"
+    },
+    "./source": {
+      "types": "./dist/Source.d.mts",
+      "import": "./dist/Source.mjs"
+    },
+    "./session": {
+      "types": "./dist/Session.d.mts",
+      "import": "./dist/Session.mjs"
+    },
+    "./engine": {
+      "types": "./dist/Engine.d.mts",
+      "import": "./dist/Engine.mjs"
+    },
+    "./artifact": {
+      "types": "./dist/Artifact.d.mts",
+      "import": "./dist/Artifact.mjs"
+    },
+    "./mechanics": {
+      "types": "./dist/Mechanics.d.mts",
+      "import": "./dist/Mechanics.mjs"
+    },
+    "./sexpr": {
+      "types": "./dist/SExpr.d.mts",
+      "import": "./dist/SExpr.mjs"
+    },
+    "./expander": {
+      "types": "./dist/Expander.d.mts",
+      "import": "./dist/Expander.mjs"
+    },
+    "./evaluator": {
+      "types": "./dist/Evaluator.d.mts",
+      "import": "./dist/Evaluator.mjs"
+    },
+    "./vm": {
+      "types": "./dist/VM.d.mts",
+      "import": "./dist/VM.mjs"
+    },
+    "./builtins": {
+      "types": "./dist/Builtins.d.mts",
+      "import": "./dist/Builtins.mjs"
+    },
+    "./type": {
+      "types": "./dist/Type.d.mts",
+      "import": "./dist/Type.mjs"
+    },
+    "./elaboration": {
+      "types": "./dist/Elaboration.d.mts",
+      "import": "./dist/Elaboration.mjs"
+    },
+    "./form": {
+      "types": "./dist/Form.d.mts",
+      "import": "./dist/Form.mjs"
+    },
+    "./core-expr": {
+      "types": "./dist/CoreExpr.d.mts",
+      "import": "./dist/CoreExpr.mjs"
+    },
+    "./env": {
+      "types": "./dist/Env.d.mts",
+      "import": "./dist/Env.mjs"
+    },
+    "./diagnostic": {
+      "types": "./dist/Diagnostic.d.mts",
+      "import": "./dist/Diagnostic.mjs"
+    },
+    "./formatter": {
+      "types": "./dist/Formatter.d.mts",
+      "import": "./dist/Formatter.mjs"
+    },
+    "./editor": {
+      "types": "./dist/Editor.d.mts",
+      "import": "./dist/Editor.mjs"
+    },
+    "./lsp": {
+      "types": "./dist/LSP.d.mts",
+      "import": "./dist/LSP.mjs"
+    },
+    "./codegen": {
+      "types": "./dist/CodeGen.d.mts",
+      "import": "./dist/CodeGen.mjs"
+    },
+    "./descriptor-codegen": {
+      "types": "./dist/DescriptorCodegen.d.mts",
+      "import": "./dist/DescriptorCodegen.mjs"
+    },
+    "./descriptor": {
+      "types": "./dist/Descriptor.d.mts",
+      "import": "./dist/Descriptor.mjs"
+    }
   },
   "files": [
-    "src",
-    "README.md"
+    "dist"
   ],
   "scripts": {
+    "build": "tsdown src/*.ts --root src --format esm --dts --clean --platform node --target esnext --unbundle",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"

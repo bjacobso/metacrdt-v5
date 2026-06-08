@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 98 (`@metacrdt/query` Guarded Pattern Extension) has
+**Current goal:** Goal 99 (Package Build Tooling) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -126,7 +126,12 @@ recursion. Goal 98 extracts guarded positive-pattern extension into
 `@metacrdt/query`: `extendPatternCandidatesWithinLimit` extends one solved state
 across already-fetched candidate triples and applies the accumulated
 intermediate-row guard in package code, while Convex still owns candidate
-fetching, fetch order, async IO, read authorization, and scheduler recursion. The next active goal
+fetching, fetch order, async IO, read authorization, and scheduler recursion.
+Goal 99 adds Turbo-orchestrated package builds and tsdown/Rolldown package
+emit: all `@metacrdt/*` package exports now resolve to generated `dist` JS and
+declarations, while the React application remains a Vite app build. Package
+payloads are `dist`-only (plus package metadata and the Cloudflare Wrangler
+example), and dry-run npm packs verify no `src` or test files ship. The next active goal
 should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
@@ -453,6 +458,17 @@ arguments.
     bus, hello/delta catch-up for late replicas, restart durability,
     broadcast-disabled local persistence, and async IndexedDB-compatible
     persistence, plus SQLite-backed persistence and convergence
+- Package build/release tooling exists:
+  - Turbo orchestrates workspace package `build`, `typecheck`, and `test` tasks
+    with package dependency ordering.
+  - tsdown (powered by Rolldown) emits ESM JavaScript and declaration files for
+    every `@metacrdt/*` package.
+  - package exports point at `dist` instead of raw `src/*.ts`.
+  - package payloads are `dist`-only; npm pack dry-runs verify no source or test
+    files are packed, with `wrangler.example.toml` retained for
+    `@metacrdt/cloudflare`.
+  - Vite remains the frontend application build (`npm run build:app`), and root
+    `npm run build` runs packages before the app.
 - `applyConfig` now behaves as a true section-scoped reconciler:
   - configured artifact ownership is tracked on `config:default`
   - explicitly supplied config sections compute desired sets
@@ -8700,6 +8716,68 @@ async IO, scheduler recursion, and branch execution in Convex.
   warnings only).
 - A live `datalog:datalog` query returned rows through the deployed solver path
   that now applies guarded positive-pattern extension through `@metacrdt/query`.
+
+---
+
+## Goal 99 — Package Build Tooling
+
+**Status:** shipped.
+
+**Objective:** make the canonical `@metacrdt/*` monorepo build like packages,
+not only like an application workspace: packages emit JavaScript and declaration
+files from explicit build steps, package exports point at those built artifacts,
+and the Vite application consumes the same package graph the rest of the repo
+publishes.
+
+### What Shipped
+
+- Added Turbo as the workspace task orchestrator:
+  - `npm run build:packages`
+  - `npm run typecheck:packages`
+  - `npm run test:packages`
+- Kept Vite where it belongs: the React app build remains `npm run build:app`,
+  and root `npm run build` runs package builds before Vite.
+- Added tsdown package builds (powered by Rolldown) for every package:
+  - `@metacrdt/core`
+  - `@metacrdt/schema`
+  - `@metacrdt/query`
+  - `@metacrdt/runtime`
+  - `@metacrdt/local`
+  - `@metacrdt/cloudflare`
+  - `@metacrdt/convex`
+  - `@metacrdt/forma`
+- Moved package `main`, `types`, and `exports` from raw `src/*.ts` to generated
+  `dist` artifacts.
+- Kept `@metacrdt/forma` on the Node platform because the language package
+  contains Node-facing bootstrap code; the other packages build as neutral ESM.
+- Tightened package payloads to `dist`-only, plus package metadata and the
+  Cloudflare target's `wrangler.example.toml`; dry-run packs verify no source or
+  test files are shipped.
+- Added package README files for the extracted package boundaries that were
+  missing them.
+- Ignored Turbo's local cache (`.turbo/`).
+
+### Non-Goals
+
+- Do not publish to npm in this goal.
+- Do not introduce a separate bundler for the frontend; Vite remains the app
+  builder.
+- Do not bundle package dependencies into monoliths; package builds stay
+  unbundled ESM so dependency boundaries remain visible.
+
+### Verification
+
+- `npm test` passed (package build first, then 17 Convex test files / 156 tests).
+- `npm run build` passed (Turbo package builds, then Vite app build).
+- `npm run typecheck` passed before the final package-payload tightening.
+- `npx convex dev --once` passed; Convex bundled/typechecked the reference
+  runtime against `dist` package exports.
+- Import smoke passed for all public package entry points and the Forma reader
+  subpath.
+- `npm pack --dry-run --workspaces --json` passed; all package payloads had
+  `src=0` and `tests=0`.
+- A live `datalog:datalog` smoke call against `chatty-hare-94` completed through
+  the deployed backend path.
 
 ---
 

@@ -160,6 +160,17 @@ Current packages:
   anti-entropy, IndexedDB-compatible async persistence, SQLite-compatible local
   persistence, plus browser defaults and lifecycle helpers.
 
+Package build policy:
+
+- Workspace package tasks are orchestrated with **Turbo**.
+- Packages build with **tsdown** (powered by **Rolldown**) into `dist` ESM
+  JavaScript plus declaration files.
+- Package `main`, `types`, and `exports` point at `dist`, not raw `src/*.ts`.
+- Package payloads are `dist`-only (plus package metadata and the Cloudflare
+  Wrangler example); dry-run packs verify no source or test files ship.
+- The React app remains a **Vite** application build. Root `npm run build`
+  builds packages first, then runs Vite.
+
 Planned package graph:
 
 ```text
@@ -549,14 +560,23 @@ npm run dev:web
 Run tests:
 
 ```bash
-npm test        # Convex backend suite
-npm run test:core
+npm test              # build packages, then run the Convex backend suite
+npm run test:packages # all @metacrdt/* package tests through Turbo
+npm run test:all      # package tests, then root backend tests
 ```
 
-Build frontend:
+Build:
 
 ```bash
-npm run build
+npm run build          # package builds, then Vite app build
+npm run build:packages # package builds only
+npm run build:app      # Vite app build only
+```
+
+Typecheck:
+
+```bash
+npm run typecheck
 ```
 
 Deploy notes are tracked in [TODO.md](./TODO.md). In short: `npx convex dev
