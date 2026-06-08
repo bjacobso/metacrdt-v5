@@ -31,7 +31,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   async event/HLC/seq services plus an IndexedDB key/value adapter.
 - [x] SQLite-compatible local persistence — `@metacrdt/local` now has a
   dependency-free structural SQLite key/value adapter and local-first runtime.
-- [ ] Live Cloudflare deployment / auth and p2p transports (see
+- [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
+  DataChannel anti-entropy transport with multi-hop gossip.
+- [ ] Live Cloudflare deployment / auth (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
 **Packaging / monorepo (map, not migration — see [docs/architecture.md](./docs/architecture.md))**
@@ -101,8 +103,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **SQLite-compatible local persistence** — `packages/local` adds a
   native-dependency-free structural SQLite adapter plus SQLite local-first
   runtime helpers over the async local runtime path.
-- [ ] Targets: live Cloudflare deployment/auth, p2p transport, and a
-  state-owning `@metacrdt/convex` component/function surface.
+- [x] **p2p DataChannel transport** — `packages/runtime/src/p2p.ts` adds a
+  structural WebRTC/DataChannel-compatible transport with JSON wire messages,
+  hello/delta catch-up, directed deltas, lifecycle cleanup, and multi-hop gossip.
+- [ ] Targets: live Cloudflare deployment/auth and a state-owning
+  `@metacrdt/convex` component/function surface.
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -160,9 +165,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   outside the hardened collection-token path.
 
 **Next goal candidates**
-- [ ] Choose the next active goal: full app write authorization, p2p transport,
-  live Cloudflare deployment/auth, or a state-owning `@metacrdt/convex`
-  component slice.
+- [ ] Choose the next active goal: full app write authorization, live Cloudflare
+  deployment/auth, or a state-owning `@metacrdt/convex` component slice.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -188,6 +192,21 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ## Log
 
+### 2026-06-07 — @metacrdt/runtime p2p DataChannel transport
+- [x] **Added structural p2p transport.** `packages/runtime/src/p2p.ts` defines
+  `DataChannelLike`, `PeerDataChannelTransport`, and
+  `attachPeerDataChannelTransport`.
+- [x] **Point-to-point anti-entropy now works without a shared bus.** The
+  transport serializes protocol messages as JSON strings over `send()`, handles
+  hello/version-vector/delta catch-up, filters foreign protocols and directed
+  deltas, and advertises the `transport` capability.
+- [x] **Multi-hop gossip is covered.** Newly inserted remote events are gossiped
+  onward to other connected peers, so a left → middle → right graph converges
+  without full mesh connectivity.
+- [x] Tests cover direct publish, late-peer catch-up, three-node gossip,
+  filtering, and stop/disconnect lifecycle cleanup. Deferred: WebRTC signaling,
+  STUN/TURN, auth, and live Cloudflare deployment.
+
 ### 2026-06-07 — @metacrdt/local SQLite-compatible persistence
 - [x] **Added dependency-free SQLite storage.** `packages/local/src/sqlite.ts`
   defines `SqliteDatabaseLike`, `SqliteStatementLike`, `SqliteRuntimeStorage`,
@@ -199,8 +218,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   path as IndexedDB.
 - [x] Tests cover key/value get/set/remove, unsafe table-name rejection, runtime
   restart durability for event log/HLC/`seq`, and BroadcastChannel convergence
-  between SQLite-backed local-first replicas. Deferred: p2p networking and live
-  Cloudflare deployment/auth.
+  between SQLite-backed local-first replicas. Deferred at that point: p2p
+  networking and live Cloudflare deployment/auth; p2p transport shipped in the
+  next slice.
 
 ### 2026-06-07 — @metacrdt/local IndexedDB-compatible async persistence
 - [x] **Added async local runtime services.** `packages/local/src/async.ts`
@@ -216,7 +236,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Tests cover async restart durability for event log/HLC/`seq`,
   IndexedDB-compatible convergence over BroadcastChannel, late-replica
   hello/delta catch-up, `broadcast:false`, and missing-host error behavior.
-  Deferred: SQLite and p2p networking.
+  Deferred at that point: SQLite and p2p networking; both now have structural
+  target slices.
 
 ### 2026-06-07 — @metacrdt/local browser local-first package
 - [x] **Added the browser-facing local target package.** `packages/local` exports
@@ -229,7 +250,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Tests cover BroadcastChannel peer convergence, late-replica hello/delta
   catch-up, restart durability, `broadcast:false` local persistence, and host
   helper behavior. Deferred at that point: IndexedDB/SQLite adapters and p2p
-  networking; IndexedDB-compatible persistence shipped in the next slice.
+  networking; IndexedDB/SQLite-compatible persistence and p2p transport shipped
+  in later slices.
 
 ### 2026-06-07 — @metacrdt/cloudflare Worker/DO example shell
 - [x] **Added the deploy-facing Cloudflare shell.** `packages/cloudflare/src/worker.ts`
@@ -279,8 +301,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   bus.** Tests cover live publish from `applyOperation`, `hello` version-vector
   announcements, `delta` catch-up, post-catch-up idempotence, protocol isolation,
   directed-delta filtering, and the attached `transport` capability.
-- [x] Still deferred: relay/Cloudflare Durable Object/p2p transports and the full
-  `@metacrdt/local` package boundary.
+- [x] Still deferred at that point: relay/Cloudflare Durable Object/p2p
+  transports and the full `@metacrdt/local` package boundary. Those structural
+  target slices have since shipped; live deployment/auth remain open.
 
 ### 2026-06-07 — runtime localStorage target seed
 - [x] **Added a browser/localStorage runtime target seed inside
@@ -294,7 +317,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   and version-vector exchange that converges, restarts, and remains idempotent.
 - [x] This was deliberately **not** `@metacrdt/local` yet and not a network
   transport. BroadcastChannel, IndexedDB-compatible persistence, and Cloudflare
-  relay targets shipped later; SQLite and p2p remain separate next slices.
+  relay targets shipped later; SQLite and p2p shipped as separate later slices.
 
 ### 2026-06-07 — @metacrdt/convex registered component surface
 - [x] **Packaged component entrypoints added.** `@metacrdt/convex` now exports

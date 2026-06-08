@@ -95,7 +95,7 @@ not invented:
 | `packages/core` (`@metacrdt/core`) | pure protocol kernel: events, order, G-Set merge, fold |
 | `packages/convex` (`@metacrdt/convex`) | Convex/core adapters, validators, Confect sidecar warning |
 | `packages/forma` (`@metacrdt/forma`) | Lisp authoring language: reader, formatter, evaluator, VM, type inference |
-| `packages/runtime` (`@metacrdt/runtime`) | runtime service contracts + memory harness + localStorage target seed + BroadcastChannel transport seed proving target-neutral convergence, restart durability, and same-origin anti-entropy |
+| `packages/runtime` (`@metacrdt/runtime`) | runtime service contracts + memory harness + localStorage target seed + BroadcastChannel and p2p DataChannel transports proving target-neutral convergence, restart durability, same-origin anti-entropy, and peer-to-peer gossip |
 | `packages/cloudflare` (`@metacrdt/cloudflare`) | Durable Object storage-backed runtime services, structural WebSocket relay shell, and Worker/DO example shell |
 | `packages/local` (`@metacrdt/local`) | browser/local-first target package composing runtime localStorage services + BroadcastChannel transport, plus async local runtime services, IndexedDB-compatible persistence, and SQLite-compatible persistence |
 | `convex/attributes.ts`, `convex/lib/meta.ts` | `@metacrdt/schema` |
@@ -119,11 +119,11 @@ not invented:
    `@metacrdt/runtime`, `@metacrdt/cloudflare`, and `@metacrdt/local` now exist
    too**: Convex is adapter-first; Forma is the runtime-neutral language package;
    runtime is harness-first (service contracts, memory target, localStorage target
-   seed, and BroadcastChannel transport seed); Cloudflare is a storage-service
-   target plus WebSocket relay and Worker/DO example shell, not a live deployed
-   service yet; local is the browser-facing composition over localStorage +
-   BroadcastChannel plus IndexedDB-compatible and SQLite-compatible async
-   persistence, with p2p still deferred.
+   seed, BroadcastChannel transport seed, and p2p DataChannel transport);
+   Cloudflare is a storage-service target plus WebSocket relay and Worker/DO
+   example shell, not a live deployed service yet; local is the browser-facing
+   composition over localStorage + BroadcastChannel plus IndexedDB-compatible and
+   SQLite-compatible async persistence.
    Everything else extracts as it stabilizes. (Tracked in [TODO.md](../TODO.md).)
 2. **The name is the thesis — so protect what makes it true.** *Databases store
    facts; CRDTs synchronize facts; MetaCRDT synchronizes facts, logic, workflows,

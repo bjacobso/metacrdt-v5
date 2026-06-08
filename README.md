@@ -89,8 +89,10 @@ It defines:
 - coordination profiles: capability links, membership, quorum, read grants
 
 The current Convex runtime implements the centralized reference path. The
-multi-replica sync runtime (browser / Durable Object / peer-to-peer) is the
-research frontier, tracked explicitly in [TODO.md](./TODO.md).
+multi-replica pieces are emerging as reusable target packages: browser/local
+persistence, Durable Object storage/relay shells, and structural peer-to-peer
+DataChannel anti-entropy exist; live deployment, auth, signaling, and production
+coordination remain the frontier tracked in [TODO.md](./TODO.md).
 
 ---
 
@@ -113,7 +115,8 @@ Current packages:
   VM, type inference, and language-owned elaboration utilities.
 - **`@metacrdt/runtime`** (`packages/runtime`) — target-neutral service contracts
   and memory harness: injected HLC clock, optional per-replica sequencer,
-  operation helpers, version-vector delta calculation, and anti-entropy exchange.
+  operation helpers, version-vector delta calculation, BroadcastChannel
+  anti-entropy, and p2p DataChannel anti-entropy.
 - **`@metacrdt/cloudflare`** (`packages/cloudflare`) — Durable Object / Worker
   target helpers: storage-backed event log, HLC, per-replica sequencer,
   WebSocket relay shell, Worker router, and example Wrangler config.

@@ -54,6 +54,14 @@ export {
   type BroadcastTransportOptions,
 } from "./broadcast.js";
 
+export {
+  PeerDataChannelTransport,
+  attachPeerDataChannelTransport,
+  type DataChannelLike,
+  type PeerDataChannelTransportOptions,
+  type PeerMessage,
+} from "./p2p.js";
+
 export { applyOperation, mergeFrom, requireCapability } from "./operations.js";
 export {
   deltaSince,

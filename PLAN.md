@@ -1,9 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 21 (`@metacrdt/local` SQLite-compatible persistence) has
+**Current goal:** Goal 22 (`@metacrdt/runtime` p2p DataChannel transport) has
 shipped. The next active goal should be chosen from the remaining TODO
-candidates: full app write authorization, p2p transport, live Cloudflare
-deployment/auth, or a state-owning `@metacrdt/convex` component slice.
+candidates: full app write authorization, live Cloudflare deployment/auth, or a
+state-owning `@metacrdt/convex` component slice.
 
 This plan is the operational goal file. Read it with:
 
@@ -118,10 +118,13 @@ arguments.
     log, HLC, and per-replica sequence storage
   - a BroadcastChannel-compatible transport seed for same-origin browser
     anti-entropy
+  - a DataChannel-compatible p2p transport for peer-to-peer anti-entropy and
+    multi-hop gossip
   - version-vector delta calculation and one-round anti-entropy exchange helpers
   - package-local tests for HLC injection, per-replica sequencing, G-Set exchange
     convergence, version-vector deltas, persisted local state, BroadcastChannel
-    publish/hello/delta behavior, lifecycle events, and capability checks
+    publish/hello/delta behavior, DataChannel p2p publish/catch-up/gossip
+    behavior, lifecycle events, and capability checks
 - `@metacrdt/cloudflare` exists in
   [`packages/cloudflare`](./packages/cloudflare):
   - Durable Object storage-backed `EventStore`
@@ -214,8 +217,7 @@ arguments.
   hello/delta catch-up. `@metacrdt/local` now packages those browser defaults as a
   local-first target. `@metacrdt/cloudflare` now provides Durable Object
   storage-backed runtime services, a structural WebSocket relay shell, and a
-  Worker-facing router/DO class example, but not a live deployed service, auth,
-  or p2p cross-device networking.
+  Worker-facing router/DO class example, but not a live deployed service or auth.
 - Full app login/write authorization is not configured; unauthenticated callers
   are treated as `anonymous`, so PII is denied by default but general public
   writes remain demo-grade.
@@ -2079,6 +2081,66 @@ packages/local/
 
 ---
 
+## Goal 22 — `@metacrdt/runtime` p2p DataChannel Transport
+
+**Status:** shipped as a structural WebRTC/DataChannel-compatible transport.
+
+**Objective:** add a peer-to-peer transport shape that does not assume a shared
+same-origin bus. The transport manages one or more point-to-point channels,
+serializes protocol messages as JSON, handles hello/delta catch-up, and gossips
+newly inserted remote events onward so multi-hop peer graphs converge.
+
+### Scope
+
+Package additions:
+
+```text
+packages/runtime/
+  src/p2p.ts       # DataChannel-compatible anti-entropy transport
+  src/p2p.test.ts  # fake DataChannel publish/catch-up/gossip tests
+```
+
+### Acceptance Criteria
+
+- Export:
+  - `DataChannelLike`;
+  - `PeerMessage`;
+  - `PeerDataChannelTransportOptions`;
+  - `PeerDataChannelTransport`;
+  - `attachPeerDataChannelTransport`.
+- Use a structural DataChannel interface:
+  - `send(string)`;
+  - message/open/close listeners or `onmessage`/`onopen`/`onclose`;
+  - optional `readyState`;
+  - optional `close`.
+- Encode wire messages as JSON strings.
+- Support:
+  - local event publish to connected peers;
+  - `hello` version-vector announcements;
+  - directed `delta` replies;
+  - foreign protocol filtering;
+  - directed-delta filtering;
+  - listener cleanup;
+  - optional channel close on stop.
+- For multi-peer p2p graphs, gossip newly inserted remote events to other
+  connected peers so non-fully-connected graphs can converge.
+- Add tests proving:
+  - direct p2p publish/merge;
+  - hello/delta catch-up;
+  - three-node multi-hop gossip;
+  - protocol and directed-delta filtering;
+  - stop/disconnect lifecycle behavior.
+- Do **not** add WebRTC signaling, STUN/TURN, auth, or live Cloudflare deployment
+  in this slice.
+
+### Verification
+
+- `npm run test:runtime` passed (18 tests).
+- Runtime package typecheck passed.
+- Full gate for this slice is recorded in the commit that shipped it.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -2103,7 +2165,8 @@ These remain valuable, but they should not interrupt the current goal.
   BroadcastChannel.
 - [x] IndexedDB-compatible async local persistence adapter.
 - [x] SQLite-compatible local persistence adapter.
-- [ ] Live Cloudflare deployment / auth / p2p transport targets.
+- [x] p2p DataChannel-compatible transport target.
+- [ ] Live Cloudflare deployment / auth targets.
 - [ ] Full registered `@metacrdt/convex` component/function surface.
 
 ### Auth / Privacy
