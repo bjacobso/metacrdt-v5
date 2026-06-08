@@ -46,6 +46,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   (today), `@metacrdt/cloudflare` (DO), `@metacrdt/local` (browser). Don't factor
   these until the harness boundary is real.
 
+**Current goal — Confect spike (see [PLAN.md](./PLAN.md#goal-2--confect-spike-for-the-convex-target))**
+- [ ] Build a sidecar `confect/` function group against current Confect v8
+  (`@confect/core`, `@confect/server`, `@confect/cli`) that reads real
+  protocol-shaped `factEvents`, imports `@metacrdt/core`, models typed errors,
+  and deploys beside the existing plain Convex backend.
+- [ ] Record the result in `docs/confect.md`: adopt broadly, adopt only for
+  `@metacrdt/convex`, adopt only at app boundaries, defer, or reject.
+
 **Product / engine**
 - [ ] `applyConfig` true reconcile — retract config facts dropped from the blueprint
   (today it's idempotent-by-upsert, never removes).
@@ -82,6 +90,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-07 — PLAN.md becomes the executable goal file
+- [x] **Expanded Goal 2 into an executable Confect spike plan** after finishing
+  the protocol write-path work: current Confect v8 API baseline, sidecar-not-
+  migration scope, exact dependencies, generated file layout, typed-error
+  requirements, test/deploy gates, and adopt/defer/reject decision criteria.
+  `docs/confect.md` now names the current v8 surface before the older conceptual
+  sketch.
 - [x] **Goal 1 implementation slice shipped:** additive protocol metadata on
   `factEvents` (`eventId`, HLC, replica, target, causal refs), `facts.assertEventId`
   for lifecycle targeting, local Convex/core adapter (`convex/lib/coreEvent.ts`),

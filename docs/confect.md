@@ -9,10 +9,41 @@ Effect handlers, an Effect-wrapped `ctx.db`, Schema-decoded documents).
 Read alongside [VISION.md](../VISION.md) (§6 config-as-code, §10 AI) and
 [PLAN.md](../PLAN.md) (the vision-vs-Convex assessment this doc partly revisits).
 
-> **Caveat.** This approximates Confect's exact surface (`defineConfectSchema`,
-> the Effect-wrapped `ctx.db`, `Schema`-decoded docs). Treat import paths as
-> directional; the *shape* of the result is the point. Nothing here is wired into
-> the running app — it's an evaluation, not a migration.
+> **Status.** This started as a directional design sketch. As of 2026-06-07,
+> Confect's current public docs and npm packages are v8.0.0 and use
+> `@confect/core` / `@confect/server` primitives such as `DatabaseSchema`,
+> `Table`, `GroupSpec`, `FunctionSpec`, `GroupImpl`, `FunctionImpl`, generated
+> refs, and generated `DatabaseReader` / `DatabaseWriter` services. Nothing here
+> is wired into the running app yet — Goal 2 in [PLAN.md](../PLAN.md) is the
+> scoped spike that decides whether it should be.
+
+---
+
+## Current Confect surface to verify in the spike
+
+The Goal 2 spike should use the current Confect shape, not the older
+`defineConfectSchema` placeholder language below:
+
+```text
+confect/
+  schema.ts           # DatabaseSchema.make().addTable(...)
+  spec.ts             # Spec.make().add(group specs)
+  impl.ts             # Impl.make(api) ... Impl.finalize
+  *.spec.ts           # GroupSpec + FunctionSpec
+  *.impl.ts           # GroupImpl + FunctionImpl
+  _generated/         # generated refs / api / services
+```
+
+Observed package set:
+
+- `@confect/core`
+- `@confect/server`
+- `@confect/cli`
+- `@confect/react` (only needed if the frontend calls Confect refs directly)
+
+The evaluation target is deliberately narrow: build a Confect sidecar around one
+MetaCRDT protocol concern, prove codegen/deploy/test ergonomics, and then decide
+whether `@metacrdt/convex` should use Confect internally.
 
 ---
 
@@ -255,8 +286,20 @@ no-ops on an unknown type.
 
 ## Recommended way to pressure-test it
 
-Don't migrate the whole store on faith. Port **one vertical** — `convex/facts.ts`
-(schema + `assertFact`/`retract` + the visibility predicate) — to Confect with
-`TestClock`-based tests, and keep everything else behind the existing `api`. That
-measures the two unknowns that decide the bet: **bundle / cold-start cost** and
-**`ctx.db` ergonomics**, before committing the rest of the store.
+Don't migrate the whole store on faith. Build a **sidecar Confect group** around
+one real MetaCRDT protocol concern — for example, reading protocol-shaped
+`factEvents`, validating their `eventId`s with `@metacrdt/core`, and returning a
+typed result with typed errors. Keep the production `convex/facts.ts` API in
+plain Convex until the spike proves itself.
+
+That measures the unknowns that decide the bet:
+
+- codegen layout beside the existing `convex/_generated` tree;
+- deploy compatibility with current Convex functions;
+- `DatabaseReader` / `DatabaseWriter` ergonomics for indexed reads;
+- typed-error behavior across the Convex/client boundary;
+- test harness friction;
+- bundle/cold-start impact.
+
+If that slice is clean, the next candidate is `@metacrdt/convex` internals — not
+the product app wholesale.
