@@ -131,6 +131,15 @@ export {
   LocalClock,
   LocalEventStore,
   LocalSequencer,
+  decodeLocalEvent,
+  decodeLocalValue,
+  encodeLocalEvent,
+  encodeLocalValue,
+  localClockKey,
+  localEventsKey,
+  localSeqKey,
+  type EncodedLocalEvent,
+  type EncodedLocalValue,
   type LocalRuntimeOptions,
   type LocalRuntimeStorage,
 } from "@metacrdt/runtime";
@@ -140,3 +149,22 @@ export {
   type BroadcastMessage,
   type BroadcastTransportOptions,
 } from "@metacrdt/runtime";
+
+export {
+  AsyncLocalClock,
+  AsyncLocalEventStore,
+  AsyncLocalSequencer,
+  createAsyncLocalRuntime,
+  createIndexedDbLocalFirstRuntime,
+  startIndexedDbLocalFirstRuntime,
+  type AsyncLocalRuntime,
+  type AsyncLocalRuntimeOptions,
+  type AsyncLocalRuntimeStorage,
+  type IndexedDbLocalFirstRuntime,
+  type IndexedDbLocalFirstRuntimeOptions,
+} from "./async.js";
+export {
+  IndexedDbRuntimeStorage,
+  indexedDbStorage,
+  type IndexedDbStorageOptions,
+} from "./indexedDb.js";

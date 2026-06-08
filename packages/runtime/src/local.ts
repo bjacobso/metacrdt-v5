@@ -30,30 +30,30 @@ export interface LocalRuntimeStorage {
   removeItem?(key: string): void;
 }
 
-type EncodedValue =
+export type EncodedLocalValue =
   | { z: 0 }
   | { b: boolean }
   | { f: number }
   | { s: string }
   | { x: number[] }
-  | { a: EncodedValue[] }
-  | { o: Record<string, EncodedValue> };
+  | { a: EncodedLocalValue[] }
+  | { o: Record<string, EncodedLocalValue> };
 
-type EncodedEvent = Omit<Event, "v"> & { v?: EncodedValue };
+export type EncodedLocalEvent = Omit<Event, "v"> & { v?: EncodedLocalValue };
 
-function eventsKey(namespace: string): string {
+export function localEventsKey(namespace: string): string {
   return `${namespace}:events`;
 }
 
-function clockKey(namespace: string, replicaId: string): string {
+export function localClockKey(namespace: string, replicaId: string): string {
   return `${namespace}:clock:${replicaId}`;
 }
 
-function seqKey(namespace: string, replicaId: string): string {
+export function localSeqKey(namespace: string, replicaId: string): string {
   return `${namespace}:seq:${replicaId}`;
 }
 
-function encodeValue(v: Value): EncodedValue {
+export function encodeLocalValue(v: Value): EncodedLocalValue {
   if (v === null) return { z: 0 };
   switch (typeof v) {
     case "boolean":
@@ -64,35 +64,35 @@ function encodeValue(v: Value): EncodedValue {
       return { s: v };
   }
   if (v instanceof Uint8Array) return { x: [...v] };
-  if (Array.isArray(v)) return { a: v.map(encodeValue) };
-  const out: Record<string, EncodedValue> = {};
-  for (const [k, value] of Object.entries(v)) out[k] = encodeValue(value);
+  if (Array.isArray(v)) return { a: v.map(encodeLocalValue) };
+  const out: Record<string, EncodedLocalValue> = {};
+  for (const [k, value] of Object.entries(v)) out[k] = encodeLocalValue(value);
   return { o: out };
 }
 
-function decodeValue(v: EncodedValue): Value {
+export function decodeLocalValue(v: EncodedLocalValue): Value {
   if ("z" in v) return null;
   if ("b" in v) return v.b;
   if ("f" in v) return v.f;
   if ("s" in v) return v.s;
   if ("x" in v) return new Uint8Array(v.x);
-  if ("a" in v) return v.a.map(decodeValue);
+  if ("a" in v) return v.a.map(decodeLocalValue);
   const out: Record<string, Value> = {};
-  for (const [k, value] of Object.entries(v.o)) out[k] = decodeValue(value);
+  for (const [k, value] of Object.entries(v.o)) out[k] = decodeLocalValue(value);
   return out;
 }
 
-function encodeEvent(event: Event): EncodedEvent {
+export function encodeLocalEvent(event: Event): EncodedLocalEvent {
   const { v, ...rest } = event;
-  const out: EncodedEvent = { ...rest };
-  if (v !== undefined) out.v = encodeValue(v);
+  const out: EncodedLocalEvent = { ...rest };
+  if (v !== undefined) out.v = encodeLocalValue(v);
   return out;
 }
 
-function decodeEvent(event: EncodedEvent): Event {
+export function decodeLocalEvent(event: EncodedLocalEvent): Event {
   const out = { ...event } as Event;
   if (event.v !== undefined) {
-    (out as { v: Value }).v = decodeValue(event.v);
+    (out as { v: Value }).v = decodeLocalValue(event.v);
   }
   return out;
 }
@@ -139,13 +139,13 @@ export class LocalEventStore implements EventStore {
 
   #load(): Map<EventId, Event> {
     if (this.#events) return this.#events;
-    const encoded = parseJson<EncodedEvent[]>(
-      this.storage.getItem(eventsKey(this.namespace)),
+    const encoded = parseJson<EncodedLocalEvent[]>(
+      this.storage.getItem(localEventsKey(this.namespace)),
       [],
     );
     this.#events = new Map();
     for (const item of encoded) {
-      const event = decodeEvent(item);
+      const event = decodeLocalEvent(item);
       if (!verifyId(event)) throw new Error(`invalid stored event id: ${event.id}`);
       this.#events.set(event.id, event);
     }
@@ -155,8 +155,8 @@ export class LocalEventStore implements EventStore {
   #persist(): void {
     const events = [...this.#load().values()]
       .sort((a, b) => a.id.localeCompare(b.id))
-      .map(encodeEvent);
-    this.storage.setItem(eventsKey(this.namespace), JSON.stringify(events));
+      .map(encodeLocalEvent);
+    this.storage.setItem(localEventsKey(this.namespace), JSON.stringify(events));
   }
 
   async append(event: Event): Promise<AppendResult> {
@@ -207,12 +207,12 @@ export class LocalClock implements RuntimeClock {
     private readonly wall: () => number = () => Date.now(),
   ) {
     this.replicaId = replicaId;
-    this.#clock = loadHlc(storage, clockKey(namespace, replicaId), replicaId);
+    this.#clock = loadHlc(storage, localClockKey(namespace, replicaId), replicaId);
   }
 
   #persist(): void {
     this.storage.setItem(
-      clockKey(this.namespace, this.replicaId),
+      localClockKey(this.namespace, this.replicaId),
       JSON.stringify(this.#clock),
     );
   }
@@ -244,11 +244,11 @@ export class LocalSequencer implements RuntimeSequencer {
     replicaId: string,
   ) {
     this.replicaId = replicaId;
-    this.#seq = loadSeq(storage, seqKey(namespace, replicaId));
+    this.#seq = loadSeq(storage, localSeqKey(namespace, replicaId));
   }
 
   #persist(): void {
-    this.storage.setItem(seqKey(this.namespace, this.replicaId), String(this.#seq));
+    this.storage.setItem(localSeqKey(this.namespace, this.replicaId), String(this.#seq));
   }
 
   async next(): Promise<number> {

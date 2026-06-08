@@ -97,7 +97,7 @@ not invented:
 | `packages/forma` (`@metacrdt/forma`) | Lisp authoring language: reader, formatter, evaluator, VM, type inference |
 | `packages/runtime` (`@metacrdt/runtime`) | runtime service contracts + memory harness + localStorage target seed + BroadcastChannel transport seed proving target-neutral convergence, restart durability, and same-origin anti-entropy |
 | `packages/cloudflare` (`@metacrdt/cloudflare`) | Durable Object storage-backed runtime services, structural WebSocket relay shell, and Worker/DO example shell |
-| `packages/local` (`@metacrdt/local`) | browser/local-first target package composing runtime localStorage services + BroadcastChannel transport with browser defaults and lifecycle helpers |
+| `packages/local` (`@metacrdt/local`) | browser/local-first target package composing runtime localStorage services + BroadcastChannel transport, plus async local runtime services and IndexedDB-compatible persistence |
 | `convex/attributes.ts`, `convex/lib/meta.ts` | `@metacrdt/schema` |
 | `convex/datalog.ts`, `convex/lib/engine.ts` | `@metacrdt/query` |
 | `convex/flows.ts` | `@metacrdt/workflow` |
@@ -122,7 +122,8 @@ not invented:
    seed, and BroadcastChannel transport seed); Cloudflare is a storage-service
    target plus WebSocket relay and Worker/DO example shell, not a live deployed
    service yet; local is the browser-facing composition over localStorage +
-   BroadcastChannel, with IndexedDB/SQLite and p2p still deferred.
+   BroadcastChannel plus IndexedDB-compatible async persistence, with SQLite and
+   p2p still deferred.
    Everything else extracts as it stabilizes. (Tracked in [TODO.md](../TODO.md).)
 2. **The name is the thesis — so protect what makes it true.** *Databases store
    facts; CRDTs synchronize facts; MetaCRDT synchronizes facts, logic, workflows,

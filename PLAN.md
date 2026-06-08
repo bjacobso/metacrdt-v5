@@ -1,10 +1,11 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 19 (`@metacrdt/local` browser/local-first package) has
+**Current goal:** Goal 20 (`@metacrdt/local` IndexedDB-compatible async
+persistence) has
 shipped. The next active goal should be chosen from the remaining TODO
-candidates: full app write authorization, IndexedDB/SQLite local persistence,
-p2p transport, live Cloudflare deployment/auth, or a state-owning
-`@metacrdt/convex` component slice.
+candidates: full app write authorization, SQLite local persistence, p2p
+transport, live Cloudflare deployment/auth, or a state-owning `@metacrdt/convex`
+component slice.
 
 This plan is the operational goal file. Read it with:
 
@@ -41,10 +42,11 @@ The repository should make that statement true in code:
 The immediate technical gap is now choosing the next runtime/product slice. The
 protocol kernel is extracted, the Convex write/read paths are core-shaped enough
 for the centralized reference runtime, the package graph has `core`, `convex`,
-and `forma`, config reconciliation works, PII read authorization is enforced, the
-entity UI is schema-driven, Confect has now been adopted narrowly for a real
-read/planning domain, config changes are inspectable as manifest diffs, and
-configured actions can now take small typed arguments.
+`forma`, `runtime`, `cloudflare`, and `local`, config reconciliation works, PII
+read authorization is enforced, the entity UI is schema-driven, Confect has now
+been adopted narrowly for a real read/planning domain, config changes are
+inspectable as manifest diffs, and configured actions can now take small typed
+arguments.
 
 ---
 
@@ -140,9 +142,14 @@ configured actions can now take small typed arguments.
     with the `BroadcastChannelTransport`
   - exposes browser defaults (`browserStorage`, `browserBroadcastChannel`),
     `createLocalFirstRuntime`, and `startLocalFirstRuntime`
+  - includes async local runtime services and an `IndexedDbRuntimeStorage` adapter
+    for IndexedDB-compatible browser persistence
+  - exposes `createIndexedDbLocalFirstRuntime` and
+    `startIndexedDbLocalFirstRuntime`
   - package-local tests prove peer convergence over a BroadcastChannel-compatible
-    bus, hello/delta catch-up for late replicas, restart durability, and
-    broadcast-disabled local persistence
+    bus, hello/delta catch-up for late replicas, restart durability,
+    broadcast-disabled local persistence, and async IndexedDB-compatible
+    persistence
 - `applyConfig` now behaves as a true section-scoped reconciler:
   - configured artifact ownership is tracked on `config:default`
   - explicitly supplied config sections compute desired sets
@@ -206,7 +213,7 @@ configured actions can now take small typed arguments.
   local-first target. `@metacrdt/cloudflare` now provides Durable Object
   storage-backed runtime services, a structural WebSocket relay shell, and a
   Worker-facing router/DO class example, but not a live deployed service, auth,
-  IndexedDB/SQLite local persistence, or p2p cross-device networking.
+  SQLite local persistence, or p2p cross-device networking.
 - Full app login/write authorization is not configured; unauthenticated callers
   are treated as `anonymous`, so PII is denied by default but general public
   writes remain demo-grade.
@@ -1955,6 +1962,68 @@ packages/local/
 
 ---
 
+## Goal 20 — `@metacrdt/local` IndexedDB-Compatible Async Persistence
+
+**Status:** shipped as async local runtime services plus an IndexedDB adapter.
+
+**Objective:** make `@metacrdt/local` capable of real async browser persistence,
+not only synchronous `localStorage`. The sync localStorage path remains the small
+seed; the async path is the shape IndexedDB and future local database backends
+use.
+
+### Scope
+
+Package additions:
+
+```text
+packages/local/
+  src/async.ts        # async event store, clock, sequencer, IndexedDB runtime
+  src/indexedDb.ts    # IndexedDB key/value storage adapter
+  src/async.test.ts   # async storage + BroadcastChannel convergence tests
+```
+
+Small runtime export additions:
+
+```text
+packages/runtime/src/local.ts
+  # exports local encoding helpers and storage keys for adapter reuse
+```
+
+### Acceptance Criteria
+
+- Export reusable async local services:
+  - `AsyncLocalRuntimeStorage`;
+  - `AsyncLocalEventStore`;
+  - `AsyncLocalClock`;
+  - `AsyncLocalSequencer`;
+  - `createAsyncLocalRuntime`.
+- Export IndexedDB/browser target helpers:
+  - `IndexedDbRuntimeStorage`;
+  - `indexedDbStorage`;
+  - `createIndexedDbLocalFirstRuntime`;
+  - `startIndexedDbLocalFirstRuntime`.
+- Keep event serialization shared with the runtime local target by exporting and
+  reusing `encodeLocalEvent`, `decodeLocalEvent`, and local storage key helpers.
+- Preserve the same local-first lifecycle:
+  - BroadcastChannel transport attached by default;
+  - `broadcast:false` works without a channel;
+  - `start()` / `stop()` lifecycle methods.
+- Add tests proving:
+  - async storage preserves event log, HLC, and per-replica `seq`;
+  - IndexedDB-compatible local-first runtimes converge over BroadcastChannel;
+  - late replicas catch up via hello/version-vector/delta;
+  - `broadcast:false` works over async storage;
+  - missing host `indexedDB` fails clearly.
+- Do **not** add SQLite, p2p, or live Cloudflare deployment in this slice.
+
+### Verification
+
+- `npm run test:local` passed (9 tests).
+- Local and runtime package typechecks passed.
+- Full gate for this slice is recorded in the commit that shipped it.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -1977,7 +2046,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] Cloudflare Worker/DO example shell + Wrangler config.
 - [x] `@metacrdt/local` browser/local-first package over localStorage +
   BroadcastChannel.
-- [ ] IndexedDB/SQLite local persistence adapters.
+- [x] IndexedDB-compatible async local persistence adapter.
+- [ ] SQLite local persistence adapter.
 - [ ] Live Cloudflare deployment / auth / p2p transport targets.
 - [ ] Full registered `@metacrdt/convex` component/function surface.
 

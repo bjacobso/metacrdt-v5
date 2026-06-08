@@ -119,7 +119,8 @@ Current packages:
   WebSocket relay shell, Worker router, and example Wrangler config.
 - **`@metacrdt/local`** (`packages/local`) — browser/local-first target package:
   localStorage-backed event/HLC/seq services composed with BroadcastChannel
-  anti-entropy, plus browser defaults and lifecycle helpers.
+  anti-entropy, IndexedDB-compatible async persistence, plus browser defaults and
+  lifecycle helpers.
 
 Planned package graph:
 
