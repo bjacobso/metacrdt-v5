@@ -158,6 +158,8 @@ Built today:
 - durable flow DAGs and synchronous actions
 - config-as-code blueprints
 - generated entity detail pages
+- configured actions with optional typed inputs (`$arg.*` placeholders resolved
+  into asserted facts)
 - Tailwind + React Router research-preview UI
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility
 - Confect/Effect sidecar for typed compliance planning: a read-only dry-run

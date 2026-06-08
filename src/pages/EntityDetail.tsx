@@ -33,6 +33,7 @@ export default function EntityDetail() {
   const submitForm = useMutation(api.compliance.submitForm);
   const cancelFlow = useMutation(api.flows.cancelFlow);
   const [employer, setEmployer] = useState("employer:acme");
+  const [actionArgs, setActionArgs] = useState<Record<string, Record<string, unknown>>>({});
   const [busy, setBusy] = useState<string | null>(null);
 
   async function run(label: string, fn: () => Promise<unknown>) {
@@ -66,6 +67,16 @@ export default function EntityDetail() {
     ),
   ];
   const openObs = detail.obligations.filter((o) => o.open);
+
+  function setActionArg(action: string, field: string, value: unknown) {
+    setActionArgs((prev) => ({
+      ...prev,
+      [action]: {
+        ...(prev[action] ?? {}),
+        [field]: value,
+      },
+    }));
+  }
 
   return (
     <div className="space-y-6">
@@ -189,12 +200,74 @@ export default function EntityDetail() {
                       .map(([k, v]) => `${k} = ${val(v)}`)
                       .join(", ")}
                   </div>
+                  {a.fields.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {a.fields.map((field) => {
+                        const current =
+                          actionArgs[a.name]?.[field.name] ??
+                          field.defaultValue ??
+                          "";
+                        return (
+                          <label
+                            key={field.name}
+                            className="text-[11px] font-medium uppercase text-muted"
+                          >
+                            {field.label ?? field.name}
+                            {field.type === "select" ? (
+                              <select
+                                value={String(current)}
+                                onChange={(ev) =>
+                                  setActionArg(a.name, field.name, ev.target.value)
+                                }
+                                className="mt-1 block w-40 rounded-md border border-line bg-surface px-2 py-1 text-[12px] text-ink"
+                              >
+                                <option value="">—</option>
+                                {(field.options ?? []).map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : field.type === "boolean" ? (
+                              <input
+                                type="checkbox"
+                                checked={Boolean(current)}
+                                onChange={(ev) =>
+                                  setActionArg(a.name, field.name, ev.target.checked)
+                                }
+                                className="mt-2 block"
+                              />
+                            ) : (
+                              <Input
+                                value={String(current)}
+                                type={field.type === "number" ? "number" : "text"}
+                                onChange={(ev) =>
+                                  setActionArg(
+                                    a.name,
+                                    field.name,
+                                    field.type === "number"
+                                      ? Number(ev.target.value)
+                                      : ev.target.value,
+                                  )
+                                }
+                                className="mt-1 w-40"
+                              />
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 <Button
                   disabled={busy === `action:${a.name}`}
                   onClick={() =>
                     run(`action:${a.name}`, () =>
-                      runAction({ action: a.name, entity: id }),
+                      runAction({
+                        action: a.name,
+                        entity: id,
+                        args: actionArgs[a.name] ?? {},
+                      }),
                     )
                   }
                 >

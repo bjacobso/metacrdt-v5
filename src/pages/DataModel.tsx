@@ -225,6 +225,7 @@ export default function DataModel() {
               <tr className="text-left text-[11px] uppercase tracking-wide text-muted">
                 <th className="px-5 pb-2 pt-3 font-semibold">action</th>
                 <th className="px-2 pb-2 pt-3 font-semibold">applies to</th>
+                <th className="px-2 pb-2 pt-3 font-semibold">inputs</th>
                 <th className="px-5 pb-2 pt-3 font-semibold">asserts</th>
               </tr>
             </thead>
@@ -234,6 +235,11 @@ export default function DataModel() {
                   <td className="px-5 py-2.5 font-medium text-ink">{a.label ?? a.name}</td>
                   <td className="px-2 py-2.5">
                     <Chip tone="brand">{a.appliesTo}</Chip>
+                  </td>
+                  <td className="px-2 py-2.5 text-[12px] text-muted">
+                    {a.fields.length === 0
+                      ? "—"
+                      : a.fields.map((f) => `${f.name}:${f.type}`).join(", ")}
                   </td>
                   <td className="px-5 py-2.5 text-[12px] text-muted">
                     {Object.entries(a.asserts)

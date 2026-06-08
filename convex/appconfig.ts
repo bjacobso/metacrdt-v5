@@ -257,6 +257,14 @@ export const applyConfig = mutation({
         name: string;
         label?: string;
         appliesTo: string;
+        fields?: Array<{
+          name: string;
+          label?: string;
+          type: "string" | "number" | "boolean" | "select";
+          required?: boolean;
+          options?: string[];
+          defaultValue?: unknown;
+        }>;
         asserts: Record<string, unknown>;
       }>;
     };
@@ -349,6 +357,7 @@ export const applyConfig = mutation({
         name: ac.name,
         label: ac.label,
         appliesTo: ac.appliesTo,
+        fields: ac.fields,
         asserts: ac.asserts,
       });
       applied.actions++;

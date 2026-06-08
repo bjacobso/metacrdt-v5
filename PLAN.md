@@ -1,8 +1,8 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 9 (config history/diff) has shipped. The next active goal
+**Current goal:** Goal 10 (arg-taking actions) has shipped. The next active goal
 should be chosen from the remaining TODO candidates: `@metacrdt/runtime`
-harness groundwork, auth/write hardening, arg-taking actions, or the next
+harness groundwork, auth/write hardening, actions that open forms, or the next
 `@metacrdt/convex` function factory/component slice.
 
 This plan is the operational goal file. Read it with:
@@ -42,7 +42,8 @@ protocol kernel is extracted, the Convex write/read paths are core-shaped enough
 for the centralized reference runtime, the package graph has `core`, `convex`,
 and `forma`, config reconciliation works, PII read authorization is enforced, the
 entity UI is schema-driven, Confect has now been adopted narrowly for a real
-read/planning domain, and config changes are inspectable as manifest diffs.
+read/planning domain, config changes are inspectable as manifest diffs, and
+configured actions can now take small typed arguments.
 
 ---
 
@@ -124,6 +125,11 @@ read/planning domain, and config changes are inspectable as manifest diffs.
   - `configHistory.history` diffs the manifest before/after config-authored
     transactions so idempotent re-applies report no manifest change
   - the Data model page surfaces current manifest counts and recent config diffs
+- Arg-taking actions exist:
+  - action definitions can declare bounded input fields
+  - `runAction` accepts args and resolves `$arg.<name>` / `$entity`
+    placeholders in asserted facts
+  - entity detail renders action inputs for configured fields
 
 ### Not Yet True
 
@@ -1305,6 +1311,62 @@ diff for recent config-authored transactions.
 
 ---
 
+## Goal 10 — Arg-Taking Actions
+
+**Status:** shipped in the Convex reference runtime.
+
+**Objective:** extend configured actions from fixed assertions only to small
+parameterized commands. An action can declare input fields and reference them in
+its `asserts` map; running the action resolves those placeholders and asserts
+the resulting facts in one transaction.
+
+### Scope
+
+Backward-compatible action definition:
+
+```ts
+{
+  name: "set_status",
+  label: "Set status",
+  appliesTo: "Worker",
+  fields: [
+    { name: "status", label: "Status", type: "select", options: ["active", "terminated"] }
+  ],
+  asserts: { "worker.status": "$arg.status" }
+}
+```
+
+Supported placeholder values:
+
+- `"$arg.<name>"` — value supplied when the action runs.
+- `"$entity"` — target entity id.
+- all other values are literal.
+
+This goal does **not** implement actions that open forms or run flow steps. It is
+the narrow parameterized-assert slice.
+
+### Acceptance Criteria
+
+- `defineAction` accepts optional `fields` and stores them as schema-as-facts on
+  `action:<name>`.
+- `actionsForType` / `listActions` return `fields`.
+- `runAction` accepts optional `args` and resolves placeholders.
+- Missing required args fail clearly.
+- Unknown arg placeholders fail clearly.
+- Existing fixed actions still work unchanged.
+- Entity detail renders action inputs for actions with fields and sends them to
+  `runAction`.
+- Tests cover fixed action compatibility, parameterized action success, missing
+  args, and unknown placeholders.
+- Full tests/typechecks/build/deploy pass.
+
+### Verification
+
+- Focused `npx vitest run appconfig` passed (12 tests).
+- Full gate for this slice is recorded in the commit that shipped it.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -1312,7 +1374,8 @@ These remain valuable, but they should not interrupt the current goal.
 ### Product / Config
 
 - [x] Config history/diff UI.
-- [ ] Arg-taking actions / actions that open forms.
+- [x] Arg-taking actions.
+- [ ] Actions that open forms.
 - [x] Dry-run compliance: hypothetical worker + scope, no writes.
 
 ### Auth / Privacy

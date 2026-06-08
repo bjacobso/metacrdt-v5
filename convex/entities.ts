@@ -187,6 +187,14 @@ export const entityDetail = query({
       name: string;
       label?: string;
       asserts: Record<string, unknown>;
+      fields: Array<{
+        name: string;
+        label?: string;
+        type: "string" | "number" | "boolean" | "select";
+        required?: boolean;
+        options?: string[];
+        defaultValue?: unknown;
+      }>;
     }[] = [];
     for (const ad of actionDefs) {
       const rows = await ctx.db
@@ -201,6 +209,16 @@ export const entityDetail = query({
         name: ad.e.slice("action:".length),
         label: m["label"]?.[0] ? String(m["label"][0]) : undefined,
         asserts: (m["asserts"]?.[0] ?? {}) as Record<string, unknown>,
+        fields: Array.isArray(m["fields"]?.[0])
+          ? (m["fields"]![0] as Array<{
+              name: string;
+              label?: string;
+              type: "string" | "number" | "boolean" | "select";
+              required?: boolean;
+              options?: string[];
+              defaultValue?: unknown;
+            }>)
+          : [],
       });
     }
 

@@ -96,13 +96,16 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   type's declared attributes (`typeSchemaAsOf`), not ad-hoc.
 - [x] Config history/diff — current config ownership manifest + recent
   config-authored manifest diffs surfaced under Data model.
+- [x] Arg-taking actions — action definitions can declare fields, and
+  `runAction` resolves `$arg.<name>` / `$entity` placeholders before asserting
+  facts.
 - [ ] Auth + write authorization — the live site takes public writes; the collect
   token is demo-grade (no single-use / expiry).
 
 **Next goal candidates**
 - [ ] Choose the next active goal: `@metacrdt/runtime` harness groundwork,
-  auth/write hardening, arg-taking actions, or the next `@metacrdt/convex`
-  function factory/component slice.
+  auth/write hardening, actions that open forms, or the next
+  `@metacrdt/convex` function factory/component slice.
 
 **Docs**
 - [ ] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -111,8 +114,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 **Polish / loose threads**
 - [ ] Wire the decorative bits from the mockup: ⌘K search, "New entity",
   "Describe an account".
-- [ ] Arg-taking action steps (today `runAction` asserts a fixed set); config
-  diff/history UI (every `applyConfig` is already a transaction).
+- [ ] Actions that open forms; action/config diff-history polish.
 - [ ] Root-cause the `staticHosting:getCurrentDeployment` error over the WS path
   (works over HTTP; currently isolated behind an error boundary).
 
@@ -126,6 +128,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — Goal 10 arg-taking actions
+- [x] **Configured actions now accept inputs.** `defineAction` stores optional
+  action fields, `runAction` accepts `args`, and assert values can reference
+  `$arg.<name>` or `$entity`. Existing fixed actions keep working.
+- [x] **UI and tests shipped.** Entity detail renders inputs for actions with
+  fields; the action registry shows input schema. Tests cover parameterized
+  success, missing required args, unknown placeholders, and fixed-action
+  compatibility.
 
 ### 2026-06-07 — Goal 9 config history/diff
 - [x] **Config changes are now inspectable.** `convex/configHistory.ts` adds

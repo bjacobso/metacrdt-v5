@@ -13,6 +13,38 @@ import { assertInTx, createTransaction } from "./facts";
 //   (action:<name>, label,     "Terminate worker")
 //   (action:<name>, appliesTo, "Worker")
 //   (action:<name>, asserts,   { "worker.status": "terminated" })
+//   (action:<name>, fields,    [{ name, label, type, ... }])       optional
+
+type ActionField = {
+  name: string;
+  label?: string;
+  type: "string" | "number" | "boolean" | "select";
+  required?: boolean;
+  options?: string[];
+  defaultValue?: unknown;
+};
+
+type ActionDef = {
+  name: string;
+  label?: string;
+  appliesTo?: string;
+  asserts: Record<string, unknown>;
+  fields: ActionField[];
+};
+
+const actionFieldValidator = v.object({
+  name: v.string(),
+  label: v.optional(v.string()),
+  type: v.union(
+    v.literal("string"),
+    v.literal("number"),
+    v.literal("boolean"),
+    v.literal("select"),
+  ),
+  required: v.optional(v.boolean()),
+  options: v.optional(v.array(v.string())),
+  defaultValue: v.optional(v.any()),
+});
 
 function actionId(name: string): string {
   return `action:${name}`;
@@ -25,6 +57,7 @@ export const defineAction = mutation({
     label: v.optional(v.string()),
     appliesTo: v.string(),
     asserts: v.any(), // Record<attribute, value>
+    fields: v.optional(v.array(actionFieldValidator)),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -37,13 +70,15 @@ export const defineAction = mutation({
     await assertInTx(ctx, txId, now, { e, a: "type", value: "Action" });
     await assertInTx(ctx, txId, now, { e, a: "appliesTo", value: args.appliesTo });
     await assertInTx(ctx, txId, now, { e, a: "asserts", value: args.asserts });
+    if (args.fields !== undefined)
+      await assertInTx(ctx, txId, now, { e, a: "fields", value: args.fields });
     if (args.label !== undefined)
       await assertInTx(ctx, txId, now, { e, a: "label", value: args.label });
     return { actionEntity: e };
   },
 });
 
-async function loadActionDef(ctx: QueryCtx, name: string) {
+async function loadActionDef(ctx: QueryCtx, name: string): Promise<ActionDef | null> {
   const rows = await ctx.db
     .query("currentFacts")
     .withIndex("by_e", (q) => q.eq("e", actionId(name)))
@@ -56,12 +91,46 @@ async function loadActionDef(ctx: QueryCtx, name: string) {
     label: m["label"]?.[0] ? String(m["label"][0]) : undefined,
     appliesTo: m["appliesTo"]?.[0] ? String(m["appliesTo"][0]) : undefined,
     asserts: (m["asserts"]?.[0] ?? {}) as Record<string, unknown>,
+    fields: Array.isArray(m["fields"]?.[0])
+      ? (m["fields"]![0] as ActionField[])
+      : [],
   };
+}
+
+function resolveActionValue(
+  raw: unknown,
+  entity: string,
+  fields: ActionField[],
+  args: Record<string, unknown>,
+): unknown {
+  if (typeof raw !== "string") return raw;
+  if (raw === "$entity") return entity;
+  if (!raw.startsWith("$arg.")) return raw;
+  const name = raw.slice("$arg.".length);
+  const field = fields.find((f) => f.name === name);
+  if (!field) throw new Error(`unknown action arg placeholder: ${name}`);
+  const value = args[name] ?? field.defaultValue;
+  if (value === undefined && field.required !== false) {
+    throw new Error(`missing action arg: ${name}`);
+  }
+  if (value === undefined) return null;
+  if (field.type === "select" && value !== undefined) {
+    const allowed = field.options ?? [];
+    if (!allowed.includes(String(value))) {
+      throw new Error(`invalid action arg ${name}: ${String(value)}`);
+    }
+  }
+  return value;
 }
 
 /** Run an action against a target entity: assert its facts in one transaction. */
 export const runAction = mutation({
-  args: { action: v.string(), entity: v.string(), actorId: v.optional(v.string()) },
+  args: {
+    action: v.string(),
+    entity: v.string(),
+    actorId: v.optional(v.string()),
+    args: v.optional(v.record(v.string(), v.any())),
+  },
   handler: async (ctx, args) => {
     const def = await loadActionDef(ctx, args.action);
     if (!def) throw new Error(`unknown action: ${args.action}`);
@@ -73,7 +142,9 @@ export const runAction = mutation({
       now,
     });
     let asserted = 0;
-    for (const [a, value] of Object.entries(def.asserts)) {
+    const actionArgs = args.args ?? {};
+    for (const [a, raw] of Object.entries(def.asserts)) {
+      const value = resolveActionValue(raw, args.entity, def.fields, actionArgs);
       await assertInTx(ctx, txId, now, { e: args.entity, a, value });
       asserted++;
     }

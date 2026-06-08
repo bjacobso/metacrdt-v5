@@ -141,6 +141,98 @@ describe("config-as-code + origin + entity detail", () => {
     }
   });
 
+  test("runAction resolves configured action args into asserted facts", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await setup(t);
+
+      await t.mutation(api.appconfig.applyConfig, {
+        config: {
+          actions: [
+            {
+              name: "set_status",
+              label: "Set worker status",
+              appliesTo: "Worker",
+              fields: [
+                {
+                  name: "status",
+                  label: "Status",
+                  type: "select",
+                  options: ["active", "terminated"],
+                },
+              ],
+              asserts: { "worker.status": "$arg.status" },
+            },
+          ],
+        },
+      });
+      await flush(t);
+
+      const actions = await t.query(api.actions.actionsForType, { type: "Worker" });
+      expect(actions.find((a) => a.name === "set_status")?.fields).toEqual([
+        {
+          name: "status",
+          label: "Status",
+          type: "select",
+          options: ["active", "terminated"],
+        },
+      ]);
+
+      await t.mutation(api.actions.runAction, {
+        action: "set_status",
+        entity: "worker:maria",
+        args: { status: "terminated" },
+      });
+      await flush(t);
+
+      const e = await t.query(api.facts.getEntity, { e: "worker:maria" });
+      expect(e.attributes["worker.status"]).toEqual(["terminated"]);
+
+      await expect(
+        t.mutation(api.actions.runAction, {
+          action: "set_status",
+          entity: "worker:maria",
+          args: {},
+        }),
+      ).rejects.toThrow(/missing action arg: status/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("runAction rejects unknown arg placeholders", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await setup(t);
+
+      await t.mutation(api.appconfig.applyConfig, {
+        config: {
+          actions: [
+            {
+              name: "bad_placeholder",
+              appliesTo: "Worker",
+              fields: [{ name: "status", type: "string" }],
+              asserts: { "worker.status": "$arg.missing" },
+            },
+          ],
+        },
+      });
+      await flush(t);
+
+      await expect(
+        t.mutation(api.actions.runAction, {
+          action: "bad_placeholder",
+          entity: "worker:maria",
+          args: { status: "active" },
+        }),
+      ).rejects.toThrow(/unknown action arg placeholder: missing/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("system processes report live counts", async () => {
     vi.useFakeTimers();
     try {
