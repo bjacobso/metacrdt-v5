@@ -22,6 +22,45 @@ export type MetaAttribute = {
   description: string;
 };
 
+export type AttributeDefinition = {
+  name: string;
+  valueType: ValueType;
+  cardinality: Cardinality;
+  unique?: boolean;
+  indexed?: boolean;
+  materialized?: boolean;
+  inverseAttribute?: string;
+  description?: string;
+};
+
+export type EntityTypeDefinition = {
+  name: string;
+  attributes?: readonly string[];
+  description?: string;
+};
+
+export type SchemaFact = {
+  e: string;
+  a: string;
+  value: unknown;
+};
+
+export type FactRow = {
+  a: string;
+  v: unknown;
+};
+
+export type AttributeShape = {
+  name: string;
+  valueType: unknown;
+  cardinality: unknown;
+  unique: unknown;
+  indexed: unknown;
+  materialized: unknown;
+  inverseAttribute: unknown;
+  description: unknown;
+};
+
 export const META = {
   attrPrefix: "attr:",
   typePrefix: "type:",
@@ -102,6 +141,73 @@ export function builtinCardinality(a: string): Cardinality | undefined {
 
 export function cardinalityOrMany(a: string): Cardinality {
   return builtinCardinality(a) ?? "many";
+}
+
+export function attributeDefinitionFacts(def: AttributeDefinition): SchemaFact[] {
+  const e = attrId(def.name);
+  const facts: SchemaFact[] = [
+    { e, a: "type", value: META.attributeType },
+    { e, a: "name", value: def.name },
+    { e, a: "valueType", value: def.valueType },
+    { e, a: "cardinality", value: def.cardinality },
+  ];
+  if (def.unique !== undefined) facts.push({ e, a: "unique", value: def.unique });
+  if (def.indexed !== undefined) {
+    facts.push({ e, a: "indexed", value: def.indexed });
+  }
+  if (def.materialized !== undefined) {
+    facts.push({ e, a: "materialized", value: def.materialized });
+  }
+  if (def.inverseAttribute !== undefined) {
+    facts.push({ e, a: "inverseAttribute", value: def.inverseAttribute });
+  }
+  if (def.description !== undefined) {
+    facts.push({ e, a: "description", value: def.description });
+  }
+  return facts;
+}
+
+export function entityTypeDefinitionFacts(def: EntityTypeDefinition): SchemaFact[] {
+  const e = typeId(def.name);
+  const facts: SchemaFact[] = [
+    { e, a: "type", value: META.entityType },
+    { e, a: "name", value: def.name },
+  ];
+  if (def.description !== undefined) {
+    facts.push({ e, a: "description", value: def.description });
+  }
+  for (const attr of def.attributes ?? []) {
+    facts.push({ e, a: "hasAttribute", value: attrId(attr) });
+  }
+  return facts;
+}
+
+export function metaAttributeFacts(meta: MetaAttribute): SchemaFact[] {
+  return attributeDefinitionFacts(meta);
+}
+
+export function allMetaAttributeFacts(): SchemaFact[] {
+  return META_ATTRIBUTES.flatMap((m) => metaAttributeFacts(m));
+}
+
+/** Reconstruct an attribute-definition shape from visible schema fact rows. */
+export function shapeAttributeDefinition(
+  name: string,
+  rows: readonly FactRow[],
+): AttributeShape {
+  const attrs: Record<string, unknown[]> = {};
+  for (const row of rows) (attrs[row.a] ??= []).push(row.v);
+  const one = (k: string) => attrs[k]?.[0];
+  return {
+    name,
+    valueType: one("valueType"),
+    cardinality: one("cardinality"),
+    unique: one("unique"),
+    indexed: one("indexed"),
+    materialized: one("materialized"),
+    inverseAttribute: one("inverseAttribute"),
+    description: one("description"),
+  };
 }
 
 /** The meta-attributes themselves, for self-description / bootstrap. */

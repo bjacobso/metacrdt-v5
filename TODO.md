@@ -117,9 +117,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   schema-as-facts conventions (`attr:` / `type:` carrier ids, builtin
   cardinalities, value/cardinality guards, and meta-attribute bootstrap
   definitions). `convex/lib/meta.ts` re-exports the package for compatibility.
-- [ ] Then peel off, as they stabilize: richer `@metacrdt/schema` lowering from
-  `convex/attributes.ts`, then `@metacrdt/query`, `@metacrdt/workflow`,
-  `@metacrdt/forms`, and `@metacrdt/agent`.
+- [x] **`@metacrdt/schema` definition lowering extracted** — the package now owns
+  pure attribute/type/meta-schema fact lowering and attribute-shape reconstruction
+  from visible schema rows; `convex/attributes.ts` keeps storage, transactions,
+  authorization, validators, and query execution.
+- [ ] Then peel off, as they stabilize: `@metacrdt/query`, `@metacrdt/workflow`,
+  `@metacrdt/forms`, `@metacrdt/views`, and `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
   (`language-ts`, selected `language-host` / docs / tests). Forma owns the Lisp
   authoring language; runtime lowering stays out until the IR boundary proves it.
@@ -386,6 +389,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 84 shipped:** `@metacrdt/schema` definition lowering. Added pure
+  helpers for lowering attribute definitions, entity-type definitions, and
+  meta-schema bootstrap definitions into canonical schema facts; added
+  `shapeAttributeDefinition` for reconstructing attribute read-model shapes from
+  visible schema rows. `convex/attributes.ts` now consumes those helpers while
+  retaining Convex-owned storage, auth, transactions, validators, and queries.
 - [x] **Goal 83 shipped:** first `@metacrdt/schema` slice. Added
   `packages/schema` with pure schema carrier ids, builtin bootstrap
   cardinalities, value/cardinality guards, and meta-attribute definitions;

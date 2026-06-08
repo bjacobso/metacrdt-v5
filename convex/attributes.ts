@@ -3,11 +3,14 @@ import { v } from "convex/values";
 import { Doc } from "./_generated/dataModel";
 import { isVisible } from "./lib/visibility";
 import {
+  allMetaAttributeFacts,
+  attributeDefinitionFacts,
   attrId,
   typeId,
   attrNameOf,
   META,
-  META_ATTRIBUTES,
+  entityTypeDefinitionFacts,
+  shapeAttributeDefinition,
 } from "./lib/meta";
 import { assertInTx, createTransaction, retractInTx } from "./facts";
 import { requireWritePrincipal } from "./lib/writeAuth";
@@ -24,13 +27,6 @@ const valueTypeValidator = v.union(
   v.literal("date"),
   v.literal("json"),
 );
-
-/** Reconstruct an entity's attribute map (single-valued where possible). */
-function attrMapFromRows(rows: { a: string; v: unknown }[]): Record<string, unknown[]> {
-  const m: Record<string, unknown[]> = {};
-  for (const r of rows) (m[r.a] ??= []).push(r.v);
-  return m;
-}
 
 async function currentRows(ctx: QueryCtx | MutationCtx, e: string) {
   return await ctx.db
@@ -79,22 +75,7 @@ export const defineAttribute = mutation({
     });
     const e = attrId(args.name);
 
-    const triples: Array<[string, unknown]> = [
-      ["type", META.attributeType],
-      ["name", args.name],
-      ["valueType", args.valueType],
-      ["cardinality", args.cardinality],
-    ];
-    if (args.unique !== undefined) triples.push(["unique", args.unique]);
-    if (args.indexed !== undefined) triples.push(["indexed", args.indexed]);
-    if (args.materialized !== undefined)
-      triples.push(["materialized", args.materialized]);
-    if (args.inverseAttribute !== undefined)
-      triples.push(["inverseAttribute", args.inverseAttribute]);
-    if (args.description !== undefined)
-      triples.push(["description", args.description]);
-
-    for (const [a, value] of triples) {
+    for (const { a, value } of attributeDefinitionFacts(args)) {
       await assertInTx(ctx, txId, now, { e, a, value });
     }
     return { attributeEntity: e, txId };
@@ -138,20 +119,8 @@ export const defineType = mutation({
       now,
     });
     const e = typeId(args.name);
-    await assertInTx(ctx, txId, now, { e, a: "type", value: META.entityType });
-    await assertInTx(ctx, txId, now, { e, a: "name", value: args.name });
-    if (args.description !== undefined)
-      await assertInTx(ctx, txId, now, {
-        e,
-        a: "description",
-        value: args.description,
-      });
-    for (const attr of args.attributes ?? []) {
-      await assertInTx(ctx, txId, now, {
-        e,
-        a: "hasAttribute",
-        value: attrId(attr),
-      });
+    for (const fact of entityTypeDefinitionFacts(args)) {
+      await assertInTx(ctx, txId, now, fact);
     }
     return { typeEntity: e, txId };
   },
@@ -167,32 +136,18 @@ export const bootstrapSchema = mutation({
       reason: "bootstrap meta-schema",
       now,
     });
-    for (const m of META_ATTRIBUTES) {
-      const e = attrId(m.name);
-      await assertInTx(ctx, txId, now, { e, a: "type", value: META.attributeType });
-      await assertInTx(ctx, txId, now, { e, a: "name", value: m.name });
-      await assertInTx(ctx, txId, now, { e, a: "valueType", value: m.valueType });
-      await assertInTx(ctx, txId, now, { e, a: "cardinality", value: m.cardinality });
-      await assertInTx(ctx, txId, now, { e, a: "description", value: m.description });
+    const facts = allMetaAttributeFacts();
+    for (const fact of facts) {
+      await assertInTx(ctx, txId, now, fact);
     }
-    return { installed: META_ATTRIBUTES.length };
+    return { installed: new Set(facts.map((f) => f.e)).size };
   },
 });
 
 // --- queries ----------------------------------------------------------------
 
-function shapeAttribute(name: string, attrs: Record<string, unknown[]>) {
-  const one = (k: string) => attrs[k]?.[0];
-  return {
-    name,
-    valueType: one("valueType"),
-    cardinality: one("cardinality"),
-    unique: one("unique"),
-    indexed: one("indexed"),
-    materialized: one("materialized"),
-    inverseAttribute: one("inverseAttribute"),
-    description: one("description"),
-  };
+function shapeAttribute(name: string, rows: { a: string; v: unknown }[]) {
+  return shapeAttributeDefinition(name, rows);
 }
 
 /** Current definition of an attribute, reconstructed from facts. */
@@ -201,7 +156,7 @@ export const getAttribute = query({
   handler: async (ctx, args) => {
     const rows = await currentRows(ctx, attrId(args.name));
     if (rows.length === 0) return null;
-    return shapeAttribute(args.name, attrMapFromRows(rows));
+    return shapeAttribute(args.name, rows);
   },
 });
 
@@ -220,7 +175,7 @@ export const attributeAsOf = query({
     const rows = await visibleRowsAsOf(ctx, attrId(args.name), coord);
     if (rows.length === 0) return { name: args.name, coord, exists: false };
     return {
-      ...shapeAttribute(args.name, attrMapFromRows(rows)),
+      ...shapeAttribute(args.name, rows),
       coord,
       exists: true,
     };
@@ -240,7 +195,7 @@ export const listAttributes = query({
     const out = [];
     for (const d of defs) {
       const rows = await currentRows(ctx, d.e);
-      out.push(shapeAttribute(attrNameOf(d.e), attrMapFromRows(rows)));
+      out.push(shapeAttribute(attrNameOf(d.e), rows));
     }
     return out.sort((a, b) => a.name.localeCompare(b.name));
   },
@@ -294,7 +249,7 @@ export const typeSchemaAsOf = query({
     for (const name of attributes) {
       const attrRows = await visibleRowsAsOf(ctx, attrId(name), coord);
       columns.push({
-        ...shapeAttribute(name, attrMapFromRows(attrRows)),
+        ...shapeAttribute(name, attrRows),
         declared: attrRows.length > 0,
       });
     }

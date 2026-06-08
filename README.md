@@ -107,8 +107,10 @@ Current packages:
   the bitemporal fold.
 - **`@metacrdt/schema`** (`packages/schema`) — pure schema-as-facts conventions:
   canonical `attr:` / `type:` carrier ids, builtin bootstrap cardinalities,
-  value/cardinality guards, and self-describing meta-attribute definitions. The
-  Convex reference runtime consumes it through `convex/lib/meta.ts`.
+  value/cardinality guards, self-describing meta-attribute definitions,
+  canonical lowering for attribute/type/meta-schema definition facts, and
+  attribute-shape reconstruction from visible schema rows. The Convex reference
+  runtime consumes it through `convex/lib/meta.ts` / `convex/attributes.ts`.
 - **`@metacrdt/convex`** (`packages/convex`) — Convex target adapters:
   protocol metadata validators, Convex/core event construction, row
   reconstruction/verification, projected-row visibility, cardinality-one
@@ -147,7 +149,7 @@ Planned package graph:
 ```text
 @metacrdt/core        protocol kernel: events, ids, order, fold
 @metacrdt/forma       Lisp authoring language
-@metacrdt/schema      schema-as-facts, types, attributes (first pure slice shipped)
+@metacrdt/schema      schema-as-facts, types, attributes (definition lowering shipped)
 @metacrdt/query       Datalog, rules, derivation
 @metacrdt/workflow    processes, flows, obligations
 @metacrdt/forms       forms, collection, prompt-response

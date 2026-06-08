@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 83 (`@metacrdt/schema` First Slice) has
+**Current goal:** Goal 84 (`@metacrdt/schema` Definition Lowering) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -60,7 +60,12 @@ domain, computing manifest diffs from protocol-shaped `factEvents` through the
 shared core fold without moving config writes behind Confect. Goal 83 extracts
 the first pure `@metacrdt/schema` package slice from the Convex-local meta helper:
 schema carrier ids, builtin bootstrap cardinalities, value/cardinality guards,
-and meta-attribute definitions. The next
+and meta-attribute definitions. Goal 84 moves the stable definition-lowering and
+attribute read-model shaping semantics from `convex/attributes.ts` into
+`@metacrdt/schema`: attribute definitions, entity-type definitions, and
+meta-schema bootstrap facts are lowered by the pure package, and Convex consumes
+the package helper for attribute schema shapes while retaining transaction and
+storage ownership. The next
 active goal should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
@@ -137,6 +142,9 @@ arguments.
   - builtin bootstrap cardinalities
   - value-type and cardinality guards
   - self-describing meta-attribute definitions
+  - attribute-definition, entity-type-definition, and meta-schema bootstrap fact
+    lowering
+  - attribute-shape reconstruction from visible schema fact rows
   - Convex compatibility re-export through `convex/lib/meta.ts`
 - New Convex writes stamp protocol metadata on `factEvents`:
   `eventId`, HLC, `replicaId`, `targetEventId`, and `causalRefs` where
@@ -7841,6 +7849,67 @@ runtime into `@metacrdt/schema`.
 - A live `attributes:typeSchemaAsOf` query returned schema columns through the
   package-backed Convex adapter path.
 - `git diff --check` passed.
+
+---
+
+## Goal 84 — `@metacrdt/schema` Definition Lowering
+
+**Status:** shipped as the second pure schema package slice.
+
+**Objective:** continue package consolidation by moving stable
+schema-definition lowering and attribute read-model shaping out of
+`convex/attributes.ts` and into `@metacrdt/schema`, without moving Convex storage
+or query execution.
+
+### Semantics
+
+- `packages/schema` now owns:
+  - `AttributeDefinition`, `EntityTypeDefinition`, `SchemaFact`, `FactRow`, and
+    `AttributeShape` types;
+  - `attributeDefinitionFacts(def)`;
+  - `entityTypeDefinitionFacts(def)`;
+  - `metaAttributeFacts(meta)` and `allMetaAttributeFacts()`;
+  - `shapeAttributeDefinition(name, rows)`.
+- The helpers produce the exact schema facts the Convex runtime previously
+  hand-assembled:
+  - `attr:<name>` entities get `type = Attribute`, `name`, `valueType`,
+    `cardinality`, and optional `unique` / `indexed` / `materialized` /
+    `inverseAttribute` / `description` facts.
+  - `type:<Name>` entities get `type = EntityType`, `name`, optional
+    `description`, and `hasAttribute = attr:<attr>` edges.
+  - meta-schema bootstrap facts are derived from the same attribute-definition
+    lowering as normal attributes.
+- `convex/attributes.ts` remains the Convex runtime adapter:
+  - it still owns public mutations/queries, validators, authorization,
+    transactions, `assertInTx` writes, and DB scans;
+  - `defineAttribute`, `defineType`, and `bootstrapSchema` now ask
+    `@metacrdt/schema` for the facts to assert;
+  - attribute/schema read surfaces now use `shapeAttributeDefinition` for the
+    returned definition shape.
+
+### Non-Goals
+
+- Do not move `convex/attributes.ts` storage/query execution into the package.
+- Do not introduce a target runtime interface for schema yet.
+- Do not extract Datalog/query, workflow, forms, views, or agent packages.
+- Do not change the user-facing schema API return shapes.
+- Do not dedupe legacy duplicate `hasAttribute` facts in live dev data in this
+  slice; this slice preserves existing behavior.
+
+### Verification
+
+- `npm run test:schema` passed (8 package tests).
+- `npx tsc --noEmit -p packages/schema/tsconfig.json` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npm run test:core` passed (46 core tests).
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
+- A live `attributes:typeSchemaAsOf` query returned schema columns through the
+  package-backed definition-shaping path.
 
 ---
 
