@@ -53,7 +53,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `@metacrdt/convex` component surface. Don't factor these until the harness
   boundary is real.
 
-**Current goal — true `applyConfig` reconcile (see [PLAN.md](./PLAN.md#goal-5--true-applyconfig-reconcile))**
+**Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
   config sections.
 - [x] Retract or deactivate previously configured facts/rows dropped from the
@@ -76,14 +76,22 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Render the Entities table from declared type columns via `queryEntities`.
 - [x] Order entity detail state by the primary type's declared schema, then
   append extra runtime facts.
-- [ ] Choose the next active goal. Leading candidates: dry-run compliance,
-  `@metacrdt/runtime` harness groundwork, or auth/write hardening.
+
+**Current goal — Goal 8 Confect-first compliance planning**
+- [ ] Convert one real production domain boundary to Confect/Effect without a
+  wholesale backend rewrite.
+- [ ] Ship dry-run compliance: hypothetical worker/placement → required forms,
+  `reuse` vs `collect`, no writes.
+- [ ] Keep existing `api.compliance.workerCompliance` behavior stable while
+  adding a Confect sidecar mount for the planner.
+- [ ] Record the Confect decision after the slice: expand, keep narrow, or
+  defer.
 
 **Product / engine**
 - [x] Attribute-level PII authorization — read grants; query layer omits
   ungranted attrs (the i9 SSN) and reports `Denied`.
-- [ ] Dry-run compliance — read-only "for a hypothetical worker + scope, what's
-  required and would it reuse or collect?" No writes; cheapest high-value add.
+- [ ] Dry-run compliance — now scoped as Goal 8's Confect-first production
+  slice.
 - [x] Schema-driven forms / list views — render columns + collection fields from a
   type's declared attributes (`typeSchemaAsOf`), not ad-hoc.
 - [ ] Auth + write authorization — the live site takes public writes; the collect
@@ -111,6 +119,16 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — Goal 8 selected: Confect-first compliance planning
+- [x] **PLAN.md now answers the Confect-first question.** Decision: use Confect
+  next, but narrowly — convert the compliance read/planning domain and ship
+  dry-run compliance through a sidecar production slice, not a wholesale
+  rewrite of `convex/`.
+- [x] **Goal 8 is executable.** It names the files, mount pattern, requirement
+  source decision, typed errors, read-only guarantees, tests, UI work, docs, and
+  full verification gate. It preserves `@metacrdt/core` as Effect-free and keeps
+  protocol writes out of scope.
 
 ### 2026-06-07 — schema-driven entity UI
 - [x] **Goal 7 shipped:** `attributes.typeSchemaAsOf` now returns UI-ready
