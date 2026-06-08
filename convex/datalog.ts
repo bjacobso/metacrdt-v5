@@ -39,7 +39,9 @@ export const datalog = query({
       txTime: args.txTime ?? Date.now(),
       validTime: args.validTime ?? Date.now(),
     };
-    const bindings = await runWhere(ctx, args.where, coord);
+    const bindings = await runWhere(ctx, args.where, coord, {}, {
+      enforceReadAuth: true,
+    });
     const rows = project(bindings, args.select);
     if (rows.length > LIMITS.maxResultRows) {
       throw new Error(
@@ -90,7 +92,9 @@ export const aggregate = query({
       txTime: args.txTime ?? Date.now(),
       validTime: args.validTime ?? Date.now(),
     };
-    const bindings = await runWhere(ctx, args.where, coord);
+    const bindings = await runWhere(ctx, args.where, coord, {}, {
+      enforceReadAuth: true,
+    });
     const rows = aggregateBindings(bindings, args.groupBy ?? [], args.aggregates);
     if (rows.length > LIMITS.maxResultRows) {
       throw new Error(

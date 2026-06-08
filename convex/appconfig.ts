@@ -368,7 +368,7 @@ export const applyConfig = mutation({
 // list in the Flows UI, and the imperative setupDemoFlow/setupComplianceRules.
 
 const I9_FIELDS = [
-  { name: "ssn", label: "SSN", type: "string", required: true },
+  { name: "ssn", label: "SSN", type: "string", required: true, pii: true },
   {
     name: "citizenship",
     label: "Citizenship",

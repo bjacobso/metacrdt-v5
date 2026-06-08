@@ -1,8 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 5 (`applyConfig` reconcile) has shipped. The next
-product/runtime goal should be chosen from the TODO candidates: attribute-level
-PII authorization, schema-driven UI, or `@metacrdt/runtime` harness groundwork.
+**Current goal:** Goal 6 (attribute-level PII read authorization) has shipped in
+the Convex reference runtime. The next product/runtime goal should be chosen
+from the TODO candidates: schema-driven UI, dry-run compliance, or
+`@metacrdt/runtime` harness groundwork.
 
 This plan is the operational goal file. Read it with:
 
@@ -36,9 +37,10 @@ The repository should make that statement true in code:
 5. Confect/Effect improves the Convex target's schema, error, and service
    boundaries without becoming the protocol.
 
-The immediate technical gap has moved back into product semantics: the package
-graph now has `core`, `convex`, and `forma`, while the live config-as-code layer
-is still idempotent-by-upsert rather than a real reconcile loop.
+The immediate technical gap is now product/runtime ergonomics: the package graph
+has `core`, `convex`, and `forma`; the live config-as-code layer reconciles
+owned artifacts; and PII read authorization is enforced in public read
+projections, while full write authorization and multi-runtime sync remain open.
 
 ---
 
@@ -100,6 +102,13 @@ is still idempotent-by-upsert rather than a real reconcile loop.
   - dropped requirements deactivate their rules and remove stale derived facts
   - dropped flows remove their definitions
   - runtime data and system/meta facts are not deleted
+- Attribute-level PII read authorization exists in the Convex reference runtime:
+  - form fields can carry `pii: true` / `sensitive: true`
+  - the staffing blueprint marks `i9/ssn` as PII
+  - readers are derived from `ctx.auth.getUserIdentity().tokenIdentifier`
+  - read grants are ordinary facts on the principal (`grants.read`)
+  - public entity, bitemporal, Datalog, and timeline projections omit/redact
+    ungranted PII and report `Denied` markers where appropriate
 
 ### Not Yet True
 
@@ -112,6 +121,9 @@ is still idempotent-by-upsert rather than a real reconcile loop.
   mutation factories, and cardinality-one reconcile helpers remain deferred
   until the package boundary is proven against more host-app usage.
 - Multi-replica sync is specified but not implemented.
+- Full app login/write authorization is not configured; unauthenticated callers
+  are treated as `anonymous`, so PII is denied by default but public writes remain
+  demo-grade.
 - Confect is integrated as a narrow sidecar spike:
   - `confect/` defines a typed Effect Schema function group.
   - `convex/metacrdtConfect.ts` manually mounts the generated registered
@@ -812,6 +824,56 @@ model instead of lingering.
 
 ---
 
+## Goal 6 — Attribute-Level PII Read Authorization
+
+**Status:** shipped in the Convex reference runtime.
+
+**Objective:** make PII fields readable only to principals with explicit
+attribute grants. Ungranted projections must omit the value and report a
+`Denied` marker instead of relying on frontend hiding.
+
+### Implementation Notes
+
+- The read principal is derived server-side from
+  `ctx.auth.getUserIdentity()?.tokenIdentifier`; unauthenticated callers are the
+  `anonymous` principal. No read API accepts a caller-provided user id.
+- Sensitive attributes are detected from form definitions (`pii: true` or
+  `sensitive: true`) and from schema-as-facts escape-hatch metadata on
+  `attr:<name>` (`pii` / `sensitive`).
+- Grants are facts on the principal:
+  `(principal, "grants.read", { e, a })`, with `*` supported for entity or
+  attribute wildcards.
+- Public read surfaces enforce redaction:
+  - `facts.getEntity`
+  - `facts.queryFacts`
+  - `facts.entityAsOf`
+  - `facts.compareFacts`
+  - `facts.entityFactsAsOf`
+  - `facts.history`
+  - `facts.entityTimeline`
+  - `entities.entityDetail`
+  - `entities.queryEntities`
+  - public Datalog / aggregate queries
+- Internal folds/materializers continue to evaluate raw facts. The Datalog engine
+  takes an explicit `enforceReadAuth` option so public queries are protected
+  without changing rule/materialization semantics.
+- The UI displays denied rows on the entity detail and time-travel pages.
+
+### Acceptance Criteria
+
+- I-9 SSN is marked as PII in the staffing blueprint.
+- Unauthenticated reads omit `i9/ssn` and include a `Denied` marker.
+- An authenticated principal without a grant is also denied.
+- Granting `(principal, "grants.read", { e, a })` reveals the value to that
+  principal.
+- Public Datalog cannot bind ungranted PII values.
+- Tests prove denial and grant behavior through entity reads, as-of reads,
+  `queryFacts`, and Datalog.
+- Full Convex tests, package tests, typechecks, build, and `npx convex dev
+  --once` pass.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -825,7 +887,6 @@ These remain valuable, but they should not interrupt the current goal.
 ### Auth / Privacy
 
 - [ ] Auth + write authorization for the live site.
-- [ ] Attribute-level read grants / PII authorization.
 - [ ] Collect-token single-use / expiry hardening.
 
 ### Query / Rules

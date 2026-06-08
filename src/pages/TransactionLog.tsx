@@ -93,7 +93,7 @@ export default function TransactionLog() {
         <CardHeader title="State as of coordinate" hint="with provenance" />
         {asOf === undefined ? (
           <p className="px-5 py-4 text-[13px] text-muted">Loading…</p>
-        ) : asOf.facts.length === 0 ? (
+        ) : asOf.facts.length === 0 && (asOf.denied ?? []).length === 0 ? (
           <p className="px-5 py-4 text-[13px] text-muted">
             No facts visible for <Mono>{e}</Mono> at this coordinate.
           </p>
@@ -122,6 +122,14 @@ export default function TransactionLog() {
                     {f.actor} @ {fmt(f.txTime)}
                     {f.reason ? ` — ${f.reason}` : ""}
                   </td>
+                </tr>
+              ))}
+              {(asOf.denied ?? []).map((d) => (
+                <tr key={`denied:${d.a}`}>
+                  <td className="px-5 py-2 font-medium text-ink-2">{d.a}</td>
+                  <td className="px-2 py-2 text-red-ink">Denied ({d.reason})</td>
+                  <td className="px-2 py-2 text-[12px] text-muted">—</td>
+                  <td className="px-5 py-2 text-[12px] text-muted">read grant required</td>
                 </tr>
               ))}
             </tbody>

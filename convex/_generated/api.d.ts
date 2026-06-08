@@ -23,6 +23,7 @@ import type * as lib_coreEvent from "../lib/coreEvent.js";
 import type * as lib_engine from "../lib/engine.js";
 import type * as lib_meta from "../lib/meta.js";
 import type * as lib_origin from "../lib/origin.js";
+import type * as lib_readAuth from "../lib/readAuth.js";
 import type * as lib_visibility from "../lib/visibility.js";
 import type * as materialize from "../materialize.js";
 import type * as metacrdtConfect from "../metacrdtConfect.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   "lib/engine": typeof lib_engine;
   "lib/meta": typeof lib_meta;
   "lib/origin": typeof lib_origin;
+  "lib/readAuth": typeof lib_readAuth;
   "lib/visibility": typeof lib_visibility;
   materialize: typeof materialize;
   metacrdtConfect: typeof metacrdtConfect;

@@ -20,6 +20,8 @@ const fieldValidator = v.object({
   ),
   required: v.optional(v.boolean()),
   options: v.optional(v.array(v.string())),
+  pii: v.optional(v.boolean()),
+  sensitive: v.optional(v.boolean()),
 });
 
 function formEntity(form: string): string {

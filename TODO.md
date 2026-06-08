@@ -60,13 +60,21 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   blueprint, without touching runtime data or system/meta facts.
 - [x] Add tests proving requirement/action/type-or-attribute removal and repeated
   identical apply idempotence.
-- [ ] Choose the next active goal after Goal 5 lands. Leading candidates:
-  attribute-level PII authorization, schema-driven UI, or `@metacrdt/runtime`
-  harness groundwork.
+
+**Goal 6 — attribute-level PII read authorization**
+- [x] Mark PII at the form-schema layer (`i9/ssn`).
+- [x] Derive the read principal server-side from Convex auth identity
+  (`tokenIdentifier`), defaulting unauthenticated callers to `anonymous`.
+- [x] Express grants as facts on the principal (`grants.read`) and make public
+  read projections omit/redact ungranted values with `Denied` markers.
+- [x] Protect public Datalog while leaving internal rule/materialization folds
+  unfiltered.
+- [ ] Choose the next active goal. Leading candidates: schema-driven UI,
+  dry-run compliance, or `@metacrdt/runtime` harness groundwork.
 
 **Product / engine**
-- [ ] Attribute-level PII authorization — read grants; query layer omits ungranted
-  attrs (the i9 SSN) and reports `Denied`. The deferred pillar.
+- [x] Attribute-level PII authorization — read grants; query layer omits
+  ungranted attrs (the i9 SSN) and reports `Denied`.
 - [ ] Dry-run compliance — read-only "for a hypothetical worker + scope, what's
   required and would it reuse or collect?" No writes; cheapest high-value add.
 - [ ] Schema-driven forms / list views — render columns + collection fields from a
@@ -96,6 +104,25 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — attribute-level PII read authorization
+- [x] **Goal 6 shipped:** form definitions can mark fields `pii` / `sensitive`,
+  and the staffing blueprint marks `i9/ssn` as PII. `convex/lib/readAuth.ts`
+  centralizes principal derivation, sensitive-attribute detection, grant matching,
+  and attribute-map redaction.
+- [x] **Facts-native grants:** grants are ordinary current facts on the principal:
+  `(principal, "grants.read", { e, a })`, with wildcard support. Public read
+  functions derive the principal from `ctx.auth.getUserIdentity().tokenIdentifier`
+  (or `anonymous`) and never accept a caller-provided user id.
+- [x] **Projection enforcement:** `getEntity`, `queryFacts`, `entityAsOf`,
+  `compareFacts`, `entityFactsAsOf`, `history`, `entityTimeline`,
+  `entityDetail`, `queryEntities`, and public Datalog/aggregate queries now omit
+  or redact ungranted PII. Internal rule/materialization folds opt out via the
+  Datalog engine's explicit `enforceReadAuth` option.
+- [x] **UX + tests:** entity detail and transaction-log pages render `Denied`
+  markers. `convex/readAuth.test.ts` proves unauthenticated and ungranted reads
+  cannot see `i9/ssn`, while a granted authenticated principal can read it through
+  entity reads, as-of reads, `queryFacts`, and Datalog.
 
 ### 2026-06-07 — true `applyConfig` reconcile
 - [x] **Goal 5 shipped:** `applyConfig` now reconciles configured artifacts

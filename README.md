@@ -230,6 +230,12 @@ shape: dropping an owned type, attribute, form, flow, requirement, or action fro
 an explicitly applied config section retracts or deactivates the old configured
 artifact without deleting runtime data.
 
+Read authorization is also fact-native. Form fields can mark attributes as PII
+(`i9/ssn` in the staffing blueprint); public read projections derive the reader
+from Convex auth identity, check grant facts on that principal
+(`grants.read`), and omit/redact ungranted values with `Denied` markers. Internal
+materializers still fold raw facts so system derivations stay coherent.
+
 ---
 
 ## Query and Write Surface

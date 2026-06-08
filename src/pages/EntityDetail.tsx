@@ -43,6 +43,7 @@ export default function EntityDetail() {
     return <p className="text-[13px] text-muted">Loading…</p>;
 
   const attrs = Object.entries(detail.attributes).filter(([a]) => a !== "type");
+  const denied = detail.denied ?? [];
   const linked = [
     ...new Set(
       attrs
@@ -84,7 +85,7 @@ export default function EntityDetail() {
 
       <Card>
         <CardHeader title="State" />
-        {attrs.length === 0 ? (
+        {attrs.length === 0 && denied.length === 0 ? (
           <p className="px-5 py-4 text-[13px] text-muted">No current facts.</p>
         ) : (
           <table className="w-full text-[13px]">
@@ -94,6 +95,14 @@ export default function EntityDetail() {
                   <td className="w-1/3 px-5 py-2.5 font-medium text-ink-2">{a}</td>
                   <td className="px-5 py-2.5 text-ink">
                     {(vals as unknown[]).map(val).join(", ")}
+                  </td>
+                </tr>
+              ))}
+              {denied.map((d) => (
+                <tr key={`denied:${d.a}`}>
+                  <td className="w-1/3 px-5 py-2.5 font-medium text-ink-2">{d.a}</td>
+                  <td className="px-5 py-2.5 text-red-ink">
+                    Denied <span className="text-muted">({d.reason})</span>
                   </td>
                 </tr>
               ))}

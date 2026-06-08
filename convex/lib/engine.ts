@@ -1,6 +1,7 @@
 import { Doc, Id } from "../_generated/dataModel";
 import { QueryCtx, MutationCtx } from "../_generated/server";
 import { BitemporalCoord, isVisible, valueKey } from "./visibility";
+import { canReadAttribute, readPrincipal } from "./readAuth";
 
 export const LIMITS = {
   maxClauses: 16,
@@ -34,6 +35,7 @@ type NotClause = { kind: "not"; pattern: PatternClause };
 type AnyClause = PatternClause | CompareClause | NotClause;
 
 type Ctx = QueryCtx | MutationCtx;
+type ReadFilter = { principal: string } | null;
 
 // --- parsing ----------------------------------------------------------------
 
@@ -162,6 +164,7 @@ async function fetchPattern(
   clause: PatternClause,
   binding: Binding,
   coord: BitemporalCoord,
+  readFilter: ReadFilter,
 ): Promise<Triple[]> {
   const e = resolve(clause.e, binding);
   const a = resolve(clause.a, binding);
@@ -225,7 +228,22 @@ async function fetchPattern(
     );
   }
 
-  return out;
+  if (!readFilter) return out;
+
+  const filtered: Triple[] = [];
+  for (const triple of out) {
+    if (
+      await canReadAttribute(
+        ctx as QueryCtx,
+        readFilter.principal,
+        triple.e,
+        triple.a,
+      )
+    ) {
+      filtered.push(triple);
+    }
+  }
+  return filtered;
 }
 
 // --- unification / comparison / negation -----------------------------------
@@ -292,8 +310,9 @@ async function passesNegation(
   clause: NotClause,
   binding: Binding,
   coord: BitemporalCoord,
+  readFilter: ReadFilter,
 ): Promise<boolean> {
-  const candidates = await fetchPattern(ctx, clause.pattern, binding, coord);
+  const candidates = await fetchPattern(ctx, clause.pattern, binding, coord, readFilter);
   for (const t of candidates) {
     if (unify(clause.pattern, binding, t) !== null) return false;
   }
@@ -314,7 +333,11 @@ export async function solveWhere(
   where: unknown[],
   coord: BitemporalCoord,
   seed: Binding = {},
+  options: { enforceReadAuth?: boolean } = {},
 ): Promise<SolvedBinding[]> {
+  const readFilter = options.enforceReadAuth
+    ? { principal: await readPrincipal(ctx as QueryCtx) }
+    : null;
   const clauses = parseClauses(where);
   const remaining = clauses.map((_, i) => i);
   const bound = new Set<string>(Object.keys(seed));
@@ -358,7 +381,13 @@ export async function solveWhere(
     if (clause.kind === "pattern") {
       const next: SolvedBinding[] = [];
       for (const st of states) {
-        const candidates = await fetchPattern(ctx, clause, st.binding, coord);
+        const candidates = await fetchPattern(
+          ctx,
+          clause,
+          st.binding,
+          coord,
+          readFilter,
+        );
         for (const t of candidates) {
           const extended = unify(clause, st.binding, t);
           if (extended) {
@@ -381,7 +410,9 @@ export async function solveWhere(
     } else {
       const kept: SolvedBinding[] = [];
       for (const st of states) {
-        if (await passesNegation(ctx, clause, st.binding, coord)) kept.push(st);
+        if (await passesNegation(ctx, clause, st.binding, coord, readFilter)) {
+          kept.push(st);
+        }
       }
       states = kept;
     }
@@ -411,8 +442,9 @@ export async function runWhere(
   where: unknown[],
   coord: BitemporalCoord,
   seed: Binding = {},
+  options: { enforceReadAuth?: boolean } = {},
 ): Promise<Binding[]> {
-  const solved = await solveWhere(ctx, where, coord, seed);
+  const solved = await solveWhere(ctx, where, coord, seed, options);
   return solved.map((s) => s.binding);
 }
 

@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { COMPARISON_OPS, project, runWhere } from "./lib/engine";
 import { META, typeNameOf } from "./lib/meta";
 import { Origin, entityOrigin, isSystemEntity, typeOrigin } from "./lib/origin";
+import { redactAttributeMap, type DeniedAttribute } from "./lib/readAuth";
 
 // The attribute that designates an entity's type (the "table" it belongs to).
 const TYPE_ATTR = "type";
@@ -53,14 +54,17 @@ function compareForSort(a: unknown, b: unknown): number {
 async function loadAttributes(
   ctx: QueryCtx,
   e: string,
-): Promise<Record<string, unknown[]>> {
+): Promise<{
+  attributes: Record<string, unknown[]>;
+  denied: DeniedAttribute[];
+}> {
   const rows = await ctx.db
     .query("currentFacts")
     .withIndex("by_e", (q) => q.eq("e", e))
     .collect();
   const attrs: Record<string, unknown[]> = {};
   for (const r of rows) (attrs[r.a] ??= []).push(r.v);
-  return attrs;
+  return await redactAttributeMap(ctx, e, attrs);
 }
 
 /**
@@ -159,7 +163,7 @@ export const entityDetail = query({
   args: { e: v.string() },
   handler: async (ctx, args) => {
     const e = args.e;
-    const attributes = await loadAttributes(ctx, e);
+    const { attributes, denied } = await loadAttributes(ctx, e);
     const types = (attributes[TYPE_ATTR] ?? []).map(String);
     const origin = entityOrigin(e, types);
     const name = (attributes["name"] ?? [])[0];
@@ -238,6 +242,7 @@ export const entityDetail = query({
       types,
       origin,
       attributes,
+      denied,
       flows,
       actions,
       runs,
@@ -313,7 +318,9 @@ export const queryEntities = query({
     }
 
     const coord = { txTime: Date.now(), validTime: Date.now() };
-    const bindings = await runWhere(ctx, where, coord);
+    const bindings = await runWhere(ctx, where, coord, {}, {
+      enforceReadAuth: true,
+    });
     let ids = project(bindings, ["?e"]).map((r) => String(r.e));
 
     // Sort by an attribute via a single indexed scan (id -> value map), or by
@@ -340,7 +347,7 @@ export const queryEntities = query({
     const page = await Promise.all(
       pageIds.map(async (id) => ({
         id,
-        attributes: await loadAttributes(ctx, id),
+        ...(await loadAttributes(ctx, id)),
       })),
     );
 

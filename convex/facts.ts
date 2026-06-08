@@ -5,6 +5,11 @@ import { v } from "convex/values";
 import { isVisible, valueKey } from "./lib/visibility";
 import { attrId, BUILTIN_CARDINALITY } from "./lib/meta";
 import {
+  canReadAttribute,
+  readPrincipal,
+  redactAttributeMap,
+} from "./lib/readAuth";
+import {
   assertEvent,
   eventPatch,
   retractEvent,
@@ -649,7 +654,7 @@ export const getEntity = query({
     for (const row of rows) {
       (attributes[row.a] ??= []).push(row.v);
     }
-    return { id: args.e, attributes };
+    return { id: args.e, ...(await redactAttributeMap(ctx, args.e, attributes)) };
   },
 });
 
@@ -679,8 +684,15 @@ export const queryFacts = query({
     };
     const scanLimit = Math.min(args.limit ?? 1000, 2000);
 
+    const principal = await readPrincipal(ctx);
     const candidates = await fetchCandidateFacts(ctx, args, scanLimit);
-    return candidates.filter((f) => isVisible(f, coord, opts));
+    const out: Doc<"facts">[] = [];
+    for (const f of candidates) {
+      if (!isVisible(f, coord, opts)) continue;
+      if (!(await canReadAttribute(ctx, principal, f.e, f.a))) continue;
+      out.push(f);
+    }
+    return out;
   },
 });
 
@@ -729,7 +741,9 @@ export const history = query({
   },
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? 200, 1000);
+    const principal = await readPrincipal(ctx);
     if (args.a !== undefined) {
+      if (!(await canReadAttribute(ctx, principal, args.e, args.a))) return [];
       return await ctx.db
         .query("factEvents")
         .withIndex("by_e_a_tx", (q) => q.eq("e", args.e).eq("a", args.a!))
@@ -738,11 +752,16 @@ export const history = query({
     }
     // Without an attribute, scan by entity across attributes is not indexed;
     // fall back to the canonical interval records ordered by assertion time.
-    return await ctx.db
+    const rows = await ctx.db
       .query("facts")
       .withIndex("by_e", (q) => q.eq("e", args.e))
       .order("desc")
       .take(limit);
+    const out: Doc<"facts">[] = [];
+    for (const row of rows) {
+      if (await canReadAttribute(ctx, principal, row.e, row.a)) out.push(row);
+    }
+    return out;
   },
 });
 
@@ -789,7 +808,11 @@ export const entityAsOf = query({
       }
       (attributes[f.a] ??= []).push(f.v);
     }
-    return { id: args.e, coord, attributes };
+    return {
+      id: args.e,
+      coord,
+      ...(await redactAttributeMap(ctx, args.e, attributes)),
+    };
   },
 });
 
@@ -812,10 +835,12 @@ export const compareFacts = query({
       .withIndex("by_e_a", (q) => q.eq("e", args.e).eq("a", args.a))
       .take(2000);
 
+    const principal = await readPrincipal(ctx);
+    const readable = await canReadAttribute(ctx, principal, args.e, args.a);
     const opts = { includeTombstoned: args.includeTombstoned };
     const visibleValues = (coord: { txTime: number; validTime: number }) =>
       rows
-        .filter((f) => isVisible(f, coord, opts))
+        .filter((f) => readable && isVisible(f, coord, opts))
         .map((f) => f.v)
         .sort((x, y) => valueKey(x).localeCompare(valueKey(y)));
 
@@ -825,7 +850,14 @@ export const compareFacts = query({
       JSON.stringify(before.map(valueKey)) !==
       JSON.stringify(after.map(valueKey));
 
-    return { e: args.e, a: args.a, before, after, changed };
+    return {
+      e: args.e,
+      a: args.a,
+      before,
+      after,
+      changed,
+      denied: readable ? null : { a: args.a, reason: "pii" as const },
+    };
   },
 });
 
@@ -857,9 +889,15 @@ export const entityFactsAsOf = query({
       includeTombstoned: args.includeTombstoned,
       includeRetracted: args.includeRetracted,
     };
+    const principal = await readPrincipal(ctx);
     const out = [];
+    const deniedByAttr = new Map<string, { a: string; reason: "pii" }>();
     for (const f of rows) {
       if (!isVisible(f, coord, opts)) continue;
+      if (!(await canReadAttribute(ctx, principal, f.e, f.a))) {
+        deniedByAttr.set(f.a, { a: f.a, reason: "pii" });
+        continue;
+      }
       const tx = await ctx.db.get("transactions", f.firstTxId);
       out.push({
         a: f.a,
@@ -875,7 +913,7 @@ export const entityFactsAsOf = query({
       });
     }
     out.sort((x, y) => x.a.localeCompare(y.a));
-    return { id: args.e, coord, facts: out };
+    return { id: args.e, coord, facts: out, denied: [...deniedByAttr.values()] };
   },
 });
 
@@ -892,13 +930,16 @@ export const entityTimeline = query({
       .order("desc")
       .take(Math.min(args.limit ?? 200, 1000));
 
+    const principal = await readPrincipal(ctx);
     const out = [];
     for (const ev of events) {
       const tx = await ctx.db.get("transactions", ev.txId);
+      const readable = await canReadAttribute(ctx, principal, ev.e, ev.a);
       out.push({
         kind: ev.kind,
         a: ev.a,
-        v: ev.v,
+        v: readable ? ev.v : "[denied]",
+        denied: !readable,
         txTime: ev.txTime,
         validFrom: ev.validFrom,
         validTo: ev.validTo,
