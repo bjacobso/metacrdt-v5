@@ -202,7 +202,7 @@ describe("cardinality-one", () => {
     );
   });
 
-  test("event-log entity fold survives a corrupted currentFacts projection", async () => {
+  test("production entity read survives a corrupted currentFacts projection", async () => {
     const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.attributes.defineAttribute, {
       name: "status.fromLogOnly",
@@ -223,14 +223,14 @@ describe("cardinality-one", () => {
       for (const row of rows) await ctx.db.delete(row._id);
     });
 
-    const projected = await t.query(api.facts.getEntity, {
+    const production = await t.query(api.facts.getEntity, {
       e: "e:from-log-only",
     });
     const fromLog = await t.query(api.facts.entityFromEventLog, {
       e: "e:from-log-only",
     });
 
-    expect(projected.attributes["status.fromLogOnly"]).toBeUndefined();
+    expect(production.attributes["status.fromLogOnly"]).toEqual(["current"]);
     expect(fromLog.attributes["status.fromLogOnly"]).toEqual(["current"]);
   });
 

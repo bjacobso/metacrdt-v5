@@ -698,16 +698,8 @@ export const correctFact = mutation({
 export const getEntity = query({
   args: { e: v.string() },
   handler: async (ctx, args) => {
-    const rows = await ctx.db
-      .query("currentFacts")
-      .withIndex("by_e", (q) => q.eq("e", args.e))
-      .collect();
-
-    const attributes: Record<string, unknown[]> = {};
-    for (const row of rows) {
-      (attributes[row.a] ??= []).push(row.v);
-    }
-    return { id: args.e, ...(await redactAttributeMap(ctx, args.e, attributes)) };
+    const result = await entityAttributesFromEventLog(ctx, { e: args.e });
+    return { id: args.e, attributes: result.attributes, denied: result.denied };
   },
 });
 
@@ -955,6 +947,54 @@ function cardinalityFromLog(log: Log, coord: { txTime: number; validTime: number
   };
 }
 
+async function entityAttributesFromEventLog(
+  ctx: QueryCtx,
+  args: {
+    e: string;
+    txTime?: number;
+    validTime?: number;
+    includeTombstoned?: boolean;
+    includeRetracted?: boolean;
+    limit?: number;
+  },
+): Promise<{
+  coord: { txTime: number; validTime: number };
+  skippedLegacyEvents: number;
+  attributes: Record<string, unknown[]>;
+  denied: Array<{ a: string; reason: "pii" }>;
+}> {
+  const coord = {
+    txTime: args.txTime ?? Date.now(),
+    validTime: args.validTime ?? Date.now(),
+  };
+  const limit = Math.min(args.limit ?? 2000, 5000);
+  const entityRows = await eventsForEntity(ctx, args.e, limit);
+  const entityProtocol = await protocolEventsForRows(ctx, entityRows);
+  const attrs = new Set<string>();
+  for (const ev of entityProtocol.events) {
+    if (ev.kind === "assert" && ev.a !== undefined) attrs.add(ev.a);
+  }
+  const schemaRows = await cardinalityEventsForAttributes(ctx, attrs, 100);
+  const schemaProtocol = await protocolEventsForRows(ctx, schemaRows);
+  const log = fromEvents([...entityProtocol.events, ...schemaProtocol.events]);
+  const folded = coreEntity(args.e, coord, log, cardinalityFromLog(log, coord), {
+    includeRetracted: args.includeRetracted,
+    includeTombstoned: args.includeTombstoned,
+  });
+
+  const attributes: Record<string, unknown[]> = {};
+  for (const [a, evOrEvents] of Object.entries(folded)) {
+    const evs = Array.isArray(evOrEvents) ? evOrEvents : [evOrEvents];
+    attributes[a] = evs.map((ev) => ev.v);
+  }
+
+  return {
+    coord,
+    skippedLegacyEvents: entityProtocol.skipped + schemaProtocol.skipped,
+    ...(await redactAttributeMap(ctx, args.e, attributes)),
+  };
+}
+
 /**
  * Fold one entity directly from the append-only protocol event log. This is a
  * bounded proof/read-model surface for retiring the hand-maintained
@@ -972,37 +1012,8 @@ export const entityFromEventLog = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const coord = {
-      txTime: args.txTime ?? Date.now(),
-      validTime: args.validTime ?? Date.now(),
-    };
-    const limit = Math.min(args.limit ?? 2000, 5000);
-    const entityRows = await eventsForEntity(ctx, args.e, limit);
-    const entityProtocol = await protocolEventsForRows(ctx, entityRows);
-    const attrs = new Set<string>();
-    for (const ev of entityProtocol.events) {
-      if (ev.kind === "assert" && ev.a !== undefined) attrs.add(ev.a);
-    }
-    const schemaRows = await cardinalityEventsForAttributes(ctx, attrs, 100);
-    const schemaProtocol = await protocolEventsForRows(ctx, schemaRows);
-    const log = fromEvents([...entityProtocol.events, ...schemaProtocol.events]);
-    const folded = coreEntity(args.e, coord, log, cardinalityFromLog(log, coord), {
-      includeRetracted: args.includeRetracted,
-      includeTombstoned: args.includeTombstoned,
-    });
-
-    const attributes: Record<string, unknown[]> = {};
-    for (const [a, evOrEvents] of Object.entries(folded)) {
-      const evs = Array.isArray(evOrEvents) ? evOrEvents : [evOrEvents];
-      attributes[a] = evs.map((ev) => ev.v);
-    }
-
-    return {
-      id: args.e,
-      coord,
-      skippedLegacyEvents: entityProtocol.skipped + schemaProtocol.skipped,
-      ...(await redactAttributeMap(ctx, args.e, attributes)),
-    };
+    const result = await entityAttributesFromEventLog(ctx, args);
+    return { id: args.e, ...result };
   },
 });
 

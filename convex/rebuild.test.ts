@@ -48,9 +48,18 @@ describe("rebuildProjections — events are the source of truth", () => {
       for (const c of cur) await ctx.db.delete("currentFacts", c._id);
     });
 
-    // Projection is now wrong (currentFacts wiped).
-    const corrupted = await t.query(api.facts.getEntity, { e: "e:1" });
-    expect(corrupted.attributes).toEqual({});
+    // The disposable projection is now wrong (currentFacts wiped), even though
+    // production getEntity reads through the event log and still renders state.
+    const corruptedProjectionCount = await t.run(async (ctx) => {
+      const rows = await ctx.db
+        .query("currentFacts")
+        .withIndex("by_e", (q) => q.eq("e", "e:1"))
+        .collect();
+      return rows.length;
+    });
+    expect(corruptedProjectionCount).toBe(0);
+    const stillReadable = await t.query(api.facts.getEntity, { e: "e:1" });
+    expect(stillReadable.attributes).toEqual(before.attributes);
 
     // Rebuild from the append-only log. (No rules here, so nothing to flush.)
     const result = await t.mutation(internal.rebuild.rebuildProjections, {});

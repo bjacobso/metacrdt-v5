@@ -76,8 +76,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `datalog`, `datalogPage`, `aggregate`, and `aggregatePage` now use the shared
   event-log-base + materialized-derived source for base facts. Production
   `api.facts.queryFacts` now uses the event-log point-query path while preserving
-  its existing return shape and read-auth behavior. Remaining: production
-  entity/current-state reads still use the hand-maintained `facts` /
+  its existing return shape and read-auth behavior. Production
+  `api.facts.getEntity` now folds current object state from protocol-shaped
+  `factEvents` instead of reading `currentFacts`. Remaining: production
+  entity-as-of/listing reads still use the hand-maintained `facts` /
   `currentFacts` projections; closure semi-naive add still receives the changed
   projection `factId`; derived rows are still stored in `derivedFacts`.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
@@ -337,6 +339,17 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 61 shipped:** production `api.facts.getEntity` now folds current
+  object state from protocol-shaped `factEvents` + schema cardinality facts,
+  rather than reading `currentFacts`. It preserves the existing
+  `{ id, attributes, denied }` response shape and keeps
+  `entityFromEventLog` as the proof/debug wrapper with coordinate and
+  skipped-legacy counts.
+- [x] **Entity projection-corruption proof.** `convex/triples.test.ts` now wipes
+  `currentFacts` for an entity and asserts production `getEntity` still returns
+  the visible current state from `factEvents`. `convex/rebuild.test.ts` now
+  inspects `currentFacts` directly when proving rebuild restores the disposable
+  projection.
 - [x] **Goal 60 shipped:** production `api.facts.queryFacts` now answers bounded
   bitemporal fact point queries by folding protocol-shaped `factEvents`, not by
   reading the `facts` projection. It preserves the old array return shape, keeps
