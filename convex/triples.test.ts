@@ -117,6 +117,40 @@ describe("cardinality-one", () => {
     }
   });
 
+  test("legacy facts without assertEventId still reconcile safely", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(api.attributes.defineAttribute, {
+      name: "status.legacy",
+      valueType: "string",
+      cardinality: "one",
+    });
+    const first = await t.mutation(api.facts.assertFact, {
+      e: "e:legacy",
+      a: "status.legacy",
+      value: "old",
+    });
+
+    // Simulate a fact created before the protocol metadata migration.
+    await t.run(async (ctx) => {
+      await ctx.db.patch("facts", first.factId, { assertEventId: undefined });
+    });
+
+    await t.mutation(api.facts.assertFact, {
+      e: "e:legacy",
+      a: "status.legacy",
+      value: "new",
+    });
+
+    const entity = await t.query(api.facts.getEntity, { e: "e:legacy" });
+    expect(entity.attributes["status.legacy"]).toEqual(["new"]);
+    const all = await t.query(api.facts.queryFacts, {
+      e: "e:legacy",
+      a: "status.legacy",
+      includeRetracted: true,
+    });
+    expect(all.map((f) => f.v).sort()).toEqual(["new", "old"]);
+  });
+
   test("cardinality-many keeps multiple values", async () => {
     const t = convexTest(schema, modules);
     // No attribute registered → defaults to many.

@@ -288,10 +288,10 @@ Important distinction:
 
 Add focused tests before broader refactors.
 
-- [ ] Core adapter tests:
+- [x] Core adapter tests:
   - [x] New event rows carry metadata that reconstructs a core event whose
     `eventId` verifies.
-  - [ ] Legacy event row can still be adapted explicitly.
+  - [x] Legacy event row can still be adapted explicitly.
 - [x] Write-path tests:
   - `assertFact` writes `eventId` and HLC metadata.
   - retract/tombstone/correct events reference the target event/fact correctly.

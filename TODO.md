@@ -89,8 +89,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   new writes sealed/verified through `@metacrdt/core`, `correctFact` now emits
   tombstone+assert protocol events instead of new `correction` rows, and
   cardinality-one current projection chooses the `≺`-max candidate. Verified with
-  69 Convex tests + 46 core tests + both typechecks; functions pushed to
+  70 Convex tests + 46 core tests + both typechecks; functions pushed to
   `chatty-hare-94`.
+- [x] Added explicit legacy fallback coverage: a fact with `assertEventId`
+  removed still reconciles safely through the compatibility target path during a
+  later cardinality-one assertion.
 - [x] Rewrote `PLAN.md` from the old triple-store milestone backlog into a
   goal-oriented MetaCRDT execution plan: Goal 1 is core-shaped Convex writes
   (`eventId`/HLC/replica metadata, `≺`-max cardinality-one supersession,
