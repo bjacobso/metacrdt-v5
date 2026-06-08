@@ -95,7 +95,7 @@ not invented:
 | `packages/core` (`@metacrdt/core`) | pure protocol kernel: events, order, G-Set merge, fold |
 | `packages/convex` (`@metacrdt/convex`) | Convex/core adapters, validators, Confect sidecar warning |
 | `packages/forma` (`@metacrdt/forma`) | Lisp authoring language: reader, formatter, evaluator, VM, type inference |
-| `packages/runtime` (`@metacrdt/runtime`) | runtime service contracts + memory harness + localStorage target seed proving target-neutral convergence and restart durability |
+| `packages/runtime` (`@metacrdt/runtime`) | runtime service contracts + memory harness + localStorage target seed + BroadcastChannel transport seed proving target-neutral convergence, restart durability, and same-origin anti-entropy |
 | `convex/attributes.ts`, `convex/lib/meta.ts` | `@metacrdt/schema` |
 | `convex/datalog.ts`, `convex/lib/engine.ts` | `@metacrdt/query` |
 | `convex/flows.ts` | `@metacrdt/workflow` |
@@ -116,7 +116,8 @@ not invented:
    guarantee and the most reusable. **`@metacrdt/convex`, `@metacrdt/forma`, and
    `@metacrdt/runtime` now exist too**: Convex is adapter-first; Forma is the
    runtime-neutral language package; runtime is harness-first (service contracts,
-   memory target, and localStorage target seed), not a Convex migration.
+   memory target, localStorage target seed, and BroadcastChannel transport seed),
+   not a Convex migration.
    Everything else extracts as it stabilizes. (Tracked in [TODO.md](../TODO.md).)
 2. **The name is the thesis — so protect what makes it true.** *Databases store
    facts; CRDTs synchronize facts; MetaCRDT synchronizes facts, logic, workflows,

@@ -66,7 +66,7 @@ packages/
 ├── forms/            @metacrdt/forms      # forms, collection, prompt-response
 ├── views/            @metacrdt/views      # ViewSpec / response surfaces
 ├── agent/            @metacrdt/agent      # agent actors, proposals, skills
-├── runtime/          @metacrdt/runtime    # done: services + memory/localStorage targets
+├── runtime/          @metacrdt/runtime    # done: services + memory/localStorage + BroadcastChannel
 ├── convex/           @metacrdt/convex     # Convex target / component / bindings
 ├── cloudflare/       @metacrdt/cloudflare # DO/Worker target
 ├── local/            @metacrdt/local      # browser/local-first target

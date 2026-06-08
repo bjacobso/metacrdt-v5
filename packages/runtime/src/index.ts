@@ -37,6 +37,14 @@ export {
   type LocalRuntimeStorage,
 } from "./local.js";
 
+export {
+  BroadcastChannelTransport,
+  attachBroadcastTransport,
+  type BroadcastChannelLike,
+  type BroadcastMessage,
+  type BroadcastTransportOptions,
+} from "./broadcast.js";
+
 export { applyOperation, mergeFrom, requireCapability } from "./operations.js";
 export {
   deltaSince,

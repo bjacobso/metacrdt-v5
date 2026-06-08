@@ -16,9 +16,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Browser/localStorage runtime seed — durable event log + HLC + per-replica
   `seq` inside `@metacrdt/runtime`, with version-vector exchange surviving
   restart. This is local durability, not network transport.
-- [ ] Durable version-vector network transports — BroadcastChannel / relay /
-  Durable-Object-per-group / p2p (see [foldkit.md](./docs/foldkit.md),
-  [alchemy.md](./docs/alchemy.md)).
+- [x] BroadcastChannel transport seed — same-origin browser anti-entropy:
+  publish local events, announce version vectors, answer hellos with deltas, and
+  merge incoming events through the G-Set/HLC path.
+- [ ] Durable relay / Durable-Object-per-group / p2p transports (see
+  [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
 **Packaging / monorepo (map, not migration — see [docs/architecture.md](./docs/architecture.md))**
 - [x] **`@metacrdt/core` extracted** — `packages/core`, pure & dependency-free
@@ -66,6 +68,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   provides localStorage-compatible `LocalEventStore`, `LocalClock`, and
   `LocalSequencer`, plus `createLocalRuntime`. This deliberately stays inside
   `@metacrdt/runtime` until the full `@metacrdt/local` package boundary is earned.
+- [x] **BroadcastChannel transport seed** — `packages/runtime/src/broadcast.ts`
+  adds `BroadcastChannelTransport` and `attachBroadcastTransport` for
+  same-origin browser anti-entropy over any runtime target.
 - [ ] Targets: `@metacrdt/cloudflare` (DO), full `@metacrdt/local` (browser /
   IndexedDB or SQLite + transport), and a state-owning `@metacrdt/convex`
   component/function surface.
@@ -126,8 +131,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   outside the hardened collection-token path.
 
 **Next goal candidates**
-- [ ] Choose the next active goal: full app write authorization, durable
-  runtime network transports, Cloudflare Durable Objects, or a state-owning
+- [ ] Choose the next active goal: full app write authorization, relay/Cloudflare
+  Durable Object transports, full `@metacrdt/local`, or a state-owning
   `@metacrdt/convex` component slice.
 
 **Docs**
@@ -153,6 +158,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — runtime BroadcastChannel transport seed
+- [x] **Added same-origin browser anti-entropy transport inside
+  `@metacrdt/runtime`.** `packages/runtime/src/broadcast.ts` defines
+  `BroadcastChannelLike`, `BroadcastChannelTransport`, and
+  `attachBroadcastTransport`.
+- [x] **Transport behavior proved with an in-memory BroadcastChannel-compatible
+  bus.** Tests cover live publish from `applyOperation`, `hello` version-vector
+  announcements, `delta` catch-up, post-catch-up idempotence, protocol isolation,
+  directed-delta filtering, and the attached `transport` capability.
+- [x] Still deferred: relay/Cloudflare Durable Object/p2p transports and the full
+  `@metacrdt/local` package boundary.
 
 ### 2026-06-07 — runtime localStorage target seed
 - [x] **Added a browser/localStorage runtime target seed inside

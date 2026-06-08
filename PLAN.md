@@ -1,9 +1,10 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 14 (`@metacrdt/runtime` localStorage target seed) has
-shipped. The next active goal should be chosen from the remaining TODO
-candidates: full app write authorization, durable runtime network transports,
-Cloudflare Durable Objects, or a state-owning `@metacrdt/convex` component slice.
+**Current goal:** Goal 15 (`@metacrdt/runtime` BroadcastChannel transport seed)
+has shipped. The next active goal should be chosen from the remaining TODO
+candidates: full app write authorization, relay/Cloudflare Durable Object
+transports, a full `@metacrdt/local` package, or a state-owning
+`@metacrdt/convex` component slice.
 
 This plan is the operational goal file. Read it with:
 
@@ -115,10 +116,12 @@ configured actions can now take small typed arguments.
   - an in-memory target/harness for proving convergence across runtimes
   - a localStorage-compatible browser/local-first target seed with durable event
     log, HLC, and per-replica sequence storage
+  - a BroadcastChannel-compatible transport seed for same-origin browser
+    anti-entropy
   - version-vector delta calculation and one-round anti-entropy exchange helpers
   - package-local tests for HLC injection, per-replica sequencing, G-Set exchange
-    convergence, version-vector deltas, persisted local state, lifecycle events,
-    and capability checks
+    convergence, version-vector deltas, persisted local state, BroadcastChannel
+    publish/hello/delta behavior, lifecycle events, and capability checks
 - `applyConfig` now behaves as a true section-scoped reconciler:
   - configured artifact ownership is tracked on `config:default`
   - explicitly supplied config sections compute desired sets
@@ -174,11 +177,12 @@ configured actions can now take small typed arguments.
   A state-owning Convex component and durable mutation factories remain deferred
   until the package boundary is proven against more host-app usage.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
-  reference runtime and does not implement durable network transport targets.
+  reference runtime and does not implement relay/Cloudflare/p2p transport targets.
 - Multi-replica sync is specified and now implemented as in-memory
   version-vector anti-entropy, and the localStorage target persists event/HLC/seq
-  state, but sync is not yet bound to Cloudflare/Convex transports or browser
-  networking.
+  state. A BroadcastChannel transport now handles same-origin browser publish and
+  hello/delta catch-up, but sync is not yet bound to Cloudflare/Convex relays or
+  cross-device networking.
 - Full app login/write authorization is not configured; unauthenticated callers
   are treated as `anonymous`, so PII is denied by default but general public
   writes remain demo-grade.
@@ -1641,6 +1645,59 @@ relay transport.
 
 ---
 
+## Goal 15 — `@metacrdt/runtime` BroadcastChannel Transport Seed
+
+**Status:** shipped as an attachable browser-style anti-entropy transport inside
+`@metacrdt/runtime`.
+
+**Objective:** prove the first runtime network transport without committing to a
+relay or Durable Object target. The transport is composable: it can attach to the
+memory target, the localStorage target, or future targets that implement the same
+`RuntimeServices` contract.
+
+### Scope
+
+Package additions:
+
+```text
+packages/runtime/
+  src/broadcast.ts       # BroadcastChannel-compatible anti-entropy transport
+  src/broadcast.test.ts  # publish, hello/delta, protocol isolation tests
+```
+
+This is the same-origin browser transport seed. It is **not** the final
+Cloudflare/relay/p2p transport and **not** a full `@metacrdt/local` package.
+
+### Acceptance Criteria
+
+- Add a `BroadcastChannelLike` interface so tests and non-browser targets can
+  provide the browser message-channel semantics.
+- Add `BroadcastChannelTransport` implementing `Transport`:
+  - publishes local events from `applyOperation`;
+  - sends `hello` messages containing version vectors;
+  - answers peer hellos with `delta` messages computed via `deltaSince`;
+  - merges incoming `events` / directed `delta` messages via `mergeFrom`;
+  - ignores self messages, foreign protocol messages, and deltas directed at
+    other replicas.
+- Add `attachBroadcastTransport`:
+  - composes the transport onto any `RuntimeServices`;
+  - advertises the `transport` capability on the runtime profile.
+- Add tests proving:
+  - local operations publish to peers and fold correctly on receipt;
+  - hello/delta catch-up sends only missing events and is idempotent afterward;
+  - protocol isolation and directed-delta filtering work;
+  - capability checks observe the attached `transport` capability.
+- Do **not** introduce Cloudflare, relay, p2p, or browser storage changes in this
+  slice.
+
+### Verification
+
+- `npm run test:runtime` passed (13 tests).
+- Runtime package typecheck passed.
+- Full gate for this slice is recorded in the commit that shipped it.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -1657,7 +1714,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] `@metacrdt/runtime` harness groundwork.
 - [x] In-memory version-vector anti-entropy helpers.
 - [x] Browser/localStorage runtime target seed (durable event log + HLC + seq).
-- [ ] Durable anti-entropy network transport targets.
+- [x] BroadcastChannel-compatible anti-entropy transport seed.
+- [ ] Relay / Cloudflare Durable Object / p2p transport targets.
 - [ ] Full registered `@metacrdt/convex` component/function surface.
 - [ ] Cloudflare Durable Object target.
 - [ ] Full `@metacrdt/local` browser/local-first package (IndexedDB/SQLite and
