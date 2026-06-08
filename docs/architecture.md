@@ -96,7 +96,7 @@ not invented:
 | `packages/convex` (`@metacrdt/convex`) | Convex/core adapters, validators, Confect sidecar warning |
 | `packages/forma` (`@metacrdt/forma`) | Lisp authoring language: reader, formatter, evaluator, VM, type inference |
 | `packages/runtime` (`@metacrdt/runtime`) | runtime service contracts + memory harness + localStorage target seed + BroadcastChannel transport seed proving target-neutral convergence, restart durability, and same-origin anti-entropy |
-| `packages/cloudflare` (`@metacrdt/cloudflare`) | Durable Object storage-backed runtime services plus structural WebSocket relay shell |
+| `packages/cloudflare` (`@metacrdt/cloudflare`) | Durable Object storage-backed runtime services, structural WebSocket relay shell, and Worker/DO example shell |
 | `convex/attributes.ts`, `convex/lib/meta.ts` | `@metacrdt/schema` |
 | `convex/datalog.ts`, `convex/lib/engine.ts` | `@metacrdt/query` |
 | `convex/flows.ts` | `@metacrdt/workflow` |
@@ -119,7 +119,7 @@ not invented:
    adapter-first; Forma is the runtime-neutral language package; runtime is
    harness-first (service contracts, memory target, localStorage target seed, and
    BroadcastChannel transport seed); Cloudflare is a storage-service target plus
-   WebSocket relay shell, not a deployed Worker app yet.
+   WebSocket relay and Worker/DO example shell, not a live deployed service yet.
    Everything else extracts as it stabilizes. (Tracked in [TODO.md](../TODO.md).)
 2. **The name is the thesis — so protect what makes it true.** *Databases store
    facts; CRDTs synchronize facts; MetaCRDT synchronizes facts, logic, workflows,

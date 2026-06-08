@@ -1,0 +1,11 @@
+name = "metacrdt-relay"
+main = "src/worker.ts"
+compatibility_date = "2026-06-07"
+
+[[durable_objects.bindings]]
+name = "METACRDT_RELAY"
+class_name = "MetaCrdtRelayDurableObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MetaCrdtRelayDurableObject"]

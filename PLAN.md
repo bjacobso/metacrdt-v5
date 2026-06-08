@@ -1,10 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 17 (`@metacrdt/cloudflare` Durable Object WebSocket relay
-shell) has shipped. The next active goal should be chosen from the remaining
-TODO candidates: full app write authorization, a deployed Cloudflare Worker
-example, a full `@metacrdt/local` package, or a state-owning `@metacrdt/convex`
-component slice.
+**Current goal:** Goal 18 (`@metacrdt/cloudflare` Worker/DO example shell) has
+shipped. The next active goal should be chosen from the remaining TODO
+candidates: full app write authorization, a full `@metacrdt/local` package, p2p
+transport, or a state-owning `@metacrdt/convex` component slice.
 
 This plan is the operational goal file. Read it with:
 
@@ -130,9 +129,10 @@ configured actions can now take small typed arguments.
   - async `createDurableObjectRuntime` target services over `@metacrdt/runtime`
   - structural Durable Object WebSocket relay shell for hello/delta sync and
     event fan-out
+  - Worker-facing router + Durable Object class shell and example Wrangler config
   - package-local tests proving restart durability, G-Set convergence, version
     vectors, stored event verification, WebSocket publish/catch-up, and protocol
-    filtering
+    filtering, Worker routing, and WebSocket upgrade wiring
 - `applyConfig` now behaves as a true section-scoped reconciler:
   - configured artifact ownership is tracked on `config:default`
   - explicitly supplied config sections compute desired sets
@@ -193,8 +193,9 @@ configured actions can now take small typed arguments.
   version-vector anti-entropy, and the localStorage target persists event/HLC/seq
   state. A BroadcastChannel transport now handles same-origin browser publish and
   hello/delta catch-up. `@metacrdt/cloudflare` now provides Durable Object
-  storage-backed runtime services and a structural WebSocket relay shell, but not
-  a deployed Worker example or p2p cross-device networking.
+  storage-backed runtime services, a structural WebSocket relay shell, and a
+  Worker-facing router/DO class example, but not a live deployed service, auth, or
+  p2p cross-device networking.
 - Full app login/write authorization is not configured; unauthenticated callers
   are treated as `anonymous`, so PII is denied by default but general public
   writes remain demo-grade.
@@ -1832,6 +1833,66 @@ return the accepted WebSocket response.
 
 ---
 
+## Goal 18 — `@metacrdt/cloudflare` Worker/DO Example Shell
+
+**Status:** shipped as Worker-facing package exports and example Wrangler config.
+
+**Objective:** make the Cloudflare target deploy-shape legible without requiring
+a live deployment in this repo. The package now exposes a Worker `fetch` router,
+a Durable Object class shell, and an example Wrangler configuration that binds
+the relay Durable Object. Protocol logic remains in the previously shipped
+runtime and relay helpers.
+
+### Scope
+
+Package additions:
+
+```text
+packages/cloudflare/
+  src/worker.ts             # Worker router + DO class shell
+  src/worker.test.ts        # fake namespace/socket tests
+  wrangler.example.toml     # binding/migration example
+```
+
+### Acceptance Criteria
+
+- Add `MetaCrdtRelayDurableObject`:
+  - constructs `createDurableObjectRuntime(state.storage)`;
+  - attaches `DurableObjectWebSocketRelay`;
+  - handles WebSocket upgrade requests by creating a WebSocket pair, connecting
+    the server socket, and returning the client socket in a Worker-style response;
+  - exposes a JSON `/health` endpoint with replica id, connection count, and
+    version vector;
+  - rejects non-WebSocket sync requests with `426`.
+- Add `createRelayWorker`:
+  - exposes a Worker-style `fetch(request, env)` entrypoint;
+  - serves Worker health at `/health`;
+  - routes `?room=<name>` or `/rooms/<name>` requests to a configured Durable
+    Object namespace binding;
+  - reports missing binding and missing room errors clearly.
+- Add `relayWorker` default exportable instance.
+- Add structural types for Worker/DO bindings (`DurableObjectNamespaceLike`,
+  `DurableObjectStubLike`, `DurableObjectStateLike`, `WebSocketPairFactory`).
+- Add `wrangler.example.toml` showing the `METACRDT_RELAY` Durable Object binding
+  and migration entry.
+- Add tests proving:
+  - Worker routes by query and path room names;
+  - Worker health/missing-binding/missing-room responses are clear;
+  - Durable Object health response includes replica/connections/version vector;
+  - WebSocket upgrade path connects the server socket and sends the initial relay
+    hello;
+  - non-WebSocket sync requests return `426`.
+- Do **not** require Wrangler, Cloudflare Workers types, or a live deployment in
+  this slice.
+
+### Verification
+
+- `npm run test:cloudflare` passed (12 tests).
+- Cloudflare package typecheck passed.
+- Full gate for this slice is recorded in the commit that shipped it.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -1851,8 +1912,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] BroadcastChannel-compatible anti-entropy transport seed.
 - [x] `@metacrdt/cloudflare` Durable Object runtime services.
 - [x] `@metacrdt/cloudflare` Durable Object WebSocket relay shell.
-- [ ] Deployed Cloudflare Worker example / Wrangler config.
-- [ ] Relay / p2p transport targets.
+- [x] Cloudflare Worker/DO example shell + Wrangler config.
+- [ ] Live Cloudflare deployment / auth / p2p transport targets.
 - [ ] Full registered `@metacrdt/convex` component/function surface.
 - [ ] Full `@metacrdt/local` browser/local-first package (IndexedDB/SQLite and
   browser transport still deferred).

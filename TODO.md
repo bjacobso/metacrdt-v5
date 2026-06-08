@@ -23,7 +23,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   and per-replica `seq` in `@metacrdt/cloudflare`.
 - [x] Cloudflare Durable Object WebSocket relay shell — structural server-socket
   relay for hello/delta sync and event fan-out in `@metacrdt/cloudflare`.
-- [ ] Deployed Worker example / Wrangler config and p2p transports (see
+- [x] Cloudflare Worker/DO example shell + Wrangler config — package-level
+  Worker router, DO class shell, and `wrangler.example.toml`.
+- [ ] Live Cloudflare deployment / auth and p2p transports (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
 **Packaging / monorepo (map, not migration — see [docs/architecture.md](./docs/architecture.md))**
@@ -81,8 +83,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **`@metacrdt/cloudflare` Durable Object WebSocket relay shell** —
   `packages/cloudflare/src/relay.ts` accepts server sockets, answers version
   vector hellos with deltas, merges client events, and fans out accepted events.
-- [ ] Targets: deployed Cloudflare Worker example / Wrangler config, full
-  `@metacrdt/local` (browser / IndexedDB or SQLite + transport), and a state-owning
+- [x] **Cloudflare Worker/DO example shell** — `packages/cloudflare/src/worker.ts`
+  exposes `MetaCrdtRelayDurableObject`, `createRelayWorker`, and `relayWorker`;
+  `wrangler.example.toml` documents the Durable Object binding/migration.
+- [ ] Targets: full `@metacrdt/local` (browser / IndexedDB or SQLite +
+  transport), live Cloudflare deployment/auth, p2p transport, and a state-owning
   `@metacrdt/convex` component/function surface.
 
 **Goal 5 — true `applyConfig` reconcile**
@@ -141,9 +146,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   outside the hardened collection-token path.
 
 **Next goal candidates**
-- [ ] Choose the next active goal: full app write authorization, deployed
-  Cloudflare Worker example, full `@metacrdt/local`, or a state-owning
-  `@metacrdt/convex` component slice.
+- [ ] Choose the next active goal: full app write authorization, full
+  `@metacrdt/local`, p2p transport, or a state-owning `@metacrdt/convex`
+  component slice.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -168,6 +173,19 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — @metacrdt/cloudflare Worker/DO example shell
+- [x] **Added the deploy-facing Cloudflare shell.** `packages/cloudflare/src/worker.ts`
+  exports `MetaCrdtRelayDurableObject`, `createRelayWorker`, and `relayWorker`.
+  The Worker routes `?room=` / `/rooms/<name>` requests to a Durable Object
+  namespace; the DO class handles WebSocket upgrades by attaching the relay to
+  `createDurableObjectRuntime(state.storage)`.
+- [x] **Added `wrangler.example.toml`.** It documents the `METACRDT_RELAY`
+  Durable Object binding and migration entry without making live deployment a
+  test prerequisite.
+- [x] Tests cover Worker health/routing/error responses, DO health, WebSocket
+  upgrade wiring, and non-WebSocket `426` rejection. Still deferred: live
+  deployment, auth, and p2p transport.
 
 ### 2026-06-07 — @metacrdt/cloudflare Durable Object WebSocket relay shell
 - [x] **Added a structural DO WebSocket relay.** `packages/cloudflare/src/relay.ts`

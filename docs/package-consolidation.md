@@ -68,7 +68,7 @@ packages/
 ├── agent/            @metacrdt/agent      # agent actors, proposals, skills
 ├── runtime/          @metacrdt/runtime    # done: services + memory/localStorage + BroadcastChannel
 ├── convex/           @metacrdt/convex     # Convex target / component / bindings
-├── cloudflare/       @metacrdt/cloudflare # done: DO storage + WebSocket relay shell
+├── cloudflare/       @metacrdt/cloudflare # done: DO storage + WebSocket relay + Worker example
 ├── local/            @metacrdt/local      # browser/local-first target
 ├── node/             @metacrdt/node       # node target, tests, dev server
 ├── cli/              @metacrdt/cli
