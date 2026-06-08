@@ -108,8 +108,9 @@ Current packages:
 - **`@metacrdt/convex`** (`packages/convex`) — Convex target adapters:
   protocol metadata validators, Convex/core event construction, row
   reconstruction/verification, projected-row visibility, cardinality-one
-  reconcile selection by `≺`, protocol append/verification helper factories, and
-  Confect sidecar guidance.
+  reconcile selection by `≺`, protocol append/verification helper factories, a
+  packaged component that can either summarize host-owned rows or own a durable
+  protocol transaction/event log, and Confect sidecar guidance.
 - **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
   authoring language extracted from Open Ontology: reader, formatter, evaluator,
   VM, type inference, and language-owned elaboration utilities.

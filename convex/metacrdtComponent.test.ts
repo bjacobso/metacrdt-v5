@@ -45,4 +45,43 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       vi.useRealTimers();
     }
   });
+
+  test("appends and lists component-owned protocol events through app wrappers", async () => {
+    const t = convexTest(schema, modules);
+    t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
+
+    const asserted = await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
+      e: "component-owned:worker",
+      a: "worker.status",
+      value: "active",
+      validFrom: 1_000,
+      reason: "component-owned wrapper test",
+    });
+
+    await t.mutation(api.metacrdtComponent.appendOwnedLifecycle, {
+      kind: "retract",
+      targetEventId: asserted.eventId,
+      e: "component-owned:worker",
+      a: "worker.status",
+      value: "active",
+      reason: "component-owned retract",
+    });
+
+    const events = await t.query(api.metacrdtComponent.listOwnedEvents, {
+      e: "component-owned:worker",
+      a: "worker.status",
+      limit: 10,
+    });
+
+    expect(events).toHaveLength(2);
+    expect(events.every((event) => event.validEventId)).toBe(true);
+    expect(events.map((event) => event.kind).sort()).toEqual([
+      "assert",
+      "retract",
+    ]);
+    expect(events.find((event) => event.kind === "retract")).toMatchObject({
+      targetEventId: asserted.eventId,
+      reason: "component-owned retract",
+    });
+  });
 });

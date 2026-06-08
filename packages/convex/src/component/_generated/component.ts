@@ -23,6 +23,109 @@ import type { FunctionReference } from "convex/server";
  */
 export type ComponentApi<Name extends string | undefined = string | undefined> =
   {
+    log: {
+      appendAssert: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          a: string;
+          actorId: string;
+          actorType: "user" | "system" | "agent" | "migration";
+          causalRefs?: Array<string>;
+          e: string;
+          eventMetadata?: any;
+          factId?: string;
+          metadata?: any;
+          reason?: string;
+          requestId?: string;
+          source?: string;
+          txTime?: number;
+          v: any;
+          validFrom?: number;
+          validTo?: number;
+        },
+        { eventId: string; rowId: string; txId: string },
+        Name
+      >;
+      appendLifecycle: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          a: string;
+          actorId: string;
+          actorType: "user" | "system" | "agent" | "migration";
+          causalRefs?: Array<string>;
+          e: string;
+          eventMetadata?: any;
+          factId?: string;
+          kind: "retract" | "tombstone" | "untombstone";
+          metadata?: any;
+          reason?: string;
+          requestId?: string;
+          source?: string;
+          targetEventId: string;
+          txTime?: number;
+          v: any;
+          validTo?: number;
+        },
+        { eventId: string; rowId: string; txId: string },
+        Name
+      >;
+      getEvent: FunctionReference<
+        "query",
+        "internal",
+        { eventId: string },
+        {
+          a: string;
+          actor: string;
+          actorType: "human" | "system" | "agent" | "migration";
+          causalRefs: Array<string>;
+          e: string;
+          eventId: string;
+          hasProtocolMetadata: boolean;
+          hlc: { l: number; pt: number; r: string };
+          kind: "assert" | "retract" | "tombstone" | "untombstone";
+          reason?: string;
+          rowId: string;
+          targetEventId?: string;
+          txId: string;
+          txTime: number;
+          v: any;
+          validEventId: boolean;
+          validFrom?: number;
+          validTo?: number;
+          verifiable: boolean;
+        } | null,
+        Name
+      >;
+      listEvents: FunctionReference<
+        "query",
+        "internal",
+        { a?: string; e?: string; limit?: number },
+        Array<{
+          a: string;
+          actor: string;
+          actorType: "human" | "system" | "agent" | "migration";
+          causalRefs: Array<string>;
+          e: string;
+          eventId: string;
+          hasProtocolMetadata: boolean;
+          hlc: { l: number; pt: number; r: string };
+          kind: "assert" | "retract" | "tombstone" | "untombstone";
+          reason?: string;
+          rowId: string;
+          targetEventId?: string;
+          txId: string;
+          txTime: number;
+          v: any;
+          validEventId: boolean;
+          validFrom?: number;
+          validTo?: number;
+          verifiable: boolean;
+        }>,
+        Name
+      >;
+    };
     protocol: {
       buildAssertRow: FunctionReference<
         "query",

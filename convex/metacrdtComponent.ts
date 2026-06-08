@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { query } from "./_generated/server";
+import { mutation, query, type MutationCtx } from "./_generated/server";
 import { components } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 
@@ -41,6 +41,62 @@ const eventSummaryValidator = v.object({
   validEventId: v.boolean(),
   reason: v.optional(v.string()),
 });
+
+const ownedProtocolKind = v.union(
+  v.literal("assert"),
+  v.literal("retract"),
+  v.literal("tombstone"),
+  v.literal("untombstone"),
+);
+
+const ownedEventSummaryValidator = v.object({
+  rowId: v.string(),
+  txId: v.string(),
+  eventId: v.string(),
+  kind: ownedProtocolKind,
+  e: v.string(),
+  a: v.string(),
+  v: v.any(),
+  txTime: v.number(),
+  actor: v.string(),
+  actorType: v.union(
+    v.literal("human"),
+    v.literal("system"),
+    v.literal("agent"),
+    v.literal("migration"),
+  ),
+  validFrom: v.optional(v.number()),
+  validTo: v.optional(v.number()),
+  hlc: hlcValidator,
+  targetEventId: v.optional(v.string()),
+  causalRefs: v.array(v.string()),
+  hasProtocolMetadata: v.boolean(),
+  verifiable: v.boolean(),
+  validEventId: v.boolean(),
+  reason: v.optional(v.string()),
+});
+
+const appendOwnedResultValidator = v.object({
+  txId: v.string(),
+  rowId: v.string(),
+  eventId: v.string(),
+});
+
+async function actorContext(ctx: MutationCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+  return {
+    actorId: identity?.tokenIdentifier ?? "anonymous",
+    actorType: "user" as const,
+  };
+}
+
+function withoutUndefined<T extends Record<string, unknown>>(obj: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) out[key] = value;
+  }
+  return out as T;
+}
 
 function componentRow(row: Doc<"factEvents">) {
   return {
@@ -123,4 +179,91 @@ export const verifyEvents = query({
 
     return summaries;
   },
+});
+
+/**
+ * App wrapper for the state-owning @metacrdt/convex component log. The app owns
+ * auth and decides what may be written; the component owns the durable protocol
+ * transaction/event tables.
+ */
+export const appendOwnedAssert = mutation({
+  args: {
+    e: v.string(),
+    a: v.string(),
+    value: v.any(),
+    validFrom: v.optional(v.number()),
+    validTo: v.optional(v.number()),
+    reason: v.optional(v.string()),
+    source: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+  },
+  returns: appendOwnedResultValidator,
+  handler: async (ctx, args) => {
+    const actor = await actorContext(ctx);
+    return await ctx.runMutation(
+      components.metacrdt.log.appendAssert,
+      withoutUndefined({
+        ...actor,
+        e: args.e,
+        a: args.a,
+        v: args.value,
+        validFrom: args.validFrom,
+        validTo: args.validTo,
+        reason: args.reason,
+        source: args.source,
+        eventMetadata: args.metadata,
+      }),
+    );
+  },
+});
+
+export const appendOwnedLifecycle = mutation({
+  args: {
+    kind: v.union(
+      v.literal("retract"),
+      v.literal("tombstone"),
+      v.literal("untombstone"),
+    ),
+    targetEventId: v.string(),
+    e: v.string(),
+    a: v.string(),
+    value: v.any(),
+    validTo: v.optional(v.number()),
+    reason: v.optional(v.string()),
+    source: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+  },
+  returns: appendOwnedResultValidator,
+  handler: async (ctx, args) => {
+    const actor = await actorContext(ctx);
+    return await ctx.runMutation(
+      components.metacrdt.log.appendLifecycle,
+      withoutUndefined({
+        ...actor,
+        kind: args.kind,
+        targetEventId: args.targetEventId,
+        e: args.e,
+        a: args.a,
+        v: args.value,
+        validTo: args.validTo,
+        reason: args.reason,
+        source: args.source,
+        eventMetadata: args.metadata,
+      }),
+    );
+  },
+});
+
+export const listOwnedEvents = query({
+  args: {
+    e: v.optional(v.string()),
+    a: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(ownedEventSummaryValidator),
+  handler: async (ctx, args) =>
+    await ctx.runQuery(
+      components.metacrdt.log.listEvents,
+      withoutUndefined(args),
+    ),
 });

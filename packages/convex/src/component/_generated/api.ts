@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as log from "../log.js";
 import type * as protocol from "../protocol.js";
 
 import type {
@@ -18,6 +19,7 @@ import type {
 import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
+  log: typeof log;
   protocol: typeof protocol;
 }> = anyApi as any;
 

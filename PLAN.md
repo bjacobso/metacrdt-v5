@@ -1,9 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 22 (`@metacrdt/runtime` p2p DataChannel transport) has
-shipped. The next active goal should be chosen from the remaining TODO
-candidates: full app write authorization, live Cloudflare deployment/auth, or a
-state-owning `@metacrdt/convex` component slice.
+**Current goal:** Goal 23 (`@metacrdt/convex` state-owned protocol log
+component) has shipped. The next active goal should be chosen from the remaining
+TODO candidates: full app write authorization, live Cloudflare deployment/auth,
+or the next projection-owning `@metacrdt/convex` component slice.
 
 This plan is the operational goal file. Read it with:
 
@@ -96,13 +96,17 @@ arguments.
   - a stateless registered Convex component surface
     (`@metacrdt/convex/convex.config.js`) with protocol row build/summarize
     functions that operate on values passed across the component boundary
+  - component-owned `transactions` and `factEvents` tables plus append/list/get
+    functions for a durable protocol log
   - a reference-app wrapper, `api.metacrdtComponent.verifyEvents`, that mounts
     the component as `components.metacrdt` while keeping table ownership and
     public API naming in the host app
+  - reference-app wrappers for app-auth-derived writes into the component-owned
+    protocol log
   - an explicit Confect sidecar warning/helper documenting the manual-mount
     lesson from Goal 2
   - package-local tests for deterministic event reconstruction, legacy fallback
-    behavior, and registered component functions
+    behavior, registered component functions, and component-owned log writes
 - `@metacrdt/forma` exists in [`packages/forma`](./packages/forma):
   - runtime-neutral Lisp / S-expression authoring language
   - parser, formatter, evaluator, VM, type inference, and language-owned
@@ -205,10 +209,10 @@ arguments.
   rows, while new corrections write protocol primitives.
 - `facts` and `currentFacts` are still maintained as imperative projections,
   not folded directly from raw core-shaped events.
-- `@metacrdt/convex` now has adapter helpers and a first stateless registered
-  component surface, but the host app still owns database writes/projection rows.
-  A state-owning Convex component and durable mutation factories remain deferred
-  until the package boundary is proven against more host-app usage.
+- `@metacrdt/convex` now has adapter helpers, stateless protocol helpers, and a
+  component-owned protocol transaction/event log. The host app still owns its
+  production `facts` / `currentFacts` projections and has not migrated the
+  reference write path into component-owned tables.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime.
 - Multi-replica sync is specified and now implemented as in-memory
@@ -2141,6 +2145,75 @@ packages/runtime/
 
 ---
 
+## Goal 23 — `@metacrdt/convex` State-Owned Protocol Log Component
+
+**Status:** shipped as the first component-owned durable state slice.
+
+**Objective:** move `@metacrdt/convex` beyond stateless helper functions by
+letting the packaged component own a protocol transaction/event log. Host apps
+can still bring their own projections, auth, and public API wrappers, but the
+component now proves it can own durable MetaCRDT state across the component
+boundary.
+
+### Scope
+
+Package additions:
+
+```text
+packages/convex/src/component/
+  schema.ts     # component-owned transactions + factEvents
+  log.ts        # append/get/list component-owned protocol events
+  log.test.ts   # packaged component state tests
+```
+
+Reference app additions:
+
+```text
+convex/metacrdtComponent.ts
+  appendOwnedAssert
+  appendOwnedLifecycle
+  listOwnedEvents
+```
+
+### Acceptance Criteria
+
+- Component schema owns:
+  - `transactions`;
+  - append-only protocol `factEvents`;
+  - indexes for event id, entity, entity+attribute+transaction time, and
+    transaction time.
+- Component functions expose:
+  - `log.appendAssert`;
+  - `log.appendLifecycle`;
+  - `log.getEvent`;
+  - `log.listEvents`.
+- App wrappers:
+  - do not expose component functions directly to clients;
+  - derive actor identity server-side via `ctx.auth.getUserIdentity()`;
+  - pass explicit actor/source context across the component boundary;
+  - keep host projections and existing host-owned `factEvents` untouched.
+- Tests prove:
+  - component-owned assert events are durable, verifiable, and listable;
+  - lifecycle events target component-owned assert event ids;
+  - entity/attribute filters work through component indexes;
+  - the reference app can append/list component-owned events through wrappers.
+
+### Non-Goals
+
+- Do not migrate the production reference write path into component-owned tables.
+- Do not make the component own `facts`, `currentFacts`, or rule projections yet.
+- Do not add auth provider configuration; wrappers derive identity when present
+  and otherwise remain demo-grade `anonymous` writers like the current app.
+
+### Verification
+
+- `npm run test:convex-package` passed (25 tests).
+- `npx vitest run convex/metacrdtComponent.test.ts` passed (2 tests).
+- Convex package typecheck passed.
+- App Convex typecheck passed.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -2167,7 +2240,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] SQLite-compatible local persistence adapter.
 - [x] p2p DataChannel-compatible transport target.
 - [ ] Live Cloudflare deployment / auth targets.
-- [ ] Full registered `@metacrdt/convex` component/function surface.
+- [x] First state-owned `@metacrdt/convex` protocol-log component slice.
+- [ ] Projection-owning `@metacrdt/convex` component/function surface.
 
 ### Auth / Privacy
 
