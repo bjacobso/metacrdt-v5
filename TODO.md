@@ -109,9 +109,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   now render configured host actions by type and run their assert semantics
   through `api.metacrdtComponent.runOwnedAction`, with host schema cardinality
   adapted into component-owned writes.
-- [x] **Component-owned actions can open host collection forms** — `runOwnedAction`
+- [x] **Component-owned actions can open collection forms** — `runOwnedAction`
   supports `opensForm`, resolves `$entity` / `$arg.*` placeholders, issues or
-  reuses the host collection token for the component-owned entity id, and the
+  reuses the collection token for the component-owned entity id, and the
   component detail page renders the returned `/collect` link.
 - [x] **Component-owned collection submission** — action-issued tokens are marked
   `collectionTarget: "component"`, and `/collect` submission writes submitted
@@ -121,10 +121,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   writes `type = Form` and `formDef` facts into component-owned state, and
   component-target collection links render from that component-owned `formDef`
   without a host `forms.defineForm` row.
-- [ ] **Component-owned collection run/token storage** — next active goal:
-  move component-owned action-issued collection capability rows from host
-  `flowRuns` into the installed `@metacrdt/convex` component, while preserving
-  legacy host token dispatch through `/collect`.
+- [x] **Component-owned collection run/token storage** — component-owned
+  action-issued collection capability rows now live in the installed
+  `@metacrdt/convex` component; public `/collect` dispatches host tokens first,
+  then component tokens, preserving legacy host-token behavior.
 - [x] **Datalog disjunction** — Datalog `where` bodies now support bounded
   `{ or: [[...clauses], ...] }` branches. Branches run from the current binding,
   union/dedupe their bindings with provenance merged, and continue into later
@@ -252,6 +252,20 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — component-owned collection run/token storage
+- [x] **Goal 37 shipped:** the installed `@metacrdt/convex` component now owns
+  collection run/token rows for component-owned configured actions via its own
+  `flowRuns` table.
+- [x] **Component collection functions:** `log.issueCollection`,
+  `log.collectionByToken`, and `log.submitCollection` issue/reuse tokens, render
+  component-owned form definitions, append submitted field facts plus
+  `submitted.<form>` into the component protocol log, and consume the component
+  token.
+- [x] **Public `/collect` stays stable.** `forms.collectionByToken` and
+  `forms.submitCollection` check host tokens first, then dispatch unknown tokens
+  to the component. The older host `collectionTarget: "component"` bridge remains
+  for already-issued dev tokens.
 
 ### 2026-06-07 — component-owned form definitions
 - [x] **Goal 36 shipped:** `api.metacrdtComponent.defineOwnedForm` defines

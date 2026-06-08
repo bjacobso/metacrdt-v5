@@ -7,7 +7,6 @@ import {
   resolveActionString,
   resolveActionValue,
 } from "./lib/actionDefs";
-import { issueActionCollectRun } from "./lib/collectRuns";
 import { attrId, BUILTIN_CARDINALITY } from "./lib/meta";
 import { requireWritePrincipal } from "./lib/writeAuth";
 
@@ -473,24 +472,27 @@ export const runOwnedAction = mutation({
 
     const collect =
       def.opensForm !== undefined
-        ? await issueActionCollectRun(ctx, {
-            subject: args.entity,
-            collectionTarget: "component",
-            form: resolveActionString(
-              "form",
-              def.opensForm.form,
-              args.entity,
-              def.fields,
-              actionArgs,
-            ),
-            scope: resolveActionString(
-              "scope",
-              def.opensForm.scope,
-              args.entity,
-              def.fields,
-              actionArgs,
-            ),
-          })
+        ? await ctx.runMutation(
+            components.metacrdt.log.issueCollection,
+            withoutUndefined({
+              ...actor,
+              subject: args.entity,
+              form: resolveActionString(
+                "form",
+                def.opensForm.form,
+                args.entity,
+                def.fields,
+                actionArgs,
+              ),
+              scope: resolveActionString(
+                "scope",
+                def.opensForm.scope,
+                args.entity,
+                def.fields,
+                actionArgs,
+              ),
+            }),
+          )
         : undefined;
 
     return withoutUndefined({ action: args.action, asserted, collect });

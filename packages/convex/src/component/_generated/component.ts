@@ -72,6 +72,22 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         { eventId: string; factId?: string; rowId: string; txId: string },
         Name
       >;
+      collectionByToken: FunctionReference<
+        "query",
+        "internal",
+        { token: string },
+        | { found: false; reason?: string }
+        | {
+            fields: Array<any>;
+            form: string;
+            found: true;
+            scope: string;
+            status: string;
+            subject: string;
+            title: string;
+          },
+        Name
+      >;
       getCurrentEntity: FunctionReference<
         "query",
         "internal",
@@ -134,6 +150,21 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           validTo?: number;
           verifiable: boolean;
         } | null,
+        Name
+      >;
+      issueCollection: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          actorId: string;
+          actorType: "user" | "system" | "agent" | "migration";
+          expireMs?: number;
+          form: string;
+          now?: number;
+          scope: string;
+          subject: string;
+        },
+        { collectUrl: string; reused: boolean; runId: string; token: string },
         Name
       >;
       listCurrent: FunctionReference<
@@ -210,6 +241,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {},
         { currentFacts: number; events: number; facts: number },
+        Name
+      >;
+      submitCollection: FunctionReference<
+        "mutation",
+        "internal",
+        { now?: number; token: string; values: any },
+        { ok: true } | { ok: false; reason: string },
         Name
       >;
     };

@@ -99,4 +99,27 @@ export default defineSchema({
     .index("by_a_and_v_and_updatedAt", ["a", "v", "updatedAt"])
     .index("by_a_and_updatedAt", ["a", "updatedAt"])
     .index("by_updatedAt", ["updatedAt"]),
+
+  // Component-owned collection capabilities. These are operational run/token
+  // records, not protocol facts; submitted values enter the protocol log through
+  // component mutations in log.ts.
+  flowRuns: defineTable({
+    subject: v.string(),
+    form: v.string(),
+    scope: v.string(),
+    status: v.union(
+      v.literal("waiting"),
+      v.literal("completed"),
+      v.literal("expired"),
+    ),
+    issuedAt: v.number(),
+    updatedAt: v.number(),
+    token: v.string(),
+    tokenExpiresAt: v.optional(v.number()),
+    tokenConsumedAt: v.optional(v.number()),
+    context: v.optional(value),
+  })
+    .index("by_token", ["token"])
+    .index("by_target", ["subject", "form", "scope"])
+    .index("by_status", ["status"]),
 });

@@ -106,6 +106,34 @@ const currentEntityListItemValidator = v.object({
   typeFact: currentFactValidator,
 });
 
+const collectionResultValidator = v.object({
+  runId: v.id("flowRuns"),
+  token: v.string(),
+  collectUrl: v.string(),
+  reused: v.boolean(),
+});
+
+const collectionPageValidator = v.union(
+  v.object({
+    found: v.literal(false),
+    reason: v.optional(v.string()),
+  }),
+  v.object({
+    found: v.literal(true),
+    status: v.string(),
+    subject: v.string(),
+    form: v.string(),
+    scope: v.string(),
+    title: v.string(),
+    fields: v.array(v.any()),
+  }),
+);
+
+const collectionSubmitResultValidator = v.union(
+  v.object({ ok: v.literal(true) }),
+  v.object({ ok: v.literal(false), reason: v.string() }),
+);
+
 const rebuildResultValidator = v.object({
   events: v.number(),
   facts: v.number(),
@@ -123,6 +151,7 @@ const txArgs = {
 };
 
 const REBUILD_LIMIT = 5000;
+const DEFAULT_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function withoutUndefined<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -371,6 +400,41 @@ function groupCurrentEntity(
   return { e, facts, attributes };
 }
 
+function formEntity(form: string): string {
+  return `form:${form}`;
+}
+
+function tokenInvalidReason(
+  run: {
+    status: string;
+    tokenConsumedAt?: number;
+    tokenExpiresAt?: number;
+  },
+  now: number,
+): "used" | "expired" | "not waiting" | null {
+  if (run.tokenConsumedAt !== undefined) return "used";
+  if (run.tokenExpiresAt !== undefined && run.tokenExpiresAt <= now) return "expired";
+  if (run.status !== "waiting") return "not waiting";
+  return null;
+}
+
+function hasLiveCollectionToken(run: Doc<"flowRuns">, now: number): boolean {
+  return tokenInvalidReason(run, now) === null;
+}
+
+async function loadFormDef(
+  ctx: QueryCtx,
+  form: string,
+): Promise<{ title: string; fields: unknown[] } | null> {
+  const row = await ctx.db
+    .query("currentFacts")
+    .withIndex("by_e_and_a", (q) =>
+      q.eq("e", formEntity(form)).eq("a", "formDef"),
+    )
+    .first();
+  return row ? (row.v as { title: string; fields: unknown[] }) : null;
+}
+
 async function createTransaction(
   ctx: MutationCtx,
   args: {
@@ -495,6 +559,61 @@ async function replayLifecycle(
   }
 }
 
+async function appendAssertInTx(
+  ctx: MutationCtx,
+  tx: Doc<"transactions">,
+  args: {
+    e: string;
+    a: string;
+    v: unknown;
+    validFrom?: number;
+    validTo?: number;
+    reason?: string;
+    eventMetadata?: unknown;
+    causalRefs?: string[];
+    cardinality?: "many" | "one";
+  },
+): Promise<typeof appendResultValidator.type> {
+  const built = buildAssertFactEvent<Id<"transactions">, Id<"facts">>({
+    tx: txForCore(tx),
+    txId: tx._id,
+    factId: undefined,
+    e: args.e,
+    a: args.a,
+    v: args.v,
+    validFrom: args.validFrom ?? tx.txTime,
+    validTo: args.validTo,
+    reason: args.reason,
+    metadata: args.eventMetadata,
+    causalRefs: args.causalRefs,
+  });
+  const factId = await ctx.db.insert(
+    "facts",
+    withoutUndefined({
+      e: args.e,
+      a: args.a,
+      v: args.v,
+      firstTxId: tx._id,
+      assertedAt: tx.txTime,
+      validFrom: args.validFrom ?? tx.txTime,
+      validTo: args.validTo,
+      assertEventId: built.event.id,
+      metadata: args.eventMetadata,
+    }),
+  );
+  const rowId = await ctx.db.insert(
+    "factEvents",
+    withoutUndefined({ ...built.row, factId }),
+  );
+  const fact = await ctx.db.get(factId);
+  if (fact === null) throw new Error(`inserted fact ${factId} not found`);
+  await insertCurrentIfNowVisible(ctx, fact, tx.txTime);
+  if (args.cardinality === "one") {
+    await reconcileCardinalityOneCurrent(ctx, tx, args.e, args.a);
+  }
+  return { txId: tx._id, rowId, eventId: built.event.id, factId };
+}
+
 export const appendAssert = mutation({
   args: {
     ...txArgs,
@@ -511,44 +630,7 @@ export const appendAssert = mutation({
   returns: appendResultValidator,
   handler: async (ctx, args) => {
     const tx = await createTransaction(ctx, args);
-    const built = buildAssertFactEvent<Id<"transactions">, Id<"facts">>({
-      tx: txForCore(tx),
-      txId: tx._id,
-      factId: undefined,
-      e: args.e,
-      a: args.a,
-      v: args.v,
-      validFrom: args.validFrom ?? tx.txTime,
-      validTo: args.validTo,
-      reason: args.reason,
-      metadata: args.eventMetadata,
-      causalRefs: args.causalRefs,
-    });
-    const factId = await ctx.db.insert(
-      "facts",
-      withoutUndefined({
-        e: args.e,
-        a: args.a,
-        v: args.v,
-        firstTxId: tx._id,
-        assertedAt: tx.txTime,
-        validFrom: args.validFrom ?? tx.txTime,
-        validTo: args.validTo,
-        assertEventId: built.event.id,
-        metadata: args.eventMetadata,
-      }),
-    );
-    const rowId = await ctx.db.insert(
-      "factEvents",
-      withoutUndefined({ ...built.row, factId }),
-    );
-    const fact = await ctx.db.get(factId);
-    if (fact === null) throw new Error(`inserted fact ${factId} not found`);
-    await insertCurrentIfNowVisible(ctx, fact, tx.txTime);
-    if (args.cardinality === "one") {
-      await reconcileCardinalityOneCurrent(ctx, tx, args.e, args.a);
-    }
-    return { txId: tx._id, rowId, eventId: built.event.id, factId };
+    return await appendAssertInTx(ctx, tx, args);
   },
 });
 
@@ -616,6 +698,139 @@ export const appendLifecycle = mutation({
       if (patched !== null) await insertCurrentIfNowVisible(ctx, patched, tx.txTime);
     }
     return { txId: tx._id, rowId, eventId: built.event.id, factId: fact._id };
+  },
+});
+
+export const issueCollection = mutation({
+  args: {
+    actorId: v.string(),
+    actorType,
+    subject: v.string(),
+    form: v.string(),
+    scope: v.string(),
+    expireMs: v.optional(v.number()),
+    now: v.optional(v.number()),
+  },
+  returns: collectionResultValidator,
+  handler: async (ctx, args) => {
+    const now = args.now ?? Date.now();
+    const existing = await ctx.db
+      .query("flowRuns")
+      .withIndex("by_target", (q) =>
+        q.eq("subject", args.subject).eq("form", args.form).eq("scope", args.scope),
+      )
+      .take(100);
+    const live = existing.find((run) => hasLiveCollectionToken(run, now));
+    if (live) {
+      return {
+        runId: live._id,
+        token: live.token,
+        collectUrl: `/collect?token=${live.token}`,
+        reused: true,
+      };
+    }
+
+    const token = crypto.randomUUID();
+    const runId = await ctx.db.insert(
+      "flowRuns",
+      withoutUndefined({
+        subject: args.subject,
+        form: args.form,
+        scope: args.scope,
+        status: "waiting" as const,
+        issuedAt: now,
+        updatedAt: now,
+        token,
+        tokenExpiresAt: now + (args.expireMs ?? DEFAULT_TOKEN_TTL_MS),
+      }),
+    );
+    return { runId, token, collectUrl: `/collect?token=${token}`, reused: false };
+  },
+});
+
+export const collectionByToken = query({
+  args: { token: v.string() },
+  returns: collectionPageValidator,
+  handler: async (ctx, args) => {
+    const run = await ctx.db
+      .query("flowRuns")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .first();
+    if (run === null) return { found: false as const };
+    const invalid = tokenInvalidReason(run, Date.now());
+    if (invalid) return { found: false as const, reason: invalid };
+
+    const def = await loadFormDef(ctx, run.form);
+    return {
+      found: true as const,
+      status: run.status,
+      subject: run.subject,
+      form: run.form,
+      scope: run.scope,
+      title: def?.title ?? run.form,
+      fields: def?.fields ?? [],
+    };
+  },
+});
+
+export const submitCollection = mutation({
+  args: {
+    token: v.string(),
+    values: v.any(),
+    now: v.optional(v.number()),
+  },
+  returns: collectionSubmitResultValidator,
+  handler: async (ctx, args) => {
+    const run = await ctx.db
+      .query("flowRuns")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .first();
+    if (run === null) return { ok: false as const, reason: "unknown token" };
+
+    const now = args.now ?? Date.now();
+    const invalid = tokenInvalidReason(run, now);
+    if (invalid === "used") {
+      return { ok: false as const, reason: "already submitted" };
+    }
+    if (invalid === "expired") {
+      await ctx.db.patch("flowRuns", run._id, {
+        status: "expired",
+        updatedAt: now,
+      });
+      return { ok: false as const, reason: "expired token" };
+    }
+    if (invalid) return { ok: false as const, reason: "already submitted" };
+
+    const values = (args.values ?? {}) as Record<string, unknown>;
+    const tx = await createTransaction(ctx, {
+      actorId: run.subject,
+      actorType: "user",
+      txTime: now,
+      reason: `submit ${run.form}`,
+      source: "component.collection.submit",
+    });
+    for (const [field, value] of Object.entries(values)) {
+      await appendAssertInTx(ctx, tx, {
+        e: run.subject,
+        a: `${run.form}/${field}`,
+        v: value,
+        reason: `submit ${run.form}`,
+      });
+    }
+    await appendAssertInTx(ctx, tx, {
+      e: run.subject,
+      a: `submitted.${run.form}`,
+      v: run.scope,
+      reason: `submit ${run.form}`,
+    });
+
+    await ctx.db.patch("flowRuns", run._id, {
+      status: "completed",
+      updatedAt: now,
+      tokenConsumedAt: now,
+      context: values,
+    });
+    return { ok: true as const };
   },
 });
 

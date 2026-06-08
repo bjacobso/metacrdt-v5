@@ -185,6 +185,8 @@ Built today:
   into asserted facts)
 - form-opening actions that issue/reuse `/collect` magic links through the same
   `flowRuns` path as flow collect steps
+- component-owned configured actions that issue/reuse component-owned `/collect`
+  tokens and submit evidence into the installed `@metacrdt/convex` component log
 - single-use, expiring collection tokens for the public `/collect` page
 - Tailwind + React Router research-preview UI
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility
@@ -254,7 +256,8 @@ Important tables:
 | `currentFacts` | disposable current read model |
 | `derivedFacts` | materialized rule output with provenance |
 | `attributes` / schema facts | predicate and type metadata |
-| `flowDefs` / `flowRuns` | durable workflow definitions and executions |
+| `flowDefs` / host `flowRuns` | durable workflow definitions and host-owned executions |
+| `@metacrdt/convex` component `flowRuns` | component-owned collection capabilities for component-owned actions |
 
 New writes already stamp `eventId` + HLC metadata onto `factEvents`, lifecycle
 events target protocol assert ids, and cardinality-one current projections
@@ -282,6 +285,13 @@ Generated UI reads the same schema facts. `typeSchemaAsOf` returns declared
 columns with attribute definitions, the entity browser uses those columns for
 tables, entity detail orders state by the primary type schema, and collection
 forms render from `formDef`.
+
+Component-owned collection follows the same public `/collect` API. Host tokens
+are resolved from the app's `flowRuns` table; component-owned action tokens are
+resolved from the installed `@metacrdt/convex` component, whose submission path
+appends evidence facts into component-owned state and consumes the component
+token. The older host `collectionTarget: "component"` bridge remains supported
+for already-issued transition tokens.
 
 ---
 

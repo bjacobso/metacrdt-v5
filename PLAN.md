@@ -1,11 +1,10 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 37 — move component-owned collection run/token storage
-into the `@metacrdt/convex` component. This is the next narrow component-ownership
-slice after Goal 36: component-owned actions can already open forms, component
-state can already own form definitions, and component-target submissions already
-write component facts, but the run/token capability row still lives in the host
-`flowRuns` table.
+**Current goal:** Goal 37 (component-owned collection run/token storage) has
+shipped. The next active goal should be chosen from the remaining TODO
+candidates: component-owned flows/compliance, provider-backed login UI /
+production auth, live Cloudflare deployment/auth, or another parked Query/Rules
+item.
 
 This plan is the operational goal file. Read it with:
 
@@ -264,12 +263,15 @@ arguments.
   - `runOwnedAction` no longer rejects `opensForm` definitions
   - it resolves `opensForm.form` / `opensForm.scope` with the same action arg
     semantics as host-owned actions
-  - it issues or reuses the host collection-token run for the component-owned
-    entity id, returning the `/collect` URL to the component detail page
+  - it issues or reuses a component-owned collection-token run for the
+    component-owned entity id, returning the `/collect` URL to the component
+    detail page
 - Component-owned collection submission exists:
-  - action-issued `flowRuns` can be marked `collectionTarget: "component"`
-  - `/collect` submission for those tokens appends submitted field facts and the
-    `submitted.<form>` marker into the installed `@metacrdt/convex` component log
+  - `@metacrdt/convex` owns `flowRuns` for component-owned action collection
+    links
+  - `/collect` dispatches unknown host tokens to the installed component and
+    component submission appends submitted field facts plus the
+    `submitted.<form>` marker into the component log
   - legacy/host tokens with no target still write host facts
 - Component-owned form definitions exist:
   - `defineOwnedForm` writes `type = Form` and `formDef` into the component log
@@ -290,10 +292,9 @@ arguments.
   and event-log rebuild for component-owned writes. The reference app still owns
   its production write path and has not migrated its existing business logic/rules
   onto component-owned state.
-- Component-owned collection now writes submitted evidence into component-owned
-  state and can render component-owned form definitions for component-target
-  tokens, but the collection run/token row itself still lives in the host
-  `flowRuns` table. Component-owned flows/compliance remain future work.
+- Component-owned action collection now owns token rows, form definitions, and
+  submitted evidence inside the component. Host-owned flows/actions still use the
+  host `flowRuns` table, and component-owned flows/compliance remain future work.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime.
 - Multi-replica sync is specified and now implemented as in-memory
@@ -3234,8 +3235,8 @@ convex/appconfig.test.ts
 ### Verification
 
 - `npx vitest run convex/metacrdtComponent.test.ts convex/forms.test.ts convex/appconfig.test.ts`
-  passed (28 tests).
-- `npm test` passed (17 backend test files, 108 tests).
+  passed (29 tests).
+- `npm test` passed (17 backend test files, 109 tests).
 - `npm run test:core` passed (46 tests).
 - `npm run test:convex-package` passed (31 tests).
 - `npx tsc --noEmit -p convex/tsconfig.json` passed.
@@ -3253,7 +3254,7 @@ convex/appconfig.test.ts
 
 ## Goal 37 — Component-Owned Collection Runs and Tokens
 
-**Status:** active plan, ready to implement.
+**Status:** shipped as component-owned collection capabilities.
 
 **Objective:** finish the component-owned collection seam. Component-owned
 configured actions should issue, reuse, read, consume, and submit collection
@@ -3404,49 +3405,49 @@ submitted facts still enter the component protocol log through
 ### Work Breakdown
 
 1. **Read Convex guidelines**
-   - [ ] Read `convex/_generated/ai/guidelines.md`.
-   - [ ] Confirm component function/schema constraints before editing
+   - [x] Read `convex/_generated/ai/guidelines.md`.
+   - [x] Confirm component function/schema constraints before editing
      `packages/convex/src/component/*`.
 
 2. **Add component-owned storage**
-   - [ ] Add `flowRuns` to the component schema.
-   - [ ] Add indexes for token lookup, target reuse, and status scans.
-   - [ ] Run Convex codegen so component refs/types update.
+   - [x] Add `flowRuns` to the component schema.
+   - [x] Add indexes for token lookup, target reuse, and status scans.
+   - [x] Run Convex codegen so component refs/types update.
 
 3. **Factor component append helpers if needed**
-   - [ ] Reuse existing component append logic for submitted facts.
-   - [ ] Avoid routing component `submitCollection` through host mutations.
-   - [ ] Preserve component transaction/event metadata on submitted facts.
+   - [x] Reuse existing component append logic for submitted facts.
+   - [x] Avoid routing component `submitCollection` through host mutations.
+   - [x] Preserve component transaction/event metadata on submitted facts.
 
 4. **Add component collection functions**
-   - [ ] `log.issueCollection`: issue/reuse a component token.
-   - [ ] `log.collectionByToken`: validate token and load component-owned
+   - [x] `log.issueCollection`: issue/reuse a component token.
+   - [x] `log.collectionByToken`: validate token and load component-owned
      `formDef`.
-   - [ ] `log.submitCollection`: validate, append submitted facts, consume token.
+   - [x] `log.submitCollection`: validate, append submitted facts, consume token.
 
 5. **Update host adapters**
-   - [ ] Change `api.metacrdtComponent.runOwnedAction` to call
+   - [x] Change `api.metacrdtComponent.runOwnedAction` to call
      `components.metacrdt.log.issueCollection`.
-   - [ ] Change `api.forms.collectionByToken` to dispatch to component lookup if
+   - [x] Change `api.forms.collectionByToken` to dispatch to component lookup if
      no host row exists.
-   - [ ] Change `api.forms.submitCollection` to dispatch to component submit if
+   - [x] Change `api.forms.submitCollection` to dispatch to component submit if
      no host row exists.
-   - [ ] Keep the existing host `collectionTarget: "component"` transition path.
+   - [x] Keep the existing host `collectionTarget: "component"` transition path.
 
 6. **Tests**
-   - [ ] Focused component-owned action/form test:
+   - [x] Focused component-owned action/form test:
      - define component-owned form;
      - run component-owned action;
      - verify no host `flowRuns` row owns that token;
      - render token through `api.forms.collectionByToken`;
      - submit token;
      - verify component state receives facts and host facts do not.
-   - [ ] Token hardening tests for component-owned consumed/expired tokens.
-   - [ ] Regression tests for host-owned collection behavior.
+   - [x] Token hardening tests for component-owned consumed and expired tokens.
+   - [x] Regression tests for host-owned collection behavior.
 
 7. **Docs / verification / deploy**
-   - [ ] Update `PLAN.md` and `TODO.md` with the shipped result.
-   - [ ] Run:
+   - [x] Update `PLAN.md` and `TODO.md` with the shipped result.
+   - [x] Run:
 
 ```bash
 npx vitest run convex/metacrdtComponent.test.ts convex/forms.test.ts convex/appconfig.test.ts
@@ -3460,11 +3461,29 @@ npx convex dev --once
 npx @convex-dev/static-hosting upload
 ```
 
-   - [ ] Live smoke:
+   - [x] Live smoke:
      - `curl -I https://chatty-hare-94.convex.site`
      - create/run a component-owned action collection link if feasible, or verify
        component-owned Worker rows still render.
-   - [ ] Commit and push.
+   - [x] Commit and push.
+
+### Verification
+
+- `npx vitest run convex/metacrdtComponent.test.ts convex/forms.test.ts convex/appconfig.test.ts`
+  passed (29 tests).
+- `npm run test:core` passed (46 tests).
+- `npm run test:convex-package` passed (31 tests).
+- `npm test` passed (17 backend test files, 109 tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex dev --once` deployed backend functions to `chatty-hare-94`.
+- `npx @convex-dev/static-hosting upload` deployed the frontend to
+  `https://chatty-hare-94.convex.site`.
+- Live smoke:
+  - `curl -I https://chatty-hare-94.convex.site` returned HTTP 200.
+  - `npx convex run metacrdtComponent:listOwnedCurrentEntities ...` returned
+    deployed component-owned Worker rows.
 
 ---
 

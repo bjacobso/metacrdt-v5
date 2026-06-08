@@ -348,7 +348,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     ).rejects.toThrow(/applies to Worker/);
   });
 
-  test("component-owned actions can open host collection forms", async () => {
+  test("component-owned actions can open component-owned collection forms", async () => {
     const t = mountedTest();
 
     await t.mutation(api.metacrdtComponent.defineOwnedForm, {
@@ -392,6 +392,14 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     expect(first.collect?.token).not.toBe(host.collect?.token);
 
     const token = first.collect!.token;
+    const hostRunForComponentToken = await t.run(async (ctx) => {
+      return await ctx.db
+        .query("flowRuns")
+        .withIndex("by_token", (q) => q.eq("token", token))
+        .first();
+    });
+    expect(hostRunForComponentToken).toBeNull();
+
     expect(await t.query(api.forms.collectionByToken, { token })).toMatchObject({
       title: "Owned I-9",
       fields: [
@@ -416,6 +424,16 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       token,
       values: { "worker.legalName": "Component Worker" },
     });
+    expect(await t.query(api.forms.collectionByToken, { token })).toEqual({
+      found: false,
+      reason: "used",
+    });
+    expect(
+      await t.mutation(api.forms.submitCollection, {
+        token,
+        values: { "worker.legalName": "Second Submit" },
+      }),
+    ).toEqual({ ok: false, reason: "already submitted" });
 
     const componentEntity = await t.query(
       api.metacrdtComponent.getOwnedCurrentEntity,
@@ -439,6 +457,50 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     });
     expect(hostEntity.attributes["submitted.owned_i9"]).toBeUndefined();
     expect(hostEntity.attributes["owned_i9/worker.legalName"]).toBeUndefined();
+  });
+
+  test("component-owned collection tokens can expire before submission", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = mountedTest();
+
+      await t.mutation(api.metacrdtComponent.defineOwnedForm, {
+        form: "owned_expiring",
+        title: "Owned Expiring Form",
+        fields: [{ name: "field", label: "Field", type: "string" }],
+      });
+      await t.mutation(api.actions.defineAction, {
+        name: "owned_expiring_collect",
+        appliesTo: "Worker",
+        asserts: {},
+        opensForm: { form: "owned_expiring", scope: "$entity" },
+      });
+      await t.mutation(api.metacrdtComponent.createOwnedEntity, {
+        e: "component-expire:worker",
+        type: "Worker",
+        name: "Expiring Worker",
+      });
+
+      const result = await t.mutation(api.metacrdtComponent.runOwnedAction, {
+        action: "owned_expiring_collect",
+        entity: "component-expire:worker",
+      });
+      const token = result.collect!.token;
+      vi.advanceTimersByTime(8 * 24 * 60 * 60 * 1000);
+
+      expect(await t.query(api.forms.collectionByToken, { token })).toEqual({
+        found: false,
+        reason: "expired",
+      });
+      expect(
+        await t.mutation(api.forms.submitCollection, {
+          token,
+          values: { field: "late" },
+        }),
+      ).toEqual({ ok: false, reason: "expired token" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("component-owned missing current entity returns null", async () => {

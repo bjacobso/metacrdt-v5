@@ -123,7 +123,12 @@ export const collectionByToken = query({
       .query("flowRuns")
       .withIndex("by_token", (q) => q.eq("token", args.token))
       .first();
-    if (!run || !run.form || !run.scope) return { found: false as const };
+    if (!run) {
+      return await ctx.runQuery(components.metacrdt.log.collectionByToken, {
+        token: args.token,
+      });
+    }
+    if (!run.form || !run.scope) return { found: false as const };
     const invalid = tokenInvalidReason(run, Date.now());
     if (invalid) return { found: false as const, reason: invalid };
     const def =
@@ -157,7 +162,12 @@ export const submitCollection = mutation({
       .query("flowRuns")
       .withIndex("by_token", (q) => q.eq("token", args.token))
       .first();
-    if (!run) return { ok: false as const, reason: "unknown token" };
+    if (!run) {
+      return await ctx.runMutation(components.metacrdt.log.submitCollection, {
+        token: args.token,
+        values: args.values,
+      });
+    }
     if (!run.form || !run.scope) {
       return { ok: false as const, reason: "run is not awaiting a collection" };
     }
