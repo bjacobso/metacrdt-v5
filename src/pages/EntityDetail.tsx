@@ -139,16 +139,16 @@ export default function EntityDetail() {
         ) : (
           <table className="w-full text-[13px]">
             <tbody className="divide-y divide-line-soft">
-              {attrs.map(([a, vals]) => (
-                <tr key={a}>
+              {attrs.map(([a, vals], i) => (
+                <tr key={`attr:${a}:${i}`}>
                   <td className="w-1/3 px-5 py-2.5 font-medium text-ink-2">{a}</td>
                   <td className="px-5 py-2.5 text-ink">
                     {(vals as unknown[]).map(val).join(", ")}
                   </td>
                 </tr>
               ))}
-              {denied.map((d) => (
-                <tr key={`denied:${d.a}`}>
+              {denied.map((d, i) => (
+                <tr key={`denied:${d.a}:${i}`}>
                   <td className="w-1/3 px-5 py-2.5 font-medium text-ink-2">{d.a}</td>
                   <td className="px-5 py-2.5 text-red-ink">
                     Denied <span className="text-muted">({d.reason})</span>
