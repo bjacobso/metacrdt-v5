@@ -9,6 +9,7 @@ import {
 } from "@metacrdt/runtime";
 import { Effect } from "effect";
 import {
+  createDurableObjectSqliteAlarmMultiplexer,
   createDurableObjectSqliteCurrentSurface,
   createDurableObjectSqliteRuntime,
   createDurableObjectSqliteRuntimeLayer,
@@ -19,6 +20,25 @@ const coord = { txTime: 10_000, validTime: 10_000 };
 const one = () => "one" as const;
 const many = () => "many" as const;
 const cardinalityOf = (a: string) => (a === "worker.tag" ? "many" : "one");
+
+class FakeAlarmStorage {
+  alarmAt: number | null = null;
+  setCalls: number[] = [];
+  deleteCalls = 0;
+
+  setAlarm(scheduledTime: number | Date): void {
+    const value = scheduledTime instanceof Date
+      ? scheduledTime.getTime()
+      : scheduledTime;
+    this.alarmAt = value;
+    this.setCalls.push(value);
+  }
+
+  deleteAlarm(): void {
+    this.alarmAt = null;
+    this.deleteCalls += 1;
+  }
+}
 
 describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
   test("provides an Effect Layer and stamps seq/version-vector metadata", async () => {
@@ -857,6 +877,103 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
     await expect(
       surface.collectionByToken({ token: "collection:worker:done:onboard" }),
     ).resolves.not.toHaveProperty("remindedAt");
+  });
+
+  test("alarm multiplexer drains due collection ticks and re-arms the next alarm", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:alarm-mux",
+      wall: () => 850,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+    const alarms = new FakeAlarmStorage();
+    const mux = createDurableObjectSqliteAlarmMultiplexer(alarms, surface, {
+      now: () => 12_000,
+    });
+
+    await surface.issueCollection({
+      token: "collection:worker:alarm:onboard",
+      subject: "worker:alarm",
+      form: "forms:onboarding",
+      issuedAt: 10_000,
+      expiresAt: 20_000,
+    });
+    await surface.scheduleCollectionTick({
+      id: "tick:worker:alarm:expire",
+      token: "collection:worker:alarm:onboard",
+      phase: "expire",
+      fireAt: 20_000,
+      scheduledAt: 10_000,
+    });
+    await surface.scheduleCollectionTick({
+      id: "tick:worker:alarm:reminder",
+      token: "collection:worker:alarm:onboard",
+      phase: "reminder",
+      fireAt: 12_000,
+      scheduledAt: 10_000,
+    });
+    await surface.scheduleCollectionTick({
+      id: "tick:worker:alarm:escalation",
+      token: "collection:worker:alarm:onboard",
+      phase: "escalation",
+      fireAt: 14_000,
+      scheduledAt: 10_000,
+    });
+
+    await expect(mux.arm()).resolves.toMatchObject({
+      nextAlarmAt: 12_000,
+      nextTick: { id: "tick:worker:alarm:reminder" },
+    });
+    expect(alarms.alarmAt).toBe(12_000);
+
+    const drained = await mux.drain();
+    expect(drained).toMatchObject({
+      dueAt: 12_000,
+      fired: [
+        {
+          tick: {
+            id: "tick:worker:alarm:reminder",
+            status: "fired",
+            firedAt: 12_000,
+          },
+        },
+      ],
+      rearm: {
+        nextAlarmAt: 14_000,
+        nextTick: { id: "tick:worker:alarm:escalation" },
+      },
+    });
+    expect(alarms.setCalls).toEqual([12_000, 14_000]);
+    await expect(
+      surface.collectionByToken({ token: "collection:worker:alarm:onboard" }),
+    ).resolves.toMatchObject({
+      status: "issued",
+      remindedAt: 12_000,
+    });
+
+    const laterMux = createDurableObjectSqliteAlarmMultiplexer(alarms, surface, {
+      now: () => 25_000,
+    });
+    const later = await laterMux.drain();
+    expect(later.fired.map((result) => result.tick.id)).toEqual([
+      "tick:worker:alarm:escalation",
+      "tick:worker:alarm:expire",
+    ]);
+    expect(later.rearm).toEqual({ nextAlarmAt: null });
+    expect(alarms.alarmAt).toBe(null);
+    expect(alarms.deleteCalls).toBe(1);
+    await expect(
+      surface.collectionByToken({ token: "collection:worker:alarm:onboard" }),
+    ).resolves.toMatchObject({
+      status: "expired",
+      remindedAt: 12_000,
+      escalatedAt: 25_000,
+      expiredAt: 25_000,
+    });
   });
 
   test("current surface persists DAG run timelines over SQLite rows", async () => {

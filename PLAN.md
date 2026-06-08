@@ -230,12 +230,15 @@ submission/expiry without claiming DO alarm multiplexing. Goal 126 adds
 component-style DAG run/timeline rows: caller-identified `flow_dag_runs` and
 `flow_dag_events` persist operational process history over DO SQLite, and the
 current facade exposes `recordDagRun`, `getDagRun`, and `listDagRuns` without
-claiming flow execution/resume or alarm wakeups. The next active goal should be
-chosen from the remaining TODO candidates:
+claiming flow execution/resume or alarm wakeups. Goal 127 adds collection timer
+alarm multiplexing: a structural helper arms the single DO alarm to the earliest
+pending collection timer row, drains due rows through `fireCollectionTick`, and
+re-arms or deletes the host alarm without claiming flow-wait alarm plumbing. The
+next active goal should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite historical SQL-indexed-query/operational parity
-(flow execution/resume, alarms, live fanout),
+(flow execution/resume, flow-wait alarms, live fanout),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9450,6 +9453,56 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 127 — Cloudflare DO SQLite Collection Alarm Multiplexing
+
+**Status:** shipped.
+
+**Objective:** wire the existing collection timer rows to a single Durable
+Object alarm boundary, so collection reminder/escalation/expiry ticks can be
+drained by host wakeups without adding a second scheduler or claiming full flow
+execution parity.
+
+### What Shipped
+
+- Added `sqliteAlarm.ts` with a structural `DurableObjectAlarmStorageLike`
+  boundary compatible with `ctx.storage.setAlarm(...)` and optional
+  `deleteAlarm()`.
+- Added `armDurableObjectSqliteAlarmEffect` and
+  `drainDurableObjectSqliteAlarmEffect` with tagged
+  `DurableObjectSqliteAlarmError` failures in the Effect error channel.
+- Added Promise helpers plus `createDurableObjectSqliteAlarmMultiplexer`.
+- `armDurableObjectSqliteAlarm`:
+  - reads the earliest pending collection timer row;
+  - calls `setAlarm(fireAt)` for that row;
+  - deletes the host alarm when no pending collection timer rows remain and the
+    host storage exposes `deleteAlarm`.
+- `drainDurableObjectSqliteAlarm`:
+  - lists pending collection timer rows due at the current wake time;
+  - drains them through the existing `fireCollectionTick` path so submitted /
+    expired collection skip behavior stays centralized;
+  - re-arms to the next pending timer row or deletes the alarm when empty.
+- Exported the alarm helper, Effect functions, tagged error, and public types
+  from `@metacrdt/cloudflare`.
+
+### Non-Goals
+
+- Do not implement a Cloudflare DAG interpreter, flow wait/resume semantics, or
+  action execution.
+- Do not add flow-wait timers yet; this slice multiplexes collection timer rows
+  only.
+- Do not add live-query fanout or historical SQL-indexed query-provider parity.
+- Do not touch root `convex/`.
+
+### Verification
+
+- `npm test --workspace @metacrdt/cloudflare` passes with coverage for arming
+  the earliest pending collection tick, draining due ticks through
+  `fireCollectionTick`, re-arming to the next pending tick, and deleting the
+  alarm when no pending collection ticks remain.
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
 
 ---
 

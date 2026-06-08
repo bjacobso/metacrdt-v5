@@ -13,9 +13,10 @@ projection-backed `queryCurrent` / `pageCurrent` / `aggregateCurrent` /
 `derivedRowsCurrent`, `rebuildCurrent`, `listCurrent`, `getCurrentEntity`,
 `listCurrentEntities`, collection `issueCollection` / `collectionByToken` /
 `listCollections` / `submitCollection`, DAG `recordDagRun` / `getDagRun` /
-`listDagRuns`, and deterministic projection change summaries for touched `(e,
-a)` coordinates). Full historical SQL-indexed query optimization and full
-operational flow execution/alarm parity are still ahead.
+`listDagRuns`, a collection-timer alarm multiplexer, and deterministic
+projection change summaries for touched `(e, a)` coordinates). Full historical
+SQL-indexed query optimization and full operational flow execution/resume parity
+are still ahead.
 
 **Scope:** Grow `@metacrdt/cloudflare` from a sync-plane shell into a full
 MetaCRDT target at parity with the `@metacrdt/convex` component — an indexed,
@@ -56,7 +57,7 @@ and can be fired through the facade. Component-style DAG run/timeline rows now
 persist as caller-identified `flow_dag_runs` and `flow_dag_events`, exposed
 through `recordDagRun`, `getDagRun`, and `listDagRuns`. It still has no
 historical SQL-optimized indexed triple queries, no live invalidation fanout, no
-Cloudflare DAG interpreter/resume surface, and no DO alarm multiplexing.
+Cloudflare DAG interpreter/resume surface, and no flow-wait alarm plumbing.
 
 This doc defines what it takes to bring Cloudflare to parity, in what order, and
 which decisions must be settled first — and it makes **live frontend queries an
@@ -121,6 +122,7 @@ function surface — backed by Durable Object SQLite instead of the Convex DB.
 | `DurableObjectSqliteDagStore` | SQLite-backed DAG run rows and child timeline events; indexed by subject, status, updated time, and run id |
 | `DurableObjectSqliteClock` / `DurableObjectSqliteSequencer` | SQLite-backed HLC + per-replica `seq` metadata |
 | `createDurableObjectSqliteCurrentSurface` | First component-equivalent log/current/query/collection/DAG facade: append helpers with scoped current-coordinate projection reconcile, get/list events, EventStore-backed bitemporal Datalog reads, projection-backed current Datalog reads, rebuild with changed `(e, a)` summaries, list current rows, read current entity, list typed current entities, issue/read/list/submit collection tokens, collection tick rows, and record/read/list DAG runs |
+| `createDurableObjectSqliteAlarmMultiplexer` | Structural single-alarm helper: arms `ctx.storage.setAlarm` to the earliest pending collection timer row, drains due ticks through `fireCollectionTick`, and re-arms or deletes the alarm |
 | `DurableObjectWebSocketRelay` | version-vector hello/delta sync + event fan-out |
 | `MetaCrdtRelayDurableObject` / `relayWorker` | Worker/DO example shell |
 
@@ -140,7 +142,7 @@ projection-backed current Datalog reads over SQLite projection rows, rebuild
 SQLite-backed current projection rows, serve current entity/list reads, and
 persist simple collection capability rows plus DAG run/timeline history rows; it
 cannot yet expose the full historical SQL-indexed query provider or the full
-**operational flow execution/alarm** surface.
+**operational flow execution/resume** surface.
 
 ---
 
@@ -214,13 +216,13 @@ lifecycle events discovered through the SQLite `target` index. Explicit
 
 **Still ahead for parity:** richer append function surface, SQL-indexed query
 provider optimization/conformance for historical bitemporal queries,
-live invalidation fanout, and the full flow execution/alarm surface.
+live invalidation fanout, and the full flow execution/resume surface.
 
 ### Phase D — Operational surface + alarms
 
 Port `flowRuns` / `flowDagRuns` / `flowDagEvents` and the collection/DAG
 functions. Collection rows, timer rows, and DAG history rows have started; flow
-execution/resume and alarm wakeups remain. Map **Convex scheduler → Durable
+execution/resume and flow-wait alarm wakeups remain. Map **Convex scheduler → Durable
 Object `setAlarm()`**. Caveat: a DO has a single alarm, but the operational
 layer has reminder + escalation + expiry + flow-wait timers — so introduce a
 `timers` table and set
@@ -246,10 +248,13 @@ multiplexing. Cloudflare DO SQLite also now owns `flow_dag_runs` and
 `flow_dag_events` tables for component-style DAG process history. The current
 facade exposes `recordDagRun`, `getDagRun`, and `listDagRuns`; new run and
 timeline ids are caller-provided, while calls without `runId` can reuse the
-newest active run for the same `(subject, flowDefName)`.
+newest active run for the same `(subject, flowDefName)`. The package also
+exports `createDurableObjectSqliteAlarmMultiplexer`, which maps the single DO
+alarm to the earliest pending collection timer row, drains due collection ticks
+through `fireCollectionTick`, and re-arms or deletes the host alarm.
 
-**Still ahead for Phase D parity:** flow execution/resume semantics, timer
-multiplexing over DO alarms, and any WebSocket live-query fanout.
+**Still ahead for Phase D parity:** flow execution/resume semantics, flow-wait
+timer plumbing, and any WebSocket live-query fanout.
 
 ### Phase E — Sharding + real multi-replica sync
 
@@ -337,7 +342,7 @@ The Phase B adapters (~600–800 LOC) get **shared, not rewritten**. The
 Cloudflare-specific work is comparable to the existing Convex component: the
 runtime-service SQLite seed and first log/current/query facade are now present;
 the remaining work is optimized SQL-indexed query-provider parity, flow
-execution/resume semantics, and the alarm-multiplexing layer.
+execution/resume semantics, and flow-wait timer plumbing.
 Roughly 2–4 focused sessions remain, gated on shared fold/reconcile reuse. The
 live-query stretch goal is a separate later increment on top.
 
@@ -351,7 +356,7 @@ live-query stretch goal is a separate later increment on top.
   **shared** `≺`-reconcile.
 - A rebuild from `fact_events` reproduces the live projection.
 - Collection tokens can be issued, read, listed, and submitted over DO SQLite.
-- The remaining collection/flow surface runs with DO alarms.
+- The remaining flow surface runs with DO alarms.
 - Cross-DO writes converge through the existing relay.
 - A convergence test proves a Cloudflare replica and a Convex/memory replica fold
   the same event set to the same projection.

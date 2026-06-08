@@ -129,6 +129,20 @@ export {
 } from "./sqliteCurrent.js";
 
 export {
+  DurableObjectSqliteAlarmError,
+  armDurableObjectSqliteAlarm,
+  armDurableObjectSqliteAlarmEffect,
+  createDurableObjectSqliteAlarmMultiplexer,
+  drainDurableObjectSqliteAlarm,
+  drainDurableObjectSqliteAlarmEffect,
+  type DurableObjectAlarmStorageLike,
+  type DurableObjectSqliteAlarmArmResult,
+  type DurableObjectSqliteAlarmDrainResult,
+  type DurableObjectSqliteAlarmMultiplexer,
+  type DurableObjectSqliteAlarmMuxOptions,
+} from "./sqliteAlarm.js";
+
+export {
   DurableObjectWebSocketRelay,
   attachDurableObjectRelay,
   type RelayConnection,

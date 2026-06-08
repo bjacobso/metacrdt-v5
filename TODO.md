@@ -6,6 +6,122 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ## Now / up next
 
+### Handoff: continue MetaCRDT on `main` from commit `c6c4379`
+
+**TASK:** Start the next Cloudflare target parity slice: add the first
+operational collection capability surface to the Durable Object + SQLite target.
+
+Context:
+
+- MetaCRDT is now an Effect-native monorepo.
+- `@metacrdt/core` owns deterministic protocol semantics.
+- `@metacrdt/runtime` exposes Effect v3 services/Layers.
+- `@metacrdt/cloudflare` already has DO SQLite EventStore/ProjectionStore/HLC/seq
+  services, current projection maintenance, EventStore-backed historical Datalog
+  reads, projection-backed current Datalog reads, scoped current-coordinate
+  reconcile, and target-indexed lifecycle lookup.
+- Latest shipped goal: Goal 122, target-indexed lifecycle lookup for coordinate
+  folds.
+- Remaining Cloudflare parity from PLAN/TODO: historical SQL-indexed query
+  optimization, operational collection/flow surface, DO alarm multiplexing, and
+  live-query fanout.
+
+**GOAL:** Implement a narrow, additive Cloudflare Phase D seed: collection
+capability rows over DO SQLite.
+
+Recommended scope:
+
+1. Add a DO SQLite collection store/table in `packages/cloudflare`.
+2. Expose collection methods on the existing
+   `createDurableObjectSqliteCurrentSurface` or a closely related facade:
+   `issueCollection`, `collectionByToken`, `listCollections`, and
+   `submitCollection`.
+3. Keep tokens deterministic/injected:
+   - Do not use `Math.random()`.
+   - Prefer caller-provided token for this first slice.
+   - Do not consume EventStore `seq` for non-event token generation unless you
+     deliberately document why.
+4. `submitCollection` should at minimum persist submitted data/status.
+   - If feasible, allow optional submitted assertions to append protocol events
+     for the subject through the existing append/reconcile path.
+   - If that is too large, explicitly document that field-to-fact lowering is
+     the next slice.
+5. Add tests using the existing Cloudflare SQLite fake/test support.
+6. Update PLAN.md / TODO.md / docs/cloudflare-target.md to mark exactly what
+   shipped and what remains.
+
+Hard constraints:
+
+- Stay on `effect@3`; do not import or install Effect v4.
+- `@metacrdt/core` stays pure/Schema-only; do not wrap core folds in Effect.
+- New runtime/package boundaries should use Effect services/Layers where
+  applicable, `effect/Schema`, and tagged errors in the Effect error channel.
+- Keep this additive and green after the slice.
+- Do not touch root `convex/` unless necessary. If touching Convex code, first
+  read `convex/_generated/ai/guidelines.md`.
+- Do not claim full collection/flow parity, alarm multiplexing, live fanout, or
+  historical SQL query-provider parity unless actually implemented.
+
+Start by reading:
+
+- `PLAN.md` current goal section
+- `TODO.md` Now / up next
+- `docs/cloudflare-target.md`
+- `docs/targets.md`
+- `packages/cloudflare/src/durableObjectSqlite.ts`
+- `packages/cloudflare/src/sqliteCurrent.ts`
+- `packages/cloudflare/src/sqliteFake.test-support.ts`
+- `packages/cloudflare/src/durableObjectSqlite.test.ts`
+- For parity reference only: `packages/convex/src/component/log.ts` and
+  `packages/convex/src/component/schema.ts`
+
+Suggested implementation shape:
+
+- Add a `collections` table to the DO SQLite lifecycle plan:
+  - `token TEXT PRIMARY KEY`
+  - `subject TEXT NOT NULL`
+  - `form TEXT NOT NULL`
+  - `status TEXT NOT NULL` (`issued` / `submitted` / `expired`)
+  - `issued_at REAL NOT NULL`
+  - `expires_at REAL NULL`
+  - `submitted_at REAL NULL`
+  - `data_json TEXT NULL`
+  - optional `run_id`, `step_id`, `scope`
+- Add indexes by `subject`, `status`, and optionally `expires_at`.
+- Add a `DurableObjectSqliteCollectionStore` or similarly scoped helper.
+- Wire it into `createDurableObjectSqliteRuntime` if it belongs with the runtime
+  substrate, or into the current facade if it is only an operational facade for
+  now. Prefer the smallest clear boundary.
+- If `submitCollection` appends facts, route through existing append/reconcile
+  helpers so projection invalidation summaries remain correct.
+
+Definition of done:
+
+- Focused Cloudflare tests prove:
+  - collection issue persists and is readable by token
+  - list by subject/status works
+  - submit consumes/updates a token and stores submitted payload
+  - expired/submitted tokens behave intentionally
+  - optional assertion submission, if implemented, creates protocol events and
+    updates current projection
+- Existing conformance remains green.
+- Docs explicitly distinguish this from full operational flow/DAG/alarm parity.
+
+Verification commands:
+
+- `npm run typecheck`
+- `npm run build`
+- `npm test`
+- `npm run test:packages`
+- `npm run pack:packages`
+- `git diff --check`
+
+After implementation:
+
+- Commit with a focused message, for example
+  `feat(cloudflare): add DO SQLite collection capability surface`
+- Push to `origin main`.
+
 ### Cloudflare Phase D operational surface
 
 - [x] **Goal 123 shipped: DO SQLite collection capability rows** —
@@ -30,8 +146,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   tables/stores plus current-surface methods `recordDagRun`, `getDagRun`, and
   `listDagRuns`. New run/event ids are caller-provided; no `Math.random()` or
   EventStore `seq` is consumed for operational ids.
+- [x] **Goal 127 shipped: collection alarm multiplexing over DO alarms** —
+  `@metacrdt/cloudflare` now exports a structural alarm multiplexer that arms
+  `ctx.storage.setAlarm` to the earliest pending collection timer row, drains
+  due ticks through `fireCollectionTick`, and re-arms or deletes the host alarm.
 - [ ] **Remaining Cloudflare Phase D parity** — flow execution/resume semantics,
-  DO alarm multiplexing, live-query fanout, and historical SQL-indexed
+  flow-wait alarm plumbing, live-query fanout, and historical SQL-indexed
   query-provider optimization remain open; do not claim full parity until those
   are implemented.
 
@@ -95,6 +215,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `flow_dag_runs` and `flow_dag_events` rows persist bounded operational process
   history; the current facade can record/reuse active runs and read/list runs
   with their timeline events.
+- [x] Cloudflare Durable Object SQLite collection alarm multiplexing —
+  `createDurableObjectSqliteAlarmMultiplexer` uses the earliest pending
+  collection timer row as the single DO alarm, drains due ticks through the
+  existing collection tick firing path, then re-arms or deletes the alarm.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -104,8 +228,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — historical
-  SQL-indexed query-provider optimization, flow execution/resume semantics, DO
-  alarm multiplexing, and live-query WebSocket fanout/plumbing (see
+  SQL-indexed query-provider optimization, flow execution/resume semantics,
+  flow-wait alarm plumbing, and live-query WebSocket fanout/plumbing (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
