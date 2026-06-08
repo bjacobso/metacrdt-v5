@@ -96,9 +96,9 @@ the Effect scheduler service boundary for targets that expose an observable
 scheduler; it does not claim host wakeup durability.
 `runRuntimeTransportConformance` proves the Effect transport publish boundary;
 it does not claim peer discovery, delivery, retries, or relay semantics.
-`runRuntimeNetworkTransportConformance` proves the first peer delivery and
-late-join catch-up behaviors from SPEC §8 for a target-provided network harness;
-relay auth, retries, and durability remain target-specific.
+`runRuntimeNetworkTransportConformance` proves peer delivery and late-join
+catch-up behaviors from SPEC §8 for a target-provided network harness; relay
+auth, retries, and durability remain target-specific.
 
 ## Usage
 
@@ -131,11 +131,12 @@ submission, the basic transport publish boundary, and the first network-delivery
 checks: event-store semantics, anti-entropy, the in-log fold, persistence of the
 event log/HLC/seq across re-creation, payload-preserving scheduler submission,
 event-batch preserving transport publication, and peer delivery/catch-up for the
-BroadcastChannel and p2p DataChannel harnesses. It does **not yet** cover
-Cloudflare relay production behavior or **projection conformance** — proving
-that two targets fold the same events into the same *bitemporal projection* and
-resolve the same cardinality-one winner through the shared projection path.
-Projection checks should be added once the fold/reconcile logic is shared out of
+BroadcastChannel, p2p DataChannel, and Cloudflare Durable Object WebSocket relay
+harnesses. It does **not yet** cover live relay deployment auth/retry/durability
+or **projection conformance** — proving that two targets fold the same events
+into the same *bitemporal projection* and resolve the same cardinality-one winner
+through the shared projection path. Projection checks should be added once the
+fold/reconcile logic is shared out of
 `@metacrdt/convex` into `@metacrdt/core` (the keystone in
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md) and
 [docs/targets.md](../../docs/targets.md)). Until then, the cross-target guarantee

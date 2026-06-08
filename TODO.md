@@ -73,10 +73,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `@metacrdt/testkit` now has `runRuntimeNetworkTransportConformance`, proving
   peer delivery, late-peer version-vector catch-up, and idempotent post-catch-up
   sync for target-provided network harnesses. Proven against runtime
-  BroadcastChannel and p2p DataChannel harnesses.
-- [ ] **Goal 111 next: expanded suites** — add Cloudflare relay network
-  conformance and query/projection capabilities as second implementations expose
-  them.
+  BroadcastChannel, p2p DataChannel, and Cloudflare Durable Object WebSocket
+  relay harnesses.
+- [ ] **Goal 111 next: expanded suites** — add query/projection capabilities as
+  second implementations expose them.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
@@ -519,6 +519,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — Goal 111 Cloudflare relay network conformance
+- [x] **Wired Cloudflare relay into shared network conformance.** The
+  `@metacrdt/cloudflare` conformance suite now uses
+  `runRuntimeNetworkTransportConformance` against a Durable Object WebSocket
+  relay harness whose fake client socket merges relay messages into a client
+  runtime.
+- [x] **Relay behavior now shares the same proof shape as BroadcastChannel/p2p:**
+  local DO events reach a client replica, late clients catch up via
+  hello/version-vector delta, and post-catch-up sync is idempotent. This is still
+  harness-level relay delivery/catch-up, not live deployment auth/retry/durable
+  production behavior.
 
 ### 2026-06-08 — Goal 111 network transport conformance
 - [x] **Expanded `@metacrdt/testkit` with

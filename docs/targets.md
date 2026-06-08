@@ -80,7 +80,8 @@ On open hosts the adapter is a selectable dependency.
   localStorage, local async, and Node SQLite/Postgres; scheduler submission and
   transport publication conformance are wired into testkit memory and Node
   memory; network delivery/catch-up conformance is proven against
-  BroadcastChannel and p2p DataChannel harnesses. Compatibility
+  BroadcastChannel, p2p DataChannel, and Cloudflare Durable Object WebSocket
+  relay harnesses. Compatibility
   `RuntimeServices` targets still adapt through `runtimeServicesLayer`.
 
 ### Should exist next
@@ -233,7 +234,7 @@ a sibling target.
    Persistence conformance has started for durable targets, and scheduler
    service-boundary / transport publish-boundary conformance has started for
    observable services. Network delivery/catch-up conformance has started for
-   BroadcastChannel and p2p DataChannel harnesses; add Cloudflare relay and
+   BroadcastChannel, p2p DataChannel, and Cloudflare relay harnesses; add
    query/projection suites whenever the relevant target capabilities are exposed.
    This is what *proves* the "guaranteed to converge" claim across targets.
 3. **Cloudflare Phase B/C** — extract the shared fold into core, then the DO +
