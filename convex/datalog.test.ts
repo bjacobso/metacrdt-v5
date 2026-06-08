@@ -172,6 +172,70 @@ describe("comparison predicates", () => {
     }
   });
 
+  test("deriveFromEventLog computes rule output without reading facts projection", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      const where = [
+        ["?e", "type", "EventLogRulePreviewWorker"],
+        ["?e", "region", "?region"],
+      ];
+      const emit = { e: "?e", a: "derived.previewRegion", v: "?region" };
+      await t.mutation(api.rules.defineRule, {
+        name: "event_log_rule_preview_region",
+        where,
+        emit,
+        dependsOnAttributes: ["type", "region"],
+      });
+      await assert(t, "el:rule-preview:1", "type", "EventLogRulePreviewWorker");
+      await assert(t, "el:rule-preview:1", "region", "north");
+      await assert(t, "el:rule-preview:2", "type", "EventLogRulePreviewWorker");
+      await assert(t, "el:rule-preview:2", "region", "south");
+      await flush(t);
+
+      const derived = await t.query(api.datalog.deriveFromEventLog, {
+        where,
+        emit,
+      });
+      expect(derived).toEqual([
+        { e: "el:rule-preview:1", a: "derived.previewRegion", v: "north" },
+        { e: "el:rule-preview:2", a: "derived.previewRegion", v: "south" },
+      ]);
+
+      expect(await t.query(api.datalog.datalog, {
+        where: [["?e", "derived.previewRegion", "?region"]],
+        select: ["?e", "?region"],
+      })).toEqual([
+        { e: "el:rule-preview:1", region: "north" },
+        { e: "el:rule-preview:2", region: "south" },
+      ]);
+
+      await t.run(async (ctx) => {
+        const rows = await ctx.db
+          .query("facts")
+          .withIndex("by_a", (q) => q.eq("a", "type"))
+          .collect();
+        for (const row of rows.filter((r) => r.v === "EventLogRulePreviewWorker")) {
+          await ctx.db.patch(row._id, { retractedAt: Date.now() });
+        }
+      });
+
+      expect(await t.query(api.datalog.datalog, {
+        where: [
+          ["?e", "type", "EventLogRulePreviewWorker"],
+          ["?e", "derived.previewRegion", "?region"],
+        ],
+        select: ["?e", "?region"],
+      })).toEqual([]);
+      expect(await t.query(api.datalog.deriveFromEventLog, {
+        where,
+        emit,
+      })).toEqual(derived);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("== and != operate on values", async () => {
     const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await assert(t, "p:1", "role", "admin");

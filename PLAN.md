@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 55 (event-log base + derived Datalog page/aggregate parity)
+**Current goal:** Goal 56 (read-only rule derivation from the event log)
 has shipped.
 The next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth, or
@@ -101,7 +101,11 @@ arguments.
   projection, proving production-style base+derived Datalog can drop the base
   `facts` projection first across row, page, aggregate, and aggregate-page read
   shapes.
-- Convex backend tests are green: 142 tests at last verification.
+- `api.datalog.deriveFromEventLog` solves a rule body against protocol-shaped
+  `factEvents` and resolves its `emit` shape into deduped derived triples without
+  writing `derivedFacts`, proving simple rule output can be computed directly
+  from the source log.
+- Convex backend tests are green: 143 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
 - The shell includes a route-aware guided demo tour:
@@ -390,6 +394,9 @@ arguments.
 - The `*FromEventLogWithDerived` Datalog proof APIs still depend on materialized
   `derivedFacts`; rule/materialization output has not become a direct event-log
   fold.
+- `deriveFromEventLog` is read-only and proof-oriented. Production
+  materialization still writes `derivedFacts` from projection-backed solving, and
+  derived provenance still uses `sourceFactIds`.
 - `@metacrdt/convex` now has adapter helpers, stateless protocol helpers, a
   component-owned protocol transaction/event log, and component-owned
   `facts`/`currentFacts` projections with opt-in cardinality-one reconciliation
@@ -5239,6 +5246,78 @@ TODO.md
 
 ---
 
+## Goal 56 — Read-Only Rule Derivation from the Event Log
+
+**Status:** shipped as a bounded proof query in the Convex reference runtime.
+
+**Objective:** prove that a Datalog rule's output rows can be computed directly
+from protocol-shaped `factEvents`, not just joined against existing
+projection-backed `derivedFacts`. This is the first direct-rule-output proof on
+the path from projection-backed materialization to source-log folds.
+
+### Scope
+
+Backend:
+
+- `convex/datalog.ts`
+  - `deriveFromEventLog`
+
+Tests:
+
+- `convex/datalog.test.ts`
+
+Docs:
+
+- `README.md`
+- `PLAN.md`
+- `TODO.md`
+
+### Semantics
+
+- `deriveFromEventLog` accepts a bounded Datalog `where` body and an `emit`
+  shape `{ e, a, v }`, matching the rule definition shape.
+- The `where` body is solved through the existing Datalog engine with
+  `eventLogTripleSource`, so positive base facts come from protocol-shaped
+  `factEvents`.
+- `emit.e` and `emit.v` resolve `?variables` from each solved binding; constant
+  terms remain constants.
+- Output rows are deduped by `(e, a, v)` and sorted deterministically.
+- The query is read-only: it does not write `derivedFacts`, does not update rule
+  invalidations, and does not claim projection provenance.
+
+### Non-Goals
+
+- Do not replace production rule materialization.
+- Do not derive from existing `derivedFacts`; this proof is base-event-log only.
+- Do not rewrite `sourceFactIds` / derived provenance yet.
+- Do not support recursive/fixpoint rule materialization in this slice.
+- Do not add a rule-id wrapper; callers pass the `where` + `emit` shape directly.
+
+### Acceptance Criteria
+
+- For a normal Datalog rule, `deriveFromEventLog` returns the same derived triples
+  that production materialization makes visible through `derivedFacts`.
+- If the base `facts` projection is corrupted, projection-backed Datalog can no
+  longer join the base and derived rows, but `deriveFromEventLog` still computes
+  the same rule output from `factEvents`.
+- Convex typecheck and focused Datalog tests pass.
+
+### Verification
+
+- `npx convex codegen` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx vitest run convex/datalog.test.ts` passed (33 tests).
+- Broader gate passed:
+  - `npm test` passed (17 backend test files, 143 tests).
+  - `npm run test:convex-package` passed (33 tests).
+  - `npm run test:core` passed (46 tests).
+  - `npx tsc --noEmit -p convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p packages/convex/tsconfig.json` passed.
+  - `npx tsc --noEmit -p tsconfig.json` passed.
+  - `npm run build` passed.
+
+---
+
 ## Goal 55 — Event-Log Base + Derived Datalog Page/Aggregate Parity
 
 **Status:** shipped as parity proof APIs over the mixed event-log-base +
@@ -5496,10 +5575,10 @@ or intentionally moved out of this repo's scope. Each shipped slice must update
 `PLAN.md` / `TODO.md`, pass the relevant test/typecheck/build gate, and be
 committed/pushed with the verification recorded.
 
-Goal 43 is complete: component-owned DAG wait steps now park component-owned DAG
-runs, schedule a host internal wakeup, resume the same run at the wait step's
-next step, write component-owned fact effects under a system actor, and preserve
-host `flowRuns` behavior.
+Goal 56 is complete: `api.datalog.deriveFromEventLog` solves a supplied rule
+body directly over protocol-shaped `factEvents`, resolves the rule-style `emit`
+shape into deterministic derived triples, and remains a read-only proof surface
+while production materialization still owns `derivedFacts`.
 
 The next shipped slice should update this section with its own concrete
 definition of done before implementation starts.

@@ -188,6 +188,9 @@ Built today:
   `aggregatePageFromEventLogWithDerived`) via injected triple sources over
   protocol-shaped `factEvents`, including mixed proof sources that join event-log
   base facts with materialized `derivedFacts`
+- read-only rule-output proof query (`api.datalog.deriveFromEventLog`) that
+  solves a rule body against protocol-shaped `factEvents` and resolves its
+  `emit` shape into derived triples without writing `derivedFacts`
 - Datalog query engine with joins, comparisons, computed arithmetic/string
   predicates, negation, aggregation, cursor-paged result APIs, and materialized
   transitive closure

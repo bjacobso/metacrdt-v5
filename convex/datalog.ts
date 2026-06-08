@@ -15,6 +15,8 @@ import {
   paginateRows,
   project,
   runWhere,
+  solveWhere,
+  type Binding,
   type PatternInput,
   type Triple,
   type TripleSource,
@@ -27,6 +29,7 @@ import { canReadAttribute } from "./lib/readAuth";
 // { not: [e, a, v] } negation, or { or: [[...clauses], ...] } disjunction —
 // so clauses are heterogeneous (array | object).
 const whereValidator = v.array(v.any());
+const emitValidator = v.object({ e: v.string(), a: v.string(), v: v.any() });
 
 function txForCore(tx: Doc<"transactions">): ConvexTransactionRow {
   return {
@@ -212,6 +215,34 @@ const eventLogBaseWithDerivedTripleSource: TripleSource = async (
   }
   return [...base, ...derived];
 };
+
+function resolveEmitTerm(term: unknown, binding: Binding): unknown {
+  if (typeof term === "string" && term.startsWith("?")) {
+    return binding[term.slice(1)];
+  }
+  return term;
+}
+
+function derivedRowsFromBindings(
+  bindings: Binding[],
+  emit: { e: string; a: string; v: unknown },
+) {
+  const byKey = new Map<string, { e: string; a: string; v: unknown }>();
+  for (const binding of bindings) {
+    const e = resolveEmitTerm(emit.e, binding);
+    if (e === undefined || e === null) continue;
+    const value = resolveEmitTerm(emit.v, binding);
+    const row = { e: String(e), a: emit.a, v: value };
+    byKey.set(`${row.e}\u0000${row.a}\u0000${valueKey(row.v)}`, row);
+  }
+  return [...byKey.values()].sort((a, b) => {
+    const e = a.e.localeCompare(b.e);
+    if (e !== 0) return e;
+    const attr = a.a.localeCompare(b.a);
+    if (attr !== 0) return attr;
+    return valueKey(a.v).localeCompare(valueKey(b.v));
+  });
+}
 
 /**
  * Bounded, non-recursive Datalog over facts ∪ materialized derived facts.
@@ -656,6 +687,41 @@ export const aggregatePageFromEventLog = query({
       aggregateBindings(bindings, args.groupBy ?? [], args.aggregates),
       args.paginationOpts,
     );
+  },
+});
+
+/**
+ * Read-only rule-output proof over base facts folded directly from
+ * protocol-shaped `factEvents`. This solves a rule body and resolves its `emit`
+ * shape without writing `derivedFacts`; materialization still owns production
+ * derived rows and provenance.
+ */
+export const deriveFromEventLog = query({
+  args: {
+    where: whereValidator,
+    emit: emitValidator,
+    txTime: v.optional(v.number()),
+    validTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const coord = {
+      txTime: args.txTime ?? Date.now(),
+      validTime: args.validTime ?? Date.now(),
+    };
+    const solved = await solveWhere(ctx, args.where, coord, {}, {
+      enforceReadAuth: true,
+      source: eventLogTripleSource,
+    });
+    const rows = derivedRowsFromBindings(
+      solved.map((s) => s.binding),
+      args.emit,
+    );
+    if (rows.length > LIMITS.maxResultRows) {
+      throw new Error(
+        `rule derivation produced ${rows.length} rows, exceeding maxResultRows=${LIMITS.maxResultRows}`,
+      );
+    }
+    return rows;
   },
 });
 

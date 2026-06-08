@@ -66,9 +66,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `api.datalog.datalogFromEventLogWithDerived` now joins event-log base facts with
   materialized `derivedFacts`; mixed-source page/aggregate variants are shipped as
   `datalogPageFromEventLogWithDerived`, `aggregateFromEventLogWithDerived`, and
-  `aggregatePageFromEventLogWithDerived`.
-  Remaining: continue toward retiring the hand-maintained `facts` projection for
-  rule/materialization output and derived provenance.
+  `aggregatePageFromEventLogWithDerived`. `api.datalog.deriveFromEventLog` now
+  computes read-only rule output directly from the event log for a supplied
+  `where` + `emit`.
+  Remaining: move production rule/materialization writes and derived provenance
+  onto direct event-log folds.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [x] **`@metacrdt/forma` extracted** from Open Ontology's language packages
@@ -326,6 +328,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 56 shipped:** `api.datalog.deriveFromEventLog` solves a rule body
+  against protocol-shaped `factEvents` and resolves its `emit` shape into deduped
+  derived triples without writing `derivedFacts`.
+- [x] **Direct rule-output proof.** Tests compare the read-only event-log
+  derivation to materialized rule output, then corrupt the base `facts` projection
+  and show `deriveFromEventLog` still computes the same derived rows.
 - [x] **Goal 55 shipped:** `api.datalog.datalogPageFromEventLogWithDerived`,
   `aggregateFromEventLogWithDerived`, and
   `aggregatePageFromEventLogWithDerived` give the event-log-base +
