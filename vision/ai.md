@@ -1,5 +1,7 @@
 # Vision — The Fact Store as an AI Substrate
 
+> **MetaCRDT primitive →** _provenance + agent participation_ — agents propose facts, validators dispose; every AI write is an auditable, reversible fact. See [`metacrdt-alignment.md`](./metacrdt-alignment.md).
+
 > Part of the `vision/` set — see [`README.md`](./README.md). Builds on [`triples.md`](./triples.md)
 > (queries-as-data, the tx log), [`workflows.md`](./workflows.md) (Flows, the validator),
 > [`library.md`](./library.md) (definitions-as-facts), and [`authorization.md`](./authorization.md)

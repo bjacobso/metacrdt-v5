@@ -1,5 +1,7 @@
 # Vision — The Experience Layer: Worker Onboarding Runtime & Generated UIs
 
+> **MetaCRDT primitive →** _derived coherence_ — the UI is a fold of definition-facts + subject-facts + grants; interactions become transactions. See [`metacrdt-alignment.md`](./metacrdt-alignment.md).
+
 > Part of the `vision/` set — see [`README.md`](./README.md). Builds on [`triples.md`](./triples.md)
 > (the registry + facts), [`workflows.md`](./workflows.md) (forms as attribute projections, the
 > reconciler), [`compliance.md`](./compliance.md) (obligations), [`api.md`](./api.md) (the JIT/IR

@@ -1,5 +1,7 @@
 # Vision — Rebasing the Substrate onto Convex
 
+> **MetaCRDT framing →** Convex is one _target_, not the substrate (see [`../docs/targets.md`](../docs/targets.md)). **Reversed cut:** "Effect → Convex validators" is superseded — Effect now lives at a target-neutral runtime-shape tier (Confect-like) above the targets ([`../SPEC.md`](../SPEC.md) §1.2). See [`metacrdt-alignment.md`](./metacrdt-alignment.md) §0, §3.
+
 > Part of the `vision/` set — see [`README.md`](./README.md). The other docs were written assuming a
 > **Postgres / Prisma / Kysely + Effect-TS** substrate (the live app's stack). The proof-of-concept in
 > [`../PLAN.md`](../PLAN.md) is instead built on **Convex**. This doc reconciles the two: which parts of

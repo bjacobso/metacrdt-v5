@@ -1,5 +1,7 @@
 # Vision — Demo Domain & E2E Test: A Staffing Company on the New Vision
 
+> **MetaCRDT primitive →** _facts (authoring)_ — the Effect-`Schema` DSLs are front-ends that elaborate to one shared ontology IR that lowers to facts. **Reversed cut:** the DSLs were marked "ergonomics, not substrate" for Convex; the Effect-native turn revives them as IR emitters ([`forma.md`](./forma.md)). See [`metacrdt-alignment.md`](./metacrdt-alignment.md) §3.
+
 > Part of the `vision/` set — see [`README.md`](./README.md). This is the **worked example** that
 > grounds the whole set in the real Onboarded domain and doubles as the spec for an **end-to-end test**.
 > It is authored entirely through the Effect-`Schema` DSLs (entity / form / flow / module / grant /

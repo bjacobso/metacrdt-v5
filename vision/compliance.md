@@ -1,5 +1,7 @@
 # Vision — The Compliance Engine: Emergent from the Substrate
 
+> **MetaCRDT primitive →** _derived coherence_ — an obligation is a *fact*; reuse is a *generated query* (a fold). See [`metacrdt-alignment.md`](./metacrdt-alignment.md).
+
 > Part of the `vision/` set — see [`README.md`](./README.md). This is a **synthesis** doc: it introduces
 > no new primitives. It tells the compliance story start-to-finish by drawing the relevant threads from
 > [`triples.md`](./triples.md) (the store + tx log), [`workflows.md`](./workflows.md) (Flows, the

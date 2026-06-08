@@ -1,5 +1,7 @@
 # Vision — Privacy: Retention, Erasure & Residency under Bitemporality
 
+> **MetaCRDT primitive →** _bitemporal fold + provenance_ — erasure destroys the per-subject key and keeps the fact-shape; retention/DSR are Flows. See [`metacrdt-alignment.md`](./metacrdt-alignment.md).
+
 > Part of the `vision/` set — see [`README.md`](./README.md). The hardest doc: it's where the
 > substrate's core invariant _fights_ a hard legal requirement. Builds on [`triples.md`](./triples.md)
 > (bitemporal "never destroy"), [`authorization.md`](./authorization.md) (PII tagging + access),

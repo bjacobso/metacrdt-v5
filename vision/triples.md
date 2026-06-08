@@ -1,5 +1,7 @@
 # Vision — The Triple Store as the System's Substrate
 
+> **MetaCRDT primitive →** _facts + the bitemporal fold_ — the substrate itself. See [`metacrdt-alignment.md`](./metacrdt-alignment.md).
+
 > Part of the `vision/` set — see [`README.md`](./README.md). This is the **foundation** the other
 > docs stand on: [`workflows.md`](./workflows.md) and [`integrations.md`](./integrations.md) both
 > assume the substrate described here. The concrete proof-of-concept lives in

@@ -1,5 +1,7 @@
 # Vision — Integrations as Self-Describing Modules on the Triple Store
 
+> **MetaCRDT primitive →** _reaction + coordination_ — a bounded fact context with inbound/outbound Flows over the shared log. See [`metacrdt-alignment.md`](./metacrdt-alignment.md).
+
 > Part of the `vision/` set — see [`README.md`](./README.md). Builds on the substrate in
 > [`triples.md`](./triples.md) and on [`workflows.md`](./workflows.md) (the `Flow` primitive,
 > tx-feed-as-event-bus, ownership tiers & role-binding). Grounded in `../PLAN.md` (the triple-store
