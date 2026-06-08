@@ -2,15 +2,32 @@ import { describe, expect, test } from "vitest";
 import {
   createMemoryRuntime,
   createMemoryRuntimeLayer,
+  createLocalRuntimeLayer,
   runtimeServicesLayer,
+  type LocalRuntimeStorage,
 } from "@metacrdt/runtime";
 import {
   runEventStoreConformance,
   runRuntimeConformance,
   runRuntimeConvergenceConformance,
+  runRuntimePersistenceConformance,
+  type RuntimePersistenceConformanceTarget,
   type RuntimeLayerConformanceTarget,
   type RuntimeFactoryOptions,
 } from "./index.js";
+
+class MemoryStorage implements LocalRuntimeStorage {
+  readonly data = new Map<string, string>();
+  getItem(key: string): string | null {
+    return this.data.get(key) ?? null;
+  }
+  setItem(key: string, value: string): void {
+    this.data.set(key, value);
+  }
+  removeItem(key: string): void {
+    this.data.delete(key);
+  }
+}
 
 const memoryTarget: RuntimeLayerConformanceTarget = {
   name: "memory",
@@ -51,6 +68,24 @@ const brokenStoreTarget: RuntimeLayerConformanceTarget = {
   },
 };
 
+const storageTarget = (): RuntimePersistenceConformanceTarget => {
+  const storage = new MemoryStorage();
+  return {
+    name: "local-storage",
+    resetPersistence() {
+      storage.data.clear();
+    },
+    createLayer(options: RuntimeFactoryOptions) {
+      return createLocalRuntimeLayer({
+        storage,
+        namespace: "testkit-persistence",
+        replicaId: options.replicaId,
+        wall: options.wall,
+      });
+    },
+  };
+};
+
 describe("@metacrdt/testkit", () => {
   test("event-store conformance passes for the in-memory target", async () => {
     await expect(runEventStoreConformance(memoryTarget)).resolves.toEqual({
@@ -79,6 +114,19 @@ describe("@metacrdt/testkit", () => {
     const report = await runRuntimeConformance(memoryTarget);
     expect(report.target).toBe("memory");
     expect(report.checks).toHaveLength(8);
+  });
+
+  test("persistence conformance passes for the localStorage target", async () => {
+    await expect(runRuntimePersistenceConformance(storageTarget())).resolves.toEqual({
+      target: "local-storage",
+      checks: [
+        "event-log-survives-recreate",
+        "version-vector-survives-recreate",
+        "sequencer-survives-recreate",
+        "hlc-survives-recreate",
+        "post-restart-append-advances-vv",
+      ],
+    });
   });
 
   test("conformance failures name the target and violated contract", async () => {

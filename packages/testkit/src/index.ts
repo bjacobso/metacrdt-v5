@@ -53,6 +53,15 @@ export interface RuntimeLayerConformanceTarget {
   createLayer(options: RuntimeFactoryOptions): RuntimeConformanceLayer;
 }
 
+export interface RuntimePersistenceConformanceTarget
+  extends RuntimeLayerConformanceTarget {
+  /**
+   * Optional cleanup hook. Called before the suite starts when a target wants to
+   * clear durable state from prior test runs.
+   */
+  resetPersistence?(): void | Promise<void>;
+}
+
 export type AnyRuntimeConformanceTarget =
   | RuntimeConformanceTarget
   | RuntimeLayerConformanceTarget;
@@ -193,57 +202,57 @@ export async function runEventStoreConformance(
 
       const first = sampleAssert(profile.replicaId, 1);
       const second = sampleAssert(profile.replicaId, 2);
-    expect(target, verifyId(first), "sample event should have a valid id");
+      expect(target, verifyId(first), "sample event should have a valid id");
 
-    const inserted = yield* store.append(first);
-    expect(target, inserted.inserted, "first append should insert");
-    expect(target, inserted.event.id === first.id, "append should echo the event");
-    const duplicate = yield* store.append(first);
-    expect(target, !duplicate.inserted, "duplicate append should be idempotent");
-    checks.push("append-idempotent");
+      const inserted = yield* store.append(first);
+      expect(target, inserted.inserted, "first append should insert");
+      expect(target, inserted.event.id === first.id, "append should echo the event");
+      const duplicate = yield* store.append(first);
+      expect(target, !duplicate.inserted, "duplicate append should be idempotent");
+      checks.push("append-idempotent");
 
-    yield* store.append(second);
-    expect(
-      target,
-      (yield* store.get(first.id))?.id === first.id,
-      "get(id) failed",
-    );
-    expect(
-      target,
-      (yield* store.scan({ e: first.e })).length === 1,
-      "scan({e}) failed",
-    );
-    expect(
-      target,
-      (yield* store.scan({ a: "status" })).length === 2,
-      "scan({a}) failed",
-    );
-    expect(
-      target,
-      (yield* store.scan({ ids: [second.id] })).map((e) => e.id).join(",") ===
-        second.id,
-      "scan({ids}) failed",
-    );
-    checks.push("scan-filters");
+      yield* store.append(second);
+      expect(
+        target,
+        (yield* store.get(first.id))?.id === first.id,
+        "get(id) failed",
+      );
+      expect(
+        target,
+        (yield* store.scan({ e: first.e })).length === 1,
+        "scan({e}) failed",
+      );
+      expect(
+        target,
+        (yield* store.scan({ a: "status" })).length === 2,
+        "scan({a}) failed",
+      );
+      expect(
+        target,
+        (yield* store.scan({ ids: [second.id] })).map((e) => e.id).join(",") ===
+          second.id,
+        "scan({ids}) failed",
+      );
+      checks.push("scan-filters");
 
-    const merge = yield* store.merge([first, second]);
-    expect(target, merge.seen === 2, "merge should count seen events");
-    expect(
-      target,
-      merge.inserted === 0,
-      "merge should be idempotent for seen events",
-    );
-    checks.push("gset-merge-idempotent");
+      const merge = yield* store.merge([first, second]);
+      expect(target, merge.seen === 2, "merge should count seen events");
+      expect(
+        target,
+        merge.inserted === 0,
+        "merge should be idempotent for seen events",
+      );
+      checks.push("gset-merge-idempotent");
 
-    const invalid = yield* Effect.either(
-      store.append({ ...first, id: "not-the-content-id" }),
-    );
-    expect(
-      target,
-      Either.isLeft(invalid),
-      "store MUST reject events with invalid content ids",
-    );
-    checks.push("content-id-verification");
+      const invalid = yield* Effect.either(
+        store.append({ ...first, id: "not-the-content-id" }),
+      );
+      expect(
+        target,
+        Either.isLeft(invalid),
+        "store MUST reject events with invalid content ids",
+      );
+      checks.push("content-id-verification");
 
       return { target: target.name, checks };
     }),
@@ -261,45 +270,45 @@ export async function runRuntimeConvergenceConformance(
 
   return await withLayerSessions([left, right], async () => {
     const leftStatus = await runWithSession(
-    left,
-    applyOperationEffect({
-      op: "assert",
-      e: "worker:maria",
-      a: "worker.status",
-      v: "active",
-      actor: "alice",
-    }),
-  );
-  const rightStatus = await runWithSession(
-    right,
-    applyOperationEffect({
-      op: "assert",
-      e: "worker:maria",
-      a: "worker.status",
-      v: "terminated",
-      actor: "bob",
-    }),
-  );
-  await runWithSession(
-    left,
-    applyOperationEffect({
-      op: "assert",
-      e: "worker:maria",
-      a: "worker.tag",
-      v: "left",
-      actor: "alice",
-    }),
-  );
-  await runWithSession(
-    right,
-    applyOperationEffect({
-      op: "assert",
-      e: "worker:maria",
-      a: "worker.tag",
-      v: "right",
-      actor: "bob",
-    }),
-  );
+      left,
+      applyOperationEffect({
+        op: "assert",
+        e: "worker:maria",
+        a: "worker.status",
+        v: "active",
+        actor: "alice",
+      }),
+    );
+    const rightStatus = await runWithSession(
+      right,
+      applyOperationEffect({
+        op: "assert",
+        e: "worker:maria",
+        a: "worker.status",
+        v: "terminated",
+        actor: "bob",
+      }),
+    );
+    await runWithSession(
+      left,
+      applyOperationEffect({
+        op: "assert",
+        e: "worker:maria",
+        a: "worker.tag",
+        v: "left",
+        actor: "alice",
+      }),
+    );
+    await runWithSession(
+      right,
+      applyOperationEffect({
+        op: "assert",
+        e: "worker:maria",
+        a: "worker.tag",
+        v: "right",
+        actor: "bob",
+      }),
+    );
 
     const first = await exchangeDeltasEffect(left, right);
     expect(
@@ -397,6 +406,112 @@ export async function runRuntimeConformance(
     target: target.name,
     checks: [...store.checks, ...convergence.checks],
   };
+}
+
+export async function runRuntimePersistenceConformance(
+  target: RuntimePersistenceConformanceTarget,
+): Promise<ConformanceReport> {
+  await target.resetPersistence?.();
+  const checks: string[] = [];
+  const options = { replicaId: "testkit:persist", wall: () => 1_000 };
+  let firstEvent: Event;
+  let firstEvents: Event[];
+
+  const first = await layerSession(target, options);
+  await withLayerSessions([first], async () => {
+    firstEvent = await runWithSession(
+      first,
+      applyOperationEffect({
+        op: "assert",
+        e: "worker:persist",
+        a: "worker.status",
+        v: "active",
+        actor: "alice",
+      }),
+    );
+    firstEvents = await eventsFor(first);
+    expect(target, firstEvent.seq === 1, "first append should have seq=1");
+    expect(
+      target,
+      JSON.stringify(versionVector(firstEvents)) ===
+        JSON.stringify({ "testkit:persist": 1 }),
+      "first version vector mismatch",
+    );
+  });
+
+  const second = await layerSession(target, options);
+  return await withLayerSessions([second], async () => {
+    const result = await runWithSession(
+      second,
+      Effect.gen(function* () {
+        const store = yield* EventStoreService;
+        const clock = yield* RuntimeClockService;
+        const sequencer = yield* RuntimeSequencerService;
+        const persisted = yield* store.get(firstEvent.id);
+        const events = yield* store.scan();
+        const currentClock = yield* clock.current();
+        const currentSeq = yield* sequencer.current();
+        const next = yield* applyOperationEffect({
+          op: "assert",
+          e: "worker:persist",
+          a: "worker.tag",
+          v: "after-restart",
+          actor: "alice",
+        });
+        return {
+          persisted,
+          events,
+          currentClock,
+          currentSeq,
+          next,
+          after: yield* store.scan(),
+        };
+      }),
+    );
+
+    expect(target, result.persisted?.id === firstEvent.id, "event log did not persist");
+    expect(
+      target,
+      sameIds(result.events, firstEvents),
+      "recreated runtime should see the pre-restart log",
+    );
+    checks.push("event-log-survives-recreate");
+
+    expect(
+      target,
+      JSON.stringify(versionVector(result.events)) ===
+        JSON.stringify({ "testkit:persist": 1 }),
+      "version vector did not persist",
+    );
+    checks.push("version-vector-survives-recreate");
+
+    expect(target, result.currentSeq === 1, "sequencer did not restore current seq");
+    expect(target, result.next.seq === 2, "next append should continue seq after restart");
+    checks.push("sequencer-survives-recreate");
+
+    expect(
+      target,
+      JSON.stringify(result.currentClock) === JSON.stringify(firstEvent.hlc),
+      "clock did not restore the previous HLC",
+    );
+    expect(
+      target,
+      result.next.hlc.pt === firstEvent.hlc.pt &&
+        result.next.hlc.l === firstEvent.hlc.l + 1,
+      "clock should continue logical time when wall time does not advance",
+    );
+    checks.push("hlc-survives-recreate");
+
+    expect(
+      target,
+      JSON.stringify(versionVector(result.after)) ===
+        JSON.stringify({ "testkit:persist": 2 }),
+      "post-restart append should advance version vector",
+    );
+    checks.push("post-restart-append-advances-vv");
+
+    return { target: target.name, checks };
+  });
 }
 
 async function eventsFor(

@@ -71,10 +71,13 @@ On open hosts the adapter is a selectable dependency.
   Postgres. SDK integration remains a future slice.
 - `@metacrdt/runtime`'s in-memory target/Layer — the reference harness.
 - `@metacrdt/testkit` — Effect Layer-backed conformance helpers for EventStore,
-  anti-entropy, and deterministic fold convergence (currently proven against the
-  in-memory Layer, Convex component Layer, Cloudflare Durable Object Layer, async
-  local Layer, and Node memory/SQLite/Postgres Layers; compatibility
-  `RuntimeServices` targets still adapt through `runtimeServicesLayer`).
+  anti-entropy, deterministic fold convergence, and restart-persistence
+  semantics (log/HLC/seq). Log/sync conformance is proven against the in-memory
+  Layer, Convex component Layer, Cloudflare Durable Object Layer, async local
+  Layer, and Node memory/SQLite/Postgres Layers; persistence conformance is
+  wired into runtime localStorage, local async, and Node SQLite/Postgres.
+  Compatibility `RuntimeServices` targets still adapt through
+  `runtimeServicesLayer`.
 
 ### Should exist next
 
@@ -223,9 +226,10 @@ a sibling target.
    SDK/self-hosting work and another host for the testkit to exercise.
 2. **Goal 111 expanded conformance** — Convex/Node/local/Cloudflare now expose
    runtime Layers and `@metacrdt/testkit` runs conformance over those Layers.
-   Add persistence, scheduler, transport, and query/projection suites whenever a
-   second target exposes the relevant capability. This is what *proves* the
-   "guaranteed to converge" claim across targets.
+   Persistence conformance has started for durable targets; add scheduler,
+   transport, and query/projection suites whenever a second target exposes the
+   relevant capability. This is what *proves* the "guaranteed to converge" claim
+   across targets.
 3. **Cloudflare Phase B/C** — extract the shared fold into core, then the DO +
    SQLite triple store ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal

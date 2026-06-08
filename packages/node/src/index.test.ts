@@ -8,7 +8,9 @@ import {
 } from "@metacrdt/runtime";
 import { Effect } from "effect";
 import {
+  runRuntimePersistenceConformance,
   runRuntimeConformance,
+  type RuntimePersistenceConformanceTarget,
   type RuntimeLayerConformanceTarget,
   type RuntimeFactoryOptions,
 } from "@metacrdt/testkit";
@@ -253,6 +255,42 @@ const postgresTarget: RuntimeLayerConformanceTarget = {
   },
 };
 
+const sqlitePersistenceTarget = (): RuntimePersistenceConformanceTarget => {
+  const db = new FakeSqliteDatabase();
+  return {
+    name: "node-sqlite-persistence",
+    resetPersistence() {
+      db.events.clear();
+      db.meta.clear();
+    },
+    createLayer(options: RuntimeFactoryOptions) {
+      return createNodeSqliteRuntimeLayer({
+        db,
+        replicaId: options.replicaId,
+        wall: options.wall,
+      });
+    },
+  };
+};
+
+const postgresPersistenceTarget = (): RuntimePersistenceConformanceTarget => {
+  const client = new FakePostgresClient();
+  return {
+    name: "node-postgres-persistence",
+    resetPersistence() {
+      client.events.clear();
+      client.meta.clear();
+    },
+    createLayer(options: RuntimeFactoryOptions) {
+      return createNodePostgresRuntimeLayer({
+        client,
+        replicaId: options.replicaId,
+        wall: options.wall,
+      });
+    },
+  };
+};
+
 const coord = { txTime: 10_000, validTime: 10_000 };
 const one = () => "one" as const;
 
@@ -347,6 +385,32 @@ describe("@metacrdt/node target", () => {
         "append-idempotent",
         "deterministic-fold-convergence",
         "idempotent-second-sync",
+      ]),
+    });
+  });
+
+  test("node SQLite runtime passes shared persistence conformance", async () => {
+    await expect(
+      runRuntimePersistenceConformance(sqlitePersistenceTarget()),
+    ).resolves.toMatchObject({
+      target: "node-sqlite-persistence",
+      checks: expect.arrayContaining([
+        "event-log-survives-recreate",
+        "sequencer-survives-recreate",
+        "hlc-survives-recreate",
+      ]),
+    });
+  });
+
+  test("node Postgres runtime passes shared persistence conformance", async () => {
+    await expect(
+      runRuntimePersistenceConformance(postgresPersistenceTarget()),
+    ).resolves.toMatchObject({
+      target: "node-postgres-persistence",
+      checks: expect.arrayContaining([
+        "event-log-survives-recreate",
+        "sequencer-survives-recreate",
+        "hlc-survives-recreate",
       ]),
     });
   });

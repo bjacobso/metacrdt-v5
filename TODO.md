@@ -55,9 +55,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   component-owned protocol EventStore functions (`appendRaw`, `getRawEvent`,
   `listRawEvents`) and `createConvexComponentRuntimeLayer`; the component-owned
   log passes Layer-backed `@metacrdt/testkit` conformance.
-- [ ] **Goal 111 next: expanded suites** — expand conformance to persistence
-  restart semantics, scheduler, transport, and query/projection capabilities as
-  second implementations expose them.
+- [x] **Goal 111 persistence conformance started** — `@metacrdt/testkit` now has
+  `runRuntimePersistenceConformance`, proving event-log/HLC/seq continuity across
+  Layer re-creation. It is wired into the runtime localStorage target, Node
+  SQLite/Postgres, and local async.
+- [ ] **Goal 111 next: expanded suites** — expand conformance to scheduler,
+  transport, and query/projection capabilities as second implementations expose
+  them.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
@@ -500,6 +504,16 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — Goal 111 restart-persistence conformance
+- [x] **Expanded `@metacrdt/testkit` with
+  `runRuntimePersistenceConformance`.** Durable Layer targets now prove event log
+  persistence, version-vector continuity, sequencer continuity, HLC continuity,
+  and post-restart version-vector advancement across runtime re-creation over
+  the same backing store.
+- [x] **Wired durable targets:** the runtime localStorage target self-test, Node
+  SQLite/Postgres, and local async all run the shared restart-persistence suite.
+  Existing target-specific persistence tests remain for storage-adapter details.
 
 ### 2026-06-08 — Goal 111 Convex target Layer
 - [x] **`@metacrdt/convex` now exposes a runtime Layer.** Added component-owned

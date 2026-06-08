@@ -31,6 +31,16 @@ verified to behave identically at the boundaries that matter.
     same cardinality-one winner and the same cardinality-many set.
   - `idempotent-second-sync` — a second exchange sends and inserts nothing.
 - **`runRuntimeConformance`** — runs both suites and returns the combined report.
+- **`runRuntimePersistenceConformance`** — that a durable Layer target survives
+  runtime re-creation over the same backing store:
+  - `event-log-survives-recreate` — the pre-restart event remains readable.
+  - `version-vector-survives-recreate` — the persisted log still yields the same
+    per-replica vector.
+  - `sequencer-survives-recreate` — the next append continues `seq`.
+  - `hlc-survives-recreate` — the HLC resumes and advances logical time when
+    wall time has not moved.
+  - `post-restart-append-advances-vv` — a post-restart write advances the
+    version vector.
 
 ## What Testkit Does Not Own
 
@@ -51,8 +61,10 @@ verified to behave identically at the boundaries that matter.
 Testkit is the executable check on the guarantees the SPEC makes: §4 content
 addressing (`content-id-verification`), §5 the grow-only-set merge and the
 deterministic fold, and §8 version-vector anti-entropy. If a target passes
-`runRuntimeConformance`, it satisfies the convergence contract those sections
-define.
+`runRuntimeConformance`, it satisfies the log/sync convergence contract those
+sections define. If a durable target also passes
+`runRuntimePersistenceConformance`, its log/HLC/seq state survives runtime
+re-creation over the same backing store.
 
 ## Usage
 
@@ -72,15 +84,18 @@ const report = await runRuntimeConformance({
 
 `@metacrdt/cloudflare`, `@metacrdt/local`, and `@metacrdt/node` run this suite
 through their Effect Layer providers in their own `conformance`/index tests.
+Durable targets that preserve storage across runtime re-creation also run
+`runRuntimePersistenceConformance`.
 
 ## Scope Today, and What's Next
 
-The suite covers the **log + sync plane**: event-store semantics, anti-entropy,
-and the in-log fold. It does **not yet** cover **projection conformance** —
-proving that two targets fold the same events into the same *bitemporal
-projection* and resolve the same cardinality-one winner through the shared
-projection path. That check should be added once the fold/reconcile logic is
-shared out of `@metacrdt/convex` into `@metacrdt/core` (the keystone in
+The suite covers the **log + sync plane** and durable restart semantics:
+event-store semantics, anti-entropy, the in-log fold, and persistence of the
+event log/HLC/seq across re-creation. It does **not yet** cover **projection
+conformance** — proving that two targets fold the same events into the same
+*bitemporal projection* and resolve the same cardinality-one winner through the
+shared projection path. That check should be added once the fold/reconcile logic
+is shared out of `@metacrdt/convex` into `@metacrdt/core` (the keystone in
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md) and
 [docs/targets.md](../../docs/targets.md)). Until then, the cross-target guarantee
 is proven for the log, not yet for the materialized triple store.

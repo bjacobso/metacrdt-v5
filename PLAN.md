@@ -9378,8 +9378,12 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   anti-entropy / deterministic-fold conformance through service tags. The older
   `RuntimeConformanceTarget` (`createRuntime`) remains as a compatibility
   adapter via `runtimeServicesLayer`.
-- **Remaining keystone work:** conformance still covers only the log/sync plane
-  (not persistence restart semantics, scheduler, transport, query/projection).
+- **Restart-persistence conformance started:** `@metacrdt/testkit` now also has
+  `runRuntimePersistenceConformance` for durable Layer targets, proving
+  event-log/HLC/seq continuity across runtime re-creation. It is wired into the
+  runtime localStorage target, Node SQLite/Postgres, and local async targets.
+- **Remaining keystone work:** conformance still does not cover scheduler,
+  transport, or query/projection behavior.
 - **Zero Effect today (by current design):** `core`, `schema`, `query`, and the
   root Convex reference app stay pure/plain where appropriate. `runtime`,
   `testkit`, and Convex/Node/local/Cloudflare target packages now use Effect v3

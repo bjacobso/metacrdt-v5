@@ -179,8 +179,10 @@ Current packages:
 - **`@metacrdt/testkit`** (`packages/testkit`) — target conformance helpers:
   Effect Layer-backed checks for EventStore idempotency/filtering/content-id
   verification, version-vector anti-entropy, and deterministic fold convergence.
-  The package proves itself against the in-memory Layer and is consumed by
-  Node/local/Cloudflare target Layer tests.
+  It also includes restart-persistence conformance for durable targets, checking
+  event-log/HLC/seq continuity across runtime re-creation. The package proves
+  itself against runtime Layers and is consumed by Convex/Node/local/Cloudflare
+  target Layer tests.
 
 Package build policy:
 

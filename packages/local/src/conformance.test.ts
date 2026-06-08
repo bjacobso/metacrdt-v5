@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
+  runRuntimePersistenceConformance,
   runRuntimeConformance,
+  type RuntimePersistenceConformanceTarget,
   type RuntimeLayerConformanceTarget,
   type RuntimeFactoryOptions,
 } from "@metacrdt/testkit";
@@ -37,6 +39,24 @@ const localTarget: RuntimeLayerConformanceTarget = {
   },
 };
 
+const localPersistenceTarget = (): RuntimePersistenceConformanceTarget => {
+  const storage = new AsyncMemoryStorage();
+  return {
+    name: "local-async-persistence",
+    resetPersistence() {
+      storage.data.clear();
+    },
+    createLayer(options: RuntimeFactoryOptions) {
+      return createAsyncLocalRuntimeLayer({
+        storage,
+        namespace: "persistence",
+        replicaId: options.replicaId,
+        wall: options.wall,
+      });
+    },
+  };
+};
+
 describe("@metacrdt/local conformance", () => {
   test("passes the shared runtime conformance suite", async () => {
     await expect(runRuntimeConformance(localTarget)).resolves.toEqual({
@@ -50,6 +70,21 @@ describe("@metacrdt/local conformance", () => {
         "version-vector-convergence",
         "deterministic-fold-convergence",
         "idempotent-second-sync",
+      ],
+    });
+  });
+
+  test("passes the shared persistence conformance suite", async () => {
+    await expect(
+      runRuntimePersistenceConformance(localPersistenceTarget()),
+    ).resolves.toEqual({
+      target: "local-async-persistence",
+      checks: [
+        "event-log-survives-recreate",
+        "version-vector-survives-recreate",
+        "sequencer-survives-recreate",
+        "hlc-survives-recreate",
+        "post-restart-append-advances-vv",
       ],
     });
   });

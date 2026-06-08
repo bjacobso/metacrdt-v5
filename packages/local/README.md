@@ -54,8 +54,10 @@ anti-entropy with same-origin peers over BroadcastChannel — converging to the
 same projections as server targets, and surviving restart.
 The async local runtime passes the shared `@metacrdt/testkit` EventStore /
 anti-entropy / deterministic-fold conformance suite through its Effect Layer
-provider. The localStorage, async, IndexedDB, and SQLite-compatible targets also
-have direct Layer smoke tests through `applyOperationEffect`.
+provider and passes shared restart-persistence conformance for the event log,
+HLC, and per-replica `seq`. The localStorage, async, IndexedDB, and
+SQLite-compatible targets also have direct Layer smoke tests through
+`applyOperationEffect`.
 
 ## Usage
 
