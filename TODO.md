@@ -117,6 +117,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `collectionTarget: "component"`, and `/collect` submission writes submitted
   field facts plus `submitted.<form>` into component-owned current state while
   legacy/host tokens continue to write host facts.
+- [x] **Component-owned form definitions** — `api.metacrdtComponent.defineOwnedForm`
+  writes `type = Form` and `formDef` facts into component-owned state, and
+  component-target collection links render from that component-owned `formDef`
+  without a host `forms.defineForm` row.
 - [x] **Datalog disjunction** — Datalog `where` bodies now support bounded
   `{ or: [[...clauses], ...] }` branches. Branches run from the current binding,
   union/dedupe their bindings with provenance merged, and continue into later
@@ -156,7 +160,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   hello/delta catch-up, directed deltas, lifecycle cleanup, and multi-hop gossip.
 - [ ] Targets: live Cloudflare deployment/auth and migrating more reference
   runtime business logic onto `@metacrdt/convex` component-owned state
-  (component-owned forms / flows / compliance remain).
+  (component-owned flows / compliance remain).
 
 **Goal 5 — true `applyConfig` reconcile**
 - [x] Make `applyConfig` compute stable desired sets for explicitly supplied
@@ -219,7 +223,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [ ] Choose the next active goal: provider-backed login UI / production auth,
   live Cloudflare deployment/auth, or migrating more reference runtime business
   logic onto `@metacrdt/convex` component-owned state (next likely seam:
-  component-owned forms / flows / compliance).
+  component-owned flows / compliance).
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -244,6 +248,19 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — component-owned form definitions
+- [x] **Goal 36 shipped:** `api.metacrdtComponent.defineOwnedForm` defines
+  component-owned forms by writing `type = Form` and cardinality-one `formDef`
+  facts into the installed `@metacrdt/convex` component log.
+- [x] **Component-target collection links render component form metadata.**
+  `forms.collectionByToken` still reads host `formDef` facts for host/legacy
+  tokens, but `collectionTarget: "component"` tokens load `formDef` from
+  `components.metacrdt.log.getCurrentEntity`.
+- [x] **Focused regression:** the component collection test no longer calls
+  `forms.defineForm`; it defines the form through `defineOwnedForm`, renders the
+  public collection page from component-owned state, submits the token, and
+  verifies submitted values land in component-owned current facts.
 
 ### 2026-06-07 — component-owned collection submission
 - [x] **Goal 35 shipped:** `flowRuns` now has an optional

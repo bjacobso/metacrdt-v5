@@ -90,6 +90,19 @@ async function loadFormDef(
   return row ? (row.v as { title: string; fields: unknown[] }) : null;
 }
 
+async function loadComponentFormDef(
+  ctx: QueryCtx,
+  form: string,
+): Promise<{ title: string; fields: unknown[] } | null> {
+  const entity = await ctx.runQuery(components.metacrdt.log.getCurrentEntity, {
+    e: formEntity(form),
+  });
+  const def = entity?.attributes.find((attr) => attr.a === "formDef")?.values[0];
+  return def && typeof def === "object"
+    ? (def as { title: string; fields: unknown[] })
+    : null;
+}
+
 /** A form's field schema (for rendering). */
 export const formFields = query({
   args: { form: v.string() },
@@ -113,7 +126,10 @@ export const collectionByToken = query({
     if (!run || !run.form || !run.scope) return { found: false as const };
     const invalid = tokenInvalidReason(run, Date.now());
     if (invalid) return { found: false as const, reason: invalid };
-    const def = await loadFormDef(ctx, run.form);
+    const def =
+      run.collectionTarget === "component"
+        ? await loadComponentFormDef(ctx, run.form)
+        : await loadFormDef(ctx, run.form);
     return {
       found: true as const,
       status: run.status,

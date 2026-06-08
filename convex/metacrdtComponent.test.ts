@@ -351,7 +351,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   test("component-owned actions can open host collection forms", async () => {
     const t = mountedTest();
 
-    await t.mutation(api.forms.defineForm, {
+    await t.mutation(api.metacrdtComponent.defineOwnedForm, {
       form: "owned_i9",
       title: "Owned I-9",
       fields: [
@@ -393,6 +393,13 @@ describe("@metacrdt/convex mounted component wrapper", () => {
 
     const token = first.collect!.token;
     expect(await t.query(api.forms.collectionByToken, { token })).toMatchObject({
+      title: "Owned I-9",
+      fields: [
+        expect.objectContaining({
+          name: "worker.legalName",
+          label: "Legal name",
+        }),
+      ],
       form: "owned_i9",
       scope: "component-collect:worker",
       subject: "component-collect:worker",

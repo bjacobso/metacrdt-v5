@@ -1,9 +1,9 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 35 (component-owned collection submission) has shipped.
-The next active goal should be chosen from the remaining TODO candidates:
+**Current goal:** Goal 36 (component-owned form definitions) has shipped. The
+next active goal should be chosen from the remaining TODO candidates:
 provider-backed login UI / production auth, live Cloudflare deployment/auth,
-component-owned forms/flows/compliance, or another parked Query/Rules item.
+component-owned flows/compliance, or another parked Query/Rules item.
 
 This plan is the operational goal file. Read it with:
 
@@ -269,6 +269,11 @@ arguments.
   - `/collect` submission for those tokens appends submitted field facts and the
     `submitted.<form>` marker into the installed `@metacrdt/convex` component log
   - legacy/host tokens with no target still write host facts
+- Component-owned form definitions exist:
+  - `defineOwnedForm` writes `type = Form` and `formDef` into the component log
+  - `collectionByToken` reads component-target form metadata from component-owned
+    current state
+  - host-target tokens still read host `formDef` facts
 
 ### Not Yet True
 
@@ -284,9 +289,9 @@ arguments.
   its production write path and has not migrated its existing business logic/rules
   onto component-owned state.
 - Component-owned collection now writes submitted evidence into component-owned
-  state for component-target tokens, but the collection run/token row itself
-  still lives in the host `flowRuns` table. Component-owned forms/flows/compliance
-  remain future work.
+  state and can render component-owned form definitions for component-target
+  tokens, but the collection run/token row itself still lives in the host
+  `flowRuns` table. Component-owned flows/compliance remain future work.
 - `@metacrdt/runtime` is harness-first. It is not yet used by the Convex
   reference runtime.
 - Multi-replica sync is specified and now implemented as in-memory
@@ -3152,6 +3157,81 @@ convex/forms.test.ts
 ### Verification
 
 - `npx vitest run convex/metacrdtComponent.test.ts convex/appconfig.test.ts convex/forms.test.ts`
+  passed (28 tests).
+- `npm test` passed (17 backend test files, 108 tests).
+- `npm run test:core` passed (46 tests).
+- `npm run test:convex-package` passed (31 tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex dev --once` deployed backend functions to `chatty-hare-94`.
+- `npx @convex-dev/static-hosting upload` deployed the frontend to
+  `https://chatty-hare-94.convex.site`.
+- Live smoke:
+  - `curl -I https://chatty-hare-94.convex.site` returned HTTP 200.
+  - `npx convex run metacrdtComponent:listOwnedCurrentEntities ...` returned
+    deployed component-owned Worker rows.
+
+---
+
+## Goal 36 — Component-Owned Form Definitions
+
+**Status:** shipped as component-owned form metadata for component-target
+collection.
+
+**Objective:** remove the host `formDef` dependency from component-target
+collection links. Component-owned actions can issue collection links and
+component-token submissions now write component facts; the collection page should
+also be able to render form metadata from component-owned current state.
+
+### Scope
+
+Backend:
+
+```text
+convex/metacrdtComponent.ts   defineOwnedForm wrapper
+convex/forms.ts              component-target collectionByToken form loader
+```
+
+Tests:
+
+```text
+convex/metacrdtComponent.test.ts
+convex/forms.test.ts
+convex/appconfig.test.ts
+```
+
+### Semantics
+
+- `defineOwnedForm({ form, title, fields })` writes component-owned
+  `(form:<name>, type, "Form")` and `(form:<name>, formDef, { title, fields })`
+  facts with cardinality-one semantics.
+- For host/legacy collection tokens, `forms.collectionByToken` still reads host
+  `formDef` facts.
+- For `collectionTarget: "component"` tokens, `forms.collectionByToken` reads
+  `formDef` from `components.metacrdt.log.getCurrentEntity`.
+- Submission routing is unchanged from Goal 35.
+
+### Non-Goals
+
+- Do not move `flowRuns` into the component package.
+- Do not add component-owned form registry UI in this slice.
+- Do not migrate compliance rules/materialization to component-owned state.
+- Do not add provider-backed login UI.
+
+### Acceptance Criteria
+
+- Component-owned forms can be defined through the host wrapper.
+- Component-target collection links render fields from component-owned `formDef`
+  without a host `forms.defineForm` call.
+- Host-target collection links still render from host `formDef` facts.
+- Component-target submissions still write component-owned facts.
+- Focused tests, backend tests, package tests, typechecks, build, deploy, static
+  upload, and live smoke pass.
+
+### Verification
+
+- `npx vitest run convex/metacrdtComponent.test.ts convex/forms.test.ts convex/appconfig.test.ts`
   passed (28 tests).
 - `npm test` passed (17 backend test files, 108 tests).
 - `npm run test:core` passed (46 tests).

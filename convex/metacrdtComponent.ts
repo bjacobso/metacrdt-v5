@@ -157,6 +157,22 @@ const createOwnedAttributeValidator = v.object({
   cardinality: v.optional(cardinality),
 });
 
+const ownedFormFieldValidator = v.object({
+  name: v.string(),
+  label: v.string(),
+  type: v.union(
+    v.literal("string"),
+    v.literal("number"),
+    v.literal("boolean"),
+    v.literal("date"),
+    v.literal("select"),
+  ),
+  required: v.optional(v.boolean()),
+  options: v.optional(v.array(v.string())),
+  pii: v.optional(v.boolean()),
+  sensitive: v.optional(v.boolean()),
+});
+
 async function actorContext(ctx: MutationCtx) {
   const actorId = await requireWritePrincipal(ctx);
   return {
@@ -347,6 +363,40 @@ export const createOwnedEntity = mutation({
     }
 
     return { e: args.e, asserted };
+  },
+});
+
+export const defineOwnedForm = mutation({
+  args: {
+    form: v.string(),
+    title: v.string(),
+    fields: v.array(ownedFormFieldValidator),
+  },
+  returns: createOwnedEntityResultValidator,
+  handler: async (ctx, args) => {
+    const actor = await actorContext(ctx);
+    const e = `form:${args.form}`;
+    const asserted = [];
+    for (const row of [
+      { a: "type", v: "Form" },
+      { a: "formDef", v: { title: args.title, fields: args.fields } },
+    ]) {
+      asserted.push(
+        await ctx.runMutation(
+          components.metacrdt.log.appendAssert,
+          withoutUndefined({
+            ...actor,
+            e,
+            a: row.a,
+            v: row.v,
+            reason: `define component-owned form ${args.form}`,
+            source: "metacrdtComponent.defineOwnedForm",
+            cardinality: "one" as const,
+          }),
+        ),
+      );
+    }
+    return { e, asserted };
   },
 });
 
