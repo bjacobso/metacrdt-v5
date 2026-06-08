@@ -436,9 +436,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   local runtime targets.
 - [x] Choose the next target-runtime slice: first `@metacrdt/node` package.
 - [x] Choose the next Node slice: structural HTTP/SSE sync handler.
+- [x] Choose the next Node slice: native-style HTTP listener adapter.
 - [ ] Choose between production provider wiring, next Node slice (Postgres /
-  concrete listener or dev server), Cloudflare DO+SQLite parity, or another
-  parked Query/Rules item.
+  packaged dev server), Cloudflare DO+SQLite parity, or another parked
+  Query/Rules item.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -518,9 +519,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `packages/cloudflare/README.md` now link the target model and Cloudflare plan.
 - [x] Next concrete target-runtime candidate chosen: first `@metacrdt/testkit`
   conformance suite.
-- [ ] Remaining target-runtime candidates: Node Postgres / concrete
-  listener/dev-server adapters, Cloudflare Phase B/C, or expanded testkit
-  persistence/scheduler/transport suites once a second target needs them.
+- [ ] Remaining target-runtime candidates: Node Postgres / packaged dev-server
+  adapters, Cloudflare Phase B/C, or expanded testkit persistence/scheduler/
+  transport suites once a second target needs them.
 
 ### 2026-06-08 — first @metacrdt/testkit package
 - [x] **Goal 102 shipped:** added `packages/testkit` / `@metacrdt/testkit`, a
@@ -548,6 +549,16 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   anti-entropy, deterministic fold equality, and idempotent second sync.
 - [x] Verification: focused Cloudflare/local package tests, `npm run
   test:packages`, `npm run build:packages`, and `npm run typecheck` all passed.
+
+### 2026-06-08 — Node native-style HTTP listener adapter
+- [x] **Goal 106 shipped:** `@metacrdt/node` now exports
+  `createNodeHttpRequestListener`, a structural native `node:http`-style adapter
+  over `createNodeSyncHttpHandler`.
+- [x] The adapter accepts async-iterable request bodies, writes status/headers/body
+  to a response object, supports `HEAD` as a bodyless `GET`, and still imports no
+  Node API or framework types.
+- [x] Verification: focused Node tests/typecheck, `npm run test:packages`,
+  `npm run build:packages`, and `npm run typecheck` passed.
 
 ### 2026-06-08 — Node HTTP/SSE sync handler
 - [x] **Goal 105 shipped:** `@metacrdt/node` now exports

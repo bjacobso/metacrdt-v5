@@ -7,9 +7,12 @@ import {
   type RuntimeFactoryOptions,
 } from "@metacrdt/testkit";
 import {
+  createNodeHttpRequestListener,
   createNodeMemoryRuntime,
   createNodeSyncHttpHandler,
   createNodeSqliteRuntime,
+  type NodeHttpIncomingMessageLike,
+  type NodeHttpServerResponseLike,
   type NodeSqliteDatabaseLike,
   type NodeSqliteStatementLike,
 } from "./index.js";
@@ -91,6 +94,36 @@ class FakeSqliteDatabase implements NodeSqliteDatabaseLike {
       },
     };
   }
+}
+
+class FakeIncomingMessage implements NodeHttpIncomingMessageLike {
+  constructor(
+    readonly method: string,
+    readonly url: string,
+    private readonly chunks: readonly (string | Uint8Array)[] = [],
+  ) {}
+
+  async *[Symbol.asyncIterator](): AsyncIterator<string | Uint8Array> {
+    yield* this.chunks;
+  }
+}
+
+class FakeServerResponse implements NodeHttpServerResponseLike {
+  statusCode = 0;
+  headers: Record<string, string> = {};
+  body = "";
+
+  setHeader(name: string, value: string): void {
+    this.headers[name.toLowerCase()] = value;
+  }
+
+  end(body = ""): void {
+    this.body = body;
+  }
+}
+
+function ascii(s: string): Uint8Array {
+  return new Uint8Array([...s].map((ch) => ch.charCodeAt(0)));
 }
 
 const memoryTarget: RuntimeConformanceTarget = {
@@ -259,5 +292,69 @@ describe("@metacrdt/node target", () => {
     expect(response.body).toContain("event: delta\n");
     expect(response.body).toContain('"from":"node:sse"');
     expect(response.body).toContain('"events":[');
+  });
+
+  test("node:http-style listener writes status, headers, and body", async () => {
+    const runtime = createNodeMemoryRuntime({
+      replicaId: "node:listener",
+      wall: () => 4_000,
+    });
+    const listener = createNodeHttpRequestListener(runtime, { basePath: "/sync" });
+
+    const res = new FakeServerResponse();
+    const returned = await listener(
+      new FakeIncomingMessage("GET", "/sync/health"),
+      res,
+    );
+
+    expect(returned.status).toBe(200);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toBe("application/json");
+    expect(JSON.parse(res.body)).toMatchObject({
+      ok: true,
+      profile: { replicaId: "node:listener" },
+    });
+
+    const head = new FakeServerResponse();
+    await listener(new FakeIncomingMessage("HEAD", "/sync/health"), head);
+    expect(head.statusCode).toBe(200);
+    expect(head.body).toBe("");
+  });
+
+  test("node:http-style listener streams POST body into remote merge", async () => {
+    const a = createNodeMemoryRuntime({
+      replicaId: "node:source",
+      wall: () => 5_000,
+    });
+    const b = createNodeMemoryRuntime({
+      replicaId: "node:sink",
+      wall: () => 6_000,
+    });
+    const event = await applyOperation(a, {
+      op: "assert",
+      e: "ticket:1",
+      a: "ticket.status",
+      v: "open",
+      actor: "user:1",
+    });
+    const listener = createNodeHttpRequestListener(b, { basePath: "/sync" });
+    const body = JSON.stringify({ events: [event] });
+    const res = new FakeServerResponse();
+
+    await listener(
+      new FakeIncomingMessage("POST", "/sync/events", [
+        ascii(body.slice(0, 24)),
+        ascii(body.slice(24)),
+      ]),
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toMatchObject({
+      inserted: 1,
+      seen: 1,
+      vv: { "node:source": 1 },
+    });
+    expect(await b.store.get(event.id)).toEqual(event);
   });
 });

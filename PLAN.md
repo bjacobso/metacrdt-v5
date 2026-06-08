@@ -149,11 +149,15 @@ server-process host with memory and structural server-SQLite runtime services,
 both passing shared conformance. Goal 105 adds the next Node target slice: a
 dependency-free structural HTTP/SSE sync handler over any `RuntimeServices`,
 covering health/version-vector, pull-delta, push-events, and one-shot SSE delta
-routes without binding the package to a concrete Node framework. The next active goal
+routes without binding the package to a concrete Node framework. Goal 106 adds a
+native `node:http`-style request-listener adapter that consumes streamed request
+bodies, delegates to the structural sync handler, and writes status/headers/body
+back to structural response objects while still importing no Node framework or
+Node type package. The next active goal
 should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding the next
-Node slice (Postgres / concrete listener or dev server), Cloudflare DO+SQLite
-parity, another carefully scoped Confect/domain wrapper, or the next projection
+Node slice (Postgres / packaged dev server), Cloudflare DO+SQLite parity,
+another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
 This plan is the operational goal file. Read it with:
@@ -9084,6 +9088,46 @@ dev server can translate, while all protocol behavior stays in
 ### Verification
 
 - `npm test --workspace @metacrdt/node` passes, now with five Node tests.
+- `npx tsc --noEmit -p packages/node/tsconfig.json` passes.
+- `npm run test:packages`, `npm run build:packages`, and `npm run typecheck`
+  include the Node package and pass.
+
+---
+
+## Goal 106 — @metacrdt/node Native-Style HTTP Listener Adapter
+
+**Status:** shipped.
+
+**Objective:** turn the structural Node sync handler into something that can be
+mounted directly on native `node:http`-style servers without pulling Node APIs
+or framework dependencies into the package. This should be an adapter over
+Goal 105, not a second implementation of sync semantics.
+
+### What Shipped
+
+- Added `createNodeHttpRequestListener(runtime, options)` to `@metacrdt/node`.
+- The listener is structural:
+  - accepts an async-iterable request with `method` / `url`
+  - accepts a response with `statusCode`, `setHeader`, and `end`
+  - returns the same `NodeSyncHttpResponse` that it writes, which keeps tests and
+    framework adapters straightforward
+- Request bodies are consumed from streamed string or `Uint8Array` chunks and
+  passed to `createNodeSyncHttpHandler`.
+- Responses write status, headers, and body back to the response object.
+- `HEAD` requests reuse the `GET` route behavior but write an empty body.
+- No import from `node:http`, no `@types/node`, and no Express/Fastify/Hono/Bun
+  dependency.
+
+### Non-Goals
+
+- Do not create or listen on a port in this slice.
+- Do not add a CLI/dev-server lifecycle, logging, graceful shutdown, or static
+  asset serving.
+- Do not add Postgres in this slice.
+
+### Verification
+
+- `npm test --workspace @metacrdt/node` passes, now with seven Node tests.
 - `npx tsc --noEmit -p packages/node/tsconfig.json` passes.
 - `npm run test:packages`, `npm run build:packages`, and `npm run typecheck`
   include the Node package and pass.

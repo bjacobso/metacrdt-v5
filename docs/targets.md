@@ -64,8 +64,8 @@ On open hosts the adapter is a selectable dependency.
 - `@metacrdt/local` — browser/local-first host.
 - `@metacrdt/node` — open server-process host with memory and structural
   server-SQLite runtime services plus a dependency-free structural HTTP/SSE sync
-  handler. Postgres, concrete Node listeners/dev server, and SDK integration
-  remain future slices.
+  handler and native `node:http`-style request listener. Postgres, packaged dev
+  server, and SDK integration remain future slices.
 - `@metacrdt/runtime`'s in-memory target — the reference harness.
 - `@metacrdt/testkit` — framework-neutral conformance helpers for EventStore,
   anti-entropy, and deterministic fold convergence (currently proven against
@@ -74,9 +74,9 @@ On open hosts the adapter is a selectable dependency.
 
 ### Should exist next
 
-- **`@metacrdt/node` next slices** — add Postgres, concrete HTTP/SSE listener
-  adapters, a dev server, and SDK integration on top of the memory/SQLite host
-  and structural sync handler now in place.
+- **`@metacrdt/node` next slices** — add Postgres, a packaged dev server, and SDK
+  integration on top of the memory/SQLite host and HTTP/SSE sync surface now in
+  place.
 
 ### Defer until a real need justifies them
 
@@ -123,7 +123,7 @@ across `database-sql` / `database-sqlite` / `database-postgres`.
 | p2p DataChannel | `runtime` | done |
 | DO WebSocket relay | `cloudflare` | shell done |
 | Convex reactivity | `convex` | done (managed) |
-| HTTP / SSE | `node` | done (structural handler; concrete listeners later) |
+| HTTP / SSE | `node` | done (structural handler + native-style listener; packaged dev server later) |
 
 ---
 

@@ -69,6 +69,22 @@ export type NodeSyncHttpOptions = {
   protocol?: string;
 };
 
+export type NodeHttpIncomingMessageLike = AsyncIterable<string | Uint8Array> & {
+  method?: string;
+  url?: string;
+};
+
+export type NodeHttpServerResponseLike = {
+  statusCode?: number;
+  setHeader(name: string, value: string): unknown;
+  end(body?: string): unknown;
+};
+
+export type NodeHttpRequestListener = (
+  req: NodeHttpIncomingMessageLike,
+  res: NodeHttpServerResponseLike,
+) => Promise<NodeSyncHttpResponse>;
+
 const DEFAULT_SYNC_PROTOCOL = "metacrdt.node.http.v1";
 
 function identifier(name: string): string {
@@ -210,6 +226,69 @@ function sseFrame(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
+function utf8Decode(bytes: readonly number[]): string {
+  let out = "";
+  for (let i = 0; i < bytes.length; i++) {
+    const b0 = bytes[i] ?? 0;
+    if (b0 < 0x80) {
+      out += String.fromCharCode(b0);
+    } else if (b0 < 0xe0) {
+      const b1 = bytes[++i] ?? 0;
+      out += String.fromCharCode(((b0 & 0x1f) << 6) | (b1 & 0x3f));
+    } else if (b0 < 0xf0) {
+      const b1 = bytes[++i] ?? 0;
+      const b2 = bytes[++i] ?? 0;
+      out += String.fromCharCode(
+        ((b0 & 0x0f) << 12) | ((b1 & 0x3f) << 6) | (b2 & 0x3f),
+      );
+    } else {
+      const b1 = bytes[++i] ?? 0;
+      const b2 = bytes[++i] ?? 0;
+      const b3 = bytes[++i] ?? 0;
+      const codepoint =
+        ((b0 & 0x07) << 18) |
+        ((b1 & 0x3f) << 12) |
+        ((b2 & 0x3f) << 6) |
+        (b3 & 0x3f);
+      const offset = codepoint - 0x10000;
+      out += String.fromCharCode(
+        0xd800 + (offset >> 10),
+        0xdc00 + (offset & 0x3ff),
+      );
+    }
+  }
+  return out;
+}
+
+async function incomingMessageBody(
+  req: NodeHttpIncomingMessageLike,
+): Promise<string> {
+  let text = "";
+  const bytes: number[] = [];
+  let hasBytes = false;
+  for await (const chunk of req) {
+    if (typeof chunk === "string") {
+      text += chunk;
+    } else {
+      hasBytes = true;
+      bytes.push(...chunk);
+    }
+  }
+  return hasBytes ? text + utf8Decode(bytes) : text;
+}
+
+function writeNodeResponse(
+  res: NodeHttpServerResponseLike,
+  response: NodeSyncHttpResponse,
+  method?: string,
+): void {
+  res.statusCode = response.status;
+  for (const [name, value] of Object.entries(response.headers)) {
+    res.setHeader(name, value);
+  }
+  res.end(method?.toUpperCase() === "HEAD" ? "" : response.body);
+}
+
 /**
  * A dependency-free HTTP/SSE sync surface for server-process runtimes.
  *
@@ -226,6 +305,7 @@ export function createNodeSyncHttpHandler(
 
   return async (request) => {
     const method = (request.method ?? "GET").toUpperCase();
+    const routeMethod = method === "HEAD" ? "GET" : method;
     const parsed = parsePathAndQuery(request.url);
     const matched = route(parsed.path, basePath);
     if (matched === undefined) return jsonResponse({ error: "not found" }, 404);
@@ -242,7 +322,7 @@ export function createNodeSyncHttpHandler(
     }
 
     try {
-      if (method === "GET" && (matched === "/" || matched === "/health")) {
+      if (routeMethod === "GET" && (matched === "/" || matched === "/health")) {
         return jsonResponse({
           ok: true,
           protocol,
@@ -255,7 +335,7 @@ export function createNodeSyncHttpHandler(
         });
       }
 
-      if (method === "GET" && matched === "/events") {
+      if (routeMethod === "GET" && matched === "/events") {
         const params = queryParams(parsed.query);
         const remote = parseVersionVector(params.get("vv") ?? params.get("since"));
         const events = await runtime.store.scan();
@@ -269,7 +349,7 @@ export function createNodeSyncHttpHandler(
         });
       }
 
-      if (method === "GET" && matched === "/events/sse") {
+      if (routeMethod === "GET" && matched === "/events/sse") {
         const params = queryParams(parsed.query);
         const remote = parseVersionVector(params.get("vv") ?? params.get("since"));
         const events = await runtime.store.scan();
@@ -302,6 +382,29 @@ export function createNodeSyncHttpHandler(
     }
 
     return jsonResponse({ error: "not found" }, 404);
+  };
+}
+
+/**
+ * Native `node:http`-style adapter for `createNodeSyncHttpHandler`.
+ *
+ * The type is structural so this package still does not import Node's `http`
+ * module or pull in `@types/node`: native Node, Bun's server request shims,
+ * small tests, and framework adapters can all provide the same shape.
+ */
+export function createNodeHttpRequestListener(
+  runtime: RuntimeServices,
+  options: NodeSyncHttpOptions = {},
+): NodeHttpRequestListener {
+  const handle = createNodeSyncHttpHandler(runtime, options);
+  return async (req, res) => {
+    const response = await handle({
+      method: req.method,
+      url: req.url ?? "/",
+      body: () => incomingMessageBody(req),
+    });
+    writeNodeResponse(res, response, req.method);
+    return response;
   };
 }
 
