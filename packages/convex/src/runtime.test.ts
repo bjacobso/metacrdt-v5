@@ -2,8 +2,10 @@
 import { describe, expect, test } from "vitest";
 import {
   runRuntimeConformance,
+  runRuntimeProjectionStoreConformance,
   type RuntimeFactoryOptions,
   type RuntimeLayerConformanceTarget,
+  type RuntimeProjectionStoreConformanceTarget,
 } from "@metacrdt/testkit";
 import { internal } from "./component/_generated/api.js";
 import { initComponentTest } from "./component/setup.test.js";
@@ -14,10 +16,14 @@ const componentInternal = internal as unknown as {
     appendRaw: unknown;
     getRawEvent: unknown;
     listRawEvents: unknown;
+    replaceProjectionRows: unknown;
+    clearMaterializedProjection: unknown;
+    scanProjectionRows: unknown;
   };
 };
 
-const convexComponentTarget: RuntimeLayerConformanceTarget = {
+const convexComponentTarget: RuntimeLayerConformanceTarget &
+  RuntimeProjectionStoreConformanceTarget = {
   name: "convex-component",
   createLayer(options: RuntimeFactoryOptions) {
     const t = initComponentTest();
@@ -28,6 +34,10 @@ const convexComponentTarget: RuntimeLayerConformanceTarget = {
         appendRaw: componentInternal.log.appendRaw,
         getRawEvent: componentInternal.log.getRawEvent,
         listRawEvents: componentInternal.log.listRawEvents,
+        replaceProjectionRows: componentInternal.log.replaceProjectionRows,
+        clearMaterializedProjection:
+          componentInternal.log.clearMaterializedProjection,
+        scanProjectionRows: componentInternal.log.scanProjectionRows,
       },
       runner: {
         mutation: (ref, args) => (t as any).mutation(ref, args),
@@ -61,6 +71,20 @@ describe("@metacrdt/convex runtime Layer", () => {
         "query-or-dedupe",
         "query-pagination-aggregation",
         "query-derived-rows",
+      ],
+    });
+  });
+
+  test("component-owned projection rows pass shared projection-store conformance", async () => {
+    await expect(
+      runRuntimeProjectionStoreConformance(convexComponentTarget),
+    ).resolves.toEqual({
+      target: "convex-component",
+      checks: [
+        "projection-store-replace-from-fold",
+        "projection-store-scan-filters",
+        "projection-store-replace-is-atomic",
+        "projection-store-clear",
       ],
     });
   });

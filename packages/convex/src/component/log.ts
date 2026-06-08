@@ -240,7 +240,23 @@ const rawAppendResultValidator = v.object({
   inserted: v.boolean(),
 });
 
+const projectionRowValidator = v.object({
+  id: v.string(),
+  e: v.string(),
+  a: v.string(),
+  v: v.any(),
+  eventId: v.string(),
+  validFrom: v.optional(v.number()),
+  validTo: v.optional(v.union(v.number(), v.null())),
+  sourceEventIds: v.array(v.string()),
+});
+
+const projectionReplaceResultValidator = v.object({
+  rows: v.number(),
+});
+
 type CoreEventValue = typeof coreEventValidator.type;
+type ProjectionRowValue = typeof projectionRowValidator.type;
 
 const txArgs = {
   actorId: v.string(),
@@ -553,6 +569,21 @@ function currentFactSummary(
   };
 }
 
+function projectionRowFromDoc(
+  row: Doc<"projectionRows">,
+): ProjectionRowValue {
+  return {
+    id: row.id,
+    e: row.e,
+    a: row.a,
+    v: row.v,
+    eventId: row.eventId,
+    validFrom: row.validFrom,
+    validTo: row.validTo,
+    sourceEventIds: row.sourceEventIds,
+  };
+}
+
 async function summarizeCurrentRows(
   ctx: MutationCtx | QueryCtx,
   rows: Doc<"currentFacts">[],
@@ -709,7 +740,9 @@ async function createTransaction(
   return tx;
 }
 
-async function boundedRows<TableName extends "factEvents" | "facts" | "currentFacts">(
+async function boundedRows<
+  TableName extends "factEvents" | "facts" | "currentFacts" | "projectionRows",
+>(
   ctx: MutationCtx,
   tableName: TableName,
 ) {
@@ -727,6 +760,11 @@ async function clearProjectionTables(ctx: MutationCtx) {
   const factRows = await boundedRows(ctx, "facts");
   for (const row of currentRows) await ctx.db.delete(row._id);
   for (const row of factRows) await ctx.db.delete(row._id);
+}
+
+async function clearProjectionRows(ctx: MutationCtx) {
+  const rows = await boundedRows(ctx, "projectionRows");
+  for (const row of rows) await ctx.db.delete(row._id);
 }
 
 async function replayAssert(
@@ -1054,6 +1092,107 @@ export const listRawEvents = query({
       if (tx !== null) out.push(rawEventFromRows(row, tx));
     }
     return out;
+  },
+});
+
+export const replaceProjectionRows = mutation({
+  args: {
+    rows: v.array(projectionRowValidator),
+  },
+  returns: projectionReplaceResultValidator,
+  handler: async (ctx, args) => {
+    if (args.rows.length > REBUILD_LIMIT) {
+      throw new Error(
+        `projection replace is limited to ${REBUILD_LIMIT} rows`,
+      );
+    }
+
+    await clearProjectionRows(ctx);
+    const byId = new Map<string, ProjectionRowValue>();
+    for (const row of args.rows) byId.set(row.id, row);
+
+    for (const row of [...byId.values()].sort((a, b) => a.id.localeCompare(b.id))) {
+      await ctx.db.insert(
+        "projectionRows",
+        withoutUndefined({
+          id: row.id,
+          e: row.e,
+          a: row.a,
+          v: row.v,
+          eventId: row.eventId,
+          validFrom: row.validFrom,
+          validTo: row.validTo,
+          sourceEventIds: row.sourceEventIds,
+        }),
+      );
+    }
+    return { rows: byId.size };
+  },
+});
+
+export const clearMaterializedProjection = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    await clearProjectionRows(ctx);
+    return null;
+  },
+});
+
+export const scanProjectionRows = query({
+  args: {
+    e: v.optional(v.string()),
+    a: v.optional(v.string()),
+    ids: v.optional(v.array(v.string())),
+    eventIds: v.optional(v.array(v.string())),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(projectionRowValidator),
+  handler: async (ctx, args) => {
+    const take = Math.max(1, Math.min(args.limit ?? 1000, 1000));
+    const eventIds =
+      args.eventIds === undefined ? null : new Set(args.eventIds);
+
+    let rows: ProjectionRowValue[];
+    if (args.ids !== undefined) {
+      rows = [];
+      for (const id of [...new Set(args.ids)].slice(0, take)) {
+        const found = await ctx.db
+          .query("projectionRows")
+          .withIndex("by_rowId", (q) => q.eq("id", id))
+          .unique();
+        if (found !== null) rows.push(projectionRowFromDoc(found));
+      }
+    } else if (args.eventIds !== undefined && args.e === undefined && args.a === undefined) {
+      rows = [];
+      for (const eventId of [...new Set(args.eventIds)].slice(0, take)) {
+        const found = await ctx.db
+          .query("projectionRows")
+          .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
+          .take(take);
+        rows.push(...found.map(projectionRowFromDoc));
+        if (rows.length >= take) break;
+      }
+    } else {
+      const docs =
+        args.e === undefined
+          ? await ctx.db.query("projectionRows").take(take)
+          : args.a === undefined
+            ? await ctx.db
+                .query("projectionRows")
+                .withIndex("by_e", (q) => q.eq("e", args.e!))
+                .take(take)
+            : await ctx.db
+                .query("projectionRows")
+                .withIndex("by_e_and_a", (q) => q.eq("e", args.e!).eq("a", args.a!))
+                .take(take);
+      rows = docs.map(projectionRowFromDoc);
+    }
+
+    return rows
+      .filter((row) => eventIds === null || eventIds.has(row.eventId))
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .slice(0, take);
   },
 });
 

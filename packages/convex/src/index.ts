@@ -49,6 +49,7 @@ export {
 } from "./functions";
 export {
   ConvexComponentEventStore,
+  ConvexComponentProjectionStore,
   createConvexComponentRuntime,
   createConvexComponentRuntimeLayer,
   type ConvexComponentRunner,

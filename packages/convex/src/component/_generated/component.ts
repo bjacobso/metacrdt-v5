@@ -72,6 +72,57 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         { eventId: string; factId?: string; rowId: string; txId: string },
         Name
       >;
+      appendRaw: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          event: {
+            a?: string;
+            actor: string;
+            actorType: "human" | "system" | "agent" | "migration";
+            causalRefs?: Array<string>;
+            e?: string;
+            hlc: { l: number; pt: number; r: string };
+            id: string;
+            kind: "assert" | "retract" | "tombstone" | "untombstone";
+            reason?: string;
+            seq?: number;
+            sig?: string;
+            target?: string;
+            v?: any;
+            validFrom?: number;
+            validTo?: number | null;
+          };
+        },
+        {
+          event: {
+            a?: string;
+            actor: string;
+            actorType: "human" | "system" | "agent" | "migration";
+            causalRefs?: Array<string>;
+            e?: string;
+            hlc: { l: number; pt: number; r: string };
+            id: string;
+            kind: "assert" | "retract" | "tombstone" | "untombstone";
+            reason?: string;
+            seq?: number;
+            sig?: string;
+            target?: string;
+            v?: any;
+            validFrom?: number;
+            validTo?: number | null;
+          };
+          inserted: boolean;
+        },
+        Name
+      >;
+      clearMaterializedProjection: FunctionReference<
+        "mutation",
+        "internal",
+        {},
+        null,
+        Name
+      >;
       collectionByToken: FunctionReference<
         "query",
         "internal",
@@ -175,6 +226,29 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           validFrom?: number;
           validTo?: number;
           verifiable: boolean;
+        } | null,
+        Name
+      >;
+      getRawEvent: FunctionReference<
+        "query",
+        "internal",
+        { eventId: string },
+        {
+          a?: string;
+          actor: string;
+          actorType: "human" | "system" | "agent" | "migration";
+          causalRefs?: Array<string>;
+          e?: string;
+          hlc: { l: number; pt: number; r: string };
+          id: string;
+          kind: "assert" | "retract" | "tombstone" | "untombstone";
+          reason?: string;
+          seq?: number;
+          sig?: string;
+          target?: string;
+          v?: any;
+          validFrom?: number;
+          validTo?: number | null;
         } | null,
         Name
       >;
@@ -316,6 +390,29 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         }>,
         Name
       >;
+      listRawEvents: FunctionReference<
+        "query",
+        "internal",
+        { a?: string; e?: string; ids?: Array<string>; limit?: number },
+        Array<{
+          a?: string;
+          actor: string;
+          actorType: "human" | "system" | "agent" | "migration";
+          causalRefs?: Array<string>;
+          e?: string;
+          hlc: { l: number; pt: number; r: string };
+          id: string;
+          kind: "assert" | "retract" | "tombstone" | "untombstone";
+          reason?: string;
+          seq?: number;
+          sig?: string;
+          target?: string;
+          v?: any;
+          validFrom?: number;
+          validTo?: number | null;
+        }>,
+        Name
+      >;
       rebuildProjections: FunctionReference<
         "mutation",
         "internal",
@@ -361,6 +458,46 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           subject: string;
           updatedAt: number;
         },
+        Name
+      >;
+      replaceProjectionRows: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          rows: Array<{
+            a: string;
+            e: string;
+            eventId: string;
+            id: string;
+            sourceEventIds: Array<string>;
+            v: any;
+            validFrom?: number;
+            validTo?: number | null;
+          }>;
+        },
+        { rows: number },
+        Name
+      >;
+      scanProjectionRows: FunctionReference<
+        "query",
+        "internal",
+        {
+          a?: string;
+          e?: string;
+          eventIds?: Array<string>;
+          ids?: Array<string>;
+          limit?: number;
+        },
+        Array<{
+          a: string;
+          e: string;
+          eventId: string;
+          id: string;
+          sourceEventIds: Array<string>;
+          v: any;
+          validFrom?: number;
+          validTo?: number | null;
+        }>,
         Name
       >;
       submitCollection: FunctionReference<

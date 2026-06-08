@@ -146,7 +146,9 @@ Current packages:
   component-owned collection reminder/escalation/expiry timer state.
   The component also exposes raw protocol EventStore functions plus
   `createConvexComponentRuntimeLayer`, so its component-owned log passes the
-  shared Layer-backed `@metacrdt/testkit` conformance suite.
+  shared Layer-backed `@metacrdt/testkit` conformance suite. It also owns a
+  neutral `projectionRows` read model that provides `ProjectionStoreService`
+  and passes the shared materialized projection-store suite.
   Includes Confect sidecar guidance.
 - **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
   authoring language extracted from Open Ontology: reader, formatter, evaluator,
@@ -184,7 +186,8 @@ Current packages:
   EventStore-backed projection and Datalog/query semantics. It also includes
   opt-in materialized projection-store conformance for targets that provide
   `ProjectionStoreService` (runtime memory/localStorage, Node
-  memory/SQLite/Postgres, local-first localStorage, Cloudflare Durable Object),
+  memory/SQLite/Postgres, local-first localStorage, Cloudflare Durable Object,
+  Convex component `projectionRows`),
   restart-persistence conformance for durable targets, checking
   event-log/HLC/seq continuity across runtime re-creation, plus scheduler
   service-boundary, transport publish-boundary, and peer network
@@ -693,8 +696,7 @@ Frontier:
 - HLC + version-vector sync across replicas
 - Durable Object + SQLite triple-store parity
 - production database lifecycle/migrations beyond the current Node SQL DDL plan
-- production Datalog/query-service conformance and Convex component adoption of
-  the materialized projection-store suite
+- production Datalog/query-service conformance
 
 See [TODO.md](./TODO.md) for the running pulse.
 

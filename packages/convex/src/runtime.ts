@@ -8,13 +8,22 @@ import {
   type EventFilter,
   type EventStore,
   type MergeResult,
+  type ProjectionFilter,
+  type ProjectionReplaceResult,
+  type ProjectionRow,
+  type ProjectionStore,
+  type ProjectionRuntimeServices,
   type RuntimeServices,
 } from "@metacrdt/runtime";
+import type { Layer } from "effect";
 
 export type ConvexComponentRuntimeRefs = {
   readonly appendRaw: unknown;
   readonly getRawEvent: unknown;
   readonly listRawEvents: unknown;
+  readonly replaceProjectionRows: unknown;
+  readonly clearMaterializedProjection: unknown;
+  readonly scanProjectionRows: unknown;
 };
 
 export type ConvexComponentRunner = {
@@ -29,9 +38,13 @@ export type ConvexComponentRuntimeOptions = {
   readonly wall?: () => number;
 };
 
-function serviceError(operation: string, cause: unknown): RuntimeServiceError {
+function serviceError(
+  service: string,
+  operation: string,
+  cause: unknown,
+): RuntimeServiceError {
   return new RuntimeServiceError({
-    service: "ConvexComponentEventStore",
+    service,
     operation,
     message: cause instanceof Error ? cause.message : String(cause),
     cause,
@@ -58,6 +71,27 @@ function assertMergeResult(value: unknown): Event[] {
   return value as Event[];
 }
 
+function assertProjectionRows(value: unknown): ProjectionRow[] {
+  if (!Array.isArray(value)) {
+    throw new Error("component projection query returned a non-array result");
+  }
+  return value as ProjectionRow[];
+}
+
+function assertProjectionReplaceResult(
+  value: unknown,
+): ProjectionReplaceResult {
+  const result = value as Partial<ProjectionReplaceResult> | null;
+  if (
+    result === null ||
+    typeof result !== "object" ||
+    typeof result.rows !== "number"
+  ) {
+    throw new Error("component replaceProjectionRows returned an invalid result");
+  }
+  return result as ProjectionReplaceResult;
+}
+
 export class ConvexComponentEventStore implements EventStore {
   constructor(
     private readonly runner: ConvexComponentRunner,
@@ -70,7 +104,7 @@ export class ConvexComponentEventStore implements EventStore {
         await this.runner.mutation(this.refs.appendRaw, { event }),
       );
     } catch (cause) {
-      throw serviceError("append", cause);
+      throw serviceError("ConvexComponentEventStore", "append", cause);
     }
   }
 
@@ -82,7 +116,7 @@ export class ConvexComponentEventStore implements EventStore {
         })) as Event | null) ?? undefined
       );
     } catch (cause) {
-      throw serviceError("get", cause);
+      throw serviceError("ConvexComponentEventStore", "get", cause);
     }
   }
 
@@ -97,7 +131,7 @@ export class ConvexComponentEventStore implements EventStore {
         }),
       );
     } catch (cause) {
-      throw serviceError("scan", cause);
+      throw serviceError("ConvexComponentEventStore", "scan", cause);
     }
   }
 
@@ -112,10 +146,56 @@ export class ConvexComponentEventStore implements EventStore {
   }
 }
 
+export class ConvexComponentProjectionStore implements ProjectionStore {
+  constructor(
+    private readonly runner: ConvexComponentRunner,
+    private readonly refs: ConvexComponentRuntimeRefs,
+  ) {}
+
+  async replace(
+    rows: Iterable<ProjectionRow>,
+  ): Promise<ProjectionReplaceResult> {
+    try {
+      return assertProjectionReplaceResult(
+        await this.runner.mutation(this.refs.replaceProjectionRows, {
+          rows: [...rows],
+        }),
+      );
+    } catch (cause) {
+      throw serviceError("ConvexComponentProjectionStore", "replace", cause);
+    }
+  }
+
+  async clear(): Promise<void> {
+    try {
+      await this.runner.mutation(this.refs.clearMaterializedProjection, {});
+    } catch (cause) {
+      throw serviceError("ConvexComponentProjectionStore", "clear", cause);
+    }
+  }
+
+  async scan(filter: ProjectionFilter = {}): Promise<ProjectionRow[]> {
+    try {
+      return assertProjectionRows(
+        await this.runner.query(this.refs.scanProjectionRows, {
+          e: filter.e,
+          a: filter.a,
+          ids: filter.ids,
+          eventIds: filter.eventIds,
+          limit: 1000,
+        }),
+      );
+    } catch (cause) {
+      throw serviceError("ConvexComponentProjectionStore", "scan", cause);
+    }
+  }
+}
+
 export function createConvexComponentRuntime(
   options: ConvexComponentRuntimeOptions,
 ): RuntimeServices & {
   store: ConvexComponentEventStore;
+  projection: ConvexComponentProjectionStore;
   clock: MemoryClock;
   sequencer: MemorySequencer;
 } {
@@ -123,9 +203,10 @@ export function createConvexComponentRuntime(
     profile: {
       name: "convex-component",
       replicaId: options.replicaId,
-      capabilities: new Set(["convergent-log"]),
+      capabilities: new Set(["convergent-log", "projection-store"]),
     },
     store: new ConvexComponentEventStore(options.runner, options.refs),
+    projection: new ConvexComponentProjectionStore(options.runner, options.refs),
     clock: new MemoryClock(options.replicaId, options.wall),
     sequencer: new MemorySequencer(options.replicaId),
   };
@@ -133,6 +214,6 @@ export function createConvexComponentRuntime(
 
 export function createConvexComponentRuntimeLayer(
   options: ConvexComponentRuntimeOptions,
-) {
+): Layer.Layer<ProjectionRuntimeServices, RuntimeServiceError> {
   return runtimeServicesLayer(createConvexComponentRuntime(options));
 }

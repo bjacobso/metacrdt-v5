@@ -4,9 +4,11 @@
 `@metacrdt/runtime` has Effect v3 `Context.Tag` services, `Layer` helpers,
 tagged runtime errors, and memory/localStorage Layer providers; `@metacrdt/node`,
 `@metacrdt/local`, `@metacrdt/cloudflare`, and `@metacrdt/convex` now expose
-Effect Layer providers for their runtime targets; `@metacrdt/testkit` runs
-conformance over Layer-provided targets while compatibility `RuntimeServices`
-facades remain for already-shipped code. The standing objective remains SPEC §1.2:
+Effect Layer providers for their runtime targets; memory/localStorage, Node
+SQLite/Postgres, local-first, Cloudflare Durable Object, and Convex component
+targets now also prove the shared `ProjectionStoreService` boundary through
+testkit conformance. Compatibility `RuntimeServices` facades remain for
+already-shipped code. The standing objective remains SPEC §1.2:
 every new or touched unit adopts
 Effect services/`Layer`s, `effect/Schema`, tagged errors, and Effect-based tests
 where the current dependency graph allows it, while
@@ -9413,14 +9415,13 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
 - **Materialized projection-store boundary started:** `@metacrdt/runtime` now
   defines `ProjectionStoreService`, `ProjectionRow`, `ProjectionStore`, and
   `projectionRowsFromLog`; memory/localStorage, Node memory/SQLite/Postgres,
-  local-first localStorage, and Cloudflare Durable Object storage provide the
-  service; and `@metacrdt/testkit` has opt-in
+  local-first localStorage, Cloudflare Durable Object storage, and the Convex
+  component-owned `projectionRows` read model provide the service; and
+  `@metacrdt/testkit` has opt-in
   `runRuntimeProjectionStoreConformance`, proving replace-from-fold, indexed
   scans, rebuild-style replacement, and clear over those Layers.
 - **Remaining keystone work:** conformance still does not cover a production
-  Datalog/query service API contract, and the Convex component target has not
-  yet adopted `ProjectionStoreService` because that requires a component
-  projection table or an explicit mapping onto existing component read models.
+  Datalog/query service API contract.
 - **Zero Effect today (by current design):** `core`, `schema`, `query`, and the
   root Convex reference app stay pure/plain where appropriate. `runtime`,
   `testkit`, and Convex/Node/local/Cloudflare target packages now use Effect v3

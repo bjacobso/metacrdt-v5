@@ -84,8 +84,9 @@ On open hosts the adapter is a selectable dependency.
   conformance is proven against BroadcastChannel, p2p DataChannel, and
   Cloudflare Durable Object WebSocket relay harnesses. Projection-store
   conformance is currently proven against runtime memory/localStorage, Node
-  memory/SQLite/Postgres, local-first localStorage, and Cloudflare Durable Object
-  storage; Convex component adoption is next. Compatibility
+  memory/SQLite/Postgres, local-first localStorage, Cloudflare Durable Object
+  storage, and the Convex component-owned `projectionRows` read model.
+  Compatibility
   `RuntimeServices` targets still adapt through `runtimeServicesLayer`.
 
 ### Should exist next
@@ -243,9 +244,9 @@ a sibling target.
    shared runtime suite. Materialized projection-store conformance is an opt-in
    suite over `ProjectionStoreService`, now wired through runtime memory/local,
    Node memory/SQLite/Postgres, local-first localStorage, and Cloudflare Durable
-   Object storage; add Convex component projection-store adoption and production
-   query-service conformance whenever the relevant target capabilities are
-   exposed. This is what *proves* the
+   Object storage, plus the Convex component-owned `projectionRows` read model;
+   add production query-service conformance whenever the relevant target
+   capabilities are exposed. This is what *proves* the
    "guaranteed to converge" claim across targets.
 3. **Cloudflare Phase B/C** — extract the shared fold into core, then the DO +
    SQLite triple store ([cloudflare-target.md](./cloudflare-target.md)).

@@ -107,7 +107,7 @@ The Effect service/tag boundary plus memory and localStorage Layers are shipped.
 The memory and localStorage Layers now provide `ProjectionStoreService`.
 BroadcastChannel and p2p DataChannel compatibility paths are also shipped. Node,
 local, and Cloudflare target packages expose their own runtime Layers and
-projection stores; Convex component projection-store adoption is a follow-up
-because it needs a component schema/read-model decision. `@metacrdt/testkit`
-conformance runs over layer-provided targets while compatibility `RuntimeServices`
-facades remain for older callers.
+projection stores, and the Convex component target exposes a component-owned
+`projectionRows` read model through `ProjectionStoreService`. `@metacrdt/testkit`
+conformance runs over layer-provided targets while compatibility
+`RuntimeServices` facades remain for older callers.

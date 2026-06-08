@@ -100,6 +100,25 @@ export default defineSchema({
     .index("by_a_and_updatedAt", ["a", "updatedAt"])
     .index("by_updatedAt", ["updatedAt"]),
 
+  // Component-owned target-neutral materialized projection rows. This table is
+  // the Convex target's implementation of `ProjectionStoreService`: replaceable
+  // read-model rows produced by the shared runtime fold, not source-of-truth
+  // facts and not the app-specific `currentFacts` compatibility projection.
+  projectionRows: defineTable({
+    id: v.string(),
+    e: v.string(),
+    a: v.string(),
+    v: value,
+    eventId: v.string(),
+    validFrom: v.optional(v.number()),
+    validTo: v.optional(v.union(v.number(), v.null())),
+    sourceEventIds: v.array(v.string()),
+  })
+    .index("by_rowId", ["id"])
+    .index("by_e", ["e"])
+    .index("by_e_and_a", ["e", "a"])
+    .index("by_eventId", ["eventId"]),
+
   // Component-owned collection capabilities. These are operational run/token
   // records, not protocol facts; submitted values enter the protocol log through
   // component mutations in log.ts.

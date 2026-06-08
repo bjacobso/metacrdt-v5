@@ -35,8 +35,9 @@ semantics live in `@metacrdt/core`; this package makes Convex speak them.
   reference app mounts as `components.metacrdt`.
 - **Runtime Layer binding** — `createConvexComponentRuntimeLayer` adapts a host's
   Convex query/mutation runner plus component function refs into the
-  `@metacrdt/runtime` Effect service tags. The component-owned raw log passes
-  `@metacrdt/testkit` EventStore / anti-entropy / deterministic-fold conformance
+  `@metacrdt/runtime` Effect service tags. The component-owned raw log and
+  component-owned `projectionRows` read model pass `@metacrdt/testkit`
+  EventStore / anti-entropy / deterministic-fold / projection-store conformance
   through that Layer.
 - **Confect integration** — `confectSidecarWarning` / `ManualConfectMountDecision`
   for the optional typed Effect sidecar.

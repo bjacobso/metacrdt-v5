@@ -90,10 +90,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `ProjectionStore`, and `projectionRowsFromLog`; memory/localStorage, Node
   memory/SQLite/Postgres, local-first localStorage, and Cloudflare Durable Object
   storage now provide the service and run `runRuntimeProjectionStoreConformance`.
-- [ ] **Goal 111 next: expanded suites** — add Convex component
-  `ProjectionStoreService` adoption (component table or explicit mapping onto
-  existing read models) and a production Datalog/query service contract as second
-  implementations expose those capabilities.
+- [x] **Goal 111 Convex projection-store adoption** — `@metacrdt/convex` now owns
+  a component `projectionRows` table and `replace`/`scan`/`clear` component
+  functions; `createConvexComponentRuntimeLayer` provides
+  `ProjectionStoreService` and passes shared projection-store conformance.
+- [ ] **Goal 111 next: production query-service contract** — add a Datalog/query
+  service API contract as second implementations expose those capabilities.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
@@ -552,10 +554,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   projection tables, and `DurableObjectProjectionStore` all run
   `runRuntimeProjectionStoreConformance`: replace from fold,
   entity/attribute/id/event-id scans, rebuild-style replacement, and clear.
-- [ ] **Remaining adoption:** the Convex component target still needs a
-  component-owned projection table or explicit mapping onto its existing
-  `facts`/`currentFacts` read models before it can run projection-store
-  conformance.
+- [x] **Convex component target adopted the same boundary.** The component now owns
+  a neutral `projectionRows` read-model table separate from `facts`/`currentFacts`
+  and exposes `replaceProjectionRows`, `scanProjectionRows`, and
+  `clearMaterializedProjection`; `createConvexComponentRuntimeLayer` wires those
+  refs into `ProjectionStoreService` and passes the shared projection-store suite.
 
 ### 2026-06-08 — Goal 111 EventStore-backed query conformance
 - [x] **Added `runRuntimeQueryConformance` to `@metacrdt/testkit`.** The suite
