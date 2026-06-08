@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 89 (`@metacrdt/query` Pattern Input Construction) has
+**Current goal:** Goal 90 (`@metacrdt/query` Provenanced Pattern Extension) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -88,7 +88,11 @@ still owns branch recursion, source fetching, read authorization, and provenance
 interpretation. Goal 89 extracts pattern-input construction into
 `@metacrdt/query`: `patternInputForBinding` resolves a parsed pattern against a
 binding into `PatternInput` constants for target sources, while Convex still owns
-the source lookup, indexes, read authorization, and provenance. The next active
+the source lookup, indexes, read authorization, and provenance. Goal 90 extracts
+provenance-preserving pattern extension into `@metacrdt/query`: `QueryTriple` and
+`extendProvenancedBinding` now unify a matched triple with a solved state and
+merge fact/event provenance in the package, while Convex still owns candidate
+fetching, negation checks, read authorization, and async join scheduling. The next active
 goal should be chosen from the
 remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
@@ -183,6 +187,7 @@ arguments.
   - pure clause-pick planning for the Datalog scheduler
   - provenance-preserving solved-binding dedupe and source-list merging
   - pattern input construction for target triple sources
+  - provenanced pattern extension for positive joins
   - Convex compatibility re-export through `convex/lib/engine.ts`
 - New Convex writes stamp protocol metadata on `factEvents`:
   `eventId`, HLC, `replicaId`, `targetEventId`, and `causalRefs` where
@@ -8213,6 +8218,55 @@ lookup, indexes, read authorization, provenance, and async execution in Convex.
   `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
 - A live `datalog:datalog` joined-pattern query returned rows through the
   deployed package-backed pattern-input construction path.
+
+---
+
+## Goal 90 — `@metacrdt/query` Provenanced Pattern Extension
+
+**Status:** shipped as the positive-join row extension boundary.
+
+**Objective:** move the pure "state binding + matched triple → extended
+provenanced binding" operation from the Convex Datalog solver into
+`@metacrdt/query`, while keeping candidate fetching, negation checks, read
+authorization, and async join scheduling in Convex.
+
+### Semantics
+
+- `packages/query` now owns `QueryTriple` and `extendProvenancedBinding`.
+- `QueryTriple` is the package-level shape for a normalized triple plus fact and
+  optional event provenance.
+- `extendProvenancedBinding` preserves the existing positive-pattern join
+  behavior:
+  - call `unifyPattern` against the current binding and candidate triple;
+  - return `null` when typed-value unification fails;
+  - otherwise return the extended binding;
+  - merge fact and event provenance with duplicate removal and first-seen order.
+- `convex/lib/engine.ts` aliases its `Triple` type to
+  `QueryTriple<Id<"facts">, string>` and uses `extendProvenancedBinding` in the
+  positive pattern branch.
+
+### Non-Goals
+
+- Do not move candidate fetching, `fetchPattern`, `passesNegation`, read
+  authorization, `TripleSource`, or recursive branch execution into the package.
+- Do not change provenance meaning, query result shapes, negation semantics, or
+  execution limits.
+
+### Verification
+
+- `npm run test:query` passed (14 package tests).
+- `npx tsc --noEmit -p packages/query/tsconfig.json` passed.
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npm run test:core` passed (46 core tests).
+- `npm run test:schema` passed (8 schema tests).
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94` (with the existing generated-AI-file freshness warning only).
+- A live `datalog:datalog` joined-pattern query returned rows through the
+  deployed package-backed provenanced pattern extension path.
 
 ---
 

@@ -53,6 +53,16 @@ export type ProvenancedBinding<
   sources: SourceId[];
   eventSources?: EventSourceId[];
 };
+export type QueryTriple<
+  SourceId extends string = string,
+  EventSourceId extends string = string,
+> = {
+  e: string;
+  a: string;
+  v: unknown;
+  prov: SourceId[];
+  eventProv?: EventSourceId[];
+};
 export type PatternInput = {
   eConst?: unknown;
   aConst?: unknown;
@@ -621,6 +631,26 @@ export function dedupeProvenancedBindings<
     }
   }
   return [...byBinding.values()];
+}
+
+export function extendProvenancedBinding<
+  SourceId extends string,
+  EventSourceId extends string = string,
+>(
+  clause: PatternClause,
+  state: ProvenancedBinding<SourceId, EventSourceId>,
+  triple: QueryTriple<SourceId, EventSourceId>,
+): ProvenancedBinding<SourceId, EventSourceId> | null {
+  const binding = unifyPattern(clause, state.binding, triple);
+  if (binding === null) return null;
+  return {
+    binding,
+    sources: mergeUniqueSources(state.sources, triple.prov),
+    eventSources: mergeUniqueSources(
+      state.eventSources ?? [],
+      triple.eventProv ?? [],
+    ),
+  };
 }
 
 export type ResultPage<T> = {

@@ -8,6 +8,7 @@ import {
   derivedRowsFromBindings,
   describeClauses,
   dynamicSelectivity,
+  extendProvenancedBinding,
   isEntityLocalRule,
   paginateRows,
   parseClause,
@@ -208,6 +209,47 @@ describe("@metacrdt/query rows", () => {
         sources: ["fact:3"],
       },
     ]);
+  });
+
+  test("extends provenanced bindings with matching triples", () => {
+    const pattern = parseClause(["?e", "worker.status", "?status"]);
+    expect(pattern.kind).toBe("pattern");
+    if (pattern.kind !== "pattern") return;
+
+    expect(
+      extendProvenancedBinding(
+        pattern,
+        {
+          binding: { e: "worker:maria" },
+          sources: ["fact:seed"],
+          eventSources: ["event:seed"],
+        },
+        {
+          e: "worker:maria",
+          a: "worker.status",
+          v: "active",
+          prov: ["fact:status"],
+          eventProv: ["event:status"],
+        },
+      ),
+    ).toEqual({
+      binding: { e: "worker:maria", status: "active" },
+      sources: ["fact:seed", "fact:status"],
+      eventSources: ["event:seed", "event:status"],
+    });
+
+    expect(
+      extendProvenancedBinding(
+        pattern,
+        { binding: { e: "worker:maria", status: "1" }, sources: [] },
+        {
+          e: "worker:maria",
+          a: "worker.status",
+          v: 1,
+          prov: ["fact:status"],
+        },
+      ),
+    ).toBeNull();
   });
 
   test("paginates deterministic rows with bounded page size", () => {

@@ -6,7 +6,7 @@ import {
   chooseNextClausePosition,
   clauseBoundVars,
   dedupeProvenancedBindings,
-  mergeUniqueSources,
+  extendProvenancedBinding,
   parseClauses,
   patternInputForBinding,
   patternVars,
@@ -19,6 +19,7 @@ import {
   type NotClause,
   type PatternInput,
   type PatternClause,
+  type QueryTriple,
 } from "@metacrdt/query";
 import { BitemporalCoord, isVisible } from "./visibility";
 import { canReadAttribute, readPrincipal } from "./readAuth";
@@ -33,6 +34,7 @@ export {
   derivedRowsFromBindings,
   describeClauses,
   entityVarOf,
+  extendProvenancedBinding,
   isEntityLocalRule,
   paginateRows,
   patternInputForBinding,
@@ -44,6 +46,7 @@ export {
   type DerivedRow,
   type EmitSpec,
   type PatternInput,
+  type QueryTriple,
   type ResultPage,
 } from "@metacrdt/query";
 
@@ -59,13 +62,7 @@ export type SolvedBinding = {
  * contributes its own id; a derived-fact row contributes the base facts it was
  * itself derived from (so provenance always resolves to source facts).
  */
-export type Triple = {
-  e: string;
-  a: string;
-  v: unknown;
-  prov: Id<"facts">[];
-  eventProv?: string[];
-};
+export type Triple = QueryTriple<Id<"facts">, string>;
 
 type Ctx = QueryCtx | MutationCtx;
 type ReadFilter = { principal: string } | null;
@@ -310,16 +307,9 @@ async function solveParsedWhere(
           source,
         );
         for (const t of candidates) {
-          const extended = unifyPattern(clause, st.binding, t);
+          const extended = extendProvenancedBinding(clause, st, t);
           if (extended) {
-            next.push({
-              binding: extended,
-              sources: mergeUniqueSources(st.sources, t.prov),
-              eventSources: mergeUniqueSources(
-                st.eventSources ?? [],
-                t.eventProv ?? [],
-              ),
-            });
+            next.push(extended);
           }
         }
         if (next.length > LIMITS.maxIntermediateRows) {

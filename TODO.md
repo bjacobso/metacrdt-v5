@@ -149,6 +149,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   owns `PatternInput` and `patternInputForBinding`, resolving parsed pattern
   terms against the current binding into source constants. Convex still owns
   `TripleSource` lookup, indexes, read auth, provenance, and async execution.
+- [x] **`@metacrdt/query` provenanced pattern extension extracted** — the package
+  now owns `QueryTriple` and `extendProvenancedBinding`, unifying matched triples
+  with solved states and merging fact/event provenance for positive joins. Convex
+  still owns candidate fetching, negation checks, read auth, and async scheduling.
 - [ ] Then peel off, as they stabilize: more `@metacrdt/query` solver/rule AST
   seams, then `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/views`, and
   `@metacrdt/agent`.
@@ -418,6 +422,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 90 shipped:** `@metacrdt/query` provenanced pattern extension. Added
+  `QueryTriple` and `extendProvenancedBinding`; Convex positive pattern joins now
+  ask the package to unify the matched triple with the current state and merge
+  fact/event provenance. Candidate fetching, negation checks, read auth, and
+  async scheduling remain in Convex.
 - [x] **Goal 89 shipped:** `@metacrdt/query` pattern input construction. Added
   `PatternInput` and `patternInputForBinding`; Convex `fetchPattern` now asks the
   package to resolve a parsed pattern + binding into source constants before
