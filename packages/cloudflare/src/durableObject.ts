@@ -18,6 +18,8 @@ import type {
   RuntimeSequencer,
   RuntimeServices,
 } from "@metacrdt/runtime";
+import { RuntimeServiceError, runtimeServicesLayer } from "@metacrdt/runtime";
+import { Effect, Layer } from "effect";
 
 /**
  * The subset of Cloudflare Durable Object storage used by the target. Keeping it
@@ -250,4 +252,27 @@ export async function createDurableObjectRuntime(
     clock,
     sequencer,
   };
+}
+
+function durableObjectRuntimeInitError(cause: unknown): RuntimeServiceError {
+  return new RuntimeServiceError({
+    service: "DurableObjectRuntime",
+    operation: "createDurableObjectRuntime",
+    message: cause instanceof Error ? cause.message : String(cause),
+    cause,
+  });
+}
+
+export function createDurableObjectRuntimeLayer(
+  options: DurableObjectRuntimeOptions,
+) {
+  return Layer.unwrapEffect(
+    Effect.map(
+      Effect.tryPromise({
+        try: () => createDurableObjectRuntime(options),
+        catch: durableObjectRuntimeInitError,
+      }),
+      runtimeServicesLayer,
+    ),
+  );
 }

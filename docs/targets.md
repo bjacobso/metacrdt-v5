@@ -59,14 +59,16 @@ On open hosts the adapter is a selectable dependency.
 ### Have today
 
 - `@metacrdt/convex` — managed, reactive reference target (full triple store).
-- `@metacrdt/cloudflare` — sync-plane shell; growing to a DO + SQLite triple
-  store ([cloudflare-target.md](./cloudflare-target.md)).
-- `@metacrdt/local` — browser/local-first host.
+- `@metacrdt/cloudflare` — sync-plane shell with a Durable Object Effect Layer;
+  growing to a DO + SQLite triple store ([cloudflare-target.md](./cloudflare-target.md)).
+- `@metacrdt/local` — browser/local-first host with localStorage / IndexedDB /
+  SQLite-compatible Effect Layers.
 - `@metacrdt/node` — open server-process host with memory and structural
   server-SQLite/Postgres runtime services plus a dependency-free structural
   HTTP/SSE sync handler, native `node:http`-style request listener, and packaged
   in-memory dev-server CLI. It also exposes a shared SQL lifecycle plan for the
-  SQLite/Postgres runtime tables. SDK integration remains a future slice.
+  SQLite/Postgres runtime tables and Effect Layers for memory, SQLite, and
+  Postgres. SDK integration remains a future slice.
 - `@metacrdt/runtime`'s in-memory target/Layer — the reference harness.
 - `@metacrdt/testkit` — framework-neutral conformance helpers for EventStore,
   anti-entropy, and deterministic fold convergence (currently proven against
@@ -218,9 +220,9 @@ a sibling target.
 1. **`@metacrdt/node`** + `memory` / `sqlite` / `postgres` adapters + shared SQL
    lifecycle plan + HTTP/SSE handler + packaged dev server — unlocks
    SDK/self-hosting work and another host for the testkit to exercise.
-2. **Goal 111 target Layers + testkit migration** — make Node/local/Cloudflare
-   expose `Layer`s for the runtime service tags, then move testkit conformance to
-   layer-provided targets. Add persistence, scheduler, transport, and
+2. **Goal 111 testkit Layer migration** — Node/local/Cloudflare now expose
+   `Layer`s for the runtime service tags; move testkit conformance to
+   layer-provided targets next. Add persistence, scheduler, transport, and
    query/projection suites whenever a second target exposes the relevant
    capability. This is what *proves* the "guaranteed to converge" claim across
    targets.

@@ -3,6 +3,7 @@ export {
   DurableObjectEventStore,
   DurableObjectSequencer,
   createDurableObjectRuntime,
+  createDurableObjectRuntimeLayer,
   type DurableObjectRuntimeOptions,
   type DurableObjectStorageLike,
 } from "./durableObject.js";

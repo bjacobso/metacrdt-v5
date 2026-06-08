@@ -42,6 +42,7 @@ export {
   localSeqKey,
   type EncodedLocalEvent,
   type EncodedLocalValue,
+  createLocalRuntimeLayer,
   createLocalRuntime,
   type LocalRuntimeOptions,
   type LocalRuntimeStorage,

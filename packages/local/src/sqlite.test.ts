@@ -1,8 +1,15 @@
 import { describe, expect, test } from "vitest";
 import { fromEvents, valueOf } from "@metacrdt/core";
-import { applyOperation, versionVector } from "@metacrdt/runtime";
+import {
+  EventStoreService,
+  applyOperation,
+  applyOperationEffect,
+  versionVector,
+} from "@metacrdt/runtime";
+import { Effect } from "effect";
 import {
   createSqliteLocalFirstRuntime,
+  createSqliteLocalFirstRuntimeLayer,
   sqliteStorage,
   startSqliteLocalFirstRuntime,
   type BrowserBroadcastChannelLike,
@@ -101,6 +108,39 @@ const coord = { txTime: 10_000, validTime: 10_000 };
 const one = () => "one" as const;
 
 describe("@metacrdt/local SQLite storage", () => {
+  test("SQLite local-first runtime provides an Effect Layer", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const event = yield* applyOperationEffect({
+            op: "assert",
+            e: "sqlite:layer",
+            a: "status",
+            v: "ready",
+            actor: "test",
+            actorType: "system",
+          });
+          const store = yield* EventStoreService;
+          return {
+            event,
+            stored: yield* store.get(event.id),
+            events: yield* store.scan(),
+          };
+        }),
+        createSqliteLocalFirstRuntimeLayer({
+          sqlite: { db: new FakeSqlite() },
+          namespace: "sqlite-layer",
+          replicaId: "sqlite:layer",
+          wall: () => 1_250,
+          broadcast: false,
+        }),
+      ),
+    );
+    expect(result.stored).toEqual(result.event);
+    expect(result.event.seq).toBe(1);
+    expect(versionVector(result.events)).toEqual({ "sqlite:layer": 1 });
+  });
+
   test("adapts a SQLite prepare/get/run client to async key/value storage", async () => {
     const db = new FakeSqlite();
     const storage = await sqliteStorage({ db, tableName: "metacrdt_test" });

@@ -19,6 +19,7 @@ import type {
   RuntimeSequencer,
   RuntimeServices,
 } from "./types.js";
+import { runtimeServicesLayer } from "./services.js";
 
 /**
  * The sync subset of `window.localStorage`, factored as an interface so tests and
@@ -298,4 +299,8 @@ export function createLocalRuntime(
     ),
     sequencer: new LocalSequencer(options.storage, namespace, options.replicaId),
   };
+}
+
+export function createLocalRuntimeLayer(options: LocalRuntimeOptions) {
+  return runtimeServicesLayer(createLocalRuntime(options));
 }

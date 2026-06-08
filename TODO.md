@@ -43,11 +43,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `Transport`, and `RuntimeProfile`; Effect-native operation helpers return
   tagged errors in the Effect channel; the memory target provides
   `createMemoryRuntimeLayer`.
-- [ ] **Goal 111 next: targets provide Layers** — expose Layer providers from
-  `@metacrdt/cloudflare`, `@metacrdt/local`, `@metacrdt/node`, and eventually
-  `@metacrdt/convex`, then move `@metacrdt/testkit` conformance to layer-provided
-  targets. Keep compatibility `RuntimeServices` facades until every target has
-  moved.
+- [x] **Goal 111 target Layer providers started** — `@metacrdt/node` exposes
+  memory/SQLite/Postgres Layers, `@metacrdt/local` exposes localStorage/async/
+  IndexedDB/SQLite-compatible Layers, and `@metacrdt/cloudflare` exposes a
+  Durable Object Layer. Tests execute Effect programs through each target Layer.
+- [ ] **Goal 111 next: testkit conformance over Layers** — move
+  `@metacrdt/testkit` from compatibility `RuntimeServices` factories to
+  Layer-provided targets, then add the Convex target Layer when the component
+  boundary is ready. Keep compatibility facades until every target has moved.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
@@ -490,6 +493,25 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — Goal 111 target Layer providers
+- [x] **Node target Layers:** `@metacrdt/node` now exposes
+  `createNodeMemoryRuntimeLayer`, `createNodeSqliteRuntimeLayer`, and
+  `createNodePostgresRuntimeLayer`. Async SQL initialization is wrapped in
+  Effect v3 `Layer.unwrapEffect` and initialization failures become
+  `RuntimeServiceError`s.
+- [x] **Local target Layers:** `@metacrdt/runtime` exposes
+  `createLocalRuntimeLayer`; `@metacrdt/local` exposes
+  `createLocalFirstRuntimeLayer`, `createAsyncLocalRuntimeLayer`,
+  `createIndexedDbLocalFirstRuntimeLayer`, and
+  `createSqliteLocalFirstRuntimeLayer`.
+- [x] **Cloudflare target Layer:** `@metacrdt/cloudflare` now exposes
+  `createDurableObjectRuntimeLayer` over the existing Durable Object storage
+  services, mapping initialization failure into the Effect error channel.
+- [x] **Layer tests:** Node memory/SQLite/Postgres, localStorage/async/
+  IndexedDB/SQLite-compatible local, and Cloudflare Durable Object targets all
+  run `applyOperationEffect` through their Layer providers and verify persisted
+  events/version vectors.
 
 ### 2026-06-08 — Goal 111 runtime Effect service boundary
 - [x] **Started Goal 111 step 1:** `@metacrdt/runtime` now has an Effect-native

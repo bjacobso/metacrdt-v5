@@ -31,7 +31,8 @@ transport exists.
   boundary, plus compatibility `createMemoryRuntime` with `MemoryEventStore`,
   `MemoryClock`, `MemorySequencer`, `MemoryScheduler`, `MemoryTransport`: the
   reference harness for convergence tests.
-- **localStorage seed** — `createLocalRuntime` with `LocalEventStore`,
+- **localStorage seed** — `createLocalRuntimeLayer` for the Effect service
+  boundary, plus compatibility `createLocalRuntime` with `LocalEventStore`,
   `LocalClock`, `LocalSequencer` and the local event/value encode/decode + key
   helpers. This is the shared primitive `@metacrdt/local` composes rather than
   duplicates.
@@ -93,7 +94,8 @@ const result = await Effect.runPromise(
 
 ## Status
 
-The Effect service/tag boundary and the memory Layer are shipped. In-memory,
-localStorage, BroadcastChannel, and p2p DataChannel compatibility paths are also
-shipped. Target packages still need to expose their own Layers in the next Goal
-111 step; durable network transport lives in the target packages.
+The Effect service/tag boundary plus memory and localStorage Layers are shipped.
+BroadcastChannel and p2p DataChannel compatibility paths are also shipped. Node,
+local, and Cloudflare target packages now expose their own runtime Layers;
+testkit conformance still needs to move from compatibility `RuntimeServices`
+objects to layer-provided targets.

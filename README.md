@@ -155,11 +155,13 @@ Current packages:
   BroadcastChannel anti-entropy, and p2p DataChannel anti-entropy.
 - **`@metacrdt/cloudflare`** (`packages/cloudflare`) — Durable Object / Worker
   target helpers: storage-backed event log, HLC, per-replica sequencer,
-  WebSocket relay shell, Worker router, and example Wrangler config.
+  Effect Layer provider, WebSocket relay shell, Worker router, and example
+  Wrangler config.
 - **`@metacrdt/local`** (`packages/local`) — browser/local-first target package:
   localStorage-backed event/HLC/seq services composed with BroadcastChannel
   anti-entropy, IndexedDB-compatible async persistence, SQLite-compatible local
-  persistence, plus browser defaults and lifecycle helpers.
+  persistence, Effect Layer providers, plus browser defaults and lifecycle
+  helpers.
 - **`@metacrdt/node`** (`packages/node`) — open server-process target:
   `createNodeMemoryRuntime`, structural server-SQLite runtime services, and
   structural Postgres runtime services (`query(sql, params)` client shape)
@@ -170,7 +172,7 @@ Current packages:
   `createNodeHttpRequestListener` adapter for native `node:http`-style
   request/response objects. It also ships `metacrdt-node-dev`, an in-memory
   local sync server CLI over native `node:http`. Memory, SQLite, and Postgres
-  runtimes pass `@metacrdt/testkit`.
+  runtimes expose Effect Layer providers and pass `@metacrdt/testkit`.
 - **`@metacrdt/testkit`** (`packages/testkit`) — target conformance helpers:
   framework-neutral async checks for EventStore idempotency/filtering/content-id
   verification, version-vector anti-entropy, and deterministic fold convergence.
@@ -345,8 +347,9 @@ Built today:
 - single-use, expiring collection tokens for the public `/collect` page
 - Tailwind + React Router research-preview UI
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility
-- `@metacrdt/runtime` harness groundwork: target-neutral Effect services plus an
-  in-memory convergence test target / Layer
+- `@metacrdt/runtime` harness groundwork: target-neutral Effect services plus
+  in-memory/localStorage convergence test targets and Layers; Node/local/
+  Cloudflare target packages also expose runtime Layers
 - Confect/Effect sidecars for typed read/planning/protocol inspection:
   `metacrdt.verifyEvents`, `metacrdt.explainDerived`, and a read-only compliance
   dry-run planner. The dry-run planner is now event-log-backed and

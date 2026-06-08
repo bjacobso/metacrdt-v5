@@ -1,6 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { fromEvents, valueOf } from "@metacrdt/core";
-import { applyOperation, versionVector } from "@metacrdt/runtime";
+import {
+  EventStoreService,
+  applyOperation,
+  applyOperationEffect,
+  versionVector,
+} from "@metacrdt/runtime";
+import { Effect } from "effect";
 import {
   runRuntimeConformance,
   type RuntimeConformanceTarget,
@@ -8,9 +14,12 @@ import {
 } from "@metacrdt/testkit";
 import {
   createNodeHttpRequestListener,
+  createNodeMemoryRuntimeLayer,
+  createNodePostgresRuntimeLayer,
   createNodeMemoryRuntime,
   createNodePostgresRuntime,
   createNodeSqlLifecyclePlan,
+  createNodeSqliteRuntimeLayer,
   createNodeSyncHttpHandler,
   createNodeSqliteRuntime,
   type NodeHttpIncomingMessageLike,
@@ -247,6 +256,21 @@ const postgresTarget: RuntimeConformanceTarget = {
 const coord = { txTime: 10_000, validTime: 10_000 };
 const one = () => "one" as const;
 
+function layerWriteProgram(e: string) {
+  return Effect.gen(function* () {
+    const event = yield* applyOperationEffect({
+      op: "assert",
+      e,
+      a: "status",
+      v: "ready",
+      actor: "test",
+      actorType: "system",
+    });
+    const store = yield* EventStoreService;
+    return { event, stored: yield* store.get(event.id), events: yield* store.scan() };
+  });
+}
+
 describe("@metacrdt/node target", () => {
   test("SQL lifecycle plan validates names and emits shared table/index DDL", () => {
     const sqlite = createNodeSqlLifecyclePlan({
@@ -288,6 +312,21 @@ describe("@metacrdt/node target", () => {
         "idempotent-second-sync",
       ]),
     });
+  });
+
+  test("node memory runtime provides an Effect Layer", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        layerWriteProgram("node:memory-layer"),
+        createNodeMemoryRuntimeLayer({
+          replicaId: "node:memory-layer",
+          wall: () => 1_000,
+        }),
+      ),
+    );
+    expect(result.stored).toEqual(result.event);
+    expect(result.event.seq).toBe(1);
+    expect(versionVector(result.events)).toEqual({ "node:memory-layer": 1 });
   });
 
   test("node SQLite runtime passes shared conformance", async () => {
@@ -380,6 +419,22 @@ describe("@metacrdt/node target", () => {
     );
   });
 
+  test("node SQLite runtime provides an Effect Layer", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        layerWriteProgram("node:sqlite-layer"),
+        createNodeSqliteRuntimeLayer({
+          db: new FakeSqliteDatabase(),
+          replicaId: "node:sqlite-layer",
+          wall: () => 1_100,
+        }),
+      ),
+    );
+    expect(result.stored).toEqual(result.event);
+    expect(result.event.seq).toBe(1);
+    expect(versionVector(result.events)).toEqual({ "node:sqlite-layer": 1 });
+  });
+
   test("Postgres runtime persists event log, HLC, and seq across recreation", async () => {
     const client = new FakePostgresClient();
     const first = await createNodePostgresRuntime({
@@ -448,6 +503,22 @@ describe("@metacrdt/node target", () => {
         tablePrefix: "tenant_b",
       }).initializeStatements,
     );
+  });
+
+  test("node Postgres runtime provides an Effect Layer", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        layerWriteProgram("node:postgres-layer"),
+        createNodePostgresRuntimeLayer({
+          client: new FakePostgresClient(),
+          replicaId: "node:postgres-layer",
+          wall: () => 1_200,
+        }),
+      ),
+    );
+    expect(result.stored).toEqual(result.event);
+    expect(result.event.seq).toBe(1);
+    expect(versionVector(result.events)).toEqual({ "node:postgres-layer": 1 });
   });
 
   test("HTTP sync handler exposes health, delta pull, and event push", async () => {

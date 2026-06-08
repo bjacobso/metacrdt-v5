@@ -13,7 +13,8 @@ implements them on Cloudflare.
 - **Durable Object runtime services** — `createDurableObjectRuntime` with
   `DurableObjectEventStore`, `DurableObjectClock`, and `DurableObjectSequencer`:
   a storage-backed event log, HLC clock, and per-replica sequencer over a
-  `DurableObjectStorageLike` interface.
+  `DurableObjectStorageLike` interface. `createDurableObjectRuntimeLayer`
+  exposes the same target as an Effect `Layer`.
 - **WebSocket relay** — `DurableObjectWebSocketRelay` / `attachDurableObjectRelay`
   (`RelayConnection`, `RelayOptions`, `WebSocketLike`): accepts server sockets,
   answers version-vector hellos with deltas, merges client events through the
@@ -34,6 +35,7 @@ implements them on Cloudflare.
 
 - `@metacrdt/core`
 - `@metacrdt/runtime`
+- `effect` v3 (`^3.21.3`) for Layer providers.
 
 ## Relation to SPEC
 
@@ -45,7 +47,11 @@ to the same projections as any other target.
 ## Usage
 
 ```ts
-import { createDurableObjectRuntime, relayWorker } from "@metacrdt/cloudflare";
+import {
+  createDurableObjectRuntime,
+  createDurableObjectRuntimeLayer,
+  relayWorker,
+} from "@metacrdt/cloudflare";
 ```
 
 ## Status
@@ -54,7 +60,8 @@ This package today implements the **sync plane** — a convergent event log over
 Durable Object storage, plus the relay and Worker shells. It is storage-backed
 and protocol-correct, but not yet a queryable triple store or a live deployment.
 Its Durable Object runtime services pass the shared `@metacrdt/testkit`
-EventStore / anti-entropy / deterministic-fold conformance suite.
+EventStore / anti-entropy / deterministic-fold conformance suite and provide an
+Effect Layer tested through `applyOperationEffect`.
 
 The plan to grow it to parity with `@metacrdt/convex` — an indexed, bitemporal
 triple store over Durable Object **SQLite** storage, with projections,

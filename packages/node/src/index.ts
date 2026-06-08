@@ -9,6 +9,7 @@ import {
 } from "@metacrdt/core";
 import {
   createMemoryRuntime,
+  runtimeServicesLayer,
   type AppendResult,
   deltaSince,
   type EventFilter,
@@ -20,10 +21,12 @@ import {
   type RuntimeClock,
   type RuntimeProfile,
   type RuntimeSequencer,
+  RuntimeServiceError,
   type RuntimeServices,
   type VersionVector,
   versionVector,
 } from "@metacrdt/runtime";
+import { Effect, Layer } from "effect";
 
 export type NodeSqliteStatementLike = {
   get?(...params: readonly unknown[]): unknown | Promise<unknown>;
@@ -951,12 +954,45 @@ export class NodePostgresSequencer implements RuntimeSequencer {
   }
 }
 
-export function createNodeMemoryRuntime(options: MemoryRuntimeOptions): RuntimeServices {
+export function createNodeMemoryRuntime(
+  options: MemoryRuntimeOptions,
+): ReturnType<typeof createMemoryRuntime> {
   return createMemoryRuntime({
     ...options,
     name: options.name ?? "node-memory",
     capabilities: options.capabilities ?? ["convergent-log", "coordinated-writes"],
   });
+}
+
+function nodeRuntimeInitError(
+  operation: string,
+  cause: unknown,
+): RuntimeServiceError {
+  return new RuntimeServiceError({
+    service: "NodeRuntime",
+    operation,
+    message: cause instanceof Error ? cause.message : String(cause),
+    cause,
+  });
+}
+
+export function createNodeMemoryRuntimeLayer(options: MemoryRuntimeOptions) {
+  return runtimeServicesLayer(createNodeMemoryRuntime(options));
+}
+
+function nodeAsyncRuntimeLayer(
+  operation: string,
+  init: () => Promise<RuntimeServices & { sequencer: RuntimeSequencer }>,
+) {
+  return Layer.unwrapEffect(
+    Effect.map(
+      Effect.tryPromise({
+        try: init,
+        catch: (cause) => nodeRuntimeInitError(operation, cause),
+      }),
+      runtimeServicesLayer,
+    ),
+  );
 }
 
 export async function createNodeSqliteRuntime(
@@ -985,6 +1021,14 @@ export async function createNodeSqliteRuntime(
   };
 }
 
+export function createNodeSqliteRuntimeLayer(
+  options: NodeSqliteRuntimeOptions,
+) {
+  return nodeAsyncRuntimeLayer("createNodeSqliteRuntime", () =>
+    createNodeSqliteRuntime(options),
+  );
+}
+
 export async function createNodePostgresRuntime(
   options: NodePostgresRuntimeOptions,
 ): Promise<NodePostgresRuntime> {
@@ -1009,4 +1053,12 @@ export async function createNodePostgresRuntime(
     clock: await NodePostgresClock.create(meta, options.replicaId, options.wall),
     sequencer: await NodePostgresSequencer.create(meta, options.replicaId),
   };
+}
+
+export function createNodePostgresRuntimeLayer(
+  options: NodePostgresRuntimeOptions,
+) {
+  return nodeAsyncRuntimeLayer("createNodePostgresRuntime", () =>
+    createNodePostgresRuntime(options),
+  );
 }

@@ -1,11 +1,12 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 111 (Effect-Native Substrate) step 1 has started: the
-`@metacrdt/runtime` capability boundary now has Effect v3 `Context.Tag` services,
-`Layer` helpers, tagged runtime errors, and an in-memory Layer provider while the
-existing Promise-shaped target facades remain as compatibility shims for already
-shipped targets. The standing objective remains SPEC §1.2: every new or touched
-unit adopts Effect services/`Layer`s, `effect/Schema`, tagged errors, and
+**Current goal:** Goal 111 (Effect-Native Substrate) steps 1–2 have started:
+`@metacrdt/runtime` has Effect v3 `Context.Tag` services, `Layer` helpers,
+tagged runtime errors, and memory/localStorage Layer providers; `@metacrdt/node`,
+`@metacrdt/local`, and `@metacrdt/cloudflare` now expose Effect Layer providers
+for their runtime targets while compatibility `RuntimeServices` facades remain
+for already-shipped code. The standing objective remains SPEC §1.2: every new or
+touched unit adopts Effect services/`Layer`s, `effect/Schema`, tagged errors, and
 Effect-based tests where the current dependency graph allows it, while
 `@metacrdt/core` stays a Schema-only deterministic fold (no Effect monad). The
 **Effect v4** bump is held until Confect ships a v4-compatible release; the repo
@@ -9361,12 +9362,18 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   environment. `applyOperationEffect`, `mergeFromEffect`, and
   `requireCapabilityEffect` consume those tags and return tagged errors in the
   Effect error channel. `createMemoryRuntimeLayer` proves the shape for the
-  in-memory target. Existing Promise-shaped interfaces and helpers remain as
-  compatibility facades until target packages expose Layers.
-- **Remaining keystone work:** `convex`, `cloudflare`, `local`, `node`, and
-  `testkit` still consume/provide the compatibility `RuntimeServices` object.
-  The next Effect-native migration is target Layer providers, then testkit
-  conformance over Layers.
+  in-memory target, and `createLocalRuntimeLayer` exposes the localStorage seed.
+  Existing Promise-shaped interfaces and helpers remain as compatibility
+  facades.
+- **Target Layer providers started:** `@metacrdt/node` exposes memory, SQLite,
+  and Postgres runtime Layers; `@metacrdt/local` exposes localStorage, async,
+  IndexedDB, and SQLite-compatible runtime Layers; `@metacrdt/cloudflare`
+  exposes a Durable Object runtime Layer. Tests execute Effect programs through
+  those Layers.
+- **Remaining keystone work:** `@metacrdt/testkit` still consumes compatibility
+  `RuntimeServices` objects, and the Convex target package has not yet exposed a
+  Layer for its component-owned runtime surface. The next Effect-native migration
+  is testkit conformance over Layer-provided targets.
 - **Zero Effect today (by current design):** `core`, `schema`, `query`,
   `convex` (package), `cloudflare`, `local`, `node`, `testkit`.
 
@@ -9376,10 +9383,11 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
    Effect services behind `Context.Tag`s with `Layer` providers; keep
    determinism (clock/seq are injected services, never ambient). **Started:**
    runtime tags, adapter layers, Effect-native operation helpers, tagged runtime
-   errors, and the memory Layer are shipped.
+   errors, and memory/localStorage Layers are shipped.
 2. **Targets provide Layers.** `convex` / `cloudflare` / `local` / `node` expose
    their stores/clocks/sequencers/transports as `Layer`s satisfying the runtime
-   tags.
+   tags. **Started:** Node, local, and Cloudflare Layers are shipped; Convex is
+   still pending.
 3. **Schema at the boundaries.** Describe event rows, args/returns, and wire
    messages with `effect/Schema`; convert thrown errors to tagged errors in the
    Effect channel. `core`/`schema`/`query` may adopt `Schema` for value/clause

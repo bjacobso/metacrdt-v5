@@ -1,12 +1,16 @@
 import { describe, expect, test } from "vitest";
 import { fromEvents, valueOf } from "@metacrdt/core";
 import {
+  EventStoreService,
   applyOperation,
+  applyOperationEffect,
   exchangeDeltas,
   versionVector,
 } from "@metacrdt/runtime";
+import { Effect } from "effect";
 import {
   createDurableObjectRuntime,
+  createDurableObjectRuntimeLayer,
   type DurableObjectStorageLike,
 } from "./index.js";
 
@@ -31,6 +35,38 @@ const one = () => "one" as const;
 const many = () => "many" as const;
 
 describe("@metacrdt/cloudflare Durable Object runtime", () => {
+  test("Durable Object runtime provides an Effect Layer", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const event = yield* applyOperationEffect({
+            op: "assert",
+            e: "do:layer",
+            a: "status",
+            v: "ready",
+            actor: "test",
+            actorType: "system",
+          });
+          const store = yield* EventStoreService;
+          return {
+            event,
+            stored: yield* store.get(event.id),
+            events: yield* store.scan(),
+          };
+        }),
+        createDurableObjectRuntimeLayer({
+          storage: new FakeDurableObjectStorage(),
+          namespace: "layer",
+          replicaId: "do:layer",
+          wall: () => 50,
+        }),
+      ),
+    );
+    expect(result.stored).toEqual(result.event);
+    expect(result.event.seq).toBe(1);
+    expect(versionVector(result.events)).toEqual({ "do:layer": 1 });
+  });
+
   test("persists event log, HLC, and per-replica sequence across runtime recreation", async () => {
     const storage = new FakeDurableObjectStorage();
     let wall = 100;

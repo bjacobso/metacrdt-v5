@@ -27,7 +27,10 @@ import {
   type RuntimeProfile,
   type RuntimeSequencer,
   type RuntimeServices,
+  RuntimeServiceError,
+  runtimeServicesLayer,
 } from "@metacrdt/runtime";
+import { Effect, Layer } from "effect";
 import { indexedDbStorage, type IndexedDbStorageOptions } from "./indexedDb.js";
 import { sqliteStorage, type SqliteStorageOptions } from "./sqlite.js";
 
@@ -277,6 +280,39 @@ export async function createAsyncLocalRuntime(
   };
 }
 
+function localRuntimeInitError(
+  operation: string,
+  cause: unknown,
+): RuntimeServiceError {
+  return new RuntimeServiceError({
+    service: "LocalRuntime",
+    operation,
+    message: cause instanceof Error ? cause.message : String(cause),
+    cause,
+  });
+}
+
+function asyncLocalRuntimeLayer(
+  operation: string,
+  init: () => Promise<RuntimeServices & { sequencer: RuntimeSequencer }>,
+) {
+  return Layer.unwrapEffect(
+    Effect.map(
+      Effect.tryPromise({
+        try: init,
+        catch: (cause) => localRuntimeInitError(operation, cause),
+      }),
+      runtimeServicesLayer,
+    ),
+  );
+}
+
+export function createAsyncLocalRuntimeLayer(options: AsyncLocalRuntimeOptions) {
+  return asyncLocalRuntimeLayer("createAsyncLocalRuntime", () =>
+    createAsyncLocalRuntime(options),
+  );
+}
+
 export type IndexedDbLocalFirstRuntimeOptions = Omit<
   AsyncLocalRuntimeOptions,
   "storage"
@@ -371,6 +407,14 @@ export async function createIndexedDbLocalFirstRuntime(
   });
 }
 
+export function createIndexedDbLocalFirstRuntimeLayer(
+  options: IndexedDbLocalFirstRuntimeOptions,
+) {
+  return asyncLocalRuntimeLayer("createIndexedDbLocalFirstRuntime", () =>
+    createIndexedDbLocalFirstRuntime(options),
+  );
+}
+
 export async function startIndexedDbLocalFirstRuntime(
   options: IndexedDbLocalFirstRuntimeOptions,
 ): Promise<IndexedDbLocalFirstRuntime> {
@@ -430,6 +474,14 @@ export async function createSqliteLocalFirstRuntime(
       transport?.stop();
     },
   });
+}
+
+export function createSqliteLocalFirstRuntimeLayer(
+  options: SqliteLocalFirstRuntimeOptions,
+) {
+  return asyncLocalRuntimeLayer("createSqliteLocalFirstRuntime", () =>
+    createSqliteLocalFirstRuntime(options),
+  );
 }
 
 export async function startSqliteLocalFirstRuntime(

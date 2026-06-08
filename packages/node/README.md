@@ -6,14 +6,17 @@ different storage adapters behind the same runtime contracts.
 
 ## What Node Owns
 
-- **Node memory runtime** — `createNodeMemoryRuntime`, a named wrapper over the
-  runtime memory harness for server/dev/test processes.
+- **Node memory runtime** — `createNodeMemoryRuntime` plus
+  `createNodeMemoryRuntimeLayer`, named wrappers over the runtime memory harness
+  for server/dev/test processes.
 - **Server SQLite runtime** — `createNodeSqliteRuntime`, with
   `NodeSqliteEventStore`, `NodeSqliteClock`, and `NodeSqliteSequencer` over a
-  structural SQLite driver interface.
+  structural SQLite driver interface. `createNodeSqliteRuntimeLayer` exposes the
+  same target as an Effect `Layer`.
 - **Server Postgres runtime** — `createNodePostgresRuntime`, with
   `NodePostgresEventStore`, `NodePostgresClock`, and `NodePostgresSequencer`
   over a structural `query(sql, params)` client interface.
+  `createNodePostgresRuntimeLayer` exposes the same target as an Effect `Layer`.
 - **Driver-neutral SQLite shape** — `NodeSqliteDatabaseLike` /
   `NodeSqliteStatementLike`, matching the common `prepare().get/all/run` surface
   used by better-sqlite3-style wrappers, Bun SQLite adapters, and tests. The
@@ -57,19 +60,23 @@ The memory, SQLite, and Postgres runtime services pass the shared
 `@metacrdt/testkit` EventStore / anti-entropy / deterministic-fold conformance
 suite. The package also verifies SQLite and Postgres persistence of the event
 log, HLC, and per-replica `seq` across runtime recreation, and tests the
-shared SQL lifecycle plan used by both SQL adapters. It also tests the
-HTTP/SSE handler's health, delta pull, event push, SSE response paths, and the
-native-style listener adapter's response writing and streamed POST body merge.
-The dev-server CLI is tested by starting a real ephemeral `node:http` server and
-querying its health route.
+shared SQL lifecycle plan used by both SQL adapters. Memory, SQLite, and
+Postgres also provide Effect Layers tested through `applyOperationEffect`. It
+also tests the HTTP/SSE handler's health, delta pull, event push, SSE response
+paths, and the native-style listener adapter's response writing and streamed
+POST body merge. The dev-server CLI is tested by starting a real ephemeral
+`node:http` server and querying its health route.
 
 ## Usage
 
 ```ts
 import {
+  createNodeMemoryRuntimeLayer,
   createNodeHttpRequestListener,
+  createNodePostgresRuntimeLayer,
   createNodePostgresRuntime,
   createNodeSqlLifecyclePlan,
+  createNodeSqliteRuntimeLayer,
   createNodeSqliteRuntime,
   createNodeSyncHttpHandler,
 } from "@metacrdt/node";
@@ -88,6 +95,15 @@ const response = await handleSync({
 // Native node:http-style adapter:
 const listener = createNodeHttpRequestListener(runtime, { basePath: "/sync" });
 // http.createServer((req, res) => void listener(req, res)).listen(8787)
+```
+
+Effect-native hosts can provide the same targets as Layers:
+
+```ts
+const layer = createNodePostgresRuntimeLayer({
+  replicaId: "node:pg",
+  client,
+});
 ```
 
 Postgres uses the common `query(sql, params)` driver shape:
