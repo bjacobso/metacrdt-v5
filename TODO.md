@@ -77,25 +77,30 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Order entity detail state by the primary type's declared schema, then
   append extra runtime facts.
 
-**Current goal — Goal 8 Confect-first compliance planning**
-- [ ] Convert one real production domain boundary to Confect/Effect without a
+**Goal 8 — Confect-first compliance planning**
+- [x] Convert one real production domain boundary to Confect/Effect without a
   wholesale backend rewrite.
-- [ ] Ship dry-run compliance: hypothetical worker/placement → required forms,
+- [x] Ship dry-run compliance: hypothetical worker/placement → required forms,
   `reuse` vs `collect`, no writes.
-- [ ] Keep existing `api.compliance.workerCompliance` behavior stable while
+- [x] Keep existing `api.compliance.workerCompliance` behavior stable while
   adding a Confect sidecar mount for the planner.
-- [ ] Record the Confect decision after the slice: expand, keep narrow, or
+- [x] Record the Confect decision after the slice: expand, keep narrow, or
   defer.
 
 **Product / engine**
 - [x] Attribute-level PII authorization — read grants; query layer omits
   ungranted attrs (the i9 SSN) and reports `Denied`.
-- [ ] Dry-run compliance — now scoped as Goal 8's Confect-first production
-  slice.
+- [x] Dry-run compliance — Confect sidecar planner with reuse/collect decisions,
+  no writes.
 - [x] Schema-driven forms / list views — render columns + collection fields from a
   type's declared attributes (`typeSchemaAsOf`), not ad-hoc.
 - [ ] Auth + write authorization — the live site takes public writes; the collect
   token is demo-grade (no single-use / expiry).
+
+**Next goal candidates**
+- [ ] Choose the next active goal: `@metacrdt/runtime` harness groundwork,
+  auth/write hardening, config diff/history, arg-taking actions, or the next
+  `@metacrdt/convex` function factory/component slice.
 
 **Docs**
 - [ ] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -129,6 +134,13 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   source decision, typed errors, read-only guarantees, tests, UI work, docs, and
   full verification gate. It preserves `@metacrdt/core` as Effect-free and keeps
   protocol writes out of scope.
+- [x] **Goal 8 shipped.** `confect/compliance.*` adds
+  `dryRunWorkerCompliance`; `convex/complianceConfect.ts` mounts it; the planner
+  derives requirements from enabled `require.*` rules, returns `reuse`/`collect`
+  decisions, and fails unsupported rule shapes with typed errors. The Compliance
+  page renders the dry-run panel. Verification: Confect codegen; core/convex/
+  forma/package tests; 80 Convex tests; all typechecks; Vite build; Convex dev
+  push; static upload; live `complianceConfect:dryRunWorkerCompliance` call.
 
 ### 2026-06-07 — schema-driven entity UI
 - [x] **Goal 7 shipped:** `attributes.typeSchemaAsOf` now returns UI-ready

@@ -160,6 +160,9 @@ Built today:
 - generated entity detail pages
 - Tailwind + React Router research-preview UI
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility
+- Confect/Effect sidecar for typed compliance planning: a read-only dry-run
+  planner answers collect-vs-reuse for hypothetical placements without moving
+  protocol writes behind Effect
 
 The demo elaboration is **datarooms**: compliance/onboarding as a mergeable fact
 log. That product surface is intentionally just one physics over the substrate,

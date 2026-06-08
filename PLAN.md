@@ -1,9 +1,10 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 8 — Confect-first compliance planning. Convert a real
-Convex domain to the Confect/Effect style by moving compliance read/planning
-logic behind a Confect sidecar and shipping the dry-run compliance feature. This
-is a production-path experiment, not a wholesale backend rewrite.
+**Current goal:** Goal 8 (Confect-first compliance planning) has shipped. The
+next active goal should be chosen from the remaining TODO candidates:
+`@metacrdt/runtime` harness groundwork, auth/write hardening, config
+diff/history, arg-taking actions, or the next `@metacrdt/convex` function
+factory/component slice.
 
 This plan is the operational goal file. Read it with:
 
@@ -37,16 +38,12 @@ The repository should make that statement true in code:
 5. Confect/Effect improves the Convex target's schema, error, and service
    boundaries without becoming the protocol or infecting `@metacrdt/core`.
 
-The immediate technical gap is now authoring/runtime ergonomics. The protocol
-kernel is extracted, the Convex write/read paths are core-shaped enough for the
-centralized reference runtime, the package graph has `core`, `convex`, and
-`forma`, config reconciliation works, PII read authorization is enforced, and
-the entity UI is schema-driven. The next question is whether new and migrated
-Convex logic should be authored as Confect/Effect programs.
-
-The answer for this plan is: **yes, next — but narrowly.** Convert one real
-domain first, behind stable public APIs, then decide whether broader conversion
-is earned.
+The immediate technical gap is now choosing the next runtime/product slice. The
+protocol kernel is extracted, the Convex write/read paths are core-shaped enough
+for the centralized reference runtime, the package graph has `core`, `convex`,
+and `forma`, config reconciliation works, PII read authorization is enforced, the
+entity UI is schema-driven, and Confect has now been adopted narrowly for a real
+read/planning domain.
 
 ---
 
@@ -213,13 +210,13 @@ Confect step.
 
 #### 1. Read Convex Guidelines
 
-- [ ] Read `convex/_generated/ai/guidelines.md`.
-- [ ] Note any generated rules that affect schema, indexes, validators, or
+- [x] Read `convex/_generated/ai/guidelines.md`.
+- [x] Note any generated rules that affect schema, indexes, validators, or
   scheduler usage.
 
 #### 2. Audit Existing Write Path
 
-- [ ] Inspect:
+- [x] Inspect:
   - `convex/schema.ts`
   - `convex/facts.ts`
   - `convex/lib/visibility.ts`
@@ -297,7 +294,6 @@ For the centralized Convex runtime, this can be minimal but protocol-shaped.
   - Add a real per-replica monotonic `seq` when building the multi-replica sync
     runtime, where it can be owned by the replica/target (for example a Durable
     Object or local replica), not by one global Convex document.
-- [ ] HLC physical time can start from transaction time.
 - [x] HLC physical time starts from transaction time.
 - [x] HLC logical component is derived from Convex transaction document
   `_creationTime`, preserving rapid same-millisecond centralized write order
@@ -929,7 +925,7 @@ present on current data rows.
 
 ## Goal 8 — Confect-First Compliance Planning
 
-**Status:** current goal.
+**Status:** shipped in the Convex reference runtime.
 
 **Objective:** answer the question "should we first convert current Convex logic
 to Confect/Effect?" by converting one real production domain boundary, not the
@@ -969,9 +965,8 @@ convex/complianceConfect.ts      # manual mount of generated functions
 convex/compliance.ts             # stable existing public API remains plain Convex
 ```
 
-If this slice is clear, tested, and easier to evolve than the plain Convex
-equivalent, Confect can expand to more `@metacrdt/convex` internals. If it is
-awkward, Confect remains a typed integration option rather than the house style.
+This slice is clear enough to adopt Confect narrowly for read/planning domains.
+It does **not** justify a wholesale rewrite or converting protocol writes yet.
 
 ### Why Compliance Planning
 
@@ -1072,8 +1067,8 @@ tokens. It is a planning projection only.
 
 #### 1. Read and Audit
 
-- [ ] Read `convex/_generated/ai/guidelines.md`.
-- [ ] Inspect:
+- [x] Read `convex/_generated/ai/guidelines.md`.
+- [x] Inspect:
   - `convex/compliance.ts`
   - `convex/appconfig.ts`
   - `convex/rules.ts`
@@ -1082,7 +1077,7 @@ tokens. It is a planning projection only.
   - `confect/metacrdt.*`
   - `confect/schema.ts`
   - `confect/tables/*`
-- [ ] Confirm working tree is clean before changing the Confect sidecar.
+- [x] Confirm working tree is clean before changing the Confect sidecar.
 
 #### 2. Define Requirement Source
 
@@ -1102,56 +1097,56 @@ Do not duplicate requirement literals directly in the UI.
 
 #### 3. Extend Confect Schema
 
-- [ ] Add Confect table definitions needed by the planner:
+- [x] Add Confect table definitions needed by the planner:
   - `currentFacts`
   - `rules`
   - optionally `derivedFacts`
   - any table required for read-only verification
-- [ ] Preserve the safe codegen wrapper:
+- [x] Preserve the safe codegen wrapper:
   - use `npm run confect:codegen`;
   - do not run raw `confect codegen` against the real `convex/` tree.
-- [ ] Regenerate `confect/_generated/*` and confirm no hand-written Convex files
+- [x] Regenerate `confect/_generated/*` and confirm no hand-written Convex files
   are removed or rewritten.
 
 #### 4. Write the Confect Spec
 
-- [ ] Create `confect/compliance.spec.ts`.
-- [ ] Add `dryRunWorkerCompliance` public query spec:
+- [x] Create `confect/compliance.spec.ts`.
+- [x] Add `dryRunWorkerCompliance` public query spec:
   - args: worker id and optional hypothetical placement object.
   - returns: typed result with item list and summary.
   - errors: `UnknownWorker`, `InvalidPlacement`, `UnsupportedRequirement`.
-- [ ] Use exact optional fields correctly; Confect/Effect Schema should omit
+- [x] Use exact optional fields correctly; Confect/Effect Schema should omit
   absent fields rather than return `undefined`.
 
 #### 5. Implement the Effect Program
 
-- [ ] Create `confect/compliance.impl.ts`.
-- [ ] Read current facts through `DatabaseReader`.
-- [ ] Build a placement context from:
+- [x] Create `confect/compliance.impl.ts`.
+- [x] Read current facts through `DatabaseReader`.
+- [x] Build a placement context from:
   - existing `Placement` facts for the worker;
   - optional hypothetical placement args.
-- [ ] Read and parse configured requirement rules.
-- [ ] For each requirement:
+- [x] Read and parse configured requirement rules.
+- [x] For each requirement:
   - resolve the scope entity;
   - evaluate supported guards;
   - check existing `submitted.<form>` facts for `(worker, scope)`;
   - return `reuse` or `collect`.
-- [ ] Deduplicate by `(form, scope)`.
-- [ ] Produce deterministic ordering by `(form, scope, decision)`.
-- [ ] Make absence/error cases typed, not thrown strings.
+- [x] Deduplicate by `(form, scope)`.
+- [x] Produce deterministic ordering by `(form, scope, decision)`.
+- [x] Make absence/error cases typed, not thrown strings.
 
 #### 6. Mount Safely
 
-- [ ] Add the new group to `confect/spec.ts` and `confect/impl.ts`.
-- [ ] Export the registered function from `convex/complianceConfect.ts`.
-- [ ] Decide whether `convex/compliance.ts` should expose a wrapper:
+- [x] Add the new group to `confect/spec.ts` and `confect/impl.ts`.
+- [x] Export the registered function from `convex/complianceConfect.ts`.
+- [x] Decide whether `convex/compliance.ts` should expose a wrapper:
   - if yes, document how the wrapper avoids generated-reference circularity;
   - if no, document why clients should call `api.complianceConfect.*` directly.
-- [ ] Keep existing `api.compliance.workerCompliance` unchanged.
+- [x] Keep existing `api.compliance.workerCompliance` unchanged.
 
 #### 7. Tests
 
-- [ ] Add Confect/Convex tests proving:
+- [x] Add Confect/Convex tests proving:
   - dry-run for a fully seeded worker returns expected `reuse`/`collect`;
   - dry-run with a hypothetical forklift placement includes forklift form;
   - non-forklift job omits forklift form;
@@ -1159,36 +1154,36 @@ Do not duplicate requirement literals directly in the UI.
   - missing submissions are collected;
   - unsupported rule shapes fail with a typed error;
   - no rows are inserted/updated/deleted by the query.
-- [ ] Reuse existing appconfig/staffing bootstrap helpers where possible.
-- [ ] Avoid asserting UI copy in backend tests.
+- [x] Reuse existing appconfig/staffing bootstrap helpers where possible.
+- [x] Avoid asserting UI copy in backend tests.
 
 #### 8. Frontend
 
-- [ ] Add a dry-run panel to `src/pages/Compliance.tsx`.
-- [ ] Inputs:
+- [x] Add a dry-run panel to `src/pages/Compliance.tsx`.
+- [x] Inputs:
   - worker
   - employer
   - client
   - job
   - venue
-- [ ] Render a compact table:
+- [x] Render a compact table:
   - form
   - scope
   - decision (`Reuse` / `Collect`)
   - reason/source if returned
-- [ ] Do not add explanatory marketing copy in-app.
-- [ ] Preserve the existing compliance panel and bootstrap behavior.
+- [x] Do not add explanatory marketing copy in-app.
+- [x] Preserve the existing compliance panel and bootstrap behavior.
 
 #### 9. Documentation
 
-- [ ] Update `docs/confect.md` with the Goal 8 result:
+- [x] Update `docs/confect.md` with the Goal 8 result:
   - what became easier;
   - what remained awkward;
   - whether Confect should expand beyond compliance planning.
-- [ ] Update `TODO.md`:
+- [x] Update `TODO.md`:
   - mark dry-run compliance shipped if complete;
   - record any next Confect conversion candidate.
-- [ ] Update `README.md` only if public API or first-principles positioning
+- [x] Update `README.md` only if public API or first-principles positioning
   changes.
 
 #### 10. Verification
@@ -1211,6 +1206,21 @@ npm run build
 npx convex dev --once
 npx @convex-dev/static-hosting upload
 ```
+
+Result for shipped Goal 8:
+
+- `npm run confect:codegen` passed.
+- `npm run test:core` passed (46 tests).
+- `npm run test:convex-package` passed (9 tests).
+- `npm run test:forma` passed (9 tests).
+- `npm run test:confect` passed (2 tests).
+- `npm test` passed (80 Convex tests).
+- Package, Convex, and app typechecks passed.
+- `npm run build` passed.
+- `npx convex dev --once` pushed functions to `chatty-hare-94`.
+- `npx @convex-dev/static-hosting upload` pushed the static UI.
+- Live `complianceConfect:dryRunWorkerCompliance` returned a dry-run plan for
+  `worker:maria`.
 
 If browser tooling is available, verify:
 
@@ -1256,7 +1266,7 @@ These remain valuable, but they should not interrupt the current goal.
 
 - [ ] Config history/diff UI.
 - [ ] Arg-taking actions / actions that open forms.
-- [ ] Dry-run compliance: hypothetical worker + scope, no writes.
+- [x] Dry-run compliance: hypothetical worker + scope, no writes.
 
 ### Auth / Privacy
 

@@ -6,8 +6,30 @@ import { Card, CardHeader, Button, Mono, shortId } from "../ui";
 
 export default function Compliance() {
   const [worker, setWorker] = useState("worker:maria");
+  const [employer, setEmployer] = useState("employer:acme");
+  const [client, setClient] = useState("client:globex");
+  const [job, setJob] = useState("job:forklift1");
+  const [venue, setVenue] = useState("venue:stadium7");
   const [busy, setBusy] = useState(false);
   const compliance = useQuery(api.compliance.workerCompliance, { worker });
+  const dryPlacement = Object.fromEntries(
+    Object.entries({ employer, client, job, venue }).filter(([, v]) => v !== ""),
+  ) as {
+    employer?: string;
+    client?: string;
+    job?: string;
+    venue?: string;
+  };
+  const dryRunArgs =
+    compliance !== undefined && compliance.required.length > 0
+      ? {
+          worker,
+          ...(Object.keys(dryPlacement).length > 0
+            ? { placement: dryPlacement }
+            : {}),
+        }
+      : "skip";
+  const dryRun = useQuery(api.complianceConfect.dryRunWorkerCompliance, dryRunArgs);
   const setupStaffing = useMutation(api.appconfig.setupStaffing);
   const submitForm = useMutation(api.compliance.submitForm);
 
@@ -46,6 +68,96 @@ export default function Compliance() {
           every placement sharing that scope (reuse). Tasks are{" "}
           <Mono>requirement ∧ ¬submitted</Mono> via negation.
         </p>
+      </Card>
+
+      <Card>
+        <CardHeader title="Dry run" hint="read-only plan" />
+        <div className="grid gap-3 border-b border-line-soft px-5 py-4 md:grid-cols-2 lg:grid-cols-4">
+          <label className="text-[12px] font-medium uppercase text-muted">
+            Employer
+            <EntityPicker
+              type="Employer"
+              value={employer}
+              onChange={setEmployer}
+              className="mt-1 w-full"
+            />
+          </label>
+          <label className="text-[12px] font-medium uppercase text-muted">
+            Client
+            <EntityPicker
+              type="Client"
+              value={client}
+              onChange={setClient}
+              className="mt-1 w-full"
+            />
+          </label>
+          <label className="text-[12px] font-medium uppercase text-muted">
+            Job
+            <EntityPicker
+              type="Job"
+              value={job}
+              onChange={setJob}
+              className="mt-1 w-full"
+            />
+          </label>
+          <label className="text-[12px] font-medium uppercase text-muted">
+            Venue
+            <EntityPicker
+              type="Venue"
+              value={venue}
+              onChange={setVenue}
+              className="mt-1 w-full"
+            />
+          </label>
+        </div>
+        {compliance === undefined ? (
+          <p className="px-5 py-4 text-[13px] text-muted">Loading…</p>
+        ) : compliance.required.length === 0 ? (
+          <p className="px-5 py-4 text-[13px] text-muted">
+            Seed the staffing blueprint to preview collection vs reuse.
+          </p>
+        ) : dryRun === undefined ? (
+          <p className="px-5 py-4 text-[13px] text-muted">Planning…</p>
+        ) : dryRun.items.length === 0 ? (
+          <p className="px-5 py-4 text-[13px] text-muted">
+            No requirements match this placement.
+          </p>
+        ) : (
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="border-b border-line-soft text-left text-[11px] uppercase text-muted">
+                <th className="px-5 py-2 font-medium">Form</th>
+                <th className="px-5 py-2 font-medium">Scope</th>
+                <th className="px-5 py-2 font-medium">Decision</th>
+                <th className="px-5 py-2 font-medium">Source</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line-soft">
+              {dryRun.items.map((item) => (
+                <tr key={`${item.form}:${item.scope}`}>
+                  <td className="px-5 py-2.5 font-medium text-ink">{item.form}</td>
+                  <td className="px-5 py-2.5 text-muted">
+                    <Mono>{shortId(item.scope)}</Mono>
+                  </td>
+                  <td className="px-5 py-2.5">
+                    {item.decision === "reuse" ? (
+                      <span className="rounded-full bg-green-soft px-2 py-0.5 text-[11px] font-semibold uppercase text-green">
+                        reuse
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-orange-soft px-2 py-0.5 text-[11px] font-semibold uppercase text-orange-ink">
+                        collect
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-5 py-2.5 text-muted">
+                    {item.source} · {item.placements.map(shortId).join(", ")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </Card>
 
       <Card>

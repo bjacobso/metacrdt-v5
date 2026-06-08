@@ -134,6 +134,51 @@ Recommendation:
 
 ---
 
+## Goal 8 result — Confect as a compliance-planning sidecar
+
+Implemented:
+
+- `confect/compliance.spec.ts` defines a real product-facing function,
+  `compliance.dryRunWorkerCompliance`, with Effect Schema args/returns and typed
+  errors: `UnknownWorker`, `InvalidPlacement`, and `UnsupportedRequirement`.
+- `confect/compliance.impl.ts` implements the planner as an Effect program over
+  generated `DatabaseReader` services.
+- The planner derives requirements from enabled configured `require.*` Datalog
+  rules, not from a duplicated UI list. Supported shapes are the staffing
+  requirement pattern (`Placement` + `worker` + one scope attr + optional simple
+  guard). Unsupported shapes fail typed instead of silently misplanning.
+- `convex/complianceConfect.ts` manually mounts the generated sidecar function
+  beside the existing plain Convex compliance API.
+- `src/pages/Compliance.tsx` renders a read-only dry-run panel showing which
+  required forms would reuse existing submissions and which would need collection
+  for a hypothetical placement.
+- `convex/complianceConfect.test.ts` proves reuse/collect decisions, the
+  forklift guard, typed unsupported-rule errors, and that the dry-run query does
+  not write rows.
+
+Decision:
+
+- **Adopt Confect narrowly for compliance planning and similar read/planning
+  domains.**
+- Do **not** convert `convex/facts.ts` or protocol writes to Confect yet.
+- Keep `@metacrdt/core` pure and Effect-free.
+- Keep using the safe sidecar codegen wrapper; raw `confect codegen` still must
+  not own this repo's hand-written `convex/` tree.
+
+What became clearer:
+
+- Confect is useful when the boundary has a shaped return type, typed domain
+  errors, and enough business logic that a pure Effect program reads as a
+  planner/service rather than as wrapper boilerplate.
+- Confect is less compelling for tiny direct Convex queries where the generated
+  service layer would add more ceremony than safety.
+- The strongest near-term expansion path is more **read/planning** surfaces:
+  config diff/history, arg-taking action planning, and eventually reusable
+  `@metacrdt/convex` function factories. Protocol writes should wait until the
+  package/component boundary is clearer.
+
+---
+
 ## The thesis
 
 Confect's premise is that Effect can run in the Convex V8 isolate. If true, three

@@ -12,6 +12,7 @@ import type * as actions from "../actions.js";
 import type * as appconfig from "../appconfig.js";
 import type * as attributes from "../attributes.js";
 import type * as compliance from "../compliance.js";
+import type * as complianceConfect from "../complianceConfect.js";
 import type * as crons from "../crons.js";
 import type * as datalog from "../datalog.js";
 import type * as entities from "../entities.js";
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   appconfig: typeof appconfig;
   attributes: typeof attributes;
   compliance: typeof compliance;
+  complianceConfect: typeof complianceConfect;
   crons: typeof crons;
   datalog: typeof datalog;
   entities: typeof entities;
