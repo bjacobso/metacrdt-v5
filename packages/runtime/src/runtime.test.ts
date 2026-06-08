@@ -3,6 +3,7 @@ import { assert as assertEvent, fromEvents, valueOf } from "@metacrdt/core";
 import { Effect } from "effect";
 import {
   EventStoreService,
+  ProjectionStoreService,
   RuntimeCapabilityError,
   applyOperationEffect,
   applyOperation,
@@ -11,6 +12,7 @@ import {
   deltaSince,
   exchangeDeltas,
   mergeFrom,
+  projectionRowsFromLog,
   requireCapability,
   versionVector,
 } from "./index.js";
@@ -57,6 +59,64 @@ describe("@metacrdt/runtime memory harness", () => {
     expect(valueOf("worker:maria", "worker.status", coord, log, one)).toBe(
       "terminated",
     );
+  });
+
+  test("memory Layer can materialize current projection rows", async () => {
+    const layer = createMemoryRuntimeLayer({
+      replicaId: "effect:projection",
+      wall: () => 100,
+    });
+    const program = Effect.gen(function* () {
+      yield* applyOperationEffect({
+        op: "assert",
+        e: "worker:maria",
+        a: "worker.status",
+        v: "active",
+        actor: "user:1",
+      });
+      yield* applyOperationEffect({
+        op: "assert",
+        e: "worker:maria",
+        a: "worker.status",
+        v: "terminated",
+        actor: "user:1",
+      });
+      yield* applyOperationEffect({
+        op: "assert",
+        e: "worker:maria",
+        a: "worker.tag",
+        v: "remote",
+        actor: "user:1",
+      });
+      yield* applyOperationEffect({
+        op: "assert",
+        e: "worker:maria",
+        a: "worker.tag",
+        v: "urgent",
+        actor: "user:1",
+      });
+      const store = yield* EventStoreService;
+      const projection = yield* ProjectionStoreService;
+      const rows = projectionRowsFromLog(
+        fromEvents(yield* store.scan()),
+        coord,
+        (a) => (a === "worker.tag" ? "many" : "one"),
+      );
+      const replaced = yield* projection.replace(rows);
+      return {
+        replaced,
+        status: yield* projection.scan({
+          e: "worker:maria",
+          a: "worker.status",
+        }),
+        tags: yield* projection.scan({ e: "worker:maria", a: "worker.tag" }),
+      };
+    });
+
+    const result = await Effect.runPromise(Effect.provide(program, layer));
+    expect(result.replaced.rows).toBe(3);
+    expect(result.status.map((row) => row.v)).toEqual(["terminated"]);
+    expect(result.tags.map((row) => row.v).sort()).toEqual(["remote", "urgent"]);
   });
 
   test("Effect operation helpers fail with tagged errors", async () => {

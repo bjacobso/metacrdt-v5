@@ -17,11 +17,13 @@ import {
   runRuntimeNetworkTransportConformance,
   runRuntimePersistenceConformance,
   runRuntimeProjectionConformance,
+  runRuntimeProjectionStoreConformance,
   runRuntimeQueryConformance,
   runRuntimeSchedulerConformance,
   runRuntimeTransportConformance,
   type RuntimeNetworkTransportConformanceTarget,
   type RuntimePersistenceConformanceTarget,
+  type RuntimeProjectionStoreConformanceTarget,
   type RuntimeSchedulerConformanceTarget,
   type RuntimeTransportConformanceTarget,
   type RuntimeLayerConformanceTarget,
@@ -43,6 +45,16 @@ class MemoryStorage implements LocalRuntimeStorage {
 
 const memoryTarget: RuntimeLayerConformanceTarget = {
   name: "memory",
+  createLayer(options: RuntimeFactoryOptions) {
+    return createMemoryRuntimeLayer({
+      replicaId: options.replicaId,
+      wall: options.wall,
+    });
+  },
+};
+
+const memoryProjectionStoreTarget: RuntimeProjectionStoreConformanceTarget = {
+  name: "memory-projection-store",
   createLayer(options: RuntimeFactoryOptions) {
     return createMemoryRuntimeLayer({
       replicaId: options.replicaId,
@@ -385,6 +397,19 @@ describe("@metacrdt/testkit", () => {
       "query-or-dedupe",
       "query-pagination-aggregation",
       "query-derived-rows",
+    ]);
+  });
+
+  test("runtime projection-store conformance passes for the in-memory target", async () => {
+    const report = await runRuntimeProjectionStoreConformance(
+      memoryProjectionStoreTarget,
+    );
+    expect(report.target).toBe("memory-projection-store");
+    expect(report.checks).toEqual([
+      "projection-store-replace-from-fold",
+      "projection-store-scan-filters",
+      "projection-store-replace-is-atomic",
+      "projection-store-clear",
     ]);
   });
 

@@ -85,9 +85,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   EventStore-backed Datalog/query semantics over target-returned logs through the
   pure `@metacrdt/query` helpers: joins, `or`, `not`, compare/compute,
   provenance, pagination, aggregation, and derived-row shaping.
-- [ ] **Goal 111 next: expanded suites** — add a production Datalog/query service
-  contract and materialized projection-store conformance as second
-  implementations expose those capabilities.
+- [x] **Goal 111 materialized projection-store boundary started** —
+  `@metacrdt/runtime` now defines `ProjectionStoreService`, `ProjectionRow`,
+  `ProjectionStore`, and `projectionRowsFromLog`; the memory Layer provides
+  `MemoryProjectionStore`; `@metacrdt/testkit` has opt-in
+  `runRuntimeProjectionStoreConformance`.
+- [ ] **Goal 111 next: expanded suites** — wire `ProjectionStoreService` into
+  durable targets (Convex/Node/local/Cloudflare) and add a production
+  Datalog/query service contract as second implementations expose those
+  capabilities.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
@@ -530,6 +536,24 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — Goal 111 materialized projection-store boundary
+- [x] **Started the shared projection-store service.** `@metacrdt/runtime` now
+  exports `ProjectionStoreService`, `projectionStoreLayer`,
+  `projectionStoreService`, `ProjectionRow`, `ProjectionStore`, and
+  `ProjectionFilter`; `runtimeServicesLayer` provides the service when a target
+  supplies a projection store.
+- [x] **Added deterministic projection rows.** `projectionRowsFromLog` folds a
+  protocol log through `@metacrdt/core` visibility/cardinality semantics and
+  produces stable materialized current rows. Targets own storage and indexing;
+  they do not own fold semantics.
+- [x] **Memory proves the contract.** `MemoryProjectionStore` ships with the
+  memory Layer, and `runRuntimeProjectionStoreConformance` proves replace from
+  fold, entity/attribute/id/event-id scans, atomic rebuild-style replacement, and
+  clear.
+- [ ] **Remaining adoption:** durable targets still need to provide
+  `ProjectionStoreService` before they can run the projection-store conformance
+  suite.
 
 ### 2026-06-08 — Goal 111 EventStore-backed query conformance
 - [x] **Added `runRuntimeQueryConformance` to `@metacrdt/testkit`.** The suite

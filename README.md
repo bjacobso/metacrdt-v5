@@ -153,9 +153,11 @@ Current packages:
   VM, type inference, and language-owned elaboration utilities.
 - **`@metacrdt/runtime`** (`packages/runtime`) — target-neutral Effect service
   contracts and memory harness: `Context.Tag` + `Layer` runtime services,
-  injected HLC clock, per-replica sequencer, Effect-native operation helpers,
-  compatibility Promise facades, version-vector delta calculation,
-  BroadcastChannel anti-entropy, and p2p DataChannel anti-entropy.
+  injected HLC clock, per-replica sequencer, materialized current
+  `ProjectionStoreService`, Effect-native operation helpers, compatibility
+  Promise facades, version-vector delta calculation, BroadcastChannel
+  anti-entropy, and p2p DataChannel anti-entropy. The runtime package also owns
+  the shared `ProjectionRow` contract and `projectionRowsFromLog` builder.
 - **`@metacrdt/cloudflare`** (`packages/cloudflare`) — Durable Object / Worker
   target helpers: storage-backed event log, HLC, per-replica sequencer,
   Effect Layer provider, WebSocket relay shell, Worker router, and example
@@ -180,9 +182,10 @@ Current packages:
   Effect Layer-backed checks for EventStore idempotency/filtering/content-id
   verification, version-vector anti-entropy, deterministic fold convergence, and
   EventStore-backed projection and Datalog/query semantics. It also includes
-  restart-persistence conformance for durable targets, checking event-log/HLC/seq
-  continuity across runtime re-creation, plus scheduler service-boundary,
-  transport publish-boundary, and peer network
+  opt-in materialized projection-store conformance for targets that provide
+  `ProjectionStoreService`, restart-persistence conformance for durable targets,
+  checking event-log/HLC/seq continuity across runtime re-creation, plus
+  scheduler service-boundary, transport publish-boundary, and peer network
   delivery/catch-up conformance for observable services/harnesses. The package
   proves itself against runtime Layers (including BroadcastChannel, p2p, and
   Cloudflare relay network harnesses) and is consumed by Convex/Node/local/
@@ -688,8 +691,8 @@ Frontier:
 - HLC + version-vector sync across replicas
 - Durable Object + SQLite triple-store parity
 - production database lifecycle/migrations beyond the current Node SQL DDL plan
-- production Datalog/query-service and materialized projection-store conformance
-  suites
+- production Datalog/query-service conformance and durable-target adoption of the
+  materialized projection-store suite
 
 See [TODO.md](./TODO.md) for the running pulse.
 

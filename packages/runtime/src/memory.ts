@@ -12,6 +12,10 @@ import {
   EventFilter,
   EventStore,
   MergeResult,
+  ProjectionFilter,
+  ProjectionReplaceResult,
+  ProjectionRow,
+  ProjectionStore,
   RuntimeCapability,
   RuntimeClock,
   RuntimeProfile,
@@ -58,6 +62,34 @@ export class MemoryEventStore implements EventStore {
       if ((await this.append(event)).inserted) inserted++;
     }
     return { inserted, seen };
+  }
+}
+
+export class MemoryProjectionStore implements ProjectionStore {
+  #rows = new Map<string, ProjectionRow>();
+
+  async replace(rows: Iterable<ProjectionRow>): Promise<ProjectionReplaceResult> {
+    this.#rows = new Map();
+    for (const row of rows) this.#rows.set(row.id, row);
+    return { rows: this.#rows.size };
+  }
+
+  async clear(): Promise<void> {
+    this.#rows.clear();
+  }
+
+  async scan(filter: ProjectionFilter = {}): Promise<ProjectionRow[]> {
+    const ids = filter.ids ? new Set(filter.ids) : null;
+    const eventIds = filter.eventIds ? new Set(filter.eventIds) : null;
+    return [...this.#rows.values()]
+      .filter((row) => {
+        if (ids && !ids.has(row.id)) return false;
+        if (eventIds && !eventIds.has(row.eventId)) return false;
+        if (filter.e !== undefined && row.e !== filter.e) return false;
+        if (filter.a !== undefined && row.a !== filter.a) return false;
+        return true;
+      })
+      .sort((a, b) => a.id.localeCompare(b.id));
   }
 }
 
@@ -132,6 +164,7 @@ export function createMemoryRuntime(
   options: MemoryRuntimeOptions,
 ): RuntimeServices & {
   store: MemoryEventStore;
+  projection: MemoryProjectionStore;
   clock: MemoryClock;
   sequencer: MemorySequencer;
   scheduler: MemoryScheduler;
@@ -148,6 +181,7 @@ export function createMemoryRuntime(
   return {
     profile,
     store: new MemoryEventStore(),
+    projection: new MemoryProjectionStore(),
     clock: new MemoryClock(options.replicaId, options.wall),
     sequencer: new MemorySequencer(options.replicaId),
     scheduler: new MemoryScheduler(),

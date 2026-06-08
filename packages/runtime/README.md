@@ -9,17 +9,23 @@ transport exists.
 ## What Runtime Owns
 
 - **Effect service contracts** — `EventStoreService`, `RuntimeClockService`,
-  `RuntimeSequencerService`, `SchedulerService`, `TransportService`, and
-  `RuntimeProfileService` as `Context.Tag`s, with `Layer` helpers for adapting
-  target-provided stores/clocks/sequencers/schedulers/transports. This is the
+  `ProjectionStoreService`, `RuntimeSequencerService`, `SchedulerService`,
+  `TransportService`, and `RuntimeProfileService` as `Context.Tag`s, with
+  `Layer` helpers for adapting target-provided
+  stores/projections/clocks/sequencers/schedulers/transports. This is the
   canonical runtime boundary (SPEC §1.2).
 - **Compatibility service shapes** — `EventStore`, `RuntimeClock`,
-  `RuntimeSequencer`, `Scheduler`, `Transport`, `RuntimeServices`, plus
-  capability/profile metadata (`RuntimeCapability`, `RuntimeProfile`) and
-  operation types (`Operation`, `AssertOperation`, `TargetOperation`,
-  `ScheduledOperation`, `AppendResult`, `MergeResult`, `VersionVector`, `Actor`,
-  `EventFilter`). These keep already-shipped targets green while they migrate to
-  Layer providers.
+  `ProjectionStore`, `RuntimeSequencer`, `Scheduler`, `Transport`,
+  `RuntimeServices`, plus capability/profile metadata (`RuntimeCapability`,
+  `RuntimeProfile`) and operation types (`Operation`, `AssertOperation`,
+  `TargetOperation`, `ScheduledOperation`, `AppendResult`, `MergeResult`,
+  `VersionVector`, `Actor`, `EventFilter`, `ProjectionRow`,
+  `ProjectionFilter`). These keep already-shipped targets green while they
+  migrate to Layer providers.
+- **Materialized projection rows** — `projectionRowsFromLog` folds a protocol log
+  into deterministic current projection rows using `@metacrdt/core` visibility
+  and cardinality semantics. Targets own storage and indexing; runtime owns the
+  shared row contract.
 - **Operation helpers** — Effect-native `applyOperationEffect`,
   `mergeFromEffect`, and `requireCapabilityEffect` over the service tags, plus
   compatibility `applyOperation`, `mergeFrom`, `requireCapability` wrappers over
@@ -29,8 +35,9 @@ transport exists.
   that converges idempotently (SPEC §8 shape).
 - **In-memory target** — `createMemoryRuntimeLayer` for the Effect service
   boundary, plus compatibility `createMemoryRuntime` with `MemoryEventStore`,
-  `MemoryClock`, `MemorySequencer`, `MemoryScheduler`, `MemoryTransport`: the
-  reference harness for convergence tests.
+  `MemoryProjectionStore`, `MemoryClock`, `MemorySequencer`, `MemoryScheduler`,
+  `MemoryTransport`: the reference harness for convergence and projection-store
+  tests.
 - **localStorage seed** — `createLocalRuntimeLayer` for the Effect service
   boundary, plus compatibility `createLocalRuntime` with `LocalEventStore`,
   `LocalClock`, `LocalSequencer` and the local event/value encode/decode + key
@@ -60,7 +67,9 @@ transport exists.
 Runtime is the harness for SPEC §8 (anti-entropy sync) and the Effect service
 boundary targets implement per SPEC §1.2. The memory target proves G-Set
 exchange convergence and version-vector anti-entropy without committing to any
-storage or network.
+durable storage or network. `ProjectionStoreService` starts the materialized
+read-model boundary: projection rows are still deterministic folds of the log,
+but target adapters can persist and index them behind a shared service.
 
 ## Usage
 
@@ -95,7 +104,9 @@ const result = await Effect.runPromise(
 ## Status
 
 The Effect service/tag boundary plus memory and localStorage Layers are shipped.
-BroadcastChannel and p2p DataChannel compatibility paths are also shipped. Node,
-local, and Cloudflare target packages now expose their own runtime Layers;
-`@metacrdt/testkit` conformance runs over layer-provided targets while
-compatibility `RuntimeServices` facades remain for older callers.
+The memory Layer now also provides `ProjectionStoreService`. BroadcastChannel and
+p2p DataChannel compatibility paths are also shipped. Node, local, and
+Cloudflare target packages expose their own runtime Layers; projection-store
+adoption in those durable targets is a follow-up. `@metacrdt/testkit`
+conformance runs over layer-provided targets while compatibility
+`RuntimeServices` facades remain for older callers.

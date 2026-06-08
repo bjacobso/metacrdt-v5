@@ -6,6 +6,10 @@ export type {
   EventStore,
   MergeResult,
   Operation,
+  ProjectionFilter,
+  ProjectionReplaceResult,
+  ProjectionRow,
+  ProjectionStore,
   RuntimeCapability,
   RuntimeClock,
   RuntimeProfile,
@@ -21,6 +25,7 @@ export type {
 export {
   MemoryClock,
   MemoryEventStore,
+  MemoryProjectionStore,
   MemoryScheduler,
   MemorySequencer,
   MemoryTransport,
@@ -28,6 +33,10 @@ export {
   createMemoryRuntime,
   type MemoryRuntimeOptions,
 } from "./memory.js";
+
+export {
+  projectionRowsFromLog,
+} from "./projection.js";
 
 export {
   LocalClock,
@@ -82,6 +91,7 @@ export {
 } from "./sync.js";
 export {
   EventStoreService,
+  ProjectionStoreService,
   RuntimeCapabilityError,
   RuntimeClockService,
   RuntimeOperationError,
@@ -94,6 +104,8 @@ export {
   eventStoreService,
   noopSchedulerService,
   noopTransportService,
+  projectionStoreLayer,
+  projectionStoreService,
   runtimeClockLayer,
   runtimeClockService,
   runtimeProfileLayer,
@@ -105,6 +117,9 @@ export {
   transportLayer,
   transportService,
   type EventStoreEffect,
+  type BaseRuntimeServices,
+  type ProjectionStoreEffect,
+  type ProjectionRuntimeServices,
   type RuntimeClockEffect,
   type RuntimeError,
   type RuntimeSequencerEffect,

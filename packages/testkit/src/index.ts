@@ -37,9 +37,11 @@ import {
 import {
   applyOperationEffect,
   mergeFromEffect,
+  projectionRowsFromLog,
   runtimeServicesLayer,
   versionVector,
   EventStoreService,
+  ProjectionStoreService,
   RuntimeClockService,
   RuntimeProfileService,
   RuntimeSequencerService,
@@ -49,6 +51,7 @@ import {
   type RuntimeServices,
   type ScheduledOperation,
   type EventStoreEffect,
+  type ProjectionRow,
 } from "@metacrdt/runtime";
 import { Effect, Layer } from "effect";
 import * as Either from "effect/Either";
@@ -79,9 +82,23 @@ export type RuntimeConformanceLayer = Layer.Layer<
   unknown
 >;
 
+export type RuntimeProjectionStoreConformanceServices =
+  | RuntimeConformanceServices
+  | ProjectionStoreService;
+
+export type RuntimeProjectionStoreConformanceLayer = Layer.Layer<
+  RuntimeProjectionStoreConformanceServices,
+  unknown
+>;
+
 export interface RuntimeLayerConformanceTarget {
   readonly name: string;
   createLayer(options: RuntimeFactoryOptions): RuntimeConformanceLayer;
+}
+
+export interface RuntimeProjectionStoreConformanceTarget {
+  readonly name: string;
+  createLayer(options: RuntimeFactoryOptions): RuntimeProjectionStoreConformanceLayer;
 }
 
 export interface RuntimePersistenceConformanceTarget
@@ -260,6 +277,18 @@ async function runWithSession<A>(
   program: Effect.Effect<A, RuntimeError, RuntimeConformanceServices>,
 ): Promise<A> {
   return await runWithLayer(session.layer, program);
+}
+
+async function runWithProjectionStoreTargetLayer<A>(
+  target: RuntimeProjectionStoreConformanceTarget,
+  options: RuntimeFactoryOptions,
+  program: Effect.Effect<
+    A,
+    RuntimeError,
+    RuntimeProjectionStoreConformanceServices
+  >,
+): Promise<A> {
+  return await Effect.runPromise(Effect.provide(program, target.createLayer(options)));
 }
 
 async function withLayerSessions<A>(
@@ -908,6 +937,126 @@ export async function runRuntimeProjectionConformance(
         "projection should work over target-filtered event sources",
       );
       checks.push("projection-filtered-source-query");
+
+      return { target: target.name, checks };
+    }),
+  );
+}
+
+export async function runRuntimeProjectionStoreConformance(
+  target: RuntimeProjectionStoreConformanceTarget,
+): Promise<ConformanceReport> {
+  return await runWithProjectionStoreTargetLayer(
+    target,
+    { replicaId: "testkit:projection-store", wall: () => 1_000 },
+    Effect.gen(function* () {
+      const checks: string[] = [];
+      const store = yield* EventStoreService;
+      const projection = yield* ProjectionStoreService;
+      const coord = { txTime: 10_000, validTime: 100 };
+      const cardinalityOf = (a: string) =>
+        a === "worker.tag" ? ("many" as const) : ("one" as const);
+      const ev = (pt: number, e: string, a: string, v: Value) =>
+        assertEvent({
+          e,
+          a,
+          v,
+          validFrom: 0,
+          actor: "testkit",
+          actorType: "system",
+          hlc: { pt, l: 0, r: "testkit:projection-store" },
+        });
+
+      const active = ev(1, "worker:maria", "worker.status", "active");
+      const terminated = ev(2, "worker:maria", "worker.status", "terminated");
+      const remote = ev(3, "worker:maria", "worker.tag", "remote");
+      const urgent = ev(4, "worker:maria", "worker.tag", "urgent");
+      const stale = assertEvent({
+        e: "worker:maria",
+        a: "worker.cert",
+        v: "expired",
+        validFrom: 0,
+        validTo: 50,
+        actor: "testkit",
+        actorType: "system",
+        hlc: { pt: 5, l: 0, r: "testkit:projection-store" },
+      });
+
+      for (const event of [urgent, active, stale, remote, terminated]) {
+        yield* store.append(event);
+      }
+
+      const firstRows = projectionRowsFromLog(
+        fromEvents(yield* store.scan()),
+        coord,
+        cardinalityOf,
+      );
+      const firstReplace = yield* projection.replace(firstRows);
+      const all = yield* projection.scan();
+      expect(
+        target,
+        firstReplace.rows === 3 &&
+          all.length === 3 &&
+          !all.some((row) => row.eventId === active.id) &&
+          !all.some((row) => row.eventId === stale.id) &&
+          all.some((row) => row.eventId === terminated.id),
+        "projection store replace should materialize the current fold only",
+      );
+      checks.push("projection-store-replace-from-fold");
+
+      const statusRows = yield* projection.scan({
+        e: "worker:maria",
+        a: "worker.status",
+      });
+      const remoteRows = yield* projection.scan({ eventIds: [remote.id] });
+      const idRows = yield* projection.scan({
+        ids: remoteRows.map((row) => row.id),
+      });
+      expect(
+        target,
+        statusRows.length === 1 &&
+          statusRows[0]?.v === "terminated" &&
+          remoteRows.length === 1 &&
+          idRows.length === 1 &&
+          idRows[0]?.eventId === remote.id,
+        "projection store scan should filter by entity, attribute, row id, and event id",
+      );
+      checks.push("projection-store-scan-filters");
+
+      const available = ev(6, "worker:maria", "worker.status", "available");
+      yield* store.append(available);
+      const secondRows = projectionRowsFromLog(
+        fromEvents(yield* store.scan()),
+        coord,
+        cardinalityOf,
+      );
+      const secondReplace = yield* projection.replace(secondRows);
+      const currentStatus = yield* projection.scan({
+        e: "worker:maria",
+        a: "worker.status",
+      });
+      const staleStatusRows = yield* projection.scan({ eventIds: [terminated.id] });
+      expect(
+        target,
+        secondReplace.rows === 3 &&
+          currentStatus.length === 1 &&
+          currentStatus[0]?.eventId === available.id &&
+          staleStatusRows.length === 0,
+        "projection store replace should atomically discard stale materialized rows",
+      );
+      checks.push("projection-store-replace-is-atomic");
+
+      yield* projection.clear();
+      expect(
+        target,
+        (yield* projection.scan()).length === 0,
+        "projection store clear should remove all materialized rows",
+      );
+      checks.push("projection-store-clear");
+
+      // Keep the row type part of the public conformance surface.
+      const _typedRows: readonly ProjectionRow[] = secondRows;
+      void _typedRows;
 
       return { target: target.name, checks };
     }),

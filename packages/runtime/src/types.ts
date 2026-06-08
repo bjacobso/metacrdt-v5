@@ -9,6 +9,7 @@ import type {
 export type RuntimeCapability =
   | "convergent-log"
   | "coordinated-writes"
+  | "projection-store"
   | "durable-scheduler"
   | "transport";
 
@@ -43,6 +44,34 @@ export interface EventStore {
   merge(events: Iterable<Event>): Promise<MergeResult>;
 }
 
+export type ProjectionRow = {
+  readonly id: string;
+  readonly e: string;
+  readonly a: string;
+  readonly v: Value;
+  readonly eventId: EventId;
+  readonly validFrom?: number;
+  readonly validTo?: number | null;
+  readonly sourceEventIds: readonly EventId[];
+};
+
+export type ProjectionFilter = {
+  e?: string;
+  a?: string;
+  ids?: readonly string[];
+  eventIds?: readonly EventId[];
+};
+
+export type ProjectionReplaceResult = {
+  rows: number;
+};
+
+export interface ProjectionStore {
+  replace(rows: Iterable<ProjectionRow>): Promise<ProjectionReplaceResult>;
+  clear(): Promise<void>;
+  scan(filter?: ProjectionFilter): Promise<ProjectionRow[]>;
+}
+
 export interface RuntimeClock {
   readonly replicaId: string;
   current(): Hlc;
@@ -72,6 +101,7 @@ export type ScheduledOperation = {
 export type RuntimeServices = {
   profile: RuntimeProfile;
   store: EventStore;
+  projection?: ProjectionStore;
   clock: RuntimeClock;
   sequencer?: RuntimeSequencer;
   scheduler?: Scheduler;

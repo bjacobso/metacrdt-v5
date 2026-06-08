@@ -72,8 +72,8 @@ On open hosts the adapter is a selectable dependency.
 - `@metacrdt/runtime`'s in-memory target/Layer — the reference harness.
 - `@metacrdt/testkit` — Effect Layer-backed conformance helpers for EventStore,
   anti-entropy, deterministic fold convergence, EventStore-backed projection,
-  EventStore-backed Datalog/query semantics, and restart-persistence semantics
-  (log/HLC/seq), plus scheduler
+  EventStore-backed Datalog/query semantics, opt-in materialized projection-store
+  semantics, and restart-persistence semantics (log/HLC/seq), plus scheduler
   service-boundary, transport publish-boundary, and first network
   delivery/catch-up semantics. Log/sync/projection/query conformance is proven
   against the in-memory Layer, Convex component Layer, Cloudflare Durable Object
@@ -82,7 +82,9 @@ On open hosts the adapter is a selectable dependency.
   SQLite/Postgres; scheduler submission and transport publication conformance are
   wired into testkit memory and Node memory; network delivery/catch-up
   conformance is proven against BroadcastChannel, p2p DataChannel, and
-  Cloudflare Durable Object WebSocket relay harnesses. Compatibility
+  Cloudflare Durable Object WebSocket relay harnesses. Projection-store
+  conformance is currently proven against runtime memory; durable target adoption
+  is next. Compatibility
   `RuntimeServices` targets still adapt through `runtimeServicesLayer`.
 
 ### Should exist next
@@ -237,9 +239,10 @@ a sibling target.
    observable services. Network delivery/catch-up conformance has started for
    BroadcastChannel, p2p DataChannel, and Cloudflare relay harnesses. EventStore
    projection and EventStore-backed Datalog/query conformance are included in the
-   shared runtime suite; add production query-service and materialized
-   projection-store suites whenever the relevant target capabilities are exposed.
-   This is what *proves* the
+   shared runtime suite. Materialized projection-store conformance has started as
+   an opt-in suite over `ProjectionStoreService`; add durable target providers
+   and production query-service conformance whenever the relevant target
+   capabilities are exposed. This is what *proves* the
    "guaranteed to converge" claim across targets.
 3. **Cloudflare Phase B/C** — extract the shared fold into core, then the DO +
    SQLite triple store ([cloudflare-target.md](./cloudflare-target.md)).

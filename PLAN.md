@@ -9410,9 +9410,15 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   pure `@metacrdt/query` planner and row helpers for joins, `or`, `not`,
   compare/compute, provenance, pagination, aggregation, and derived-row shaping.
   It is included in `runRuntimeConformance` for current Layer targets.
+- **Materialized projection-store boundary started:** `@metacrdt/runtime` now
+  defines `ProjectionStoreService`, `ProjectionRow`, `ProjectionStore`, and
+  `projectionRowsFromLog`; the memory Layer ships `MemoryProjectionStore`; and
+  `@metacrdt/testkit` has opt-in `runRuntimeProjectionStoreConformance`, proving
+  replace-from-fold, indexed scans, rebuild-style replacement, and clear over the
+  memory Layer.
 - **Remaining keystone work:** conformance still does not cover a production
-  Datalog/query service API contract or materialized triple-store projection
-  stores.
+  Datalog/query service API contract, and durable targets have not yet adopted
+  `ProjectionStoreService`.
 - **Zero Effect today (by current design):** `core`, `schema`, `query`, and the
   root Convex reference app stay pure/plain where appropriate. `runtime`,
   `testkit`, and Convex/Node/local/Cloudflare target packages now use Effect v3

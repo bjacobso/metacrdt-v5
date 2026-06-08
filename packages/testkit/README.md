@@ -59,6 +59,18 @@ verified to behave identically at the boundaries that matter.
   - `query-derived-rows` — query bindings deterministically shape derived rows.
   This proves EventStore-backed Datalog/query semantics over target-returned
   logs; it is intentionally **not** a production query-service API contract.
+- **`runRuntimeProjectionStoreConformance`** — that a target-provided
+  `ProjectionStoreService` can persist and replace materialized current rows
+  built from the shared core fold:
+  - `projection-store-replace-from-fold` — replacing the projection with
+    `projectionRowsFromLog` materializes only current visible rows.
+  - `projection-store-scan-filters` — scans filter by entity, attribute, row id,
+    and source event id.
+  - `projection-store-replace-is-atomic` — a rebuild-style replace discards
+    stale materialized rows.
+  - `projection-store-clear` — clearing removes all materialized rows.
+  This suite is **opt-in** because not every target has exposed a projection
+  store yet.
 - **`runRuntimeConformance`** — runs EventStore, convergence, projection, and
   query suites and returns the combined report.
 - **`runRuntimePersistenceConformance`** — that a durable Layer target survives
@@ -133,6 +145,9 @@ it does not claim peer discovery, delivery, retries, or relay semantics.
 `runRuntimeNetworkTransportConformance` proves peer delivery and late-join
 catch-up behaviors from SPEC §8 for a target-provided network harness; relay
 auth, retries, and durability remain target-specific.
+`runRuntimeProjectionStoreConformance` proves the materialized projection-store
+boundary for targets that expose `ProjectionStoreService`; it does not imply
+every target has adopted that boundary yet.
 
 ## Usage
 
@@ -156,21 +171,24 @@ Durable targets that preserve storage across runtime re-creation also run
 `runRuntimePersistenceConformance`. Targets with observable schedulers can add
 `runRuntimeSchedulerConformance`. Targets with observable transports can add
 `runRuntimeTransportConformance`. Targets with observable peer/network harnesses
-can add `runRuntimeNetworkTransportConformance`.
+can add `runRuntimeNetworkTransportConformance`. Targets that provide a
+materialized `ProjectionStoreService` can add
+`runRuntimeProjectionStoreConformance`.
 
 ## Scope Today, and What's Next
 
 The suite covers the **log + sync + projection + EventStore-backed query plane**,
-durable restart semantics, scheduler submission, the basic transport publish
-boundary, and the first network-delivery checks: event-store semantics,
-anti-entropy, the in-log fold, projection from target-returned event sources,
-querying those target-returned logs through `@metacrdt/query`, persistence of the
-event log/HLC/seq across re-creation, payload-preserving scheduler submission,
+the first opt-in **materialized projection-store** boundary, durable restart
+semantics, scheduler submission, the basic transport publish boundary, and the
+first network-delivery checks: event-store semantics, anti-entropy, the in-log
+fold, projection from target-returned event sources, querying those
+target-returned logs through `@metacrdt/query`, persistence of the event
+log/HLC/seq across re-creation, payload-preserving scheduler submission,
 event-batch preserving transport publication, and peer delivery/catch-up for the
 BroadcastChannel, p2p DataChannel, and Cloudflare Durable Object WebSocket relay
 harnesses. It does **not yet** cover live relay deployment auth/retry/durability,
-a production Datalog/query service API contract, or materialized triple-store
-projection stores. Those checks should be added when the relevant target
-capabilities are shared beyond the Convex reference app (see
+a production Datalog/query service API contract, or durable target adoption of
+materialized triple-store projection stores. Those checks should be added when
+the relevant target capabilities are shared beyond the Convex reference app (see
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md) and
 [docs/targets.md](../../docs/targets.md)).

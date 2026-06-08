@@ -5,6 +5,10 @@ import type {
   EventFilter,
   EventStore,
   MergeResult,
+  ProjectionFilter,
+  ProjectionReplaceResult,
+  ProjectionRow,
+  ProjectionStore,
   RuntimeCapability,
   RuntimeClock,
   RuntimeProfile,
@@ -45,6 +49,14 @@ export type EventStoreEffect = {
   merge(events: Iterable<Event>): Effect.Effect<MergeResult, RuntimeServiceError>;
 };
 
+export type ProjectionStoreEffect = {
+  replace(
+    rows: Iterable<ProjectionRow>,
+  ): Effect.Effect<ProjectionReplaceResult, RuntimeServiceError>;
+  clear(): Effect.Effect<void, RuntimeServiceError>;
+  scan(filter?: ProjectionFilter): Effect.Effect<ProjectionRow[], RuntimeServiceError>;
+};
+
 export type RuntimeClockEffect = {
   readonly replicaId: string;
   current(): Effect.Effect<Hlc, RuntimeServiceError>;
@@ -76,6 +88,10 @@ export class RuntimeProfileService extends Context.Tag(
 export class EventStoreService extends Context.Tag(
   "@metacrdt/runtime/EventStoreService",
 )<EventStoreService, EventStoreEffect>() {}
+
+export class ProjectionStoreService extends Context.Tag(
+  "@metacrdt/runtime/ProjectionStoreService",
+)<ProjectionStoreService, ProjectionStoreEffect>() {}
 
 export class RuntimeClockService extends Context.Tag(
   "@metacrdt/runtime/RuntimeClockService",
@@ -126,6 +142,18 @@ export function eventStoreService(store: EventStore): EventStoreEffect {
       serviceEffect("EventStore", "scan", () => store.scan(filter)),
     merge: (events) =>
       serviceEffect("EventStore", "merge", () => store.merge(events)),
+  };
+}
+
+export function projectionStoreService(
+  store: ProjectionStore,
+): ProjectionStoreEffect {
+  return {
+    replace: (rows) =>
+      serviceEffect("ProjectionStore", "replace", () => store.replace(rows)),
+    clear: () => serviceEffect("ProjectionStore", "clear", () => store.clear()),
+    scan: (filter) =>
+      serviceEffect("ProjectionStore", "scan", () => store.scan(filter)),
   };
 }
 
@@ -185,6 +213,10 @@ export function eventStoreLayer(store: EventStore) {
   return Layer.succeed(EventStoreService, eventStoreService(store));
 }
 
+export function projectionStoreLayer(store: ProjectionStore) {
+  return Layer.succeed(ProjectionStoreService, projectionStoreService(store));
+}
+
 export function runtimeClockLayer(clock: RuntimeClock) {
   return Layer.succeed(RuntimeClockService, runtimeClockService(clock));
 }
@@ -201,15 +233,41 @@ export function transportLayer(transport: Transport) {
   return Layer.succeed(TransportService, transportService(transport));
 }
 
-export function runtimeServicesLayer(options: {
+type BaseRuntimeServicesLayerOptions = {
   profile: RuntimeProfile;
   store: EventStore;
   clock: RuntimeClock;
   sequencer: RuntimeSequencer;
   scheduler?: Scheduler;
   transport?: Transport;
-}) {
-  return Layer.mergeAll(
+};
+
+type ProjectionRuntimeServicesLayerOptions = BaseRuntimeServicesLayerOptions & {
+  projection: ProjectionStore;
+};
+
+export type BaseRuntimeServices =
+  | RuntimeProfileService
+  | EventStoreService
+  | RuntimeClockService
+  | RuntimeSequencerService
+  | SchedulerService
+  | TransportService;
+
+export type ProjectionRuntimeServices =
+  | BaseRuntimeServices
+  | ProjectionStoreService;
+
+export function runtimeServicesLayer(
+  options: ProjectionRuntimeServicesLayerOptions,
+): Layer.Layer<ProjectionRuntimeServices>;
+export function runtimeServicesLayer(
+  options: BaseRuntimeServicesLayerOptions,
+): Layer.Layer<BaseRuntimeServices>;
+export function runtimeServicesLayer(
+  options: BaseRuntimeServicesLayerOptions & { projection?: ProjectionStore },
+) {
+  const base = Layer.mergeAll(
     runtimeProfileLayer(options.profile),
     eventStoreLayer(options.store),
     runtimeClockLayer(options.clock),
@@ -223,4 +281,7 @@ export function runtimeServicesLayer(options: {
       options.transport ? transportService(options.transport) : noopTransportService(),
     ),
   );
+  return options.projection === undefined
+    ? base
+    : Layer.merge(base, projectionStoreLayer(options.projection));
 }
