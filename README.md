@@ -159,6 +159,10 @@ Current packages:
   localStorage-backed event/HLC/seq services composed with BroadcastChannel
   anti-entropy, IndexedDB-compatible async persistence, SQLite-compatible local
   persistence, plus browser defaults and lifecycle helpers.
+- **`@metacrdt/testkit`** (`packages/testkit`) — target conformance helpers:
+  framework-neutral async checks for EventStore idempotency/filtering/content-id
+  verification, version-vector anti-entropy, and deterministic fold convergence.
+  The package proves itself against `@metacrdt/runtime`'s in-memory target.
 
 Package build policy:
 
@@ -186,6 +190,7 @@ Planned package graph:
 @metacrdt/convex      Convex target / component / bindings
 @metacrdt/cloudflare  Durable Object / Worker target
 @metacrdt/local       browser/local-first target
+@metacrdt/testkit     target conformance checks
 @metacrdt/node        Node target
 ```
 
@@ -642,15 +647,18 @@ Built:
 - datarooms/compliance elaboration
 - `@metacrdt/core`
 - bitemporal visibility via core in the read path
+- `@metacrdt/schema`, `@metacrdt/query`, `@metacrdt/convex`,
+  `@metacrdt/forma`, `@metacrdt/runtime`, `@metacrdt/cloudflare`,
+  `@metacrdt/local`, and the first `@metacrdt/testkit`
 - docs/spec/architecture package plan
 
 Frontier:
 
 - commutative supersession in the write path
 - HLC + version-vector sync across replicas
-- Durable Object and local-first targets
-- `@metacrdt/forma` extraction
-- runtime harness and target packages
+- Durable Object + SQLite triple-store parity
+- Node target and SQL storage adapters
+- expanded conformance suites for persistence, scheduler, transport, and queries
 
 See [TODO.md](./TODO.md) for the running pulse.
 

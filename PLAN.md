@@ -139,12 +139,14 @@ multi-target roadmap: targets are execution hosts, storage and transport are
 separate adapter axes, `@metacrdt/node` is the next highest-value host, and
 Cloudflare parity means growing the existing sync-plane shell into a Durable
 Object + SQLite triple store without reimplementing core fold/reconcile
-semantics. The next active goal
+semantics. Goal 102 adds the first `@metacrdt/testkit` package: reusable
+framework-neutral conformance helpers for EventStore and runtime convergence,
+proved against the in-memory runtime. The next active goal
 should be chosen from the remaining TODO candidates:
-choosing/wiring the provider-specific React wrapper/JWT flow, live Cloudflare
-deployment/auth, another carefully scoped Confect/domain wrapper, or the next
-projection dependency (closure/derived provenance or remaining operational
-process state).
+choosing/wiring the provider-specific React wrapper/JWT flow,
+`@metacrdt/node`, Cloudflare DO+SQLite parity, another carefully scoped
+Confect/domain wrapper, or the next projection dependency (closure/derived
+provenance or remaining operational process state).
 
 This plan is the operational goal file. Read it with:
 
@@ -8888,7 +8890,7 @@ storage and transport should be separate adapter axes.
 ### Non-Goals
 
 - Do not implement DO SQLite in this planning slice.
-- Do not add `@metacrdt/node`, `@metacrdt/sql`, or `@metacrdt/testkit` yet.
+- Do not add `@metacrdt/node`, `@metacrdt/sql`, or DO SQLite yet.
 - Do not claim Cloudflare target parity until the package has a queryable triple
   store and conformance tests.
 
@@ -8897,6 +8899,53 @@ storage and transport should be separate adapter axes.
 - Documentation links resolve locally.
 - Root package typecheck still passes; docs-only changes do not affect runtime
   builds.
+
+---
+
+## Goal 102 — First @metacrdt/testkit Conformance Package
+
+**Status:** shipped.
+
+**Objective:** make the target roadmap testable before adding another host. The
+first `@metacrdt/testkit` slice should provide reusable, framework-neutral
+conformance helpers for the runtime contract and prove them against the in-memory
+runtime.
+
+### What Shipped
+
+- Added `packages/testkit` as `@metacrdt/testkit`.
+- Exported framework-neutral async helpers:
+  - `runEventStoreConformance`
+  - `runRuntimeConvergenceConformance`
+  - `runRuntimeConformance`
+- Event-store checks prove:
+  - append idempotency
+  - scan filters (`e`, `a`, `ids`)
+  - G-Set merge idempotency
+  - invalid content-addressed event ids are rejected
+- Runtime convergence checks prove:
+  - bidirectional version-vector delta exchange
+  - equal event-id sets after sync
+  - deterministic fold equality for cardinality-one and cardinality-many values
+  - a second anti-entropy round is idempotent
+- Self-tests run the suite against `@metacrdt/runtime`'s memory target and also
+  prove a deliberately broken store fails with a target-named contract error.
+
+### Non-Goals
+
+- Do not build `@metacrdt/node` in this slice.
+- Do not require Vitest in the public helper API; targets can call the async
+  helpers from any runner.
+- Do not claim storage persistence, scheduler, transport, or SQL query
+  conformance yet; those suites should be added when the second target exposes
+  the relevant capability.
+
+### Verification
+
+- `npm test --workspace @metacrdt/testkit` passes.
+- `npx tsc --noEmit -p packages/testkit/tsconfig.json` passes.
+- `npm run test:packages`, `npm run build:packages`, and `npm run typecheck`
+  include the new workspace package and pass.
 
 ---
 

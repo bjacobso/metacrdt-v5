@@ -430,8 +430,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] After Goal 44, choose Datalog computed predicates.
 - [x] Choose the next target-planning goal: formalize target vs storage adapter
   vs transport and write the Cloudflare parity plan.
-- [ ] Choose between production provider wiring, `@metacrdt/node` + testkit,
-  Cloudflare DO+SQLite parity, or another parked Query/Rules item.
+- [x] Choose the next target-runtime slice: first `@metacrdt/testkit`
+  conformance package.
+- [ ] Choose between production provider wiring, `@metacrdt/node`, Cloudflare
+  DO+SQLite parity, or another parked Query/Rules item.
 
 **Docs**
 - [x] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -509,9 +511,26 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   frontend queries over DO WebSockets called out as a stretch goal.
 - [x] README, `docs/architecture.md`, `docs/package-consolidation.md`, and
   `packages/cloudflare/README.md` now link the target model and Cloudflare plan.
-- [ ] Next concrete target-runtime candidates: `@metacrdt/node` with
-  memory/server-SQLite adapters, `@metacrdt/testkit` conformance suite, or
-  Cloudflare Phase B/C.
+- [x] Next concrete target-runtime candidate chosen: first `@metacrdt/testkit`
+  conformance suite.
+- [ ] Remaining target-runtime candidates: `@metacrdt/node` with
+  memory/server-SQLite adapters, Cloudflare Phase B/C, or expanded testkit
+  persistence/scheduler/transport suites once a second target needs them.
+
+### 2026-06-08 — first @metacrdt/testkit package
+- [x] **Goal 102 shipped:** added `packages/testkit` / `@metacrdt/testkit`, a
+  framework-neutral conformance package over `@metacrdt/core` +
+  `@metacrdt/runtime`.
+- [x] Exported `runEventStoreConformance`,
+  `runRuntimeConvergenceConformance`, and `runRuntimeConformance`. The checks
+  cover append idempotency, scan filters, G-Set merge idempotency, invalid
+  content-id rejection, bidirectional version-vector delta exchange,
+  deterministic fold equality, and idempotent second sync.
+- [x] Self-tests prove the suite passes against `createMemoryRuntime` and fails
+  with a target-named error for a deliberately broken store.
+- [x] Verification: `npm test --workspace @metacrdt/testkit`,
+  package-local typecheck, `npm run test:packages`, `npm run build:packages`,
+  and `npm run typecheck` all passed with Turbo picking up the new workspace.
 
 ### 2026-06-08 — host event-log entity fold
 - [x] **Goal 98 shipped:** `@metacrdt/query` guarded positive-pattern extension.

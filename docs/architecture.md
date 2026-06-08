@@ -133,8 +133,8 @@ not invented:
    `≺` order, G-Set merge, and deterministic bitemporal fold). It's the determinism
    guarantee and the most reusable. **`@metacrdt/schema`, `@metacrdt/query`,
    `@metacrdt/convex`, `@metacrdt/forma`, `@metacrdt/runtime`,
-   `@metacrdt/cloudflare`, and
-   `@metacrdt/local` now exist too**: schema owns the pure carrier-id,
+   `@metacrdt/cloudflare`, `@metacrdt/local`, and
+   `@metacrdt/testkit` now exist too**: schema owns the pure carrier-id,
    bootstrap-cardinality, meta-attribute, definition-lowering, and
    attribute-shaping conventions; query owns pure Datalog syntax/row operations
    while Convex still owns triple fetching and join execution; Convex has

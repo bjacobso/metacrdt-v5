@@ -63,6 +63,9 @@ On open hosts the adapter is a selectable dependency.
   store ([cloudflare-target.md](./cloudflare-target.md)).
 - `@metacrdt/local` — browser/local-first host.
 - `@metacrdt/runtime`'s in-memory target — the reference harness.
+- `@metacrdt/testkit` — framework-neutral conformance helpers for EventStore,
+  anti-entropy, and deterministic fold convergence (currently proven against
+  the in-memory runtime).
 
 ### Should exist next
 
@@ -205,10 +208,12 @@ a sibling target.
 
 ## Recommended build order
 
-1. **`@metacrdt/node`** + `memory` / `sqlite` adapters — unlocks tests, dev
-   server, SDK, self-hosting.
-2. **`@metacrdt/testkit`** — the convergence-conformance suite every target must
-   pass. This is what *proves* the "guaranteed to converge" claim across targets.
+1. **`@metacrdt/node`** + `memory` / `sqlite` adapters — unlocks a dev server,
+   SDK, self-hosting, and a second host for the testkit to exercise.
+2. **Expand `@metacrdt/testkit` as targets mature** — add persistence,
+   scheduler, transport, and query/projection suites whenever a second target
+   exposes the relevant capability. This is what *proves* the "guaranteed to
+   converge" claim across targets.
 3. **Cloudflare Phase B/C** — extract the shared fold into core, then the DO +
    SQLite triple store ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite and DO-SQLite both exist; add the

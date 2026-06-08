@@ -74,7 +74,7 @@ packages/
 ├── node/             @metacrdt/node       # target (open host): tests, dev server, mounts sqlite/postgres/memory adapters
 ├── cli/              @metacrdt/cli
 ├── sdk/              @metacrdt/sdk
-└── testkit/          @metacrdt/testkit    # convergence-conformance suite every target must pass
+└── testkit/          @metacrdt/testkit    # done: first convergence-conformance suite
 ```
 
 This is the target map, not a mandate to create empty packages now. The rule is:
@@ -434,6 +434,7 @@ Open Ontology view-protocol         → @metacrdt/views
 Open Ontology app/editor surfaces   → Schematics / apps, not substrate core
 ```
 
-The canonical repo is this one. The first package is `@metacrdt/core`. The next
-language package is `@metacrdt/forma`. Everything else is extracted only when the
-boundary is proven by real code.
+The canonical repo is this one. `@metacrdt/core` is the convergence kernel,
+`@metacrdt/forma` is the language package, and `@metacrdt/testkit` is now the
+first conformance package. Everything else is extracted only when the boundary is
+proven by real code.
