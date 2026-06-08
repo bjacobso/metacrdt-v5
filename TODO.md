@@ -34,10 +34,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [ ] **Write path on core** — partially shipped: new `factEvents` now carry
   `eventId` + HLC + target/causal metadata, `facts.assertEventId` stores the core
   assert id, `correctFact` writes tombstone+assert protocol events, and
-  cardinality-one current projection reconciles by `≺`-max. Remaining: make
-  `rebuildProjections` prefer raw core-shaped `factEvents` directly, add explicit
-  legacy-adapter coverage, and continue toward retiring the hand-maintained
-  `facts` projection.
+  cardinality-one current projection reconciles by `≺`-max; `rebuildProjections`
+  now prefers HLC/eventId ordering while retaining legacy fallback. Remaining:
+  continue toward retiring the hand-maintained `facts` projection.
 - [ ] Then peel off, as they stabilize: `@metacrdt/schema`, `@metacrdt/query`,
   `@metacrdt/workflow`, `@metacrdt/forms`, `@metacrdt/agent`.
 - [ ] **Extract `@metacrdt/forma`** from Open Ontology's language packages
@@ -94,6 +93,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Added explicit legacy fallback coverage: a fact with `assertEventId`
   removed still reconciles safely through the compatibility target path during a
   later cardinality-one assertion.
+- [x] `rebuildProjections` now prefers protocol order (`hlc` then `eventId`) for
+  core-shaped rows and falls back to legacy `txTime` / `_creationTime` ordering.
 - [x] Rewrote `PLAN.md` from the old triple-store milestone backlog into a
   goal-oriented MetaCRDT execution plan: Goal 1 is core-shaped Convex writes
   (`eventId`/HLC/replica metadata, `≺`-max cardinality-one supersession,

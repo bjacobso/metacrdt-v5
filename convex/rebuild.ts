@@ -7,6 +7,22 @@ import { isVisible } from "./lib/visibility";
 // self-continuing rebuild (scheduler) — noted in PLAN.
 const SCAN = 20000;
 
+function compareEventOrder(a: Doc<"factEvents">, b: Doc<"factEvents">): number {
+  // Prefer MetaCRDT protocol ordering for rows that have it. Legacy rows fall
+  // back to the original txTime/_creationTime order.
+  const ah = a.hlc;
+  const bh = b.hlc;
+  if (ah && bh) {
+    if (ah.pt !== bh.pt) return ah.pt - bh.pt;
+    if (ah.l !== bh.l) return ah.l - bh.l;
+    if (ah.r !== bh.r) return ah.r.localeCompare(bh.r);
+    if (a.eventId && b.eventId && a.eventId !== b.eventId) {
+      return a.eventId.localeCompare(b.eventId);
+    }
+  }
+  return a.txTime - b.txTime || a._creationTime - b._creationTime;
+}
+
 /**
  * Regenerate the read projections from the append-only event log, proving the
  * "events are the source of truth" invariant:
@@ -45,7 +61,7 @@ export const rebuildProjections = internalMutation({
       const factId = factIdStr as Id<"facts">;
       const fact = await ctx.db.get("facts", factId);
       if (!fact) continue; // event references a fact that no longer exists
-      evs.sort((a, b) => a.txTime - b.txTime || a._creationTime - b._creationTime);
+      evs.sort(compareEventOrder);
       const assertEv = evs.find((e) => e.kind === "assert");
       if (!assertEv) continue;
 

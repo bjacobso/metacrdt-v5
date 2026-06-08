@@ -265,11 +265,11 @@ Important distinction:
 
 #### 8. Rebuild From Event Log
 
-- [ ] Update `rebuildProjections` to prefer core-shaped events when present.
-- [ ] Keep compatibility with legacy event rows.
-- [ ] Prove rebuild produces the same `facts` / `currentFacts` result as live
+- [x] Update `rebuildProjections` to prefer core-shaped events when present.
+- [x] Keep compatibility with legacy event rows.
+- [x] Prove rebuild produces the same `facts` / `currentFacts` result as live
   writes.
-- [ ] Ensure derived-rule materialization still runs from rebuilt facts.
+- [x] Ensure derived-rule materialization still runs from rebuilt facts.
 
 #### 8.5. Legacy Metadata Policy
 
@@ -301,7 +301,7 @@ Add focused tests before broader refactors.
   - two same-coordinate cardinality-one assertions converge to the `≺`-max.
   - insertion order does not change final `currentFacts`.
   - losing assertion remains in history/provenance.
-- [ ] Rebuild tests:
+- [x] Rebuild tests:
   - live projection equals rebuilt projection.
   - derived facts still rebuild.
 
