@@ -17,6 +17,14 @@ type ConfigItem = {
   value: string;
 };
 
+type ConfigEvent = {
+  kind: string;
+  e: string;
+  a: string;
+  v: unknown;
+  reason: string | undefined;
+};
+
 const CONFIG_ENTITY = "config:default";
 const OWN_ATTR: Record<ConfigKind, string> = {
   attribute: "owns.attribute",
@@ -85,6 +93,25 @@ async function directEvents(ctx: QueryCtx, tx: Doc<"transactions">) {
     .sort((a, b) => `${a.e}:${a.a}:${a.kind}`.localeCompare(`${b.e}:${b.a}:${b.kind}`));
 }
 
+function eventCounts(events: ConfigEvent[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const event of events) {
+    out[event.kind] = (out[event.kind] ?? 0) + 1;
+  }
+  return Object.fromEntries(
+    Object.entries(out).sort(([a], [b]) => a.localeCompare(b)),
+  );
+}
+
+function changedKinds(
+  added: ConfigItem[],
+  removed: ConfigItem[],
+): ConfigKind[] {
+  return [...new Set([...added, ...removed].map((item) => item.kind))].sort(
+    (a, b) => a.localeCompare(b),
+  );
+}
+
 function counts(keys: Set<string>): Record<ConfigKind, number> {
   const out: Record<ConfigKind, number> = {
     attribute: 0,
@@ -126,6 +153,7 @@ export const history = query({
       const removed = [...before]
         .filter((key) => !after.has(key))
         .map(fromKey);
+      const events = await directEvents(ctx, tx);
       out.push({
         txId: tx._id,
         txTime: tx.txTime,
@@ -133,8 +161,11 @@ export const history = query({
         reason: tx.reason,
         added: sorted(added),
         removed: sorted(removed),
+        changedKinds: changedKinds(added, removed),
+        totalManifestChanges: added.length + removed.length,
         afterCounts: counts(after),
-        events: await directEvents(ctx, tx),
+        eventCounts: eventCounts(events),
+        events,
       });
     }
     return out;

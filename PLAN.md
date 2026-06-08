@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 80 (Describe account shell affordance) has
+**Current goal:** Goal 81 (Action/config diff-history polish) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -52,7 +52,9 @@ folds worker, placement, guard, and submitted-form state from protocol-shaped
 a non-throwing object-form Convex query in the app banner. Goal 80 wires the
 remaining mockup affordance, "Describe account", into the header as a live
 account-summary modal backed by existing Overview, compliance, and transaction
-queries. The next
+queries. Goal 81 polishes config/action history by enriching config-history rows
+with manifest-change summaries and event-kind counts, then rendering expandable
+event details and per-action last-change provenance in the Data model page. The next
 active goal should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
@@ -232,6 +234,9 @@ arguments.
 - The header's "Describe account" affordance is now functional: it opens a modal
   summarizing Acme Staffing from live projection data (configured types,
   placements, reused scopes, open/satisfied obligations, and latest activity).
+- Config history rows expose UI-ready `changedKinds`, `totalManifestChanges`,
+  and event-kind counts; the Data model page renders expandable config
+  transaction event details and per-action last-config-change provenance.
 - Convex backend tests are green: 155 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
@@ -7661,6 +7666,61 @@ idea.
   files to `chatty-hare-94`.
 - A post-upload fetch of `https://chatty-hare-94.convex.site` returned the rebuilt
   `index-CooQpQkO.js` asset reference.
+- `git diff --check` passed.
+
+---
+
+## Goal 81 — Action/Config Diff-History Polish
+
+**Status:** shipped for the Data model route and config-history read model.
+
+**Objective:** make the existing config history and action registry easier to
+inspect without changing config semantics. The system already records every
+`applyConfig` as ordinary facts and diffs the owned-artifact manifest; this
+goal turns that into an operator-facing view that explains both high-level
+manifest changes and low-level event effects.
+
+### Semantics
+
+- `api.configHistory.history` preserves its existing `added`, `removed`,
+  `afterCounts`, and raw `events` fields.
+- Each history row also returns:
+  - `changedKinds`: sorted manifest artifact kinds touched by the transaction;
+  - `totalManifestChanges`: `added.length + removed.length`;
+  - `eventCounts`: event-kind counts for the direct `factEvents` in the
+    config-authored transaction.
+- The Data model Config history card renders:
+  - changed-kind chips;
+  - an `idempotent` chip for zero manifest-diff re-applies;
+  - manifest-change/event totals;
+  - an expandable direct event table with event-kind counts.
+- The Data model Action registry derives each action's most recent config change
+  from the same config-history response and shows that provenance beside the
+  action definition.
+
+### Non-Goals
+
+- Do not change `applyConfig` reconcile behavior.
+- Do not add a separate action-history table or projection.
+- Do not change action execution semantics.
+- Do not wire a production auth provider or Cloudflare deployment in this slice.
+
+### Verification
+
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94`.
+- `npx vitest run appconfig` passed (16 focused config/action tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm test` passed (17 backend test files, 155 tests).
+- `npm run build` passed.
+- `npx @convex-dev/static-hosting upload` passed and uploaded the rebuilt static
+  files to `chatty-hare-94`.
+- A post-upload fetch of `https://chatty-hare-94.convex.site` returned the
+  rebuilt app HTML.
+- A live `configHistory:history` query returned the new `changedKinds`,
+  `totalManifestChanges`, and `eventCounts` fields.
 - `git diff --check` passed.
 
 ---

@@ -1,7 +1,7 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { Clock, Zap } from "lucide-react";
+import { ChevronDown, ChevronRight, Clock, Zap } from "lucide-react";
 import EntityPicker from "../EntityPicker";
 import { Card, CardHeader, Button, Chip, Input, Mono } from "../ui";
 import { useWriteGate } from "../auth";
@@ -14,6 +14,10 @@ function coerce(raw: string): unknown {
   } catch {
     return raw;
   }
+}
+
+function showValue(v: unknown): string {
+  return typeof v === "string" ? v : JSON.stringify(v);
 }
 
 const DEFAULT_QUERY = JSON.stringify(
@@ -115,6 +119,30 @@ export default function DataModel() {
   const actions = useQuery(api.actions.listActions, {});
   const configHistory = useQuery(api.configHistory.history, { limit: 8 });
   const manifest = useQuery(api.configHistory.currentManifest, {});
+  const [expandedTx, setExpandedTx] = useState<string | null>(null);
+
+  const actionChanges = useMemo(() => {
+    const out = new Map<
+      string,
+      NonNullable<typeof configHistory>[number]
+    >();
+    for (const tx of configHistory ?? []) {
+      const changed = new Set(
+        [...tx.added, ...tx.removed]
+          .filter((item) => item.kind === "action")
+          .map((item) => item.value),
+      );
+      for (const ev of tx.events) {
+        if (ev.e.startsWith("action:")) {
+          changed.add(ev.e.slice("action:".length));
+        }
+      }
+      for (const name of changed) {
+        if (!out.has(name)) out.set(name, tx);
+      }
+    }
+    return out;
+  }, [configHistory]);
 
   return (
     <div className="space-y-6">
@@ -152,12 +180,37 @@ export default function DataModel() {
             {configHistory.map((tx) => (
               <li key={tx.txId} className="px-5 py-3.5">
                 <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                  <button
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-line-soft hover:text-ink"
+                    onClick={() =>
+                      setExpandedTx(expandedTx === tx.txId ? null : tx.txId)
+                    }
+                    aria-label={
+                      expandedTx === tx.txId
+                        ? "Hide config transaction events"
+                        : "Show config transaction events"
+                    }
+                  >
+                    {expandedTx === tx.txId ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </button>
                   <span className="font-medium text-ink">
                     {tx.reason ?? "config transaction"}
                   </span>
                   <Mono>{new Date(tx.txTime).toLocaleString()}</Mono>
+                  {tx.changedKinds.map((kind) => (
+                    <Chip key={kind} tone="configured">
+                      {kind}
+                    </Chip>
+                  ))}
+                  {tx.totalManifestChanges === 0 && (
+                    <Chip tone="system">idempotent</Chip>
+                  )}
                   <span className="ml-auto text-[12px] text-muted">
-                    {tx.events.length} events
+                    {tx.totalManifestChanges} manifest changes · {tx.events.length} events
                   </span>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
@@ -175,6 +228,48 @@ export default function DataModel() {
                     <span className="text-[12px] text-muted">no manifest diff</span>
                   )}
                 </div>
+                {expandedTx === tx.txId && (
+                  <div className="mt-3 rounded-ds border border-line bg-canvas">
+                    <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-3 py-2 text-[12px] text-muted">
+                      <span>event counts</span>
+                      {Object.entries(tx.eventCounts).map(([kind, count]) => (
+                        <Chip key={kind} tone={kind === "assert" ? "data" : "system"}>
+                          {kind}: {count}
+                        </Chip>
+                      ))}
+                    </div>
+                    <div className="max-h-56 overflow-auto">
+                      <table className="w-full text-[12px]">
+                        <thead>
+                          <tr className="text-left text-[10px] uppercase tracking-wide text-muted">
+                            <th className="px-3 py-2 font-semibold">kind</th>
+                            <th className="px-2 py-2 font-semibold">entity</th>
+                            <th className="px-2 py-2 font-semibold">attribute</th>
+                            <th className="px-3 py-2 font-semibold">value</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-line-soft">
+                          {tx.events.map((ev, i) => (
+                            <tr key={`${ev.e}:${ev.a}:${ev.kind}:${i}`}>
+                              <td className="px-3 py-1.5">
+                                <Chip tone={ev.kind === "assert" ? "data" : "system"}>
+                                  {ev.kind}
+                                </Chip>
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <Mono>{ev.e}</Mono>
+                              </td>
+                              <td className="px-2 py-1.5 text-muted">{ev.a}</td>
+                              <td className="max-w-[28rem] truncate px-3 py-1.5 font-mono text-[11px] text-ink-2">
+                                {showValue(ev.v)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -243,33 +338,51 @@ export default function DataModel() {
                 <th className="px-2 pb-2 pt-3 font-semibold">applies to</th>
                 <th className="px-2 pb-2 pt-3 font-semibold">inputs</th>
                 <th className="px-2 pb-2 pt-3 font-semibold">opens</th>
+                <th className="px-2 pb-2 pt-3 font-semibold">last config</th>
                 <th className="px-5 pb-2 pt-3 font-semibold">asserts</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line-soft">
-              {actions.map((a) => (
-                <tr key={a.name}>
-                  <td className="px-5 py-2.5 font-medium text-ink">{a.label ?? a.name}</td>
-                  <td className="px-2 py-2.5">
-                    <Chip tone="brand">{a.appliesTo}</Chip>
-                  </td>
-                  <td className="px-2 py-2.5 text-[12px] text-muted">
-                    {a.fields.length === 0
-                      ? "—"
-                      : a.fields.map((f) => `${f.name}:${f.type}`).join(", ")}
-                  </td>
-                  <td className="px-2 py-2.5 text-[12px] text-muted">
-                    {a.opensForm
-                      ? `${String(a.opensForm.form)} @ ${String(a.opensForm.scope)}`
-                      : "—"}
-                  </td>
-                  <td className="px-5 py-2.5 text-[12px] text-muted">
-                    {Object.entries(a.asserts)
-                      .map(([k, v]) => `${k} = ${typeof v === "string" ? v : JSON.stringify(v)}`)
-                      .join(", ")}
-                  </td>
-                </tr>
-              ))}
+              {actions.map((a) => {
+                const changed = actionChanges.get(a.name);
+                return (
+                  <tr key={a.name}>
+                    <td className="px-5 py-2.5 font-medium text-ink">{a.label ?? a.name}</td>
+                    <td className="px-2 py-2.5">
+                      <Chip tone="brand">{a.appliesTo}</Chip>
+                    </td>
+                    <td className="px-2 py-2.5 text-[12px] text-muted">
+                      {a.fields.length === 0
+                        ? "—"
+                        : a.fields.map((f) => `${f.name}:${f.type}`).join(", ")}
+                    </td>
+                    <td className="px-2 py-2.5 text-[12px] text-muted">
+                      {a.opensForm
+                        ? `${String(a.opensForm.form)} @ ${String(a.opensForm.scope)}`
+                        : "—"}
+                    </td>
+                    <td className="px-2 py-2.5 text-[12px] text-muted">
+                      {changed ? (
+                        <span className="flex flex-col gap-0.5">
+                          <span>{new Date(changed.txTime).toLocaleDateString()}</span>
+                          <span className="text-[11px]">
+                            {changed.totalManifestChanges === 0
+                              ? "idempotent"
+                              : `${changed.totalManifestChanges} manifest changes`}
+                          </span>
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-5 py-2.5 text-[12px] text-muted">
+                      {Object.entries(a.asserts)
+                        .map(([k, v]) => `${k} = ${showValue(v)}`)
+                        .join(", ")}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

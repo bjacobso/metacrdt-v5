@@ -614,6 +614,10 @@ describe("config-as-code + origin + entity detail", () => {
         kind: "requirement",
         value: "forklift",
       });
+      expect(history[0].changedKinds).toEqual(["requirement"]);
+      expect(history[0].totalManifestChanges).toBe(1);
+      expect(history[0].eventCounts.assert).toBeGreaterThan(0);
+      expect(history[0].events.length).toBeGreaterThan(0);
 
       vi.setSystemTime(3_000);
       await t.mutation(api.appconfig.applyConfig, {
@@ -628,6 +632,9 @@ describe("config-as-code + origin + entity detail", () => {
       history = await t.query(api.configHistory.history, { limit: 1 });
       expect(history[0].added).toEqual([]);
       expect(history[0].removed).toEqual([]);
+      expect(history[0].changedKinds).toEqual([]);
+      expect(history[0].totalManifestChanges).toBe(0);
+      expect(history[0].eventCounts.assert).toBeGreaterThan(0);
 
       const manifestBeforeWipe = manifest;
       const historyBeforeWipe = history;

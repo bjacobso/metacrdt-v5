@@ -359,7 +359,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   localStorage dismissal and a restartable header button.
 - [x] Wire the remaining decorative bit from the mockup: "Describe account" now
   opens a live account-summary modal in the app shell.
-- [ ] Action/config diff-history polish.
+- [x] Action/config diff-history polish — config-history rows now include
+  changed-kind summaries, manifest-change totals, and event-kind counts; Data
+  model renders expandable direct event details and per-action last config
+  provenance.
 - [x] Root-cause the `staticHosting:getCurrentDeployment` error over the WS path
   — the public query works, but the upstream `useDeploymentUpdates` helper wraps
   it in throwing `useQuery`; the app banner now uses object-form
@@ -378,6 +381,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Log
 
 ### 2026-06-08 — host event-log entity fold
+- [x] **Goal 81 shipped:** action/config diff-history polish. `api.configHistory.history`
+  now returns `changedKinds`, `totalManifestChanges`, and `eventCounts`; Data
+  model config history rows expand into direct event details, and the Action
+  registry shows each action's latest config provenance from the same history
+  feed.
 - [x] **Goal 80 shipped:** the header's `Describe account` affordance now opens
   a live Acme Staffing account-summary modal backed by existing Overview,
   compliance, and recent-activity queries. It shows configured types, placements,
