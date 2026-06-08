@@ -9,6 +9,7 @@ import {
 } from "@metacrdt/runtime";
 import { Effect } from "effect";
 import {
+  createDurableObjectSqliteCurrentSurface,
   createDurableObjectSqliteRuntime,
   createDurableObjectSqliteRuntimeLayer,
 } from "./index.js";
@@ -17,6 +18,7 @@ import { FakeDurableObjectSqlStorage } from "./sqliteFake.test-support.js";
 const coord = { txTime: 10_000, validTime: 10_000 };
 const one = () => "one" as const;
 const many = () => "many" as const;
+const cardinalityOf = (a: string) => (a === "worker.tag" ? "many" : "one");
 
 describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
   test("provides an Effect Layer and stamps seq/version-vector metadata", async () => {
@@ -197,5 +199,136 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
     });
     await expect(restarted.store.scan()).rejects.toThrow(/invalid stored event id/);
   });
-});
 
+  test("current surface appends, rebuilds, and reads entity state from SQLite projection rows", async () => {
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql: new FakeDurableObjectSqlStorage(),
+      replicaId: "do-sqlite:surface",
+      wall: () => 400,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.appendAssert({
+      e: "worker:maria",
+      a: "type",
+      v: "Worker",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:maria",
+      a: "name",
+      v: "Maria",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:maria",
+      a: "worker.status",
+      v: "active",
+      actor: "user:1",
+    });
+    const winner = await surface.appendAssert({
+      e: "worker:maria",
+      a: "worker.status",
+      v: "terminated",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:maria",
+      a: "worker.tag",
+      v: "remote",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:maria",
+      a: "worker.tag",
+      v: "urgent",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "task:1",
+      a: "type",
+      v: "Task",
+      actor: "user:1",
+    });
+
+    expect(winner.projection).toMatchObject({
+      events: 4,
+      rows: 3,
+    });
+
+    const status = await surface.listCurrent({
+      e: "worker:maria",
+      a: "worker.status",
+    });
+    expect(status).toMatchObject([
+      {
+        e: "worker:maria",
+        a: "worker.status",
+        v: "terminated",
+        eventId: winner.event.id,
+      },
+    ]);
+
+    const entity = await surface.getCurrentEntity({ e: "worker:maria" });
+    expect(entity).toMatchObject({
+      e: "worker:maria",
+      attributes: {
+        type: ["Worker"],
+        name: ["Maria"],
+        "worker.status": ["terminated"],
+      },
+    });
+    expect([...(entity?.attributes["worker.tag"] ?? [])].sort()).toEqual([
+      "remote",
+      "urgent",
+    ]);
+
+    await expect(surface.listCurrentEntities({ type: "Worker" })).resolves.toEqual([
+      {
+        e: "worker:maria",
+        type: "Worker",
+        name: "Maria",
+        rows: 5,
+      },
+    ]);
+  });
+
+  test("current surface rebuilds lifecycle changes into empty current state", async () => {
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql: new FakeDurableObjectSqlStorage(),
+      replicaId: "do-sqlite:lifecycle",
+      wall: () => 500,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const asserted = await surface.appendAssert({
+      e: "worker:closed",
+      a: "worker.status",
+      v: "active",
+      actor: "user:1",
+    });
+    expect(await surface.listCurrent({ e: "worker:closed" })).toHaveLength(1);
+
+    const retracted = await surface.appendLifecycle({
+      kind: "retract",
+      target: asserted.event.id,
+      actor: "user:1",
+      reason: "closed",
+    });
+
+    expect(retracted.projection).toEqual({
+      events: 2,
+      rows: 0,
+    });
+    await expect(surface.listCurrent({ e: "worker:closed" })).resolves.toEqual([]);
+    await expect(
+      surface.getCurrentEntity({ e: "worker:closed" }),
+    ).resolves.toBeNull();
+  });
+});

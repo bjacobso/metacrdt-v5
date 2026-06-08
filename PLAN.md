@@ -194,13 +194,16 @@ native `node:http` + SQLite, framework adapters, explicit SQL lifecycle usage,
 and one-shot peer sync. Goal 115 starts Cloudflare Phase A by adding structural
 Durable Object SQLite runtime services for event/projection storage, HLC, and
 per-replica sequencing over `ctx.storage.sql.exec(...)`, with runtime,
-projection-store, and persistence conformance. The next active goal should be
-chosen from the remaining
+projection-store, and persistence conformance. Goal 116 starts Cloudflare Phase
+C by adding the first DO SQLite component-equivalent current-state surface:
+append-and-rebuild helpers plus `rebuildCurrent`, `listCurrent`,
+`getCurrentEntity`, and `listCurrentEntities` backed by the SQLite projection
+store. The next active goal should be chosen from the remaining
 TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
-Cloudflare DO+SQLite component-equivalent parity, another carefully scoped
-Confect/domain wrapper, or the next projection dependency
+remaining Cloudflare DO+SQLite event-listing/bitemporal-query/operational
+parity, another carefully scoped Confect/domain wrapper, or the next projection dependency
 (closure/derived provenance or remaining operational process state).
 
 This plan is the operational goal file. Read it with:
@@ -518,14 +521,18 @@ arguments.
   - async `createDurableObjectRuntime` target services over `@metacrdt/runtime`
   - async `createDurableObjectSqliteRuntime` target services over structural
     `ctx.storage.sql.exec(...)`
+  - first DO SQLite current-state surface:
+    `createDurableObjectSqliteCurrentSurface` plus Effect-native
+    append-and-rebuild, rebuild, current-row, current-entity, and
+    typed-current-entity helpers backed by SQLite projection rows
   - structural Durable Object WebSocket relay shell for hello/delta sync and
     event fan-out
   - Worker-facing router + Durable Object class shell and example Wrangler config
   - package-local tests proving restart durability, G-Set convergence, version
     vectors, stored event verification, WebSocket publish/catch-up, and protocol
     filtering, Worker routing, and WebSocket upgrade wiring; SQLite target tests
-    additionally prove runtime, projection-store, and restart-persistence
-    conformance
+    additionally prove runtime, projection-store, restart-persistence
+    conformance, and the current-state surface append/rebuild/read behavior
 - `@metacrdt/local` exists in [`packages/local`](./packages/local):
   - browser-facing local-first target package
   - composes the `@metacrdt/runtime` localStorage-backed event/HLC/seq services
@@ -9410,6 +9417,69 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
 
 ---
 
+## Goal 116 — @metacrdt/cloudflare DO SQLite Current-State Surface
+
+**Status:** shipped.
+
+**Objective:** start Cloudflare Phase C with the first component-equivalent
+current-state surface over the DO SQLite runtime, without claiming full
+bitemporal query or operational parity. The surface should use the existing
+Effect `EventStoreService` / `ProjectionStoreService` Layer boundary, rebuild
+current projection rows through shared `@metacrdt/runtime` /
+`@metacrdt/core` fold semantics, and expose a small Promise facade for host DO
+methods.
+
+### What Shipped
+
+- Added `packages/cloudflare/src/sqliteCurrent.ts`:
+  - `createDurableObjectSqliteCurrentSurface(runtime, options)`;
+  - Effect-native `appendAssertAndRebuildDurableObjectSqliteCurrentEffect`;
+  - Effect-native `appendLifecycleAndRebuildDurableObjectSqliteCurrentEffect`;
+  - `rebuildDurableObjectSqliteCurrentEffect`;
+  - `listDurableObjectSqliteCurrentEffect`;
+  - `getDurableObjectSqliteCurrentEntityEffect`;
+  - `listDurableObjectSqliteCurrentEntitiesEffect`;
+  - `effect/Schema` boundaries for current coordinate, filters, append args,
+    lifecycle args, and rebuild args;
+  - tagged `DurableObjectSqliteCurrentSurfaceError` values in the Effect error
+    channel.
+- The surface rebuilds neutral `ProjectionRow`s from the protocol log via
+  `projectionRowsFromLog(fromEvents(events), coord, cardinalityOf)`, then
+  replaces the SQLite `ProjectionStoreService` rows.
+- Current reads are served from SQLite projection rows:
+  - `listCurrent` for row-level projection scans;
+  - `getCurrentEntity` for grouped current attributes;
+  - `listCurrentEntities` for typed entity listings with current names and row
+    counts.
+- Exported the surface, Effect helpers, schemas, and types from
+  `@metacrdt/cloudflare`.
+- Updated `packages/cloudflare/README.md`,
+  `docs/cloudflare-target.md`, `docs/targets.md`, README, PLAN, and TODO to
+  distinguish the shipped current-state seed from the remaining Cloudflare
+  parity work.
+
+### Non-Goals
+
+- Do not add live Cloudflare Worker/DO dependencies to tests.
+- Do not claim full component parity yet: `getEvent` / `listEvents`,
+  bitemporal query/index APIs, operational collection/flow functions, alarm
+  multiplexing, and live frontend query subscriptions remain ahead.
+- Do not extract `@metacrdt/sql` from this slice; the current surface still
+  reuses the existing runtime projection service and fake-SQL test harness.
+- Do not optimize rebuilds yet. Append helpers intentionally rebuild the current
+  projection after each append for a narrow, correct first surface.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 28 Cloudflare tests.
+- New tests prove:
+  - append-and-rebuild writes protocol events, rebuilds SQLite projection rows,
+    and reads the resulting current entity/list state;
+  - lifecycle retraction removes the current row after rebuild.
+
+---
+
 ## Goal 115 — @metacrdt/cloudflare Durable Object SQLite Runtime Seed
 
 **Status:** shipped.
@@ -9735,6 +9805,7 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] `@metacrdt/cloudflare` Durable Object WebSocket relay shell.
 - [x] Cloudflare Worker/DO example shell + Wrangler config.
 - [x] Cloudflare Durable Object SQLite runtime-service substrate.
+- [x] Cloudflare Durable Object SQLite current-state surface.
 - [x] `@metacrdt/local` browser/local-first package over localStorage +
   BroadcastChannel.
 - [x] IndexedDB-compatible async local persistence adapter.

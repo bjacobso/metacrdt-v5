@@ -24,6 +24,12 @@ implements them on Cloudflare.
   events, projections, and HLC/seq metadata while keeping Worker types out of the
   package surface. `createDurableObjectSqliteRuntimeLayer` exposes it as an
   Effect `Layer`.
+- **Durable Object SQLite current-state surface** —
+  `createDurableObjectSqliteCurrentSurface` plus Effect-native helpers for
+  append-and-rebuild, `rebuildCurrent`, `listCurrent`, `getCurrentEntity`, and
+  `listCurrentEntities`. The surface rebuilds SQL projection rows from the
+  protocol log with shared `@metacrdt/runtime` / `@metacrdt/core` fold semantics,
+  then serves current reads from the SQLite projection table.
 - **WebSocket relay** — `DurableObjectWebSocketRelay` / `attachDurableObjectRelay`
   (`RelayConnection`, `RelayOptions`, `WebSocketLike`): accepts server sockets,
   answers version-vector hellos with deltas, merges client events through the
@@ -62,6 +68,7 @@ to the same projections as any other target.
 ```ts
 import {
   createDurableObjectRuntime,
+  createDurableObjectSqliteCurrentSurface,
   createDurableObjectRuntimeLayer,
   createDurableObjectSqliteRuntimeLayer,
   relayWorker,
@@ -114,8 +121,9 @@ Cloudflare SQLite API, and it passes the shared `@metacrdt/testkit` runtime,
 projection-store, and restart-persistence conformance suites.
 
 It is still not a full queryable bitemporal triple store or a live deployment.
-The remaining parity plan — component-equivalent append/list/current/rebuild
-surfaces, cardinality-one reconcile, collection/flow surface, alarm
+The first component-equivalent current-state surface exists over the SQLite
+runtime, but the remaining parity plan — richer append/list event functions,
+full bitemporal query/index surface, collection/flow surface, alarm
 multiplexing, and live frontend queries over DO WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 

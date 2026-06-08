@@ -31,6 +31,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Cloudflare Durable Object SQLite runtime seed — structural `sql.exec`
   event/projection/HLC/seq services with Effect Layer, runtime conformance,
   projection-store conformance, and restart-persistence conformance.
+- [x] Cloudflare Durable Object SQLite current-state surface — append-and-rebuild,
+  rebuild, current-row, current-entity, and typed current-entity reads over the
+  SQLite projection store with Effect helpers and a Promise facade.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -39,9 +42,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   dependency-free structural SQLite key/value adapter and local-first runtime.
 - [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
   DataChannel anti-entropy transport with multi-hop gossip.
-- [ ] Cloudflare component-equivalent SQLite surface — append/list/current/
-  rebuild/query over DO SQLite, plus cardinality-one reconcile and operational
-  collection/flow surface (see [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
+- [ ] Cloudflare remaining component-equivalent SQLite surface — event get/list,
+  bitemporal query/index APIs, cardinality-one reconcile/invalidation reporting,
+  operational collection/flow surface, DO alarm multiplexing, and live-query
+  WebSocket plumbing (see [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
@@ -564,6 +568,22 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ## Log
 
+### 2026-06-08 — @metacrdt/cloudflare SQLite current-state surface
+- [x] **Started Cloudflare Phase C.** `@metacrdt/cloudflare` now exports
+  `createDurableObjectSqliteCurrentSurface` plus Effect-native helpers for
+  append-and-rebuild, `rebuildCurrent`, `listCurrent`, `getCurrentEntity`, and
+  `listCurrentEntities` over the structural DO SQLite runtime.
+- [x] **Shared fold semantics, SQLite read model.** The surface rebuilds neutral
+  `ProjectionRow`s from the protocol log with `projectionRowsFromLog` /
+  `@metacrdt/core` visibility/cardinality semantics, replaces the SQLite
+  `ProjectionStoreService` rows, and serves current reads from that projection
+  table.
+- [x] **Tests and docs.** Cloudflare package tests now prove append/rebuild/read
+  behavior and lifecycle retraction over the current surface (28/28). README,
+  PLAN, `docs/cloudflare-target.md`, and `docs/targets.md` now separate the
+  shipped current-state seed from remaining bitemporal query / operational /
+  live-query parity work.
+
 ### 2026-06-08 — @metacrdt/node deployment recipes
 - [x] **Added concrete Node deployment recipes.**
   `packages/node/DEPLOYMENT.md` shows native `node:http` + Postgres (`pg`
@@ -608,9 +628,10 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   driver and prove Layer use, restart persistence, two-replica convergence,
   invalid event-id rejection, shared runtime conformance, shared
   projection-store conformance, and shared restart-persistence conformance.
-- [x] Still ahead: component-equivalent append/list/current/rebuild/query
-  surface, cardinality-one projection reconcile, collection/flow surface, DO
-  alarm multiplexing, live query subscriptions, and live Cloudflare deployment.
+- [x] Still ahead after this seed: component-equivalent event get/list,
+  bitemporal query/index surface, cardinality-one reconcile/invalidation
+  reporting, collection/flow surface, DO alarm multiplexing, live query
+  subscriptions, and live Cloudflare deployment.
 
 ### 2026-06-08 — @metacrdt/node sync SDK client
 - [x] **Added the Node sync client.** `@metacrdt/node` now exports

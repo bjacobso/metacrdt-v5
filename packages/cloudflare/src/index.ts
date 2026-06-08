@@ -23,6 +23,36 @@ export {
 } from "./durableObjectSqlite.js";
 
 export {
+  DurableObjectSqliteAppendAssertArgsSchema,
+  DurableObjectSqliteAppendLifecycleArgsSchema,
+  DurableObjectSqliteCoordSchema,
+  DurableObjectSqliteCurrentEntitiesArgsSchema,
+  DurableObjectSqliteCurrentEntityArgsSchema,
+  DurableObjectSqliteCurrentFilterSchema,
+  DurableObjectSqliteCurrentSurfaceError,
+  DurableObjectSqliteRebuildCurrentArgsSchema,
+  appendAssertAndRebuildDurableObjectSqliteCurrentEffect,
+  appendLifecycleAndRebuildDurableObjectSqliteCurrentEffect,
+  createDurableObjectSqliteCurrentSurface,
+  getDurableObjectSqliteCurrentEntityEffect,
+  listDurableObjectSqliteCurrentEffect,
+  listDurableObjectSqliteCurrentEntitiesEffect,
+  rebuildDurableObjectSqliteCurrentEffect,
+  type DurableObjectSqliteAppendAndRebuildResult,
+  type DurableObjectSqliteAppendAssertArgs,
+  type DurableObjectSqliteAppendLifecycleArgs,
+  type DurableObjectSqliteCurrentEntitiesArgs,
+  type DurableObjectSqliteCurrentEntity,
+  type DurableObjectSqliteCurrentEntityArgs,
+  type DurableObjectSqliteCurrentEntityListItem,
+  type DurableObjectSqliteCurrentFilter,
+  type DurableObjectSqliteCurrentSurface,
+  type DurableObjectSqliteCurrentSurfaceOptions,
+  type DurableObjectSqliteRebuildCurrentArgs,
+  type DurableObjectSqliteRebuildCurrentResult,
+} from "./sqliteCurrent.js";
+
+export {
   DurableObjectWebSocketRelay,
   attachDurableObjectRelay,
   type RelayConnection,
