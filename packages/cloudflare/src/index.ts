@@ -10,6 +10,19 @@ export {
 } from "./durableObject.js";
 
 export {
+  DurableObjectSqliteClock,
+  DurableObjectSqliteEventStore,
+  DurableObjectSqliteProjectionStore,
+  DurableObjectSqliteSequencer,
+  createDurableObjectSqliteRuntime,
+  createDurableObjectSqliteRuntimeLayer,
+  type DurableObjectSqlCursorLike,
+  type DurableObjectSqliteRuntime,
+  type DurableObjectSqliteRuntimeOptions,
+  type DurableObjectSqlStorageLike,
+} from "./durableObjectSqlite.js";
+
+export {
   DurableObjectWebSocketRelay,
   attachDurableObjectRelay,
   type RelayConnection,

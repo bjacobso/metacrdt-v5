@@ -1,0 +1,201 @@
+import { describe, expect, test } from "vitest";
+import { fromEvents, valueOf } from "@metacrdt/core";
+import {
+  EventStoreService,
+  applyOperation,
+  applyOperationEffect,
+  exchangeDeltas,
+  versionVector,
+} from "@metacrdt/runtime";
+import { Effect } from "effect";
+import {
+  createDurableObjectSqliteRuntime,
+  createDurableObjectSqliteRuntimeLayer,
+} from "./index.js";
+import { FakeDurableObjectSqlStorage } from "./sqliteFake.test-support.js";
+
+const coord = { txTime: 10_000, validTime: 10_000 };
+const one = () => "one" as const;
+const many = () => "many" as const;
+
+describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
+  test("provides an Effect Layer and stamps seq/version-vector metadata", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const event = yield* applyOperationEffect({
+            op: "assert",
+            e: "do-sqlite:layer",
+            a: "status",
+            v: "ready",
+            actor: "test",
+            actorType: "system",
+          });
+          const store = yield* EventStoreService;
+          return {
+            event,
+            stored: yield* store.get(event.id),
+            events: yield* store.scan(),
+          };
+        }),
+        createDurableObjectSqliteRuntimeLayer({
+          sql: new FakeDurableObjectSqlStorage(),
+          replicaId: "do-sqlite:layer",
+          wall: () => 50,
+        }),
+      ),
+    );
+    expect(result.stored).toEqual(result.event);
+    expect(result.event.seq).toBe(1);
+    expect(versionVector(result.events)).toEqual({ "do-sqlite:layer": 1 });
+  });
+
+  test("persists event log, HLC, and per-replica sequence across runtime recreation", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    let wall = 100;
+    const first = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:room",
+      wall: () => wall,
+    });
+
+    const active = await applyOperation(first, {
+      op: "assert",
+      e: "worker:maria",
+      a: "worker.status",
+      v: "active",
+      actor: "user:1",
+    });
+    expect(active.hlc).toEqual({ pt: 100, l: 0, r: "do-sqlite:room" });
+    expect(active.seq).toBe(1);
+
+    wall = 100;
+    const second = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:room",
+      wall: () => wall,
+    });
+    expect(second.clock.current()).toEqual({
+      pt: 100,
+      l: 0,
+      r: "do-sqlite:room",
+    });
+    expect(second.sequencer.current()).toBe(1);
+
+    const terminated = await applyOperation(second, {
+      op: "assert",
+      e: "worker:maria",
+      a: "worker.status",
+      v: "terminated",
+      actor: "user:1",
+    });
+    expect(terminated.hlc).toEqual({ pt: 100, l: 1, r: "do-sqlite:room" });
+    expect(terminated.seq).toBe(2);
+
+    const third = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:room",
+      wall: () => 100,
+    });
+    const log = fromEvents(await third.store.scan());
+    expect(valueOf("worker:maria", "worker.status", coord, log, one)).toBe(
+      "terminated",
+    );
+    expect(versionVector(await third.store.scan())).toEqual({
+      "do-sqlite:room": 2,
+    });
+  });
+
+  test("two SQLite runtimes exchange deltas and persist convergence", async () => {
+    const leftSql = new FakeDurableObjectSqlStorage();
+    const rightSql = new FakeDurableObjectSqlStorage();
+    const left = await createDurableObjectSqliteRuntime({
+      sql: leftSql,
+      replicaId: "do-sqlite:left",
+      wall: () => 200,
+    });
+    const right = await createDurableObjectSqliteRuntime({
+      sql: rightSql,
+      replicaId: "do-sqlite:right",
+      wall: () => 200,
+    });
+
+    await applyOperation(left, {
+      op: "assert",
+      e: "task:1",
+      a: "tag",
+      v: "left",
+      actor: "alice",
+    });
+    await applyOperation(right, {
+      op: "assert",
+      e: "task:1",
+      a: "tag",
+      v: "right",
+      actor: "bob",
+    });
+
+    const first = await exchangeDeltas(left, right);
+    expect(first).toMatchObject({
+      sentFromA: 1,
+      sentFromB: 1,
+      insertedIntoA: 1,
+      insertedIntoB: 1,
+      vvA: { "do-sqlite:left": 1, "do-sqlite:right": 1 },
+      vvB: { "do-sqlite:left": 1, "do-sqlite:right": 1 },
+    });
+
+    const restartedLeft = await createDurableObjectSqliteRuntime({
+      sql: leftSql,
+      replicaId: "do-sqlite:left",
+      wall: () => 200,
+    });
+    const restartedRight = await createDurableObjectSqliteRuntime({
+      sql: rightSql,
+      replicaId: "do-sqlite:right",
+      wall: () => 200,
+    });
+    const leftLog = fromEvents(await restartedLeft.store.scan());
+    const rightLog = fromEvents(await restartedRight.store.scan());
+    expect([...leftLog.keys()].sort()).toEqual([...rightLog.keys()].sort());
+    expect(
+      (valueOf("task:1", "tag", coord, leftLog, many) as string[]).sort(),
+    ).toEqual(["left", "right"]);
+    expect(
+      (valueOf("task:1", "tag", coord, rightLog, many) as string[]).sort(),
+    ).toEqual(["left", "right"]);
+
+    const second = await exchangeDeltas(restartedLeft, restartedRight);
+    expect(second).toMatchObject({
+      sentFromA: 0,
+      sentFromB: 0,
+      insertedIntoA: 0,
+      insertedIntoB: 0,
+    });
+  });
+
+  test("rejects invalid stored event ids on scan", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:verify",
+      wall: () => 300,
+    });
+    const event = await applyOperation(runtime, {
+      op: "assert",
+      e: "doc:1",
+      a: "status",
+      v: "ready",
+      actor: "user:1",
+    });
+    sql.putStoredEvent({ ...event, id: "bad" });
+
+    const restarted = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:verify",
+      wall: () => 300,
+    });
+    await expect(restarted.store.scan()).rejects.toThrow(/invalid stored event id/);
+  });
+});
+

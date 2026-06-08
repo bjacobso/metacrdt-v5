@@ -1,6 +1,10 @@
 # Cloudflare target — Durable Object + SQLite triple store
 
-**Status:** Draft proposal
+**Status:** Active target plan. Phase A has started: `@metacrdt/cloudflare`
+now has a structural Durable Object SQLite runtime adapter over
+`ctx.storage.sql.exec(...)`, with EventStore / ProjectionStore / HLC / seq
+services and Layer-backed conformance. Full queryable triple-store parity is
+still ahead.
 **Scope:** Grow `@metacrdt/cloudflare` from a sync-plane shell into a full
 MetaCRDT target at parity with the `@metacrdt/convex` component — an indexed,
 bitemporal triple store backed by Durable Object SQLite storage — without
@@ -16,11 +20,14 @@ build plan.
 ## Why this doc exists
 
 `@metacrdt/convex` is currently the only target that implements MetaCRDT as a
-real operational triple store. `@metacrdt/cloudflare` today implements only the
+real operational triple store. `@metacrdt/cloudflare` started as only the
 **sync plane** — a convergent event log over Durable Object KV storage, plus a
-WebSocket relay and a Worker shell. It has no projections, no indexed triple
-queries, no bitemporal fold-on-read, no cardinality-one resolution, no rebuild,
-and none of the operational (collection/flow) surface.
+WebSocket relay and a Worker shell. It now also has the first Durable Object
+SQLite runtime substrate: structural SQLite services for events, projection
+rows, HLC, and per-replica `seq`. It still has no component-equivalent
+append/list/current/rebuild function surface, no indexed triple queries, no
+bitemporal fold-on-read API, no cardinality-one projection reconcile, and none
+of the operational (collection/flow) surface.
 
 This doc defines what it takes to bring Cloudflare to parity, in what order, and
 which decisions must be settled first — and it makes **live frontend queries an
@@ -77,35 +84,52 @@ function surface — backed by Durable Object SQLite instead of the Convex DB.
 | Present | Role |
 | --- | --- |
 | `DurableObjectEventStore` | KV-blob event log: one `event:<id>` entry per event + an `events:index` id array |
+| `DurableObjectProjectionStore` | KV-blob materialized projection-store seed for shared `ProjectionStoreService` conformance |
 | `DurableObjectClock` / `DurableObjectSequencer` | persisted HLC + per-replica `seq` |
+| `DurableObjectSqliteEventStore` | SQLite-backed event table over `ctx.storage.sql.exec(...)`; indexed by entity and attribute |
+| `DurableObjectSqliteProjectionStore` | SQLite-backed materialized projection table; indexed by entity, attribute, and source event |
+| `DurableObjectSqliteClock` / `DurableObjectSqliteSequencer` | SQLite-backed HLC + per-replica `seq` metadata |
 | `DurableObjectWebSocketRelay` | version-vector hello/delta sync + event fan-out |
 | `MetaCrdtRelayDurableObject` / `relayWorker` | Worker/DO example shell |
 
-This is the sync plane: a convergent log + transport. `scan()` linearly loads
-every id and filters in memory — correct, but not a queryable triple store.
+This is now the sync plane plus a SQL storage substrate. The KV store still
+linearly loads ids and filters in memory; the SQLite store adds targeted event
+and projection indexes. Neither is yet a queryable component-equivalent triple
+store.
 
 ---
 
 ## The gap, in one sentence
 
-Cloudflare can already **converge an event log**; it cannot yet **project, index,
-or query that log as a bitemporal triple store**, nor run the operational
-collection/flow surface.
+Cloudflare can already **converge and persist an event log** and now has a
+SQLite-backed projection-store substrate; it cannot yet expose the
+component-equivalent **project/index/query/rebuild** surface as a bitemporal
+triple store, nor run the operational collection/flow surface.
 
 ---
 
 ## Build plan (phased; B is the keystone and goes first)
 
-### Phase A — SQLite storage substrate
+### Phase A — SQLite storage substrate *(started)*
 
 Adopt the Durable Object **SQLite storage backend** (`ctx.storage.sql.exec(...)`,
 synchronous, transactional within the DO). Add a `SqlEventStore` implementing the
 existing `@metacrdt/runtime` `EventStore` interface, so the relay keeps working
-unchanged. Define a SQL schema mirroring `component/schema.ts`:
+unchanged. Define a SQL schema mirroring `component/schema.ts`.
 
-- `transactions`, `fact_events`, `facts`, `current_facts`.
-- SQL indexes replace Convex `.index(...)`: `by_e`, `by_e_a_txTime`,
-  `by_eventId`, `by_a_v`, `by_assertedAt`, etc.
+**Shipped seed:** `DurableObjectSqliteEventStore`,
+`DurableObjectSqliteProjectionStore`, `DurableObjectSqliteClock`, and
+`DurableObjectSqliteSequencer` over structural `sql.exec`, exported through
+`createDurableObjectSqliteRuntime` / `createDurableObjectSqliteRuntimeLayer`.
+The seed owns `events`, `projection`, and `meta` tables with entity/attribute
+indexes and passes shared runtime, projection-store, and restart-persistence
+conformance.
+
+**Still ahead for parity:** SQL schema mirroring the component-owned surface:
+`transactions`, `fact_events`, `facts`, `current_facts`, plus indexes replacing
+Convex `.index(...)`: `by_e`, `by_e_a_txTime`, `by_eventId`, `by_a_v`,
+`by_assertedAt`, etc. The current seed is runtime-service substrate, not the
+full component-equivalent table/function surface.
 
 ### Phase B — Extract the shared fold/reconcile into core *(do this first)*
 
@@ -219,10 +243,12 @@ keeps it converged.
 ## Sizing
 
 The Phase B adapters (~600–800 LOC) get **shared, not rewritten**. The
-Cloudflare-specific work is comparable to the existing Convex component: a SQL
-schema + migration, a ~1000–1500 LOC SQL-backed log surface, and the
-alarm-multiplexing layer. Roughly 2–4 focused sessions, gated on Phase B landing
-first. The live-query stretch goal is a separate later increment on top.
+Cloudflare-specific work is comparable to the existing Convex component: the
+runtime-service SQLite seed is now present; the remaining work is a richer SQL
+schema + migration, a ~1000–1500 LOC SQL-backed component-equivalent log/current
+surface, and the alarm-multiplexing layer. Roughly 2–4 focused sessions remain,
+gated on shared fold/reconcile reuse. The live-query stretch goal is a separate
+later increment on top.
 
 ---
 

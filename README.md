@@ -90,10 +90,10 @@ It defines:
 
 The current Convex runtime implements the centralized reference path. The
 multi-replica pieces are emerging as reusable target packages: browser/local
-persistence, Durable Object storage/relay shells, and structural peer-to-peer
-DataChannel anti-entropy exist. The Cloudflare relay now has an optional
-token-auth boundary for live Workers; actual live deployment, signaling, retry
-policy, and production coordination remain the frontier tracked in
+persistence, Durable Object KV/SQLite storage and relay shells, and structural
+peer-to-peer DataChannel anti-entropy exist. The Cloudflare relay now has an
+optional token-auth boundary for live Workers; actual live deployment,
+signaling, retry policy, and production coordination remain the frontier tracked in
 [TODO.md](./TODO.md).
 
 ---
@@ -163,9 +163,9 @@ Current packages:
   anti-entropy, and p2p DataChannel anti-entropy. The runtime package also owns
   the shared `ProjectionRow` contract and `projectionRowsFromLog` builder.
 - **`@metacrdt/cloudflare`** (`packages/cloudflare`) — Durable Object / Worker
-  target helpers: storage-backed event log, HLC, per-replica sequencer,
-  Effect Layer provider, WebSocket relay shell, Worker router, and example
-  Wrangler config.
+  target helpers: KV-backed and SQLite-backed event log/projection/HLC/seq
+  services, Effect Layer providers, WebSocket relay shell, Worker router, and
+  example Wrangler config.
 - **`@metacrdt/local`** (`packages/local`) — browser/local-first target package:
   localStorage-backed event/HLC/seq services composed with BroadcastChannel
   anti-entropy, IndexedDB-compatible async persistence, SQLite-compatible local
@@ -232,7 +232,7 @@ Planned package graph:
 @metacrdt/agent       agent actors, proposals, skills
 @metacrdt/runtime     IR + Effect service interfaces/Layers
 @metacrdt/convex      Convex target / component / bindings
-@metacrdt/cloudflare  Durable Object / Worker target
+@metacrdt/cloudflare  Durable Object / Worker target (KV relay shell + SQLite runtime seed)
 @metacrdt/local       browser/local-first target
 @metacrdt/testkit     target conformance checks
 @metacrdt/node        Node target (memory + structural SQLite/Postgres + SQL lifecycle plan + HTTP/SSE + listener + sync client + production assembly + dev-server CLI shipped)

@@ -191,12 +191,16 @@ runtime, returns its Effect Layer, HTTP/SSE handler, native-style listener, SQL
 lifecycle metadata for durable stores, and optional sync client wiring. Goal
 114 adds concrete Node deployment recipes for native `node:http` + Postgres,
 native `node:http` + SQLite, framework adapters, explicit SQL lifecycle usage,
-and one-shot peer sync. The next active goal should be chosen from the remaining
+and one-shot peer sync. Goal 115 starts Cloudflare Phase A by adding structural
+Durable Object SQLite runtime services for event/projection storage, HLC, and
+per-replica sequencing over `ctx.storage.sql.exec(...)`, with runtime,
+projection-store, and persistence conformance. The next active goal should be
+chosen from the remaining
 TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
-Cloudflare DO+SQLite parity, another carefully scoped Confect/domain wrapper,
-or the next projection dependency
+Cloudflare DO+SQLite component-equivalent parity, another carefully scoped
+Confect/domain wrapper, or the next projection dependency
 (closure/derived provenance or remaining operational process state).
 
 This plan is the operational goal file. Read it with:
@@ -506,15 +510,22 @@ arguments.
 - `@metacrdt/cloudflare` exists in
   [`packages/cloudflare`](./packages/cloudflare):
   - Durable Object storage-backed `EventStore`
+  - Durable Object SQLite-backed `EventStore` and `ProjectionStore`
   - Durable Object storage-backed HLC clock
+  - Durable Object SQLite-backed HLC clock
   - Durable Object storage-backed per-replica sequencer
+  - Durable Object SQLite-backed per-replica sequencer
   - async `createDurableObjectRuntime` target services over `@metacrdt/runtime`
+  - async `createDurableObjectSqliteRuntime` target services over structural
+    `ctx.storage.sql.exec(...)`
   - structural Durable Object WebSocket relay shell for hello/delta sync and
     event fan-out
   - Worker-facing router + Durable Object class shell and example Wrangler config
   - package-local tests proving restart durability, G-Set convergence, version
     vectors, stored event verification, WebSocket publish/catch-up, and protocol
-    filtering, Worker routing, and WebSocket upgrade wiring
+    filtering, Worker routing, and WebSocket upgrade wiring; SQLite target tests
+    additionally prove runtime, projection-store, and restart-persistence
+    conformance
 - `@metacrdt/local` exists in [`packages/local`](./packages/local):
   - browser-facing local-first target package
   - composes the `@metacrdt/runtime` localStorage-backed event/HLC/seq services
@@ -9399,6 +9410,52 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
 
 ---
 
+## Goal 115 — @metacrdt/cloudflare Durable Object SQLite Runtime Seed
+
+**Status:** shipped.
+
+**Objective:** start Cloudflare Phase A with a structural Durable Object SQLite
+runtime substrate, without claiming full triple-store parity or importing
+Cloudflare Worker types. The target should expose the same Effect Layer service
+shape as the existing Durable Object KV runtime, but persist events, projection
+rows, HLC, and per-replica sequence through `ctx.storage.sql.exec(...)`.
+
+### What Shipped
+
+- Added `packages/cloudflare/src/durableObjectSqlite.ts`:
+  - structural `DurableObjectSqlStorageLike` and cursor types for
+    `sql.exec(query, ...bindings)`;
+  - `DurableObjectSqliteEventStore` with `events` table, entity/attribute
+    indexes, idempotent append/merge, filtered scan, and stored-event id
+    verification;
+  - `DurableObjectSqliteProjectionStore` with `projection` table and indexes for
+    entity, attribute, and source event id;
+  - SQLite-backed metadata store for HLC clock and per-replica sequencer state;
+  - `createDurableObjectSqliteRuntime` and
+    `createDurableObjectSqliteRuntimeLayer`.
+- Exported the SQLite runtime seed from `@metacrdt/cloudflare`.
+- Added fake-`sql.exec` tests for Layer use, persisted HLC/seq/log state,
+  two-replica delta exchange, and invalid stored event rejection.
+- Wired the SQLite target into shared `@metacrdt/testkit` runtime,
+  projection-store, and restart-persistence conformance.
+
+### Non-Goals
+
+- Do not add Worker type dependencies or require a live Cloudflare runtime in
+  tests.
+- Do not claim component-equivalent Cloudflare parity yet: no
+  append/list/current/rebuild function surface, no operational collection/flow
+  surface, no DO alarm multiplexing, and no live frontend query subscriptions.
+- Do not extract `@metacrdt/sql` from this first SQLite consumer pair; wait until
+  DO SQLite and Node SQL duplication makes the shared DDL/query boundary obvious.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 26 Cloudflare tests.
+
+---
+
 ## Goal 114 — @metacrdt/node Deployment Recipes
 
 **Status:** shipped.
@@ -9677,6 +9734,7 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] `@metacrdt/cloudflare` Durable Object runtime services.
 - [x] `@metacrdt/cloudflare` Durable Object WebSocket relay shell.
 - [x] Cloudflare Worker/DO example shell + Wrangler config.
+- [x] Cloudflare Durable Object SQLite runtime-service substrate.
 - [x] `@metacrdt/local` browser/local-first package over localStorage +
   BroadcastChannel.
 - [x] IndexedDB-compatible async local persistence adapter.

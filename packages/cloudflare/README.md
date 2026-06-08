@@ -16,6 +16,14 @@ implements them on Cloudflare.
   log, materialized projection store, HLC clock, and per-replica sequencer over
   a `DurableObjectStorageLike` interface. `createDurableObjectRuntimeLayer`
   exposes the same target as an Effect `Layer`.
+- **Durable Object SQLite runtime services** —
+  `createDurableObjectSqliteRuntime` with `DurableObjectSqliteEventStore`,
+  `DurableObjectSqliteProjectionStore`, `DurableObjectSqliteClock`, and
+  `DurableObjectSqliteSequencer`: the first structural SQLite-backed DO adapter
+  over `ctx.storage.sql.exec(query, ...bindings)`. It uses SQL tables/indexes for
+  events, projections, and HLC/seq metadata while keeping Worker types out of the
+  package surface. `createDurableObjectSqliteRuntimeLayer` exposes it as an
+  Effect `Layer`.
 - **WebSocket relay** — `DurableObjectWebSocketRelay` / `attachDurableObjectRelay`
   (`RelayConnection`, `RelayOptions`, `WebSocketLike`): accepts server sockets,
   answers version-vector hellos with deltas, merges client events through the
@@ -55,6 +63,7 @@ to the same projections as any other target.
 import {
   createDurableObjectRuntime,
   createDurableObjectRuntimeLayer,
+  createDurableObjectSqliteRuntimeLayer,
   relayWorker,
 } from "@metacrdt/cloudflare";
 ```
@@ -96,21 +105,19 @@ Worker `/health` is public by default so load balancers can probe it; set
 
 ## Status
 
-This package today implements the **sync plane** — a convergent event log over
-Durable Object storage, plus the relay and Worker shells. It is storage-backed
-and protocol-correct, but not yet a queryable triple store or a live deployment.
-Its Durable Object runtime services pass the shared `@metacrdt/testkit`
-EventStore / anti-entropy / deterministic-fold conformance suite through the
-Durable Object Effect Layer, plus materialized projection-store conformance
-through `ProjectionStoreService`. The Layer is also smoke-tested directly
-through `applyOperationEffect`.
+This package today implements the **sync plane** and the first **Durable Object
+SQLite storage substrate**. The original KV-shaped Durable Object runtime remains
+for relay/storage-shell tests; the SQLite runtime is the forward path for the
+full target. Both expose Effect Layers. The SQLite adapter persists the event log,
+materialized projection rows, HLC, and per-replica sequence through the structural
+Cloudflare SQLite API, and it passes the shared `@metacrdt/testkit` runtime,
+projection-store, and restart-persistence conformance suites.
 
-The plan to grow it to parity with `@metacrdt/convex` — an indexed, bitemporal
-triple store over Durable Object **SQLite** storage, with projections,
-cardinality-one reconcile, rebuild, and the collection/flow surface — is
-[docs/cloudflare-target.md](../../docs/cloudflare-target.md). That doc also tracks
-**live frontend queries over DO WebSockets** as an explicit stretch goal the
-architecture must not preclude.
+It is still not a full queryable bitemporal triple store or a live deployment.
+The remaining parity plan — component-equivalent append/list/current/rebuild
+surfaces, cardinality-one reconcile, collection/flow surface, alarm
+multiplexing, and live frontend queries over DO WebSockets — is
+[docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth
 boundary is present but not yet exercised by a production deployment (see

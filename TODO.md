@@ -28,6 +28,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Cloudflare relay auth boundary — `createRelayWorker` enforces Bearer/
   header/query token auth when `METACRDT_RELAY_TOKEN` (or configured token) is
   present; health stays public by default and can be protected.
+- [x] Cloudflare Durable Object SQLite runtime seed — structural `sql.exec`
+  event/projection/HLC/seq services with Effect Layer, runtime conformance,
+  projection-store conformance, and restart-persistence conformance.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -36,6 +39,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   dependency-free structural SQLite key/value adapter and local-first runtime.
 - [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
   DataChannel anti-entropy transport with multi-hop gossip.
+- [ ] Cloudflare component-equivalent SQLite surface — append/list/current/
+  rebuild/query over DO SQLite, plus cardinality-one reconcile and operational
+  collection/flow surface (see [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
@@ -521,7 +527,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Choose the next Node slice: concrete deployment recipes over real
   drivers/process managers.
 - [ ] Choose between production provider wiring, Node production hardening
-  (auth/retry/observability examples), Cloudflare DO+SQLite parity, or
+  (auth/retry/observability examples), Cloudflare DO+SQLite
+  component-equivalent parity, or
   another parked Query/Rules item.
 
 **Docs**
@@ -586,6 +593,24 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   top-level README now describe the production assembly path. Concrete
   deployment recipes over real drivers/process managers remain the next Node
   documentation slice.
+
+### 2026-06-08 — @metacrdt/cloudflare Durable Object SQLite runtime seed
+- [x] **Started Cloudflare Phase A.** `@metacrdt/cloudflare` now exports
+  `createDurableObjectSqliteRuntime` / `createDurableObjectSqliteRuntimeLayer`
+  plus structural `DurableObjectSqlStorageLike` bindings for Cloudflare's
+  `ctx.storage.sql.exec(query, ...bindings)` API.
+- [x] **SQLite-backed runtime services:** `DurableObjectSqliteEventStore`,
+  `DurableObjectSqliteProjectionStore`, `DurableObjectSqliteClock`, and
+  `DurableObjectSqliteSequencer` persist events, materialized projection rows,
+  HLC, and per-replica `seq` through `events` / `projection` / `meta` tables
+  with entity/attribute/source-event indexes.
+- [x] **Conformance:** Cloudflare package tests now include a narrow fake SQL
+  driver and prove Layer use, restart persistence, two-replica convergence,
+  invalid event-id rejection, shared runtime conformance, shared
+  projection-store conformance, and shared restart-persistence conformance.
+- [x] Still ahead: component-equivalent append/list/current/rebuild/query
+  surface, cardinality-one projection reconcile, collection/flow surface, DO
+  alarm multiplexing, live query subscriptions, and live Cloudflare deployment.
 
 ### 2026-06-08 — @metacrdt/node sync SDK client
 - [x] **Added the Node sync client.** `@metacrdt/node` now exports

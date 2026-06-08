@@ -59,9 +59,11 @@ On open hosts the adapter is a selectable dependency.
 ### Have today
 
 - `@metacrdt/convex` — managed, reactive reference target (full triple store).
-- `@metacrdt/cloudflare` — sync-plane shell with a Durable Object Effect Layer;
-  Worker/DO WebSocket relay with optional token auth; growing to a DO + SQLite
-  triple store ([cloudflare-target.md](./cloudflare-target.md)).
+- `@metacrdt/cloudflare` — sync-plane shell with Durable Object KV and SQLite
+  Effect Layers; Worker/DO WebSocket relay with optional token auth; the SQLite
+  runtime seed persists events, projection rows, HLC, and seq over
+  `ctx.storage.sql.exec(...)`; growing to a full DO + SQLite triple store
+  ([cloudflare-target.md](./cloudflare-target.md)).
 - `@metacrdt/local` — browser/local-first host with localStorage / IndexedDB /
   SQLite-compatible Effect Layers.
 - `@metacrdt/node` — open server-process host with memory and structural
@@ -92,8 +94,8 @@ On open hosts the adapter is a selectable dependency.
   relay also has package tests for optional token auth at the deployment
   boundary. Projection-store
   conformance is currently proven against runtime memory/localStorage, Node
-  memory/SQLite/Postgres, local-first localStorage, Cloudflare Durable Object
-  storage, and the Convex component-owned `projectionRows` read model.
+  memory/SQLite/Postgres, local-first localStorage, Cloudflare Durable Object KV
+  and SQLite storage, and the Convex component-owned `projectionRows` read model.
   Compatibility
   `RuntimeServices` targets still adapt through `runtimeServicesLayer`.
 
@@ -129,7 +131,7 @@ On open hosts the adapter is a selectable dependency.
 | SQLite-wasm | `local` | done |
 | SQLite (server) | `node` | done (structural driver API + shared lifecycle plan) |
 | Postgres | `node` | done (structural `query(sql, params)` adapter + shared lifecycle plan) |
-| DO SQLite | `cloudflare` | planned ([cloudflare-target.md](./cloudflare-target.md)) |
+| DO SQLite | `cloudflare` | started (runtime-service substrate + projection/persistence conformance; full triple-store parity planned in [cloudflare-target.md](./cloudflare-target.md)) |
 | Convex tables | `convex` | done (managed) |
 | FoundationDB | — | archive unless a real need appears |
 
@@ -256,8 +258,9 @@ a sibling target.
    add optimized/materialized query-provider conformance whenever a target
    exposes a query engine beyond the shared EventStore-backed service. This is what *proves* the
    "guaranteed to converge" claim across targets.
-3. **Cloudflare Phase B/C** — extract the shared fold into core, then the DO +
-   SQLite triple store ([cloudflare-target.md](./cloudflare-target.md)).
+3. **Cloudflare Phase B/C** — the DO SQLite runtime-service substrate has
+   started; next is the component-equivalent append/current/rebuild/query surface
+   over SQLite ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal
    enough repeated DDL/query-generation logic beyond the current Node lifecycle
    plan to justify a shared SQL package.

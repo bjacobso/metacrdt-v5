@@ -2,9 +2,11 @@ import { describe, expect, test } from "vitest";
 import {
   runRuntimeNetworkTransportConformance,
   runRuntimeConformance,
+  runRuntimePersistenceConformance,
   runRuntimeProjectionStoreConformance,
   type RuntimeNetworkTransportConformanceTarget,
   type RuntimeLayerConformanceTarget,
+  type RuntimePersistenceConformanceTarget,
   type RuntimeProjectionStoreConformanceTarget,
   type RuntimeFactoryOptions,
 } from "@metacrdt/testkit";
@@ -17,10 +19,12 @@ import {
 import {
   createDurableObjectRuntimeLayer,
   createDurableObjectRuntime,
+  createDurableObjectSqliteRuntimeLayer,
   attachDurableObjectRelay,
   type DurableObjectStorageLike,
   type WebSocketLike,
 } from "./index.js";
+import { FakeDurableObjectSqlStorage } from "./sqliteFake.test-support.js";
 
 class FakeDurableObjectStorage implements DurableObjectStorageLike {
   readonly data = new Map<string, unknown>();
@@ -60,6 +64,47 @@ const cloudflareProjectionStoreTarget: RuntimeProjectionStoreConformanceTarget =
       wall: options.wall,
     });
   },
+};
+
+const cloudflareSqliteTarget: RuntimeLayerConformanceTarget = {
+  name: "cloudflare-do-sqlite",
+  createLayer(options: RuntimeFactoryOptions) {
+    return createDurableObjectSqliteRuntimeLayer({
+      sql: new FakeDurableObjectSqlStorage(),
+      replicaId: options.replicaId,
+      wall: options.wall,
+    });
+  },
+};
+
+const cloudflareSqliteProjectionStoreTarget: RuntimeProjectionStoreConformanceTarget = {
+  name: "cloudflare-do-sqlite-projection-store",
+  createLayer(options: RuntimeFactoryOptions) {
+    return createDurableObjectSqliteRuntimeLayer({
+      sql: new FakeDurableObjectSqlStorage(),
+      replicaId: options.replicaId,
+      wall: options.wall,
+    });
+  },
+};
+
+const cloudflareSqlitePersistenceTarget = (): RuntimePersistenceConformanceTarget => {
+  const sql = new FakeDurableObjectSqlStorage();
+  return {
+    name: "cloudflare-do-sqlite-persistence",
+    resetPersistence() {
+      sql.events.clear();
+      sql.projection.clear();
+      sql.meta.clear();
+    },
+    createLayer(options: RuntimeFactoryOptions) {
+      return createDurableObjectSqliteRuntimeLayer({
+        sql,
+        replicaId: options.replicaId,
+        wall: options.wall,
+      });
+    },
+  };
 };
 
 class FakeRelaySocket implements WebSocketLike {
@@ -225,6 +270,62 @@ describe("@metacrdt/cloudflare conformance", () => {
         "projection-store-scan-filters",
         "projection-store-replace-is-atomic",
         "projection-store-clear",
+      ],
+    });
+  });
+
+  test("SQLite target passes the shared runtime conformance suite", async () => {
+    await expect(runRuntimeConformance(cloudflareSqliteTarget)).resolves.toEqual({
+      target: "cloudflare-do-sqlite",
+      checks: [
+        "append-idempotent",
+        "scan-filters",
+        "gset-merge-idempotent",
+        "content-id-verification",
+        "bidirectional-delta-exchange",
+        "version-vector-convergence",
+        "deterministic-fold-convergence",
+        "idempotent-second-sync",
+        "projection-cardinality-one-winner",
+        "projection-cardinality-many-set",
+        "projection-entity-map",
+        "projection-bitemporal-coordinate",
+        "projection-audit-flags",
+        "projection-filtered-source-query",
+        "query-join-or-negation-provenance",
+        "query-compare-compute-project",
+        "query-or-dedupe",
+        "query-pagination-aggregation",
+        "query-derived-rows",
+      ],
+    });
+  });
+
+  test("SQLite target passes the shared projection-store conformance suite", async () => {
+    await expect(
+      runRuntimeProjectionStoreConformance(cloudflareSqliteProjectionStoreTarget),
+    ).resolves.toEqual({
+      target: "cloudflare-do-sqlite-projection-store",
+      checks: [
+        "projection-store-replace-from-fold",
+        "projection-store-scan-filters",
+        "projection-store-replace-is-atomic",
+        "projection-store-clear",
+      ],
+    });
+  });
+
+  test("SQLite target passes the shared persistence conformance suite", async () => {
+    await expect(
+      runRuntimePersistenceConformance(cloudflareSqlitePersistenceTarget()),
+    ).resolves.toEqual({
+      target: "cloudflare-do-sqlite-persistence",
+      checks: [
+        "event-log-survives-recreate",
+        "version-vector-survives-recreate",
+        "sequencer-survives-recreate",
+        "hlc-survives-recreate",
+        "post-restart-append-advances-vv",
       ],
     });
   });
