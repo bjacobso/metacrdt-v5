@@ -226,6 +226,7 @@ export default function DataModel() {
                 <th className="px-5 pb-2 pt-3 font-semibold">action</th>
                 <th className="px-2 pb-2 pt-3 font-semibold">applies to</th>
                 <th className="px-2 pb-2 pt-3 font-semibold">inputs</th>
+                <th className="px-2 pb-2 pt-3 font-semibold">opens</th>
                 <th className="px-5 pb-2 pt-3 font-semibold">asserts</th>
               </tr>
             </thead>
@@ -240,6 +241,11 @@ export default function DataModel() {
                     {a.fields.length === 0
                       ? "—"
                       : a.fields.map((f) => `${f.name}:${f.type}`).join(", ")}
+                  </td>
+                  <td className="px-2 py-2.5 text-[12px] text-muted">
+                    {a.opensForm
+                      ? `${String(a.opensForm.form)} @ ${String(a.opensForm.scope)}`
+                      : "—"}
                   </td>
                   <td className="px-5 py-2.5 text-[12px] text-muted">
                     {Object.entries(a.asserts)

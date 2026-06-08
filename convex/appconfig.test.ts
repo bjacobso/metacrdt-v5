@@ -233,6 +233,65 @@ describe("config-as-code + origin + entity detail", () => {
     }
   });
 
+  test("runAction can open a configured collection form", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await setup(t);
+
+      await t.mutation(api.appconfig.applyConfig, {
+        config: {
+          actions: [
+            {
+              name: "collect_i9",
+              label: "Collect I-9",
+              appliesTo: "Worker",
+              fields: [{ name: "scope", label: "Employer", type: "string" }],
+              opensForm: { form: "i9", scope: "$arg.scope" },
+              asserts: {},
+            },
+          ],
+        },
+      });
+      await flush(t);
+
+      const actions = await t.query(api.actions.actionsForType, { type: "Worker" });
+      expect(actions.find((a) => a.name === "collect_i9")?.opensForm).toEqual({
+        form: "i9",
+        scope: "$arg.scope",
+      });
+
+      const first = await t.mutation(api.actions.runAction, {
+        action: "collect_i9",
+        entity: "worker:maria",
+        args: { scope: "employer:acme" },
+      });
+      expect(first.asserted).toBe(0);
+      expect(first.collect?.collectUrl).toMatch(/^\/collect\?token=/);
+      expect(first.collect?.reused).toBe(false);
+
+      const token = first.collect!.token;
+      const page = await t.query(api.forms.collectionByToken, { token });
+      expect(page).toMatchObject({
+        found: true,
+        subject: "worker:maria",
+        form: "i9",
+        scope: "employer:acme",
+        title: "Form I-9",
+      });
+
+      const second = await t.mutation(api.actions.runAction, {
+        action: "collect_i9",
+        entity: "worker:maria",
+        args: { scope: "employer:acme" },
+      });
+      expect(second.collect?.token).toBe(token);
+      expect(second.collect?.reused).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("system processes report live counts", async () => {
     vi.useFakeTimers();
     try {

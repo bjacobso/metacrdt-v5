@@ -265,6 +265,7 @@ export const applyConfig = mutation({
           options?: string[];
           defaultValue?: unknown;
         }>;
+        opensForm?: { form: unknown; scope: unknown };
         asserts: Record<string, unknown>;
       }>;
     };
@@ -358,6 +359,7 @@ export const applyConfig = mutation({
         label: ac.label,
         appliesTo: ac.appliesTo,
         fields: ac.fields,
+        opensForm: ac.opensForm,
         asserts: ac.asserts,
       });
       applied.actions++;

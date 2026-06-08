@@ -99,13 +99,16 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Arg-taking actions — action definitions can declare fields, and
   `runAction` resolves `$arg.<name>` / `$entity` placeholders before asserting
   facts.
+- [x] Actions that open forms — action definitions can declare `opensForm`;
+  `runAction` issues/reuses a waiting collect run and returns the `/collect`
+  token link for the entity page.
 - [ ] Auth + write authorization — the live site takes public writes; the collect
   token is demo-grade (no single-use / expiry).
 
 **Next goal candidates**
 - [ ] Choose the next active goal: `@metacrdt/runtime` harness groundwork,
-  auth/write hardening, actions that open forms, or the next
-  `@metacrdt/convex` function factory/component slice.
+  auth/write hardening, or the next `@metacrdt/convex` function
+  factory/component slice.
 
 **Docs**
 - [ ] `docs/physics.md` — the capstone: compliance / small-group coordination &
@@ -114,7 +117,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 **Polish / loose threads**
 - [ ] Wire the decorative bits from the mockup: ⌘K search, "New entity",
   "Describe an account".
-- [ ] Actions that open forms; action/config diff-history polish.
+- [ ] Action/config diff-history polish.
 - [ ] Root-cause the `staticHosting:getCurrentDeployment` error over the WS path
   (works over HTTP; currently isolated behind an error boundary).
 
@@ -128,6 +131,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — Goal 11 actions that open forms
+- [x] **Configured actions can issue collection links.** `defineAction` stores
+  optional `opensForm`, `runAction` resolves its literals/`$arg`/`$entity`
+  placeholders, creates or reuses a waiting `flowRuns` collection run, and
+  returns the `/collect?token=...` link.
+- [x] **UI and tests shipped.** Entity detail shows the returned collection link
+  after an action runs; Data model shows `opensForm` in the registry. Tests cover
+  configured form-open success and idempotent reuse of an existing waiting run.
 
 ### 2026-06-07 — Goal 10 arg-taking actions
 - [x] **Configured actions now accept inputs.** `defineAction` stores optional

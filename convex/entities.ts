@@ -195,6 +195,7 @@ export const entityDetail = query({
         options?: string[];
         defaultValue?: unknown;
       }>;
+      opensForm?: { form: unknown; scope: unknown };
     }[] = [];
     for (const ad of actionDefs) {
       const rows = await ctx.db
@@ -219,6 +220,10 @@ export const entityDetail = query({
               defaultValue?: unknown;
             }>)
           : [],
+        opensForm:
+          m["opensForm"]?.[0] && typeof m["opensForm"][0] === "object"
+            ? (m["opensForm"][0] as { form: unknown; scope: unknown })
+            : undefined,
       });
     }
 

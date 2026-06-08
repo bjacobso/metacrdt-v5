@@ -34,12 +34,15 @@ export default function EntityDetail() {
   const cancelFlow = useMutation(api.flows.cancelFlow);
   const [employer, setEmployer] = useState("employer:acme");
   const [actionArgs, setActionArgs] = useState<Record<string, Record<string, unknown>>>({});
+  const [actionResults, setActionResults] = useState<
+    Record<string, { collectUrl?: string; reused?: boolean }>
+  >({});
   const [busy, setBusy] = useState<string | null>(null);
 
-  async function run(label: string, fn: () => Promise<unknown>) {
+  async function run<T>(label: string, fn: () => Promise<T>): Promise<T> {
     setBusy(label);
     try {
-      await fn();
+      return await fn();
     } finally {
       setBusy(null);
     }
@@ -76,6 +79,27 @@ export default function EntityDetail() {
         [field]: value,
       },
     }));
+  }
+
+  async function runConfiguredAction(
+    action: NonNullable<typeof detail>["actions"][number],
+  ) {
+    const res = await run(`action:${action.name}`, () =>
+      runAction({
+        action: action.name,
+        entity: id,
+        args: actionArgs[action.name] ?? {},
+      }),
+    );
+    if (res.collect) {
+      setActionResults((prev) => ({
+        ...prev,
+        [action.name]: {
+          collectUrl: res.collect!.collectUrl,
+          reused: res.collect!.reused,
+        },
+      }));
+    }
   }
 
   return (
@@ -191,7 +215,7 @@ export default function EntityDetail() {
             {detail.actions.map((a) => (
               <div
                 key={a.name}
-                className="flex items-center justify-between gap-3 rounded-ds border border-line px-4 py-3"
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-ds border border-line px-4 py-3"
               >
                 <div className="min-w-0">
                   <div className="font-medium text-ink">{a.label ?? a.name}</div>
@@ -199,6 +223,11 @@ export default function EntityDetail() {
                     {Object.entries(a.asserts)
                       .map(([k, v]) => `${k} = ${val(v)}`)
                       .join(", ")}
+                    {a.opensForm
+                      ? `${Object.keys(a.asserts).length > 0 ? " · " : ""}opens ${val(
+                          a.opensForm.form,
+                        )} @ ${val(a.opensForm.scope)}`
+                      : ""}
                   </div>
                   {a.fields.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-2">
@@ -261,18 +290,24 @@ export default function EntityDetail() {
                 </div>
                 <Button
                   disabled={busy === `action:${a.name}`}
-                  onClick={() =>
-                    run(`action:${a.name}`, () =>
-                      runAction({
-                        action: a.name,
-                        entity: id,
-                        args: actionArgs[a.name] ?? {},
-                      }),
-                    )
-                  }
+                  onClick={() => runConfiguredAction(a)}
                 >
                   Run
                 </Button>
+                {actionResults[a.name]?.collectUrl && (
+                  <div className="col-span-full text-[12px] text-muted">
+                    collection link:{" "}
+                    <a
+                      href={actionResults[a.name].collectUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-ink hover:underline"
+                    >
+                      {actionResults[a.name].collectUrl!.slice(0, 24)}…
+                    </a>
+                    {actionResults[a.name].reused ? " (reused)" : ""}
+                  </div>
+                )}
               </div>
             ))}
           </div>

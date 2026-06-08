@@ -1,4 +1,5 @@
-import { mutation, query, QueryCtx } from "./_generated/server";
+import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
+import { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { assertInTx, createTransaction } from "./facts";
 
@@ -14,6 +15,7 @@ import { assertInTx, createTransaction } from "./facts";
 //   (action:<name>, appliesTo, "Worker")
 //   (action:<name>, asserts,   { "worker.status": "terminated" })
 //   (action:<name>, fields,    [{ name, label, type, ... }])       optional
+//   (action:<name>, opensForm, { form, scope })                    optional
 
 type ActionField = {
   name: string;
@@ -30,6 +32,10 @@ type ActionDef = {
   appliesTo?: string;
   asserts: Record<string, unknown>;
   fields: ActionField[];
+  opensForm?: {
+    form: unknown;
+    scope: unknown;
+  };
 };
 
 const actionFieldValidator = v.object({
@@ -46,6 +52,11 @@ const actionFieldValidator = v.object({
   defaultValue: v.optional(v.any()),
 });
 
+const opensFormValidator = v.object({
+  form: v.any(),
+  scope: v.any(),
+});
+
 function actionId(name: string): string {
   return `action:${name}`;
 }
@@ -58,6 +69,7 @@ export const defineAction = mutation({
     appliesTo: v.string(),
     asserts: v.any(), // Record<attribute, value>
     fields: v.optional(v.array(actionFieldValidator)),
+    opensForm: v.optional(opensFormValidator),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -72,6 +84,8 @@ export const defineAction = mutation({
     await assertInTx(ctx, txId, now, { e, a: "asserts", value: args.asserts });
     if (args.fields !== undefined)
       await assertInTx(ctx, txId, now, { e, a: "fields", value: args.fields });
+    if (args.opensForm !== undefined)
+      await assertInTx(ctx, txId, now, { e, a: "opensForm", value: args.opensForm });
     if (args.label !== undefined)
       await assertInTx(ctx, txId, now, { e, a: "label", value: args.label });
     return { actionEntity: e };
@@ -94,6 +108,10 @@ async function loadActionDef(ctx: QueryCtx, name: string): Promise<ActionDef | n
     fields: Array.isArray(m["fields"]?.[0])
       ? (m["fields"]![0] as ActionField[])
       : [],
+    opensForm:
+      m["opensForm"]?.[0] && typeof m["opensForm"][0] === "object"
+        ? (m["opensForm"][0] as { form: unknown; scope: unknown })
+        : undefined,
   };
 }
 
@@ -123,6 +141,71 @@ function resolveActionValue(
   return value;
 }
 
+function resolveActionString(
+  label: string,
+  raw: unknown,
+  entity: string,
+  fields: ActionField[],
+  args: Record<string, unknown>,
+): string {
+  const value = resolveActionValue(raw, entity, fields, args);
+  if (value === null || value === "") {
+    throw new Error(`missing action ${label}`);
+  }
+  return String(value);
+}
+
+async function issueCollectRun(
+  ctx: MutationCtx,
+  args: {
+    subject: string;
+    form: string;
+    scope: string;
+  },
+): Promise<{
+  runId: Id<"flowRuns">;
+  token: string;
+  collectUrl: string;
+  reused: boolean;
+}> {
+  const existing = await ctx.db
+    .query("flowRuns")
+    .withIndex("by_target", (q) =>
+      q.eq("subject", args.subject).eq("form", args.form).eq("scope", args.scope),
+    )
+    .collect();
+  const live = existing.find((r) => r.status === "waiting" && r.token);
+  if (live) {
+    return {
+      runId: live._id,
+      token: live.token!,
+      collectUrl: `/collect?token=${live.token}`,
+      reused: true,
+    };
+  }
+
+  const now = Date.now();
+  const token = crypto.randomUUID();
+  const runId = await ctx.db.insert("flowRuns", {
+    flowName: "collect",
+    subject: args.subject,
+    form: args.form,
+    scope: args.scope,
+    status: "waiting",
+    step: "issued",
+    issuedAt: now,
+    updatedAt: now,
+    token,
+  });
+  await ctx.db.insert("flowEvents", {
+    runId,
+    ts: now,
+    kind: "issued",
+    message: `collect ${args.form} for ${args.scope}`,
+  });
+  return { runId, token, collectUrl: `/collect?token=${token}`, reused: false };
+}
+
 /** Run an action against a target entity: assert its facts in one transaction. */
 export const runAction = mutation({
   args: {
@@ -148,7 +231,27 @@ export const runAction = mutation({
       await assertInTx(ctx, txId, now, { e: args.entity, a, value });
       asserted++;
     }
-    return { txId, asserted };
+    const collect =
+      def.opensForm !== undefined
+        ? await issueCollectRun(ctx, {
+            subject: args.entity,
+            form: resolveActionString(
+              "form",
+              def.opensForm.form,
+              args.entity,
+              def.fields,
+              actionArgs,
+            ),
+            scope: resolveActionString(
+              "scope",
+              def.opensForm.scope,
+              args.entity,
+              def.fields,
+              actionArgs,
+            ),
+          })
+        : undefined;
+    return { txId, asserted, collect };
   },
 });
 

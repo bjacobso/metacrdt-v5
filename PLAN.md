@@ -1,8 +1,8 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 10 (arg-taking actions) has shipped. The next active goal
-should be chosen from the remaining TODO candidates: `@metacrdt/runtime`
-harness groundwork, auth/write hardening, actions that open forms, or the next
+**Current goal:** Goal 11 (actions that open forms) has shipped. The next active
+goal should be chosen from the remaining TODO candidates:
+`@metacrdt/runtime` harness groundwork, auth/write hardening, or the next
 `@metacrdt/convex` function factory/component slice.
 
 This plan is the operational goal file. Read it with:
@@ -130,6 +130,11 @@ configured actions can now take small typed arguments.
   - `runAction` accepts args and resolves `$arg.<name>` / `$entity`
     placeholders in asserted facts
   - entity detail renders action inputs for configured fields
+- Actions can open forms:
+  - action definitions can declare `opensForm`
+  - `runAction` issues or reuses the same waiting collection run/token used by
+    flow collect steps
+  - entity detail surfaces the returned `/collect` link immediately
 
 ### Not Yet True
 
@@ -1367,6 +1372,60 @@ the narrow parameterized-assert slice.
 
 ---
 
+## Goal 11 — Actions That Open Forms
+
+**Status:** shipped in the Convex reference runtime.
+
+**Objective:** extend configured actions from "assert facts now" to "issue a
+collection form now" while reusing the existing `/collect?token=...` flow-run
+path. This keeps collection semantics in one place: action-opened forms,
+standalone compliance collects, and flow collect steps all park on `flowRuns`
+and submit through `forms.submitCollection`.
+
+### Scope
+
+Backward-compatible action definition:
+
+```ts
+{
+  name: "collect_i9",
+  label: "Collect I-9",
+  appliesTo: "Worker",
+  fields: [{ name: "scope", label: "Employer", type: "string" }],
+  opensForm: { form: "i9", scope: "$arg.scope" },
+  asserts: {}
+}
+```
+
+`opensForm.form` and `opensForm.scope` use the same resolver as action asserts:
+
+- `"$arg.<name>"` — value supplied when the action runs.
+- `"$entity"` — target entity id.
+- all other values are literal.
+
+### Acceptance Criteria
+
+- `defineAction` accepts optional `opensForm` and stores it as a fact on
+  `action:<name>`.
+- `actionsForType` / `listActions` / `entityDetail` return `opensForm`.
+- `runAction` resolves `opensForm` values and creates a waiting collection run
+  for the action target entity.
+- Re-running the same form/scope action reuses the existing waiting run rather
+  than issuing duplicate links.
+- The returned mutation payload includes the collection URL/token.
+- Entity detail displays the returned `/collect` link immediately after the
+  action runs.
+- Data model action registry shows form-opening behavior.
+- Tests cover configured form-open success and idempotent reuse.
+- Full tests/typechecks/build/deploy pass.
+
+### Verification
+
+- Focused `npx vitest run appconfig` passed (13 tests).
+- Full gate for this slice is recorded in the commit that shipped it.
+
+---
+
 ## Parked Product/Engine Backlog
 
 These remain valuable, but they should not interrupt the current goal.
@@ -1375,7 +1434,7 @@ These remain valuable, but they should not interrupt the current goal.
 
 - [x] Config history/diff UI.
 - [x] Arg-taking actions.
-- [ ] Actions that open forms.
+- [x] Actions that open forms.
 - [x] Dry-run compliance: hypothetical worker + scope, no writes.
 
 ### Auth / Privacy
