@@ -91,8 +91,10 @@ It defines:
 The current Convex runtime implements the centralized reference path. The
 multi-replica pieces are emerging as reusable target packages: browser/local
 persistence, Durable Object storage/relay shells, and structural peer-to-peer
-DataChannel anti-entropy exist; live deployment, auth, signaling, and production
-coordination remain the frontier tracked in [TODO.md](./TODO.md).
+DataChannel anti-entropy exist. The Cloudflare relay now has an optional
+token-auth boundary for live Workers; actual live deployment, signaling, retry
+policy, and production coordination remain the frontier tracked in
+[TODO.md](./TODO.md).
 
 ---
 

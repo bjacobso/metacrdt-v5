@@ -60,7 +60,8 @@ On open hosts the adapter is a selectable dependency.
 
 - `@metacrdt/convex` — managed, reactive reference target (full triple store).
 - `@metacrdt/cloudflare` — sync-plane shell with a Durable Object Effect Layer;
-  growing to a DO + SQLite triple store ([cloudflare-target.md](./cloudflare-target.md)).
+  Worker/DO WebSocket relay with optional token auth; growing to a DO + SQLite
+  triple store ([cloudflare-target.md](./cloudflare-target.md)).
 - `@metacrdt/local` — browser/local-first host with localStorage / IndexedDB /
   SQLite-compatible Effect Layers.
 - `@metacrdt/node` — open server-process host with memory and structural
@@ -82,7 +83,9 @@ On open hosts the adapter is a selectable dependency.
   SQLite/Postgres; scheduler submission and transport publication conformance are
   wired into testkit memory and Node memory; network delivery/catch-up
   conformance is proven against BroadcastChannel, p2p DataChannel, and
-  Cloudflare Durable Object WebSocket relay harnesses. Projection-store
+  Cloudflare Durable Object WebSocket relay harnesses. The Cloudflare Worker
+  relay also has package tests for optional token auth at the deployment
+  boundary. Projection-store
   conformance is currently proven against runtime memory/localStorage, Node
   memory/SQLite/Postgres, local-first localStorage, Cloudflare Durable Object
   storage, and the Convex component-owned `projectionRows` read model.

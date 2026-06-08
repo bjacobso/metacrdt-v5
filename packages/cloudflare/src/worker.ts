@@ -24,6 +24,11 @@ export interface DurableObjectNamespaceLike {
   get(id: unknown): DurableObjectStubLike;
 }
 
+export type RelayWorkerEnv = Record<
+  string,
+  DurableObjectNamespaceLike | string | undefined
+>;
+
 export type WebSocketPairLike = {
   0: unknown;
   1: WebSocketLike;
@@ -44,12 +49,44 @@ export type RelayDurableObjectOptions = RelayOptions & {
   webSocketResponse?: WebSocketResponseFactory;
 };
 
+export type RelayAuthOptions = {
+  /**
+   * Static token, useful in tests or non-Workers hosts. Prefer `envKey` for live
+   * Cloudflare deployments so the token is supplied by a Wrangler secret.
+   */
+  token?: string;
+  /** Worker env key containing the token. Defaults to METACRDT_RELAY_TOKEN. */
+  envKey?: string;
+  /** Header to read. Defaults to Authorization and accepts Bearer tokens. */
+  header?: string;
+  /** Optional query-string token. Defaults to token. */
+  queryParam?: string;
+  /** Health is public by default; set true to protect it too. */
+  requireHealth?: boolean;
+};
+
 export type RelayWorkerOptions = {
   binding?: string;
   healthPath?: string;
   roomParam?: string;
   roomPathPrefix?: string;
+  /**
+   * Token auth for the Worker-facing relay routes. Omitted means "enforce when
+   * METACRDT_RELAY_TOKEN exists"; `false` disables auth even if that env var is
+   * present (useful behind another private boundary).
+   */
+  auth?: RelayAuthOptions | false;
 };
+
+type ResolvedRelayAuthOptions = Required<RelayAuthOptions>;
+
+type ResolvedRelayWorkerOptions = Required<
+  Omit<RelayWorkerOptions, "auth">
+> & {
+  auth: ResolvedRelayAuthOptions | undefined;
+};
+
+const DEFAULT_AUTH_ENV_KEY = "METACRDT_RELAY_TOKEN";
 
 function defaultWebSocketPair(): WebSocketPairLike {
   const ctor = (globalThis as { WebSocketPair?: new () => WebSocketPairLike })
@@ -72,7 +109,7 @@ function json(value: unknown, init: ResponseInit = {}): Response {
   });
 }
 
-function roomFromRequest(request: Request, options: Required<RelayWorkerOptions>): string | null {
+function roomFromRequest(request: Request, options: ResolvedRelayWorkerOptions): string | null {
   const url = new URL(request.url);
   const byParam = url.searchParams.get(options.roomParam);
   if (byParam) return byParam;
@@ -85,13 +122,85 @@ function roomFromRequest(request: Request, options: Required<RelayWorkerOptions>
   return room === "" ? null : room;
 }
 
-function relayWorkerOptions(options: RelayWorkerOptions = {}): Required<RelayWorkerOptions> {
+function relayAuthOptions(auth: RelayWorkerOptions["auth"]): ResolvedRelayAuthOptions | undefined {
+  if (auth === false) return undefined;
+  return {
+    token: auth?.token ?? "",
+    envKey: auth?.envKey ?? DEFAULT_AUTH_ENV_KEY,
+    header: auth?.header ?? "authorization",
+    queryParam: auth?.queryParam ?? "token",
+    requireHealth: auth?.requireHealth ?? false,
+  };
+}
+
+function relayWorkerOptions(options: RelayWorkerOptions = {}): ResolvedRelayWorkerOptions {
   return {
     binding: options.binding ?? "METACRDT_RELAY",
     healthPath: options.healthPath ?? "/health",
     roomParam: options.roomParam ?? "room",
     roomPathPrefix: options.roomPathPrefix ?? "/rooms",
+    auth: relayAuthOptions(options.auth),
   };
+}
+
+function isNamespace(value: RelayWorkerEnv[string]): value is DurableObjectNamespaceLike {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "idFromName" in value &&
+    "get" in value
+  );
+}
+
+function configuredToken(
+  env: RelayWorkerEnv,
+  auth: ResolvedRelayAuthOptions | undefined,
+): string | undefined {
+  if (!auth) return undefined;
+  if (auth.token !== "") return auth.token;
+  const fromEnv = env[auth.envKey];
+  return typeof fromEnv === "string" && fromEnv !== "" ? fromEnv : undefined;
+}
+
+function requestToken(request: Request, auth: ResolvedRelayAuthOptions): string | undefined {
+  const url = new URL(request.url);
+  const byQuery = url.searchParams.get(auth.queryParam);
+  if (byQuery) return byQuery;
+
+  const byHeader = request.headers.get(auth.header);
+  if (!byHeader) return undefined;
+  const bearer = byHeader.match(/^Bearer\s+(.+)$/i);
+  return bearer?.[1] ?? byHeader;
+}
+
+function tokenEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+function isAuthorized(
+  request: Request,
+  env: RelayWorkerEnv,
+  auth: ResolvedRelayAuthOptions | undefined,
+): boolean {
+  const expected = configuredToken(env, auth);
+  if (!expected) return true;
+  const presented = auth ? requestToken(request, auth) : undefined;
+  return presented !== undefined && tokenEquals(presented, expected);
+}
+
+function unauthorized(): Response {
+  return json(
+    { error: "unauthorized relay request" },
+    {
+      status: 401,
+      headers: { "www-authenticate": 'Bearer realm="metacrdt-relay"' },
+    },
+  );
 }
 
 /**
@@ -188,15 +297,25 @@ export function createRelayWorker(options: RelayWorkerOptions = {}) {
   return {
     async fetch(
       request: Request,
-      env: Record<string, DurableObjectNamespaceLike>,
+      env: RelayWorkerEnv,
     ): Promise<Response> {
       const url = new URL(request.url);
       if (url.pathname === resolved.healthPath) {
+        if (
+          resolved.auth?.requireHealth &&
+          !isAuthorized(request, env, resolved.auth)
+        ) {
+          return unauthorized();
+        }
         return json({ ok: true, binding: resolved.binding });
       }
 
+      if (!isAuthorized(request, env, resolved.auth)) {
+        return unauthorized();
+      }
+
       const namespace = env[resolved.binding];
-      if (!namespace) {
+      if (!isNamespace(namespace)) {
         return json({ error: `missing Durable Object binding ${resolved.binding}` }, { status: 500 });
       }
 

@@ -25,6 +25,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   relay for hello/delta sync and event fan-out in `@metacrdt/cloudflare`.
 - [x] Cloudflare Worker/DO example shell + Wrangler config — package-level
   Worker router, DO class shell, and `wrangler.example.toml`.
+- [x] Cloudflare relay auth boundary — `createRelayWorker` enforces Bearer/
+  header/query token auth when `METACRDT_RELAY_TOKEN` (or configured token) is
+  present; health stays public by default and can be protected.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -33,7 +36,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   dependency-free structural SQLite key/value adapter and local-first runtime.
 - [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
   DataChannel anti-entropy transport with multi-hop gossip.
-- [ ] Live Cloudflare deployment / auth (see
+- [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
 **Packaging / monorepo (map, not migration — see [docs/architecture.md](./docs/architecture.md))**
@@ -422,7 +425,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] **p2p DataChannel transport** — `packages/runtime/src/p2p.ts` adds a
   structural WebRTC/DataChannel-compatible transport with JSON wire messages,
   hello/delta catch-up, directed deltas, lifecycle cleanup, and multi-hop gossip.
-- [ ] Targets: live Cloudflare deployment/auth and migrating more reference
+- [ ] Targets: live Cloudflare deployment and migrating more reference
   runtime business logic onto `@metacrdt/convex` component-owned state
   (component-owned collect reminder/escalation/expiry timers now shipped).
 - [x] Query/rules: DRed/counting for transitive closure deletions (counted
@@ -547,6 +550,20 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — Cloudflare relay auth boundary
+- [x] **Added optional token auth to the Cloudflare Worker relay.**
+  `createRelayWorker` now enforces a configured token for room/WebSocket relay
+  routes when `METACRDT_RELAY_TOKEN` is present in Worker env (or when
+  `auth.token` is supplied). It accepts `Authorization: Bearer <token>`, a
+  configured header, or a configured query parameter.
+- [x] **Health stays deploy-friendly.** Worker `/health` remains public by
+  default for load balancers and can be protected with `auth.requireHealth`.
+  `auth: false` explicitly disables the boundary for Workers already protected
+  by a private network or another gateway.
+- [x] `@metacrdt/cloudflare` package tests now cover unauthorized requests,
+  Bearer/header/query token forwarding, and protected health. Live Cloudflare
+  deployment remains open.
 
 ### 2026-06-08 — Goal 111 materialized projection-store boundary
 - [x] **Started the shared projection-store service.** `@metacrdt/runtime` now
@@ -1623,8 +1640,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] Tests cover key/value get/set/remove, unsafe table-name rejection, runtime
   restart durability for event log/HLC/`seq`, and BroadcastChannel convergence
   between SQLite-backed local-first replicas. Deferred at that point: p2p
-  networking and live Cloudflare deployment/auth; p2p transport shipped in the
-  next slice.
+  networking, live Cloudflare deployment, and relay auth; p2p transport and the
+  relay auth boundary shipped in later slices.
 
 ### 2026-06-07 — @metacrdt/local IndexedDB-compatible async persistence
 - [x] **Added async local runtime services.** `packages/local/src/async.ts`
@@ -1667,8 +1684,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   Durable Object binding and migration entry without making live deployment a
   test prerequisite.
 - [x] Tests cover Worker health/routing/error responses, DO health, WebSocket
-  upgrade wiring, and non-WebSocket `426` rejection. Still deferred: live
-  deployment, auth, and p2p transport.
+  upgrade wiring, and non-WebSocket `426` rejection. Deferred at that point:
+  live deployment, relay auth, and p2p transport; relay auth and p2p have since
+  shipped.
 
 ### 2026-06-07 — @metacrdt/cloudflare Durable Object WebSocket relay shell
 - [x] **Added a structural DO WebSocket relay.** `packages/cloudflare/src/relay.ts`
@@ -1707,7 +1725,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   directed-delta filtering, and the attached `transport` capability.
 - [x] Still deferred at that point: relay/Cloudflare Durable Object/p2p
   transports and the full `@metacrdt/local` package boundary. Those structural
-  target slices have since shipped; live deployment/auth remain open.
+  target slices and the Cloudflare relay auth boundary have since shipped; live
+  deployment remains open.
 
 ### 2026-06-07 — runtime localStorage target seed
 - [x] **Added a browser/localStorage runtime target seed inside

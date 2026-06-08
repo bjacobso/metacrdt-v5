@@ -2,6 +2,14 @@ name = "metacrdt-relay"
 main = "src/worker.ts"
 compatibility_date = "2026-06-07"
 
+# Optional but recommended for live relay deployments:
+#
+#   wrangler secret put METACRDT_RELAY_TOKEN
+#
+# When present, createRelayWorker() requires relay/WebSocket requests to send
+# Authorization: Bearer <token>. Health remains public unless the Worker is
+# constructed with auth.requireHealth = true.
+
 [[durable_objects.bindings]]
 name = "METACRDT_RELAY"
 class_name = "MetaCrdtRelayDurableObject"

@@ -769,7 +769,8 @@ arguments.
   hello/delta catch-up. `@metacrdt/local` now packages those browser defaults as a
   local-first target. `@metacrdt/cloudflare` now provides Durable Object
   storage-backed runtime services, a structural WebSocket relay shell, and a
-  Worker-facing router/DO class example, but not a live deployed service or auth.
+  Worker-facing router/DO class example with an optional token-auth boundary, but
+  not a live deployed service.
 - Full frontend provider wiring is not complete; unauthenticated callers are
   treated as `anonymous` for reads, PII is denied by default, and general public
   writes still fail with `Not authenticated`. The backend `convex/auth.config.ts`
@@ -2455,6 +2456,10 @@ packages/cloudflare/
   - serves Worker health at `/health`;
   - routes `?room=<name>` or `/rooms/<name>` requests to a configured Durable
     Object namespace binding;
+  - enforces optional token auth for relay/WebSocket routes when configured by
+    `METACRDT_RELAY_TOKEN`, static token, custom header, or query parameter;
+  - leaves health public by default, with a `requireHealth` option for protected
+    deployments;
   - reports missing binding and missing room errors clearly.
 - Add `relayWorker` default exportable instance.
 - Add structural types for Worker/DO bindings (`DurableObjectNamespaceLike`,
@@ -2463,6 +2468,9 @@ packages/cloudflare/
   and migration entry.
 - Add tests proving:
   - Worker routes by query and path room names;
+  - Worker relay auth rejects missing/invalid tokens and accepts Bearer/header/
+    query-token requests;
+  - Worker health remains public by default and can be token-protected;
   - Worker health/missing-binding/missing-room responses are clear;
   - Durable Object health response includes replica/connections/version vector;
   - WebSocket upgrade path connects the server socket and sends the initial relay
@@ -2473,7 +2481,8 @@ packages/cloudflare/
 
 ### Verification
 
-- `npm run test:cloudflare` passed (12 tests).
+- `npm test --workspace @metacrdt/cloudflare` passed (19 tests after the later
+  auth-boundary coverage).
 - Cloudflare package typecheck passed.
 - Full gate for this slice is recorded in the commit that shipped it.
 
@@ -2635,7 +2644,7 @@ packages/local/
   - unsafe table names are rejected;
   - runtime event log, HLC, and `seq` persist over SQLite storage;
   - SQLite local-first runtimes converge over BroadcastChannel.
-- Do **not** add p2p or live Cloudflare deployment/auth in this slice.
+- Do **not** add p2p, live Cloudflare deployment, or relay auth in this slice.
 
 ### Verification
 
@@ -9400,7 +9409,8 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   target-provided network harness. It is proven against the runtime
   BroadcastChannel, p2p DataChannel, and Cloudflare Durable Object WebSocket
   relay harnesses. This is peer delivery/catch-up conformance, not live
-  deployment/auth or retry/durability conformance.
+  deployment, relay auth, or retry/durability conformance. Relay auth is covered
+  by package-level Worker tests instead.
 - **Projection conformance started:** `@metacrdt/testkit` also has
   `runRuntimeProjectionConformance`, proving cardinality-one `≺` winners,
   cardinality-many values, bitemporal coordinates, audit flags, entity maps, and
@@ -9521,7 +9531,8 @@ These remain valuable, but they should not interrupt the current goal.
 - [x] IndexedDB-compatible async local persistence adapter.
 - [x] SQLite-compatible local persistence adapter.
 - [x] p2p DataChannel-compatible transport target.
-- [ ] Live Cloudflare deployment / auth targets.
+- [x] Cloudflare Worker relay token-auth boundary.
+- [ ] Live Cloudflare deployment target.
 - [x] First state-owned `@metacrdt/convex` protocol-log component slice.
 - [x] First projection-owning `@metacrdt/convex` component slice.
 - [x] Opt-in component-owned cardinality-one projection semantics.

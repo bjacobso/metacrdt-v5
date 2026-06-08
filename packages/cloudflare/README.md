@@ -24,6 +24,10 @@ implements them on Cloudflare.
   `relayWorker`, and the supporting `DurableObjectNamespaceLike` /
   `DurableObjectStateLike` / `WebSocketPairLike` shapes for wiring a Worker router
   to the relay DO. See `wrangler.example.toml` for the binding/migration.
+- **Relay auth boundary** — `createRelayWorker` can enforce a shared token on
+  room/WebSocket relay routes. By default it looks for `METACRDT_RELAY_TOKEN` in
+  the Worker env; if the secret is present, clients must send
+  `Authorization: Bearer <token>` (or a configured header/query token).
 
 ## What Cloudflare Does Not Own
 
@@ -55,6 +59,41 @@ import {
 } from "@metacrdt/cloudflare";
 ```
 
+### Worker relay auth
+
+For a live Worker, set a secret:
+
+```sh
+wrangler secret put METACRDT_RELAY_TOKEN
+```
+
+`createRelayWorker()` enforces the token automatically when that env var exists:
+
+```ts
+import { createRelayWorker } from "@metacrdt/cloudflare";
+
+export { MetaCrdtRelayDurableObject } from "@metacrdt/cloudflare";
+export default createRelayWorker();
+```
+
+Clients may authenticate with `Authorization: Bearer <token>`. You can also
+customize the source:
+
+```ts
+export default createRelayWorker({
+  auth: {
+    envKey: "MY_RELAY_TOKEN",
+    header: "x-metacrdt-token",
+    queryParam: "relayToken",
+    requireHealth: true,
+  },
+});
+```
+
+Use `auth: false` only when another trusted boundary already protects the Worker.
+Worker `/health` is public by default so load balancers can probe it; set
+`requireHealth: true` to protect health too.
+
 ## Status
 
 This package today implements the **sync plane** — a convergent event log over
@@ -73,5 +112,6 @@ cardinality-one reconcile, rebuild, and the collection/flow surface — is
 **live frontend queries over DO WebSockets** as an explicit stretch goal the
 architecture must not preclude.
 
-Live Cloudflare deployment and auth remain on the frontier (see
+Live Cloudflare deployment remains on the frontier; the Worker relay auth
+boundary is present but not yet exercised by a production deployment (see
 [TODO.md](../../TODO.md), [docs/alchemy.md](../../docs/alchemy.md)).

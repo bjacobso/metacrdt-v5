@@ -126,6 +126,89 @@ describe("@metacrdt/cloudflare Worker shell", () => {
     });
   });
 
+  test("requires relay token when configured by Worker env", async () => {
+    const worker = createRelayWorker();
+    const ns = new FakeNamespace();
+    const env = {
+      METACRDT_RELAY: ns,
+      METACRDT_RELAY_TOKEN: "secret",
+    };
+
+    const denied = await worker.fetch(
+      new Request("https://relay.example/rooms/alpha"),
+      env,
+    );
+    expect(denied.status).toBe(401);
+    expect(denied.headers.get("www-authenticate")).toBe(
+      'Bearer realm="metacrdt-relay"',
+    );
+    expect(await body(denied)).toEqual({ error: "unauthorized relay request" });
+    expect(ns.ids).toEqual([]);
+    expect(ns.stub.requests).toEqual([]);
+
+    const allowed = await worker.fetch(
+      new Request("https://relay.example/rooms/alpha", {
+        headers: { authorization: "Bearer secret" },
+      }),
+      env,
+    );
+    expect(allowed.status).toBe(200);
+    expect(await allowed.text()).toBe("ok");
+    expect(ns.ids).toEqual(["alpha"]);
+    expect(ns.stub.requests).toHaveLength(1);
+  });
+
+  test("accepts configured header and query token forms", async () => {
+    const byHeaderWorker = createRelayWorker({
+      auth: { token: "secret", header: "x-metacrdt-token" },
+    });
+    const ns = new FakeNamespace();
+
+    const byHeader = await byHeaderWorker.fetch(
+      new Request("https://relay.example/rooms/alpha", {
+        headers: { "x-metacrdt-token": "secret" },
+      }),
+      { METACRDT_RELAY: ns },
+    );
+    expect(byHeader.status).toBe(200);
+    expect(ns.ids).toEqual(["alpha"]);
+
+    const byQueryWorker = createRelayWorker({
+      auth: { token: "secret", queryParam: "relayToken" },
+    });
+    const byQuery = await byQueryWorker.fetch(
+      new Request("https://relay.example/rooms/beta?relayToken=secret"),
+      { METACRDT_RELAY: ns },
+    );
+    expect(byQuery.status).toBe(200);
+    expect(ns.ids).toEqual(["alpha", "beta"]);
+  });
+
+  test("health is public by default and can be token-protected", async () => {
+    const publicHealth = createRelayWorker({ auth: { token: "secret" } });
+    const publicResponse = await publicHealth.fetch(
+      new Request("https://relay.example/health"),
+      {},
+    );
+    expect(publicResponse.status).toBe(200);
+
+    const protectedHealth = createRelayWorker({
+      auth: { token: "secret", requireHealth: true },
+    });
+    const denied = await protectedHealth.fetch(
+      new Request("https://relay.example/health"),
+      {},
+    );
+    expect(denied.status).toBe(401);
+
+    const allowed = await protectedHealth.fetch(
+      new Request("https://relay.example/health?token=secret"),
+      {},
+    );
+    expect(allowed.status).toBe(200);
+    expect(await body(allowed)).toEqual({ ok: true, binding: "METACRDT_RELAY" });
+  });
+
   test("Durable Object health reports replica, connections, and version vector", async () => {
     const object = new MetaCrdtRelayDurableObject(
       { storage: new FakeStorage() },
