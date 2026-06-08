@@ -48,10 +48,11 @@ assertions plus lifecycle events found by target id. It now also has the first
 operational collection capability rows over SQLite: deterministic caller-provided
 tokens can be issued, read, listed, and submitted with stored payload/status. It
 can also lower optional submitted assertions into protocol events for the
-collection subject through the existing append/reconcile path. It still has no
-historical SQL-optimized indexed triple queries, no live invalidation fanout, no
-collection ticks/reminders, no flow/DAG run surface, and no DO alarm
-multiplexing.
+collection subject through the existing append/reconcile path. Collection
+reminder/escalation/expiry ticks now persist as caller-identified `timers` rows
+and can be fired through the facade. It still has no historical SQL-optimized
+indexed triple queries, no live invalidation fanout, no flow/DAG run surface, and
+no DO alarm multiplexing.
 
 This doc defines what it takes to bring Cloudflare to parity, in what order, and
 which decisions must be settled first — and it makes **live frontend queries an
@@ -208,8 +209,7 @@ lifecycle events discovered through the SQLite `target` index. Explicit
 
 **Still ahead for parity:** richer append function surface, SQL-indexed query
 provider optimization/conformance for historical bitemporal queries,
-live invalidation fanout, collection ticks/reminders, and the full
-flow/DAG/alarm surface.
+live invalidation fanout, and the full flow/DAG/alarm surface.
 
 ### Phase D — Operational surface + alarms
 
@@ -229,9 +229,16 @@ intentionally rejects already-submitted or expired tokens, marking late tokens a
 `expired`. It also accepts optional submitted assertions, appends them as
 protocol events for the collection subject through the existing append/reconcile
 path, and returns event/projection summaries for those lowered assertions.
+Cloudflare DO SQLite also now owns a `timers` table for collection
+reminder/escalation/expiry ticks. The current facade exposes
+`scheduleCollectionTick`, `collectionTickById`, `listCollectionTicks`, and
+`fireCollectionTick`; firing a pending tick updates bounded operational
+collection timestamps, expires still-issued collections, or records a skipped
+tick after submission/expiry. This is timer row execution only, not DO alarm
+multiplexing.
 
-**Still ahead for Phase D parity:** collection ticking/reminders, DAG run rows,
-timer multiplexing over DO alarms, and any WebSocket live-query fanout.
+**Still ahead for Phase D parity:** DAG run rows, timer multiplexing over DO
+alarms, and any WebSocket live-query fanout.
 
 ### Phase E — Sharding + real multi-replica sync
 
@@ -318,8 +325,8 @@ keeps it converged.
 The Phase B adapters (~600–800 LOC) get **shared, not rewritten**. The
 Cloudflare-specific work is comparable to the existing Convex component: the
 runtime-service SQLite seed and first log/current/query facade are now present;
-the remaining work is optimized SQL-indexed query-provider parity, collection
-ticks/reminders, flow/DAG rows, and the alarm-multiplexing layer.
+the remaining work is optimized SQL-indexed query-provider parity, flow/DAG
+rows, and the alarm-multiplexing layer.
 Roughly 2–4 focused sessions remain, gated on shared fold/reconcile reuse. The
 live-query stretch goal is a separate later increment on top.
 

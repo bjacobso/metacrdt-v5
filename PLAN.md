@@ -221,12 +221,16 @@ flow/DAG rows, alarm multiplexing, live fanout, and historical SQL-indexed query
 optimization as remaining parity work. Goal 124 adds collection field-to-fact
 lowering: `submitCollection` can optionally append submitted assertions for the
 collection subject through the existing append/reconcile path and return
-event/projection summaries for those lowered assertions. The next active goal
+event/projection summaries for those lowered assertions. Goal 125 adds
+collection timer rows: caller-identified collection reminder/escalation/expiry
+ticks can be scheduled, listed, and fired over DO SQLite; firing updates bounded
+operational collection timestamps, expires still-issued tokens, or skips after
+submission/expiry without claiming DO alarm multiplexing. The next active goal
 should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite historical SQL-indexed-query/operational parity
-(collection ticks/reminders, flow/DAG rows, alarms, live fanout),
+(flow/DAG rows, alarms, live fanout),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9441,6 +9445,53 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 125 — Cloudflare DO SQLite Collection Ticks/Reminders
+
+**Status:** shipped.
+
+**Objective:** add the first operational timer row surface for Cloudflare DO
+SQLite collection capabilities, matching the collection reminder/escalation/
+expiry behavior without implementing DO alarm multiplexing yet.
+
+### What Shipped
+
+- Added a DO SQLite `timers` table/store with caller-provided tick ids,
+  collection token, phase (`reminder` / `escalation` / `expire`), `fireAt`,
+  scheduled/fired timestamps, status (`pending` / `fired` / `skipped`), and
+  optional skip reason.
+- Extended collection rows with bounded operational timestamps:
+  `remindedAt`, `escalatedAt`, and `expiredAt`.
+- Exposed current-facade methods:
+  - `scheduleCollectionTick`
+  - `collectionTickById`
+  - `listCollectionTicks`
+  - `fireCollectionTick`
+- `fireCollectionTick`:
+  - fires only pending ticks;
+  - records reminder/escalation timestamps while the collection is still
+    `issued`;
+  - marks `expire` ticks as `expired` with `expiredAt`;
+  - skips ticks once the collection is submitted/expired or missing.
+- Existing submit-time expiry now records `expiredAt`.
+
+### Non-Goals
+
+- Do not call `setAlarm()` or claim DO alarm multiplexing.
+- Do not add DAG run/timeline rows or flow execution.
+- Do not append protocol events for reminder/escalation ticks; this slice is
+  operational row state only.
+- Do not add live-query fanout or historical SQL-indexed query-provider parity.
+- Do not touch root `convex/`.
+
+### Verification
+
+- `npm test --workspace @metacrdt/cloudflare` passes with coverage for
+  scheduling/listing/firing reminder, escalation, and expiry ticks plus skipped
+  ticks after collection submission.
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
 
 ---
 

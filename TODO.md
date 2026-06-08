@@ -20,10 +20,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   append/reconcile path, and returns event/projection summaries for those
   lowered assertions. Simple payload-only submissions still persist data/status
   with an empty assertion result list.
-- [ ] **Remaining Cloudflare Phase D parity** — collection ticks/reminders,
-  flow/DAG rows, DO alarm multiplexing, live-query fanout, and historical
-  SQL-indexed query-provider optimization remain open; do not claim full parity
-  until those are implemented.
+- [x] **Goal 125 shipped: collection ticks/reminders over DO SQLite** —
+  `@metacrdt/cloudflare` now has a deterministic `timers` table/store plus
+  current-surface methods to schedule, read, list, and fire collection reminder,
+  escalation, and expiry ticks. Ticks update only operational collection rows and
+  no-op/skips once the collection is submitted or expired.
+- [ ] **Remaining Cloudflare Phase D parity** — flow/DAG rows, DO alarm
+  multiplexing, live-query fanout, and historical SQL-indexed query-provider
+  optimization remain open; do not claim full parity until those are
+  implemented.
 
 **Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
 - [x] Commutative supersession — centralized Convex writes now stamp
@@ -76,6 +81,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   `submitCollection` can lower submitted assertions into protocol events for
   the collection subject and reconcile touched current coordinates through the
   same projection invalidation path as ordinary appends.
+- [x] Cloudflare Durable Object SQLite collection ticks/reminders —
+  `timers` rows persist caller-provided tick ids for collection reminder,
+  escalation, and expiry phases; the current facade can schedule/list/fire them,
+  and firing updates bounded operational collection timestamps or skips after
+  submission/expiry.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -85,8 +95,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — historical
-  SQL-indexed query-provider optimization, collection ticks/reminders, flow/DAG
-  rows, DO alarm multiplexing, and live-query WebSocket fanout/plumbing (see
+  SQL-indexed query-provider optimization, flow/DAG rows, DO alarm multiplexing,
+  and live-query WebSocket fanout/plumbing (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).

@@ -57,6 +57,7 @@ export type DurableObjectSqliteRuntime = RuntimeServices & {
   store: DurableObjectSqliteEventStore;
   projection: DurableObjectSqliteProjectionStore;
   collections: DurableObjectSqliteCollectionStore;
+  timers: DurableObjectSqliteTimerStore;
   clock: DurableObjectSqliteClock;
   sequencer: DurableObjectSqliteSequencer;
 };
@@ -74,10 +75,34 @@ export type DurableObjectSqliteCollection = {
   readonly issuedAt: number;
   readonly expiresAt: number | null;
   readonly submittedAt: number | null;
+  readonly remindedAt?: number;
+  readonly escalatedAt?: number;
+  readonly expiredAt?: number;
   readonly data: unknown;
   readonly runId?: string;
   readonly stepId?: string;
   readonly scope?: string;
+};
+
+export type DurableObjectSqliteCollectionTickPhase =
+  | "reminder"
+  | "escalation"
+  | "expire";
+
+export type DurableObjectSqliteCollectionTickStatus =
+  | "pending"
+  | "fired"
+  | "skipped";
+
+export type DurableObjectSqliteCollectionTick = {
+  readonly id: string;
+  readonly token: string;
+  readonly phase: DurableObjectSqliteCollectionTickPhase;
+  readonly fireAt: number;
+  readonly status: DurableObjectSqliteCollectionTickStatus;
+  readonly scheduledAt: number;
+  readonly firedAt: number | null;
+  readonly reason?: string;
 };
 
 export type DurableObjectSqliteIssueCollectionInput = {
@@ -103,6 +128,22 @@ export type DurableObjectSqliteCollectionFilter = {
   readonly limit?: number;
 };
 
+export type DurableObjectSqliteScheduleCollectionTickInput = {
+  readonly id: string;
+  readonly token: string;
+  readonly phase: DurableObjectSqliteCollectionTickPhase;
+  readonly fireAt: number;
+  readonly scheduledAt: number;
+};
+
+export type DurableObjectSqliteCollectionTickFilter = {
+  readonly token?: string;
+  readonly phase?: DurableObjectSqliteCollectionTickPhase;
+  readonly status?: DurableObjectSqliteCollectionTickStatus;
+  readonly dueAt?: number;
+  readonly limit?: number;
+};
+
 type SqlPlan = {
   prefix: string;
   tables: {
@@ -110,6 +151,7 @@ type SqlPlan = {
     meta: string;
     projection: string;
     collections: string;
+    timers: string;
   };
   indexes: {
     eventsByEntity: string;
@@ -121,6 +163,9 @@ type SqlPlan = {
     collectionsBySubject: string;
     collectionsByStatus: string;
     collectionsByExpiresAt: string;
+    timersByToken: string;
+    timersByStatusFireAt: string;
+    timersByPhase: string;
   };
 };
 
@@ -139,6 +184,7 @@ function plan(prefix = "metacrdt"): SqlPlan {
       meta: identifier(`${prefix}_meta`),
       projection: identifier(`${prefix}_projection`),
       collections: identifier(`${prefix}_collections`),
+      timers: identifier(`${prefix}_timers`),
     },
     indexes: {
       eventsByEntity: identifier(`${prefix}_events_by_e`),
@@ -150,8 +196,24 @@ function plan(prefix = "metacrdt"): SqlPlan {
       collectionsBySubject: identifier(`${prefix}_collections_by_subject`),
       collectionsByStatus: identifier(`${prefix}_collections_by_status`),
       collectionsByExpiresAt: identifier(`${prefix}_collections_by_expires_at`),
+      timersByToken: identifier(`${prefix}_timers_by_token`),
+      timersByStatusFireAt: identifier(`${prefix}_timers_by_status_fire_at`),
+      timersByPhase: identifier(`${prefix}_timers_by_phase`),
     },
   };
+}
+
+function addColumnIfMissing(
+  sql: DurableObjectSqlStorageLike,
+  table: string,
+  columnSql: string,
+): void {
+  try {
+    sql.exec(`ALTER TABLE ${table} ADD COLUMN ${columnSql}`);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    if (!/duplicate column|already exists/i.test(message)) throw cause;
+  }
 }
 
 function rows(cursor: DurableObjectSqlCursorLike): unknown[] {
@@ -208,6 +270,22 @@ function collectionStatus(
     : undefined;
 }
 
+function collectionTickPhase(
+  value: string | undefined,
+): DurableObjectSqliteCollectionTickPhase | undefined {
+  return value === "reminder" || value === "escalation" || value === "expire"
+    ? value
+    : undefined;
+}
+
+function collectionTickStatus(
+  value: string | undefined,
+): DurableObjectSqliteCollectionTickStatus | undefined {
+  return value === "pending" || value === "fired" || value === "skipped"
+    ? value
+    : undefined;
+}
+
 function decodeCollection(
   row: unknown,
 ): DurableObjectSqliteCollection | undefined {
@@ -218,6 +296,9 @@ function decodeCollection(
   const issuedAt = numberColumn(row, "issued_at");
   const expiresAt = numberColumn(row, "expires_at");
   const submittedAt = numberColumn(row, "submitted_at");
+  const remindedAt = numberColumn(row, "reminded_at");
+  const escalatedAt = numberColumn(row, "escalated_at");
+  const expiredAt = numberColumn(row, "expired_at");
   if (
     token === undefined ||
     subject === undefined ||
@@ -242,10 +323,49 @@ function decodeCollection(
     issuedAt,
     expiresAt,
     submittedAt,
+    ...(remindedAt === undefined || remindedAt === null ? {} : { remindedAt }),
+    ...(escalatedAt === undefined || escalatedAt === null ? {} : { escalatedAt }),
+    ...(expiredAt === undefined || expiredAt === null ? {} : { expiredAt }),
     data: dataJson === undefined ? undefined : JSON.parse(dataJson),
     ...(runId === undefined ? {} : { runId }),
     ...(stepId === undefined ? {} : { stepId }),
     ...(scope === undefined ? {} : { scope }),
+  };
+}
+
+function decodeCollectionTick(
+  row: unknown,
+): DurableObjectSqliteCollectionTick | undefined {
+  const id = textColumn(row, "id");
+  const token = textColumn(row, "collection_token");
+  const phase = collectionTickPhase(textColumn(row, "phase"));
+  const fireAt = numberColumn(row, "fire_at");
+  const status = collectionTickStatus(textColumn(row, "status"));
+  const scheduledAt = numberColumn(row, "scheduled_at");
+  const firedAt = numberColumn(row, "fired_at");
+  const reason = textColumn(row, "reason");
+  if (
+    id === undefined ||
+    token === undefined ||
+    phase === undefined ||
+    fireAt === undefined ||
+    fireAt === null ||
+    status === undefined ||
+    scheduledAt === undefined ||
+    scheduledAt === null ||
+    firedAt === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    id,
+    token,
+    phase,
+    fireAt,
+    status,
+    scheduledAt,
+    firedAt,
+    ...(reason === undefined ? {} : { reason }),
   };
 }
 
@@ -572,12 +692,18 @@ export class DurableObjectSqliteCollectionStore {
         "issued_at REAL NOT NULL, " +
         "expires_at REAL NULL, " +
         "submitted_at REAL NULL, " +
+        "reminded_at REAL NULL, " +
+        "escalated_at REAL NULL, " +
+        "expired_at REAL NULL, " +
         "data_json TEXT NULL, " +
         "run_id TEXT NULL, " +
         "step_id TEXT NULL, " +
         "scope TEXT NULL" +
         ")",
     );
+    addColumnIfMissing(this.sql, this.plan.tables.collections, "reminded_at REAL NULL");
+    addColumnIfMissing(this.sql, this.plan.tables.collections, "escalated_at REAL NULL");
+    addColumnIfMissing(this.sql, this.plan.tables.collections, "expired_at REAL NULL");
     this.sql.exec(
       `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.collectionsBySubject} ` +
         `ON ${this.plan.tables.collections} (subject)`,
@@ -602,14 +728,17 @@ export class DurableObjectSqliteCollectionStore {
     this.sql.exec(
       `INSERT INTO ${this.plan.tables.collections} (` +
         "token, subject, form, status, issued_at, expires_at, submitted_at, " +
-        "data_json, run_id, step_id, scope" +
-        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "reminded_at, escalated_at, expired_at, data_json, run_id, step_id, scope" +
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       input.token,
       input.subject,
       input.form,
       "issued",
       input.issuedAt,
       input.expiresAt ?? null,
+      null,
+      null,
+      null,
       null,
       null,
       input.runId ?? null,
@@ -628,6 +757,7 @@ export class DurableObjectSqliteCollectionStore {
       rows(
         this.sql.exec(
           `SELECT token, subject, form, status, issued_at, expires_at, submitted_at, data_json, run_id, step_id, scope ` +
+            `, reminded_at, escalated_at, expired_at ` +
             `FROM ${this.plan.tables.collections} WHERE token = ?`,
           token,
         ),
@@ -652,6 +782,7 @@ export class DurableObjectSqliteCollectionStore {
     const rowsOut = rows(
       this.sql.exec(
         `SELECT token, subject, form, status, issued_at, expires_at, submitted_at, data_json, run_id, step_id, scope ` +
+          `, reminded_at, escalated_at, expired_at ` +
           `FROM ${this.plan.tables.collections}${where} ORDER BY issued_at, token`,
         ...bindings,
       ),
@@ -675,7 +806,7 @@ export class DurableObjectSqliteCollectionStore {
       existing.status === "expired" ||
       (existing.expiresAt !== null && input.submittedAt >= existing.expiresAt)
     ) {
-      await this.markExpired(input.token);
+      await this.expire(input.token, input.submittedAt);
       throw new Error(`collection token expired: ${input.token}`);
     }
     this.sql.exec(
@@ -693,12 +824,174 @@ export class DurableObjectSqliteCollectionStore {
     return row;
   }
 
-  private async markExpired(token: string): Promise<void> {
+  async remind(
+    token: string,
+    remindedAt: number,
+  ): Promise<DurableObjectSqliteCollection | undefined> {
     this.sql.exec(
-      `UPDATE ${this.plan.tables.collections} SET status = ? WHERE token = ?`,
-      "expired",
+      `UPDATE ${this.plan.tables.collections} SET reminded_at = ? WHERE token = ?`,
+      remindedAt,
       token,
     );
+    return this.get(token);
+  }
+
+  async escalate(
+    token: string,
+    escalatedAt: number,
+  ): Promise<DurableObjectSqliteCollection | undefined> {
+    this.sql.exec(
+      `UPDATE ${this.plan.tables.collections} SET escalated_at = ? WHERE token = ?`,
+      escalatedAt,
+      token,
+    );
+    return this.get(token);
+  }
+
+  async expire(
+    token: string,
+    expiredAt: number,
+  ): Promise<DurableObjectSqliteCollection | undefined> {
+    this.sql.exec(
+      `UPDATE ${this.plan.tables.collections} ` +
+        "SET status = ?, expired_at = ? WHERE token = ?",
+      "expired",
+      expiredAt,
+      token,
+    );
+    return this.get(token);
+  }
+}
+
+export class DurableObjectSqliteTimerStore {
+  private readonly plan: SqlPlan;
+
+  constructor(
+    private readonly sql: DurableObjectSqlStorageLike,
+    tablePrefix = "metacrdt",
+  ) {
+    this.plan = plan(tablePrefix);
+  }
+
+  async initialize(): Promise<void> {
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS ${this.plan.tables.timers} (` +
+        "id TEXT PRIMARY KEY NOT NULL, " +
+        "collection_token TEXT NOT NULL, " +
+        "phase TEXT NOT NULL CHECK (phase IN ('reminder', 'escalation', 'expire')), " +
+        "fire_at REAL NOT NULL, " +
+        "status TEXT NOT NULL CHECK (status IN ('pending', 'fired', 'skipped')), " +
+        "scheduled_at REAL NOT NULL, " +
+        "fired_at REAL NULL, " +
+        "reason TEXT NULL" +
+        ")",
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.timersByToken} ` +
+        `ON ${this.plan.tables.timers} (collection_token)`,
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.timersByStatusFireAt} ` +
+        `ON ${this.plan.tables.timers} (status, fire_at)`,
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.timersByPhase} ` +
+        `ON ${this.plan.tables.timers} (phase)`,
+    );
+  }
+
+  async schedule(
+    input: DurableObjectSqliteScheduleCollectionTickInput,
+  ): Promise<DurableObjectSqliteCollectionTick> {
+    const existing = await this.get(input.id);
+    if (existing !== undefined) {
+      throw new Error(`collection tick already exists: ${input.id}`);
+    }
+    this.sql.exec(
+      `INSERT INTO ${this.plan.tables.timers} (` +
+        "id, collection_token, phase, fire_at, status, scheduled_at, fired_at, reason" +
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      input.id,
+      input.token,
+      input.phase,
+      input.fireAt,
+      "pending",
+      input.scheduledAt,
+      null,
+      null,
+    );
+    const row = await this.get(input.id);
+    if (row === undefined) {
+      throw new Error(`failed to schedule collection tick: ${input.id}`);
+    }
+    return row;
+  }
+
+  async get(id: string): Promise<DurableObjectSqliteCollectionTick | undefined> {
+    return decodeCollectionTick(
+      rows(
+        this.sql.exec(
+          `SELECT id, collection_token, phase, fire_at, status, scheduled_at, fired_at, reason ` +
+            `FROM ${this.plan.tables.timers} WHERE id = ?`,
+          id,
+        ),
+      )[0],
+    );
+  }
+
+  async list(
+    filter: DurableObjectSqliteCollectionTickFilter = {},
+  ): Promise<DurableObjectSqliteCollectionTick[]> {
+    const clauses: string[] = [];
+    const bindings: unknown[] = [];
+    if (filter.token !== undefined) {
+      clauses.push("collection_token = ?");
+      bindings.push(filter.token);
+    }
+    if (filter.phase !== undefined) {
+      clauses.push("phase = ?");
+      bindings.push(filter.phase);
+    }
+    if (filter.status !== undefined) {
+      clauses.push("status = ?");
+      bindings.push(filter.status);
+    }
+    if (filter.dueAt !== undefined) {
+      clauses.push("fire_at <= ?");
+      bindings.push(filter.dueAt);
+    }
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const rowsOut = rows(
+      this.sql.exec(
+        `SELECT id, collection_token, phase, fire_at, status, scheduled_at, fired_at, reason ` +
+          `FROM ${this.plan.tables.timers}${where} ORDER BY fire_at, id`,
+        ...bindings,
+      ),
+    )
+      .map(decodeCollectionTick)
+      .filter((row): row is DurableObjectSqliteCollectionTick => row !== undefined);
+    return rowsOut.slice(0, Math.max(1, Math.min(filter.limit ?? 100, 1000)));
+  }
+
+  async mark(
+    id: string,
+    status: DurableObjectSqliteCollectionTickStatus,
+    firedAt: number,
+    reason?: string,
+  ): Promise<DurableObjectSqliteCollectionTick> {
+    this.sql.exec(
+      `UPDATE ${this.plan.tables.timers} ` +
+        "SET status = ?, fired_at = ?, reason = ? WHERE id = ?",
+      status,
+      firedAt,
+      reason ?? null,
+      id,
+    );
+    const row = await this.get(id);
+    if (row === undefined) {
+      throw new Error(`failed to update collection tick: ${id}`);
+    }
+    return row;
   }
 }
 
@@ -824,11 +1117,13 @@ export async function createDurableObjectSqliteRuntime(
     options.sql,
     tablePrefix,
   );
+  const timers = new DurableObjectSqliteTimerStore(options.sql, tablePrefix);
   const meta = new DurableObjectSqliteMetaStore(options.sql, tablePrefix);
   if (options.initialize ?? true) {
     await store.initialize();
     await projection.initialize();
     await collections.initialize();
+    await timers.initialize();
     await meta.initialize();
   }
   const capabilities = new Set<RuntimeCapability>(
@@ -848,6 +1143,7 @@ export async function createDurableObjectSqliteRuntime(
     store,
     projection,
     collections,
+    timers,
     clock: await DurableObjectSqliteClock.create(
       meta,
       options.replicaId,

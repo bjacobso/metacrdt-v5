@@ -29,10 +29,24 @@ type StoredCollection = {
   issued_at: number;
   expires_at: number | null;
   submitted_at: number | null;
+  reminded_at: number | null;
+  escalated_at: number | null;
+  expired_at: number | null;
   data_json: string | null;
   run_id: string | null;
   step_id: string | null;
   scope: string | null;
+};
+
+type StoredCollectionTick = {
+  id: string;
+  collection_token: string;
+  phase: "reminder" | "escalation" | "expire";
+  fire_at: number;
+  status: "pending" | "fired" | "skipped";
+  scheduled_at: number;
+  fired_at: number | null;
+  reason: string | null;
 };
 
 function cursor(rows: unknown[] = []): DurableObjectSqlCursorLike {
@@ -82,6 +96,26 @@ function collectionStatusBinding(
   throw new Error(`expected collection status binding for ${name}`);
 }
 
+function collectionTickPhaseBinding(
+  value: unknown,
+  name: string,
+): StoredCollectionTick["phase"] {
+  if (value === "reminder" || value === "escalation" || value === "expire") {
+    return value;
+  }
+  throw new Error(`expected collection tick phase binding for ${name}`);
+}
+
+function collectionTickStatusBinding(
+  value: unknown,
+  name: string,
+): StoredCollectionTick["status"] {
+  if (value === "pending" || value === "fired" || value === "skipped") {
+    return value;
+  }
+  throw new Error(`expected collection tick status binding for ${name}`);
+}
+
 /**
  * Narrow fake for the structural Cloudflare DO SQLite API. It supports only the
  * exact statement families emitted by `durableObjectSqlite.ts`, which keeps tests
@@ -91,6 +125,7 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
   readonly events = new Map<string, StoredEvent>();
   readonly projection = new Map<string, StoredProjectionRow>();
   readonly collections = new Map<string, StoredCollection>();
+  readonly collectionTicks = new Map<string, StoredCollectionTick>();
   readonly meta = new Map<string, string>();
   projectionDeleteAllCount = 0;
   projectionDeleteMatchingCount = 0;
@@ -99,10 +134,15 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
 
   exec(query: string, ...bindings: readonly unknown[]): DurableObjectSqlCursorLike {
     const sql = normalize(query);
-    if (sql.startsWith("create table") || sql.startsWith("create index")) {
+    if (
+      sql.startsWith("create table") ||
+      sql.startsWith("create index") ||
+      sql.startsWith("alter table")
+    ) {
       return cursor();
     }
 
+    if (sql.includes("_timers")) return this.execCollectionTicks(sql, bindings);
     if (sql.includes("_collections")) return this.execCollections(sql, bindings);
     if (sql.includes("_events")) return this.execEvents(sql, bindings);
     if (sql.includes("_projection")) return this.execProjection(sql, bindings);
@@ -279,6 +319,9 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
         issuedAtRaw,
         expiresAtRaw,
         submittedAtRaw,
+        remindedAtRaw,
+        escalatedAtRaw,
+        expiredAtRaw,
         dataJsonRaw,
         runIdRaw,
         stepIdRaw,
@@ -299,6 +342,12 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
           submittedAtRaw,
           "collection submitted_at",
         ),
+        reminded_at: nullableNumberBinding(remindedAtRaw, "collection reminded_at"),
+        escalated_at: nullableNumberBinding(
+          escalatedAtRaw,
+          "collection escalated_at",
+        ),
+        expired_at: nullableNumberBinding(expiredAtRaw, "collection expired_at"),
         data_json: nullableStringBinding(dataJsonRaw, "collection data_json"),
         run_id: nullableStringBinding(runIdRaw, "collection run_id"),
         step_id: nullableStringBinding(stepIdRaw, "collection step_id"),
@@ -341,6 +390,46 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
         }
         return cursor();
       }
+
+      if (sql.includes("set reminded_at = ? where token = ?")) {
+        const [remindedAtRaw, tokenRaw] = bindings;
+        const token = stringBinding(tokenRaw, "collection token");
+        const existing = this.collections.get(token);
+        if (existing) {
+          this.collections.set(token, {
+            ...existing,
+            reminded_at: numberBinding(remindedAtRaw, "collection reminded_at"),
+          });
+        }
+        return cursor();
+      }
+
+      if (sql.includes("set escalated_at = ? where token = ?")) {
+        const [escalatedAtRaw, tokenRaw] = bindings;
+        const token = stringBinding(tokenRaw, "collection token");
+        const existing = this.collections.get(token);
+        if (existing) {
+          this.collections.set(token, {
+            ...existing,
+            escalated_at: numberBinding(escalatedAtRaw, "collection escalated_at"),
+          });
+        }
+        return cursor();
+      }
+
+      if (sql.includes("set status = ?, expired_at = ? where token = ?")) {
+        const [statusRaw, expiredAtRaw, tokenRaw] = bindings;
+        const token = stringBinding(tokenRaw, "collection token");
+        const existing = this.collections.get(token);
+        if (existing) {
+          this.collections.set(token, {
+            ...existing,
+            status: collectionStatusBinding(statusRaw, "collection status"),
+            expired_at: numberBinding(expiredAtRaw, "collection expired_at"),
+          });
+        }
+        return cursor();
+      }
     }
 
     let rows = [...this.collections.values()];
@@ -364,6 +453,98 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
       rows.sort((a, b) => {
         const issued = a.issued_at - b.issued_at;
         return issued !== 0 ? issued : a.token.localeCompare(b.token);
+      }),
+    );
+  }
+
+  private execCollectionTicks(
+    sql: string,
+    bindings: readonly unknown[],
+  ): DurableObjectSqlCursorLike {
+    if (sql.startsWith("insert into")) {
+      const [
+        idRaw,
+        tokenRaw,
+        phaseRaw,
+        fireAtRaw,
+        statusRaw,
+        scheduledAtRaw,
+        firedAtRaw,
+        reasonRaw,
+      ] = bindings;
+      const id = stringBinding(idRaw, "collection tick id");
+      if (this.collectionTicks.has(id)) {
+        throw new Error(`collection tick already exists: ${id}`);
+      }
+      this.collectionTicks.set(id, {
+        id,
+        collection_token: stringBinding(tokenRaw, "collection tick token"),
+        phase: collectionTickPhaseBinding(phaseRaw, "collection tick phase"),
+        fire_at: numberBinding(fireAtRaw, "collection tick fire_at"),
+        status: collectionTickStatusBinding(statusRaw, "collection tick status"),
+        scheduled_at: numberBinding(scheduledAtRaw, "collection tick scheduled_at"),
+        fired_at: nullableNumberBinding(firedAtRaw, "collection tick fired_at"),
+        reason: nullableStringBinding(reasonRaw, "collection tick reason"),
+      });
+      return cursor();
+    }
+
+    if (sql.startsWith("update")) {
+      const [statusRaw, firedAtRaw, reasonRaw, idRaw] = bindings;
+      const id = stringBinding(idRaw, "collection tick id");
+      const existing = this.collectionTicks.get(id);
+      if (existing) {
+        this.collectionTicks.set(id, {
+          ...existing,
+          status: collectionTickStatusBinding(statusRaw, "collection tick status"),
+          fired_at: numberBinding(firedAtRaw, "collection tick fired_at"),
+          reason: nullableStringBinding(reasonRaw, "collection tick reason"),
+        });
+      }
+      return cursor();
+    }
+
+    let rows = [...this.collectionTicks.values()];
+    if (sql.includes("where id = ?")) {
+      rows = rows.filter(
+        (row) => row.id === stringBinding(bindings[0], "collection tick id"),
+      );
+    } else {
+      let bindingIndex = 0;
+      if (sql.includes("collection_token = ?")) {
+        const token = stringBinding(
+          bindings[bindingIndex++],
+          "collection tick token",
+        );
+        rows = rows.filter((row) => row.collection_token === token);
+      }
+      if (sql.includes("phase = ?")) {
+        const phase = collectionTickPhaseBinding(
+          bindings[bindingIndex++],
+          "collection tick phase",
+        );
+        rows = rows.filter((row) => row.phase === phase);
+      }
+      if (sql.includes("status = ?")) {
+        const status = collectionTickStatusBinding(
+          bindings[bindingIndex++],
+          "collection tick status",
+        );
+        rows = rows.filter((row) => row.status === status);
+      }
+      if (sql.includes("fire_at <= ?")) {
+        const dueAt = numberBinding(
+          bindings[bindingIndex++],
+          "collection tick due_at",
+        );
+        rows = rows.filter((row) => row.fire_at <= dueAt);
+      }
+    }
+
+    return cursor(
+      rows.sort((a, b) => {
+        const fire = a.fire_at - b.fire_at;
+        return fire !== 0 ? fire : a.id.localeCompare(b.id);
       }),
     );
   }

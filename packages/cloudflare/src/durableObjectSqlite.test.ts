@@ -696,8 +696,166 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
     ).resolves.toMatchObject({
       token: "collection:worker:expired:onboard",
       status: "expired",
+      expiredAt: 10_000,
       submittedAt: null,
       data: undefined,
     });
+  });
+
+  test("current surface records collection reminder and expiry ticks over SQLite rows", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:collection-ticks",
+      wall: () => 700,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.issueCollection({
+      token: "collection:worker:timer:onboard",
+      subject: "worker:timer",
+      form: "forms:onboarding",
+      issuedAt: 10_000,
+      expiresAt: 20_000,
+    });
+
+    const reminder = await surface.scheduleCollectionTick({
+      id: "tick:worker:timer:reminder",
+      token: "collection:worker:timer:onboard",
+      phase: "reminder",
+      fireAt: 12_000,
+      scheduledAt: 10_000,
+    });
+    const escalation = await surface.scheduleCollectionTick({
+      id: "tick:worker:timer:escalation",
+      token: "collection:worker:timer:onboard",
+      phase: "escalation",
+      fireAt: 14_000,
+      scheduledAt: 10_000,
+    });
+    await surface.scheduleCollectionTick({
+      id: "tick:worker:timer:expire",
+      token: "collection:worker:timer:onboard",
+      phase: "expire",
+      fireAt: 20_000,
+      scheduledAt: 10_000,
+    });
+
+    expect(reminder).toEqual({
+      id: "tick:worker:timer:reminder",
+      token: "collection:worker:timer:onboard",
+      phase: "reminder",
+      fireAt: 12_000,
+      status: "pending",
+      scheduledAt: 10_000,
+      firedAt: null,
+    });
+    await expect(
+      surface.collectionTickById({ id: "tick:worker:timer:escalation" }),
+    ).resolves.toEqual(escalation);
+    await expect(
+      surface.listCollectionTicks({ status: "pending", dueAt: 13_000 }),
+    ).resolves.toEqual([reminder]);
+
+    const reminded = await surface.fireCollectionTick({
+      id: "tick:worker:timer:reminder",
+      firedAt: 12_500,
+    });
+    expect(reminded.tick).toMatchObject({
+      id: "tick:worker:timer:reminder",
+      status: "fired",
+      firedAt: 12_500,
+    });
+    expect(reminded.collection).toMatchObject({
+      token: "collection:worker:timer:onboard",
+      status: "issued",
+      remindedAt: 12_500,
+    });
+
+    const escalated = await surface.fireCollectionTick({
+      id: "tick:worker:timer:escalation",
+      firedAt: 14_500,
+    });
+    expect(escalated.tick.status).toBe("fired");
+    expect(escalated.collection).toMatchObject({
+      token: "collection:worker:timer:onboard",
+      status: "issued",
+      remindedAt: 12_500,
+      escalatedAt: 14_500,
+    });
+
+    const expired = await surface.fireCollectionTick({
+      id: "tick:worker:timer:expire",
+      firedAt: 20_000,
+    });
+    expect(expired.tick.status).toBe("fired");
+    expect(expired.collection).toMatchObject({
+      token: "collection:worker:timer:onboard",
+      status: "expired",
+      expiredAt: 20_000,
+    });
+
+    await expect(
+      surface.submitCollection({
+        token: "collection:worker:timer:onboard",
+        submittedAt: 20_100,
+        data: { late: true },
+      }),
+    ).rejects.toThrow(/expired/);
+    await expect(
+      surface.listCollectionTicks({ status: "fired" }),
+    ).resolves.toHaveLength(3);
+  });
+
+  test("collection ticks no-op after submission", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:collection-tick-noop",
+      wall: () => 800,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.issueCollection({
+      token: "collection:worker:done:onboard",
+      subject: "worker:done",
+      form: "forms:onboarding",
+      issuedAt: 10_000,
+    });
+    await surface.scheduleCollectionTick({
+      id: "tick:worker:done:reminder",
+      token: "collection:worker:done:onboard",
+      phase: "reminder",
+      fireAt: 12_000,
+    });
+    await surface.submitCollection({
+      token: "collection:worker:done:onboard",
+      submittedAt: 11_000,
+      data: { done: true },
+    });
+
+    const skipped = await surface.fireCollectionTick({
+      id: "tick:worker:done:reminder",
+      firedAt: 12_000,
+    });
+    expect(skipped.tick).toMatchObject({
+      id: "tick:worker:done:reminder",
+      status: "skipped",
+      firedAt: 12_000,
+      reason: "collection submitted",
+    });
+    expect(skipped.collection).toMatchObject({
+      token: "collection:worker:done:onboard",
+      status: "submitted",
+    });
+    await expect(
+      surface.collectionByToken({ token: "collection:worker:done:onboard" }),
+    ).resolves.not.toHaveProperty("remindedAt");
   });
 });

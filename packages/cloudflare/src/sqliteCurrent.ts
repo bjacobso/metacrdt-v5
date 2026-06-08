@@ -34,9 +34,13 @@ import { Data, Effect, Layer } from "effect";
 import * as Schema from "effect/Schema";
 import type {
   DurableObjectSqliteCollection,
+  DurableObjectSqliteCollectionTick,
+  DurableObjectSqliteCollectionTickPhase,
+  DurableObjectSqliteCollectionTickStatus,
   DurableObjectSqliteCollectionStatus,
   DurableObjectSqliteCollectionStore,
   DurableObjectSqliteRuntime,
+  DurableObjectSqliteTimerStore,
 } from "./durableObjectSqlite.js";
 
 export class DurableObjectSqliteCurrentSurfaceError extends Data.TaggedError(
@@ -88,6 +92,18 @@ export const DurableObjectSqliteCollectionStatusSchema = Schema.Literal(
   "issued",
   "submitted",
   "expired",
+);
+
+export const DurableObjectSqliteCollectionTickPhaseSchema = Schema.Literal(
+  "reminder",
+  "escalation",
+  "expire",
+);
+
+export const DurableObjectSqliteCollectionTickStatusSchema = Schema.Literal(
+  "pending",
+  "fired",
+  "skipped",
 );
 
 export const DurableObjectSqliteIssueCollectionArgsSchema = Schema.Struct({
@@ -143,6 +159,35 @@ export const DurableObjectSqliteSubmitCollectionArgsSchema = Schema.Struct({
   ),
 });
 
+export const DurableObjectSqliteScheduleCollectionTickArgsSchema = Schema.Struct({
+  id: Schema.String,
+  token: Schema.String,
+  phase: DurableObjectSqliteCollectionTickPhaseSchema,
+  fireAt: Schema.Number,
+  scheduledAt: Schema.optionalWith(Schema.Number, { exact: true }),
+});
+
+export const DurableObjectSqliteCollectionTickByIdArgsSchema = Schema.Struct({
+  id: Schema.String,
+});
+
+export const DurableObjectSqliteListCollectionTicksArgsSchema = Schema.Struct({
+  token: Schema.optionalWith(Schema.String, { exact: true }),
+  phase: Schema.optionalWith(DurableObjectSqliteCollectionTickPhaseSchema, {
+    exact: true,
+  }),
+  status: Schema.optionalWith(DurableObjectSqliteCollectionTickStatusSchema, {
+    exact: true,
+  }),
+  dueAt: Schema.optionalWith(Schema.Number, { exact: true }),
+  limit: Schema.optionalWith(Schema.Number, { exact: true }),
+});
+
+export const DurableObjectSqliteFireCollectionTickArgsSchema = Schema.Struct({
+  id: Schema.String,
+  firedAt: Schema.optionalWith(Schema.Number, { exact: true }),
+});
+
 export const DurableObjectSqliteAppendAssertArgsSchema = Schema.Struct({
   e: Schema.String,
   a: Schema.String,
@@ -192,6 +237,14 @@ export type DurableObjectSqliteListCollectionsArgs =
   typeof DurableObjectSqliteListCollectionsArgsSchema.Type;
 export type DurableObjectSqliteSubmitCollectionArgs =
   typeof DurableObjectSqliteSubmitCollectionArgsSchema.Type;
+export type DurableObjectSqliteScheduleCollectionTickArgs =
+  typeof DurableObjectSqliteScheduleCollectionTickArgsSchema.Type;
+export type DurableObjectSqliteCollectionTickByIdArgs =
+  typeof DurableObjectSqliteCollectionTickByIdArgsSchema.Type;
+export type DurableObjectSqliteListCollectionTicksArgs =
+  typeof DurableObjectSqliteListCollectionTicksArgsSchema.Type;
+export type DurableObjectSqliteFireCollectionTickArgs =
+  typeof DurableObjectSqliteFireCollectionTickArgsSchema.Type;
 export type DurableObjectSqliteAppendAssertArgs =
   typeof DurableObjectSqliteAppendAssertArgsSchema.Type;
 export type DurableObjectSqliteAppendLifecycleArgs =
@@ -231,6 +284,11 @@ export type DurableObjectSqliteAppendAndRebuildResult = {
 export type DurableObjectSqliteSubmitCollectionResult = {
   readonly collection: DurableObjectSqliteCollection;
   readonly assertions: readonly DurableObjectSqliteAppendAndRebuildResult[];
+};
+
+export type DurableObjectSqliteFireCollectionTickResult = {
+  readonly tick: DurableObjectSqliteCollectionTick;
+  readonly collection?: DurableObjectSqliteCollection;
 };
 
 export type DurableObjectSqliteCurrentSurfaceOptions = {
@@ -276,6 +334,18 @@ export type DurableObjectSqliteCurrentSurface = {
   submitCollection(
     args: DurableObjectSqliteSubmitCollectionArgs,
   ): Promise<DurableObjectSqliteSubmitCollectionResult>;
+  scheduleCollectionTick(
+    args: DurableObjectSqliteScheduleCollectionTickArgs,
+  ): Promise<DurableObjectSqliteCollectionTick>;
+  collectionTickById(
+    args: DurableObjectSqliteCollectionTickByIdArgs,
+  ): Promise<DurableObjectSqliteCollectionTick | undefined>;
+  listCollectionTicks(
+    args?: DurableObjectSqliteListCollectionTicksArgs,
+  ): Promise<DurableObjectSqliteCollectionTick[]>;
+  fireCollectionTick(
+    args: DurableObjectSqliteFireCollectionTickArgs,
+  ): Promise<DurableObjectSqliteFireCollectionTickResult>;
   listCurrent(
     args?: DurableObjectSqliteCurrentFilter,
   ): Promise<ProjectionRow[]>;
@@ -720,6 +790,178 @@ export function submitAndLowerDurableObjectSqliteCollectionEffect(
   });
 }
 
+export function scheduleDurableObjectSqliteCollectionTickEffect(
+  collections: DurableObjectSqliteCollectionStore,
+  timers: DurableObjectSqliteTimerStore,
+  args: DurableObjectSqliteScheduleCollectionTickArgs,
+  defaultScheduledAt: number,
+): Effect.Effect<
+  DurableObjectSqliteCollectionTick,
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "scheduleCollectionTick",
+      DurableObjectSqliteScheduleCollectionTickArgsSchema,
+      args,
+    );
+    const collection = yield* Effect.tryPromise({
+      try: () => collections.get(decoded.token),
+      catch: (cause) => surfaceError("scheduleCollectionTick", cause),
+    });
+    if (collection === undefined) {
+      return yield* Effect.fail(
+        surfaceError(
+          "scheduleCollectionTick",
+          new Error(`unknown collection token: ${decoded.token}`),
+        ),
+      );
+    }
+    return yield* Effect.tryPromise({
+      try: () =>
+        timers.schedule({
+          id: decoded.id,
+          token: decoded.token,
+          phase: decoded.phase as DurableObjectSqliteCollectionTickPhase,
+          fireAt: decoded.fireAt,
+          scheduledAt: decoded.scheduledAt ?? defaultScheduledAt,
+        }),
+      catch: (cause) => surfaceError("scheduleCollectionTick", cause),
+    });
+  });
+}
+
+export function getDurableObjectSqliteCollectionTickByIdEffect(
+  timers: DurableObjectSqliteTimerStore,
+  args: DurableObjectSqliteCollectionTickByIdArgs,
+): Effect.Effect<
+  DurableObjectSqliteCollectionTick | undefined,
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "collectionTickById",
+      DurableObjectSqliteCollectionTickByIdArgsSchema,
+      args,
+    );
+    return yield* Effect.tryPromise({
+      try: () => timers.get(decoded.id),
+      catch: (cause) => surfaceError("collectionTickById", cause),
+    });
+  });
+}
+
+export function listDurableObjectSqliteCollectionTicksEffect(
+  timers: DurableObjectSqliteTimerStore,
+  args: DurableObjectSqliteListCollectionTicksArgs = {},
+): Effect.Effect<
+  DurableObjectSqliteCollectionTick[],
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "listCollectionTicks",
+      DurableObjectSqliteListCollectionTicksArgsSchema,
+      args,
+    );
+    return yield* Effect.tryPromise({
+      try: () =>
+        timers.list({
+          token: decoded.token,
+          phase: decoded.phase as DurableObjectSqliteCollectionTickPhase | undefined,
+          status: decoded.status as
+            | DurableObjectSqliteCollectionTickStatus
+            | undefined,
+          dueAt: decoded.dueAt,
+          limit: limit(decoded.limit, 100, 1000),
+        }),
+      catch: (cause) => surfaceError("listCollectionTicks", cause),
+    });
+  });
+}
+
+export function fireDurableObjectSqliteCollectionTickEffect(
+  collections: DurableObjectSqliteCollectionStore,
+  timers: DurableObjectSqliteTimerStore,
+  args: DurableObjectSqliteFireCollectionTickArgs,
+  defaultFiredAt: number,
+): Effect.Effect<
+  DurableObjectSqliteFireCollectionTickResult,
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "fireCollectionTick",
+      DurableObjectSqliteFireCollectionTickArgsSchema,
+      args,
+    );
+    const firedAt = decoded.firedAt ?? defaultFiredAt;
+    const tick = yield* Effect.tryPromise({
+      try: () => timers.get(decoded.id),
+      catch: (cause) => surfaceError("fireCollectionTick", cause),
+    });
+    if (tick === undefined) {
+      return yield* Effect.fail(
+        surfaceError(
+          "fireCollectionTick",
+          new Error(`unknown collection tick: ${decoded.id}`),
+        ),
+      );
+    }
+    const collection = yield* Effect.tryPromise({
+      try: () => collections.get(tick.token),
+      catch: (cause) => surfaceError("fireCollectionTick", cause),
+    });
+    if (tick.status !== "pending") {
+      return {
+        tick,
+        ...(collection === undefined ? {} : { collection }),
+      };
+    }
+    if (collection === undefined) {
+      const skipped = yield* Effect.tryPromise({
+        try: () => timers.mark(tick.id, "skipped", firedAt, "unknown collection"),
+        catch: (cause) => surfaceError("fireCollectionTick", cause),
+      });
+      return { tick: skipped };
+    }
+    if (collection.status !== "issued") {
+      const skipped = yield* Effect.tryPromise({
+        try: () =>
+          timers.mark(
+            tick.id,
+            "skipped",
+            firedAt,
+            `collection ${collection.status}`,
+          ),
+        catch: (cause) => surfaceError("fireCollectionTick", cause),
+      });
+      return { tick: skipped, collection };
+    }
+
+    const updatedCollection = yield* Effect.tryPromise({
+      try: async () => {
+        if (tick.phase === "reminder") {
+          return await collections.remind(tick.token, firedAt);
+        }
+        if (tick.phase === "escalation") {
+          return await collections.escalate(tick.token, firedAt);
+        }
+        return await collections.expire(tick.token, firedAt);
+      },
+      catch: (cause) => surfaceError("fireCollectionTick", cause),
+    });
+    const fired = yield* Effect.tryPromise({
+      try: () => timers.mark(tick.id, "fired", firedAt),
+      catch: (cause) => surfaceError("fireCollectionTick", cause),
+    });
+    return {
+      tick: fired,
+      ...(updatedCollection === undefined ? {} : { collection: updatedCollection }),
+    };
+  });
+}
+
 export function queryDurableObjectSqliteEffect(
   args: DatalogQueryArgsType,
 ): Effect.Effect<DatalogQueryResult, RuntimeError, DatalogQueryService> {
@@ -1068,6 +1310,32 @@ export function createDurableObjectSqliteCurrentSurface(
           coord().txTime,
           options.cardinalityOf,
           coord(),
+        ),
+      ),
+    scheduleCollectionTick: (args) =>
+      runCollection(
+        scheduleDurableObjectSqliteCollectionTickEffect(
+          runtime.collections,
+          runtime.timers,
+          args,
+          coord().txTime,
+        ),
+      ),
+    collectionTickById: (args) =>
+      runCollection(
+        getDurableObjectSqliteCollectionTickByIdEffect(runtime.timers, args),
+      ),
+    listCollectionTicks: (args = {}) =>
+      runCollection(
+        listDurableObjectSqliteCollectionTicksEffect(runtime.timers, args),
+      ),
+    fireCollectionTick: (args) =>
+      runCollection(
+        fireDurableObjectSqliteCollectionTickEffect(
+          runtime.collections,
+          runtime.timers,
+          args,
+          coord().txTime,
         ),
       ),
     listCurrent: (args = {}) => run(listDurableObjectSqliteCurrentEffect(args)),
