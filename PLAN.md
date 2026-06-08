@@ -1,6 +1,6 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 81 (Action/config diff-history polish) has
+**Current goal:** Goal 82 (Confect Config-History Sidecar) has
 shipped.
 
 Goal 59 shipped production Datalog base reads from protocol-shaped
@@ -54,7 +54,10 @@ remaining mockup affordance, "Describe account", into the header as a live
 account-summary modal backed by existing Overview, compliance, and transaction
 queries. Goal 81 polishes config/action history by enriching config-history rows
 with manifest-change summaries and event-kind counts, then rendering expandable
-event details and per-action last-change provenance in the Data model page. The next
+event details and per-action last-change provenance in the Data model page. Goal
+82 adds a typed Confect/Effect sidecar query for the same read-only config audit
+domain, computing manifest diffs from protocol-shaped `factEvents` through the
+shared core fold without moving config writes behind Confect. The next
 active goal should be chosen from the remaining TODO candidates:
 choosing/wiring the real auth provider and `convex/auth.config.ts`, live
 Cloudflare deployment/auth, another carefully scoped Confect/domain wrapper, or
@@ -237,6 +240,8 @@ arguments.
 - Config history rows expose UI-ready `changedKinds`, `totalManifestChanges`,
   and event-kind counts; the Data model page renders expandable config
   transaction event details and per-action last-config-change provenance.
+- `api.metacrdtConfect.configHistory` exposes config manifest diffs through a
+  typed Confect/Effect sidecar query backed by protocol-shaped `factEvents`.
 - Convex backend tests are green: 155 tests at last verification.
 - Frontend is a MetaCRDT research-preview UI with datarooms/compliance as the
   live elaboration.
@@ -7721,6 +7726,59 @@ manifest changes and low-level event effects.
   rebuilt app HTML.
 - A live `configHistory:history` query returned the new `changedKinds`,
   `totalManifestChanges`, and `eventCounts` fields.
+- `git diff --check` passed.
+
+---
+
+## Goal 82 — Confect Config-History Sidecar
+
+**Status:** shipped as a typed read-only Confect sidecar.
+
+**Objective:** continue the narrow Confect adoption strategy with another real
+domain boundary: config-history inspection. The plain Convex read model remains
+the production UI source, while Confect proves the same audit concept can be
+expressed as typed Effect Schema returns and computed from protocol-shaped
+`factEvents`.
+
+### Semantics
+
+- `confect/metacrdt.spec.ts` adds `metacrdt.configHistory`.
+- `confect/metacrdt.impl.ts` computes config manifest snapshots from
+  `config:default` ownership facts in `factEvents` using `@metacrdt/core`
+  `visibleAsserts`.
+- The implementation returns typed:
+  - `added` / `removed` manifest items;
+  - `changedKinds`;
+  - `totalManifestChanges`;
+  - direct transaction `eventCounts`;
+  - direct config-authored event summaries.
+- `convex/metacrdtConfect.ts` mounts it as
+  `api.metacrdtConfect.configHistory`.
+- The regression test compares the Confect sidecar with the plain
+  `api.configHistory.history` query for a real requirement removal, then verifies
+  idempotent re-apply summaries.
+
+### Non-Goals
+
+- Do not move `applyConfig` or config writes behind Confect.
+- Do not replace the Data model UI source with the Confect sidecar.
+- Do not add Confect tables beyond the existing `transactions` / `factEvents`
+  audit surface.
+- Do not wire production auth or Cloudflare deployment in this slice.
+
+### Verification
+
+- `npm run confect:codegen` passed.
+- `npx convex codegen` passed and regenerated TypeScript bindings.
+- `npm run test:confect` passed (2 Confect sidecar files, 9 tests).
+- `npm test` passed (17 backend test files, 156 tests).
+- `npx tsc --noEmit -p convex/tsconfig.json` passed.
+- `npx tsc --noEmit -p tsconfig.json` passed.
+- `npm run build` passed.
+- `npx convex dev --once` passed and pushed the updated functions to
+  `chatty-hare-94`.
+- A live `metacrdtConfect:configHistory` query returned `added`, `removed`,
+  `changedKinds`, `totalManifestChanges`, and `eventCounts`.
 - `git diff --check` passed.
 
 ---

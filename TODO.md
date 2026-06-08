@@ -386,6 +386,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   model config history rows expand into direct event details, and the Action
   registry shows each action's latest config provenance from the same history
   feed.
+- [x] **Goal 82 shipped:** Confect config-history sidecar. `metacrdt.configHistory`
+  is now a typed Effect Schema public query mounted as
+  `api.metacrdtConfect.configHistory`; it reconstructs manifest diffs from
+  `config:default` ownership events in protocol-shaped `factEvents` with
+  `@metacrdt/core` visibility, returning typed added/removed items,
+  changed-kind summaries, event counts, and direct config events.
 - [x] **Goal 80 shipped:** the header's `Describe account` affordance now opens
   a live Acme Staffing account-summary modal backed by existing Overview,
   compliance, and recent-activity queries. It shows configured types, placements,

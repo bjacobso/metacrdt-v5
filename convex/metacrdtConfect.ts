@@ -6,3 +6,4 @@ import registeredFunctions from "../confect/_generated/registeredFunctions";
 // can deploy beside the existing plain Convex backend.
 export const verifyEvents = registeredFunctions.metacrdt.verifyEvents;
 export const explainDerived = registeredFunctions.metacrdt.explainDerived;
+export const configHistory = registeredFunctions.metacrdt.configHistory;

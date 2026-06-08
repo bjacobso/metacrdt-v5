@@ -64,6 +64,45 @@ export const DerivedExplanation = Schema.Struct({
   because: Schema.Array(DerivedBecause),
 });
 
+export const ConfigKind = Schema.Literal(
+  "attribute",
+  "entityType",
+  "form",
+  "flow",
+  "requirement",
+  "action",
+);
+
+export const ConfigItem = Schema.Struct({
+  kind: ConfigKind,
+  value: Schema.String,
+});
+
+export const ConfigEventCount = Schema.Struct({
+  kind: Schema.String,
+  count: Schema.Number,
+});
+
+export const ConfigDirectEvent = Schema.Struct({
+  kind: FactEventKind,
+  e: Schema.String,
+  a: Schema.String,
+  v: Schema.Any,
+  reason: Schema.optionalWith(Schema.String, { exact: true }),
+});
+
+export const ConfigHistoryEntry = Schema.Struct({
+  txTime: Schema.Number,
+  actorId: Schema.String,
+  reason: Schema.optionalWith(Schema.String, { exact: true }),
+  added: Schema.Array(ConfigItem),
+  removed: Schema.Array(ConfigItem),
+  changedKinds: Schema.Array(ConfigKind),
+  totalManifestChanges: Schema.Number,
+  eventCounts: Schema.Array(ConfigEventCount),
+  events: Schema.Array(ConfigDirectEvent),
+});
+
 export const metacrdt = GroupSpec.make("metacrdt")
   .addFunction(
     FunctionSpec.publicQuery({
@@ -87,5 +126,15 @@ export const metacrdt = GroupSpec.make("metacrdt")
       }),
       returns: Schema.Array(DerivedExplanation),
       error: Schema.Union(UnknownDerivedFact, InvalidProtocolEvent),
+    }),
+  )
+  .addFunction(
+    FunctionSpec.publicQuery({
+      name: "configHistory",
+      args: Schema.Struct({
+        limit: Schema.optionalWith(Schema.Number, { exact: true }),
+      }),
+      returns: Schema.Array(ConfigHistoryEntry),
+      error: InvalidProtocolEvent,
     }),
   );

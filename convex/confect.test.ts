@@ -2,6 +2,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
+import { STAFFING_BLUEPRINT } from "./appconfig";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -109,5 +110,62 @@ describe("Confect sidecar spike", () => {
         e: "missing:derived",
       },
     });
+  });
+
+  test("summarizes config history through a typed Confect sidecar query", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      vi.setSystemTime(1_000);
+      await t.mutation(api.appconfig.setupStaffing, {});
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+      vi.setSystemTime(2_000);
+      await t.mutation(api.appconfig.applyConfig, {
+        config: {
+          requirements: STAFFING_BLUEPRINT.requirements.filter(
+            (r) => r.form !== "forklift",
+          ),
+        },
+      });
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+      const plain = await t.query(api.configHistory.history, { limit: 1 });
+      const typed = await t.query(api.metacrdtConfect.configHistory, { limit: 1 });
+
+      expect(typed[0]).toMatchObject({
+        actorId: "config",
+        changedKinds: ["requirement"],
+        totalManifestChanges: 1,
+        removed: [{ kind: "requirement", value: "forklift" }],
+      });
+      expect(typed[0].added).toEqual(plain[0].added);
+      expect(typed[0].removed).toEqual(plain[0].removed);
+      expect(typed[0].events.length).toBe(plain[0].events.length);
+      expect(typed[0].eventCounts).toContainEqual({
+        kind: "assert",
+        count: expect.any(Number),
+      });
+
+      vi.setSystemTime(3_000);
+      await t.mutation(api.appconfig.applyConfig, {
+        config: {
+          requirements: STAFFING_BLUEPRINT.requirements.filter(
+            (r) => r.form !== "forklift",
+          ),
+        },
+      });
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+      const idempotent = await t.query(api.metacrdtConfect.configHistory, {
+        limit: 1,
+      });
+      expect(idempotent[0]).toMatchObject({
+        changedKinds: [],
+        totalManifestChanges: 0,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
