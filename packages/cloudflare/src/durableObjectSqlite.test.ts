@@ -201,8 +201,9 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
   });
 
   test("current surface appends, rebuilds, and reads entity state from SQLite projection rows", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
     const runtime = await createDurableObjectSqliteRuntime({
-      sql: new FakeDurableObjectSqlStorage(),
+      sql,
       replicaId: "do-sqlite:surface",
       wall: () => 400,
     });
@@ -253,6 +254,9 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       v: "Task",
       actor: "user:1",
     });
+
+    expect(sql.projectionDeleteAllCount).toBe(0);
+    expect(sql.projectionDeleteMatchingCount).toBeGreaterThan(0);
 
     expect(winner.projection).toMatchObject({
       events: 4,
@@ -441,11 +445,13 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       rows: 6,
       changed: [],
     });
+    expect(sql.projectionDeleteAllCount).toBe(1);
   });
 
   test("current surface rebuilds lifecycle changes into empty current state", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
     const runtime = await createDurableObjectSqliteRuntime({
-      sql: new FakeDurableObjectSqlStorage(),
+      sql,
       replicaId: "do-sqlite:lifecycle",
       wall: () => 500,
     });
@@ -485,5 +491,7 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
     await expect(
       surface.getCurrentEntity({ e: "worker:closed" }),
     ).resolves.toBeNull();
+    expect(sql.projectionDeleteAllCount).toBe(0);
+    expect(sql.projectionDeleteMatchingCount).toBeGreaterThan(0);
   });
 });

@@ -74,14 +74,15 @@ verified to behave identically at the boundaries that matter.
   proving they match the EventStore-backed contract for their claimed coordinate
   range.
 - **`runRuntimeProjectionStoreConformance`** — that a target-provided
-  `ProjectionStoreService` can persist and replace materialized current rows
-  built from the shared core fold:
+  `ProjectionStoreService` can persist, replace, and coordinate-scope replace
+  materialized current rows built from the shared core fold:
   - `projection-store-replace-from-fold` — replacing the projection with
     `projectionRowsFromLog` materializes only current visible rows.
   - `projection-store-scan-filters` — scans filter by entity, attribute, row id,
     and source event id.
-  - `projection-store-replace-is-atomic` — a rebuild-style replace discards
-    stale materialized rows.
+  - `projection-store-replace-matching-is-scoped` — replacing one `(e, a)`
+    coordinate removes stale rows for that coordinate while preserving unrelated
+    projection rows.
   - `projection-store-clear` — clearing removes all materialized rows.
   This suite is **opt-in** because not every target has exposed a projection
   store yet.

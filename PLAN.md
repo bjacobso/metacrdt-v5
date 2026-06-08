@@ -206,12 +206,15 @@ exposes it on the same DO SQLite facade as `queryCurrent`, `pageCurrent`,
 `aggregateCurrent`, and `derivedRowsCurrent`. Goal 120 makes the same DO SQLite
 current facade report deterministic projection invalidation summaries: rebuild
 and append/lifecycle results now include touched `(e, a)` coordinates with
-before/after event ids. The next active goal should be chosen from the remaining
-TODO candidates:
+before/after event ids. Goal 121 makes append/lifecycle current projection
+maintenance coordinate-scoped through `ProjectionStoreService.replaceMatching`;
+explicit `rebuildCurrent` remains the full recovery path. The next active goal
+should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite historical SQL-indexed-query/operational parity
-(incremental reconcile, collection/flow, alarms, live fanout),
+(target-event-indexed incremental fold optimization, collection/flow, alarms,
+live fanout),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -532,10 +535,10 @@ arguments.
     `ctx.storage.sql.exec(...)`
   - first DO SQLite current-state surface:
     `createDurableObjectSqliteCurrentSurface` plus Effect-native
-    append-and-rebuild, get/list events, EventStore-backed bitemporal Datalog
-    reads, projection-backed current Datalog reads, rebuild, current-row,
-    current-entity, and typed-current-entity helpers backed by SQLite
-    event/projection rows
+    append helpers with scoped current-coordinate projection reconcile, get/list
+    events, EventStore-backed bitemporal Datalog reads, projection-backed
+    current Datalog reads, full-recovery rebuild, current-row, current-entity,
+    and typed-current-entity helpers backed by SQLite event/projection rows
   - structural Durable Object WebSocket relay shell for hello/delta sync and
     event fan-out
   - Worker-facing router + Durable Object class shell and example Wrangler config
@@ -9426,6 +9429,68 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 121 — Cloudflare DO SQLite Incremental Current-Coordinate Reconcile
+
+**Status:** shipped.
+
+**Objective:** replace Cloudflare DO SQLite's append-time full current-projection
+rewrite with a coordinate-scoped reconcile: appending an assert/lifecycle event
+should replace only the touched current `(e, a)` projection rows, while explicit
+`rebuildCurrent` remains the full recovery path.
+
+### What Shipped
+
+- Added `ProjectionStoreService.replaceMatching(filter, rows)` to
+  `@metacrdt/runtime`:
+  - Effect-native service boundary;
+  - compatibility `ProjectionStore.replaceMatching` hook;
+  - fallback implementation for existing stores that scans rows, removes rows
+    matching all supplied filter fields, and writes the replacement rows.
+- Extended `@metacrdt/testkit` projection-store conformance to prove scoped
+  replacement:
+  - start with a current projection containing one cardinality-one row and
+    two cardinality-many rows;
+  - replace only `{ e, a }` for the status coordinate;
+  - verify stale status is gone, the winning status is present, and unrelated
+    tag rows remain.
+- Implemented concrete SQLite `replaceMatching` in
+  `DurableObjectSqliteProjectionStore`:
+  - empty filter still clears the whole projection;
+  - exact `{ e, a }` uses targeted SQL delete;
+  - broader filters scan matching rows and delete by row id before inserting
+    replacement rows.
+- Added `reconcileDurableObjectSqliteCurrentEventEffect`:
+  - determines the touched coordinate from the appended assert event, or from
+    the target assert for lifecycle events;
+  - computes before/after rows for that coordinate;
+  - calls `ProjectionStoreService.replaceMatching(touched, rows)`;
+  - returns the same deterministic `changed` summary introduced in Goal 120.
+- `appendAssert` / `appendLifecycle` now use scoped current-coordinate reconcile
+  instead of append-and-full-rebuild. `rebuildCurrent` remains a full truncate /
+  rebuild recovery operation.
+
+### Non-Goals
+
+- Do not claim full incremental fold/planner parity yet: the reconcile still
+  scans the event log to compute the replacement rows, because lifecycle events
+  are not indexed by target event id in the SQLite event store yet.
+- Do not add a lifecycle-target event index in this slice.
+- Do not add the historical SQL-indexed bitemporal query provider.
+- Do not add collection/flow, alarms, live-query WebSocket fanout, or deployment
+  wiring.
+
+### Verification
+
+- `npm test --workspace @metacrdt/testkit`
+- `npm run typecheck --workspace @metacrdt/cloudflare`
+- `npm test --workspace @metacrdt/cloudflare`
+- `npm test --workspace @metacrdt/runtime`
+- Cloudflare tests prove append/lifecycle helpers do not clear the full
+  projection (`projectionDeleteAllCount === 0`) while targeted deletes occur,
+  and explicit `rebuildCurrent` still performs the full recovery clear.
 
 ---
 

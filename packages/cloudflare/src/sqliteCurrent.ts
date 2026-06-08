@@ -318,6 +318,26 @@ function listItemFromRows(
   return { e, type, name, rows: rows.length };
 }
 
+type ProjectionCoord = {
+  readonly e: string;
+  readonly a: string;
+};
+
+function assertCoord(event: Event): ProjectionCoord | undefined {
+  return event.kind === "assert" &&
+    event.e !== undefined &&
+    event.a !== undefined
+    ? { e: event.e, a: event.a }
+    : undefined;
+}
+
+function rowsForCoord(
+  rows: readonly ProjectionRow[],
+  coord: ProjectionCoord,
+): ProjectionRow[] {
+  return rows.filter((row) => row.e === coord.e && row.a === coord.a);
+}
+
 export function rebuildDurableObjectSqliteCurrentEffect(
   args: DurableObjectSqliteRebuildCurrentArgs,
   cardinalityOf: CardinalityOf,
@@ -345,6 +365,44 @@ export function rebuildDurableObjectSqliteCurrentEffect(
       events: events.length,
       rows: replaced.rows,
       changed: projectionChangeSummary(beforeRows, rows),
+    };
+  });
+}
+
+export function reconcileDurableObjectSqliteCurrentEventEffect(
+  event: Event,
+  cardinalityOf: CardinalityOf,
+  coord: Coord,
+): Effect.Effect<
+  DurableObjectSqliteRebuildCurrentResult,
+  RuntimeError | DurableObjectSqliteCurrentSurfaceError,
+  EventStoreService | ProjectionStoreService
+> {
+  return Effect.gen(function* () {
+    const store = yield* EventStoreService;
+    const projection = yield* ProjectionStoreService;
+    const target = event.target === undefined
+      ? undefined
+      : yield* store.get(event.target);
+    const touched = assertCoord(event) ?? (target ? assertCoord(target) : undefined);
+    const events = yield* store.scan();
+    if (touched === undefined) {
+      const rows = yield* projection.scan();
+      return { events: events.length, rows: rows.length, changed: [] };
+    }
+
+    const beforeRows = yield* projection.scan(touched);
+    const allRows = yield* Effect.try({
+      try: () => projectionRowsFromLog(fromEvents(events), coord, cardinalityOf),
+      catch: (cause) => surfaceError("reconcileCurrent", cause),
+    });
+    const afterRows = rowsForCoord(allRows, touched);
+    yield* projection.replaceMatching(touched, afterRows);
+    const currentRows = yield* projection.scan();
+    return {
+      events: events.length,
+      rows: currentRows.length,
+      changed: projectionChangeSummary(beforeRows, afterRows),
     };
   });
 }
@@ -589,9 +647,10 @@ export function appendAssertAndRebuildDurableObjectSqliteCurrentEffect(
       args,
     );
     const event = yield* applyOperationEffect(assertOperationFromArgs(decoded));
-    const projection = yield* rebuildDurableObjectSqliteCurrentEffect(
-      { coord },
+    const projection = yield* reconcileDurableObjectSqliteCurrentEventEffect(
+      event,
       cardinalityOf,
+      coord,
     );
     return { event, projection };
   });
@@ -618,9 +677,10 @@ export function appendLifecycleAndRebuildDurableObjectSqliteCurrentEffect(
       args,
     );
     const event = yield* applyOperationEffect(lifecycleOperationFromArgs(decoded));
-    const projection = yield* rebuildDurableObjectSqliteCurrentEffect(
-      { coord },
+    const projection = yield* reconcileDurableObjectSqliteCurrentEventEffect(
+      event,
       cardinalityOf,
+      coord,
     );
     return { event, projection };
   });

@@ -78,7 +78,8 @@ boundary targets implement per SPEC §1.2. The memory target proves G-Set
 exchange convergence and version-vector anti-entropy without committing to any
 durable storage or network. `ProjectionStoreService` starts the materialized
 read-model boundary: projection rows are still deterministic folds of the log,
-but target adapters can persist and index them behind a shared service.
+but target adapters can persist, index, and coordinate-scope replace them behind
+a shared service (`replaceMatching`) without changing fold semantics.
 `DatalogQueryService` is the runtime query boundary for SPEC §6-style
 deterministic query/derivation helpers: target adapters provide event access,
 runtime owns the service contract, and `@metacrdt/query` owns pure planning and

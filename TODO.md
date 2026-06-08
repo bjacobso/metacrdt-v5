@@ -32,14 +32,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   event/projection/HLC/seq services with Effect Layer, runtime conformance,
   projection-store conformance, and restart-persistence conformance.
 - [x] Cloudflare Durable Object SQLite log/current/query surface —
-  append-and-rebuild, event get/list, EventStore-backed bitemporal Datalog
-  reads, projection-backed current Datalog reads, rebuild, current-row,
+  append helpers, event get/list, EventStore-backed bitemporal Datalog reads,
+  projection-backed current Datalog reads, full-recovery rebuild, current-row,
   current-entity, and typed current-entity reads over SQLite event/projection
   stores with Effect helpers and a Promise facade.
 - [x] Cloudflare Durable Object SQLite projection invalidation summaries —
   `rebuildCurrent` and append/lifecycle facade results report changed `(e, a)`
   coordinates with before/after event ids, giving the live-query transport its
   first concrete invalidation key.
+- [x] Cloudflare Durable Object SQLite incremental current-coordinate reconcile —
+  append/lifecycle helpers replace only the touched current projection coordinate
+  through `ProjectionStoreService.replaceMatching`; explicit `rebuildCurrent`
+  remains the full recovery path.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -49,9 +53,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 - [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — historical
-  SQL-indexed query-provider optimization, incremental projection reconcile,
-  operational collection/flow surface, DO alarm multiplexing, and live-query
-  WebSocket fanout/plumbing (see
+  SQL-indexed query-provider optimization, lifecycle target-event indexing /
+  incremental fold optimization, operational collection/flow surface, DO alarm
+  multiplexing, and live-query WebSocket fanout/plumbing (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
@@ -581,6 +585,25 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — Cloudflare DO SQLite scoped current reconcile
+- [x] **Added `ProjectionStoreService.replaceMatching`.** Runtime now has an
+  Effect-native scoped projection replacement contract, with a compatibility
+  `ProjectionStore.replaceMatching` hook and a fallback that preserves all rows
+  outside the supplied filter.
+- [x] **Cloudflare SQLite implements targeted projection replacement.**
+  `DurableObjectSqliteProjectionStore.replaceMatching` clears only matching
+  rows for exact `{ e, a }` filters and deletes broader matches by row id.
+- [x] **Append/lifecycle helpers now reconcile one current coordinate.**
+  `reconcileDurableObjectSqliteCurrentEventEffect` derives the touched `(e, a)`
+  from the appended assert or lifecycle target assert, computes before/after
+  rows for that coordinate, calls `replaceMatching`, and returns the same
+  deterministic changed-coordinate summaries used by live-query invalidation.
+- [x] **Tests prove scoped writes.** Testkit projection-store conformance now
+  verifies replacing one coordinate preserves unrelated rows; Cloudflare tests
+  prove append/lifecycle paths do not full-clear the projection while explicit
+  `rebuildCurrent` still does. This is projection-write-side incremental; event
+  log scanning remains until target-event indexing / SQL fold optimization.
 
 ### 2026-06-08 — Cloudflare DO SQLite projection invalidation summaries
 - [x] **Made the current projection report what changed.**

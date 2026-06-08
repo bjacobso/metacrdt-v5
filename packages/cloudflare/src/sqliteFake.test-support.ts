@@ -54,6 +54,8 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
   readonly events = new Map<string, StoredEvent>();
   readonly projection = new Map<string, StoredProjectionRow>();
   readonly meta = new Map<string, string>();
+  projectionDeleteAllCount = 0;
+  projectionDeleteMatchingCount = 0;
 
   exec(query: string, ...bindings: readonly unknown[]): DurableObjectSqlCursorLike {
     const sql = normalize(query);
@@ -145,7 +147,20 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
     bindings: readonly unknown[],
   ): DurableObjectSqlCursorLike {
     if (sql.startsWith("delete from")) {
-      this.projection.clear();
+      if (sql.includes("where e = ? and a = ?")) {
+        const e = stringBinding(bindings[0], "projection e");
+        const a = stringBinding(bindings[1], "projection a");
+        for (const [id, row] of this.projection.entries()) {
+          if (row.e === e && row.a === a) this.projection.delete(id);
+        }
+        this.projectionDeleteMatchingCount += 1;
+      } else if (sql.includes("where id = ?")) {
+        this.projection.delete(stringBinding(bindings[0], "projection id"));
+        this.projectionDeleteMatchingCount += 1;
+      } else {
+        this.projection.clear();
+        this.projectionDeleteAllCount += 1;
+      }
       return cursor();
     }
 
@@ -206,4 +221,3 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
     throw new Error(`unsupported fake meta SQL: ${sql}`);
   }
 }
-

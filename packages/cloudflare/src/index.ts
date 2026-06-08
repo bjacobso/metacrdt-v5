@@ -49,6 +49,7 @@ export {
   pageDurableObjectSqliteCurrentEffect,
   queryDurableObjectSqliteEffect,
   queryDurableObjectSqliteCurrentEffect,
+  reconcileDurableObjectSqliteCurrentEventEffect,
   rebuildDurableObjectSqliteCurrentEffect,
   type DurableObjectSqliteAppendAndRebuildResult,
   type DurableObjectSqliteAppendAssertArgs,

@@ -866,21 +866,33 @@ export async function runRuntimeProjectionStoreConformance(
         coord,
         cardinalityOf,
       );
-      const secondReplace = yield* projection.replace(secondRows);
+      const replacementStatusRows = secondRows.filter(
+        (row) => row.e === "worker:maria" && row.a === "worker.status",
+      );
+      const secondReplace = yield* projection.replaceMatching(
+        { e: "worker:maria", a: "worker.status" },
+        replacementStatusRows,
+      );
       const currentStatus = yield* projection.scan({
         e: "worker:maria",
         a: "worker.status",
       });
       const staleStatusRows = yield* projection.scan({ eventIds: [terminated.id] });
+      const currentTags = yield* projection.scan({
+        e: "worker:maria",
+        a: "worker.tag",
+      });
       expect(
         target,
-        secondReplace.rows === 3 &&
+        secondReplace.rows === 1 &&
+          (yield* projection.scan()).length === 3 &&
           currentStatus.length === 1 &&
           currentStatus[0]?.eventId === available.id &&
-          staleStatusRows.length === 0,
-        "projection store replace should atomically discard stale materialized rows",
+          staleStatusRows.length === 0 &&
+          currentTags.length === 2,
+        "projection store replaceMatching should atomically replace only matching rows",
       );
-      checks.push("projection-store-replace-is-atomic");
+      checks.push("projection-store-replace-matching-is-scoped");
 
       yield* projection.clear();
       expect(

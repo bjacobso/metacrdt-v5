@@ -83,7 +83,7 @@ describe("@metacrdt/convex runtime Layer", () => {
       checks: [
         "projection-store-replace-from-fold",
         "projection-store-scan-filters",
-        "projection-store-replace-is-atomic",
+        "projection-store-replace-matching-is-scoped",
         "projection-store-clear",
       ],
     });

@@ -318,6 +318,53 @@ export class DurableObjectSqliteProjectionStore implements ProjectionStore {
     return { rows: count };
   }
 
+  async replaceMatching(
+    filter: ProjectionFilter,
+    rowsIn: Iterable<ProjectionRow>,
+  ): Promise<ProjectionReplaceResult> {
+    if (
+      filter.e === undefined &&
+      filter.a === undefined &&
+      filter.ids === undefined &&
+      filter.eventIds === undefined
+    ) {
+      await this.clear();
+    } else if (
+      filter.e !== undefined &&
+      filter.a !== undefined &&
+      filter.ids === undefined &&
+      filter.eventIds === undefined
+    ) {
+      this.sql.exec(
+        `DELETE FROM ${this.plan.tables.projection} WHERE e = ? AND a = ?`,
+        filter.e,
+        filter.a,
+      );
+    } else {
+      const matching = await this.scan(filter);
+      for (const row of matching) {
+        this.sql.exec(
+          `DELETE FROM ${this.plan.tables.projection} WHERE id = ?`,
+          row.id,
+        );
+      }
+    }
+
+    let count = 0;
+    for (const row of rowsIn) {
+      this.sql.exec(
+        `INSERT INTO ${this.plan.tables.projection} (id, e, a, event_id, row_json) VALUES (?, ?, ?, ?, ?)`,
+        row.id,
+        row.e,
+        row.a,
+        row.eventId,
+        projectionRowJson(row),
+      );
+      count += 1;
+    }
+    return { rows: count };
+  }
+
   async clear(): Promise<void> {
     this.sql.exec(`DELETE FROM ${this.plan.tables.projection}`);
   }

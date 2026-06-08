@@ -53,6 +53,10 @@ export type ProjectionStoreEffect = {
   replace(
     rows: Iterable<ProjectionRow>,
   ): Effect.Effect<ProjectionReplaceResult, RuntimeServiceError>;
+  replaceMatching(
+    filter: ProjectionFilter,
+    rows: Iterable<ProjectionRow>,
+  ): Effect.Effect<ProjectionReplaceResult, RuntimeServiceError>;
   clear(): Effect.Effect<void, RuntimeServiceError>;
   scan(filter?: ProjectionFilter): Effect.Effect<ProjectionRow[], RuntimeServiceError>;
 };
@@ -148,9 +152,36 @@ export function eventStoreService(store: EventStore): EventStoreEffect {
 export function projectionStoreService(
   store: ProjectionStore,
 ): ProjectionStoreEffect {
+  function matches(row: ProjectionRow, filter: ProjectionFilter): boolean {
+    if (filter.e !== undefined && row.e !== filter.e) return false;
+    if (filter.a !== undefined && row.a !== filter.a) return false;
+    if (filter.ids !== undefined && !filter.ids.includes(row.id)) return false;
+    if (
+      filter.eventIds !== undefined &&
+      !filter.eventIds.includes(row.eventId)
+    ) {
+      return false;
+    }
+    return true;
+  }
+
   return {
     replace: (rows) =>
       serviceEffect("ProjectionStore", "replace", () => store.replace(rows)),
+    replaceMatching: (filter, rows) =>
+      serviceEffect("ProjectionStore", "replaceMatching", async () => {
+        if (store.replaceMatching) {
+          return await store.replaceMatching(filter, rows);
+        }
+        const incoming = [...rows];
+        const current = await store.scan();
+        const merged = [
+          ...current.filter((row) => !matches(row, filter)),
+          ...incoming,
+        ];
+        await store.replace(merged);
+        return { rows: incoming.length };
+      }),
     clear: () => serviceEffect("ProjectionStore", "clear", () => store.clear()),
     scan: (filter) =>
       serviceEffect("ProjectionStore", "scan", () => store.scan(filter)),

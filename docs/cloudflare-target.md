@@ -5,7 +5,8 @@
 adapter over `ctx.storage.sql.exec(...)`, with EventStore / ProjectionStore /
 HLC / seq services, Layer-backed conformance, and the first
 component-equivalent log/current/query surface (`appendAssert` /
-`appendLifecycle` append-and-rebuild helpers, `getEvent`, `listEvents`,
+`appendLifecycle` helpers with scoped current-coordinate projection reconcile,
+`getEvent`, `listEvents`,
 EventStore-backed `query` / `page` / `aggregate` / `derivedRows`,
 projection-backed `queryCurrent` / `pageCurrent` / `aggregateCurrent` /
 `derivedRowsCurrent`, `rebuildCurrent`, `listCurrent`, `getCurrentEntity`,
@@ -33,15 +34,18 @@ real operational triple store. `@metacrdt/cloudflare` started as only the
 WebSocket relay and a Worker shell. It now also has the first Durable Object
 SQLite runtime substrate: structural SQLite services for events, projection
 rows, HLC, and per-replica `seq`. It now has the first component-equivalent
-log/current/query surface over that substrate: append-and-rebuild helpers,
+log/current/query surface over that substrate: append helpers with scoped
+current-coordinate projection reconcile,
 `getEvent`, `listEvents`, EventStore-backed bitemporal Datalog reads
 (`query`, `page`, `aggregate`, `derivedRows`), projection-backed current Datalog
 reads (`queryCurrent`, `pageCurrent`, `aggregateCurrent`,
 `derivedRowsCurrent`), `rebuildCurrent`, and current entity/list reads backed by
 SQLite projection rows, with rebuild results reporting changed current
-projection coordinates and before/after event ids. It still has no historical
-SQL-optimized indexed triple queries, no incremental projection reconcile/live
-invalidation fanout, and none of the operational (collection/flow) surface.
+projection coordinates and before/after event ids; append/lifecycle writes now
+replace only the touched current projection coordinate. It still has no
+historical SQL-optimized indexed triple queries, no target-event-indexed
+incremental fold optimization, no live invalidation fanout, and none of the
+operational (collection/flow) surface.
 
 This doc defines what it takes to bring Cloudflare to parity, in what order, and
 which decisions must be settled first — and it makes **live frontend queries an
@@ -103,7 +107,7 @@ function surface — backed by Durable Object SQLite instead of the Convex DB.
 | `DurableObjectSqliteEventStore` | SQLite-backed event table over `ctx.storage.sql.exec(...)`; indexed by entity and attribute |
 | `DurableObjectSqliteProjectionStore` | SQLite-backed materialized projection table; indexed by entity, attribute, and source event |
 | `DurableObjectSqliteClock` / `DurableObjectSqliteSequencer` | SQLite-backed HLC + per-replica `seq` metadata |
-| `createDurableObjectSqliteCurrentSurface` | First component-equivalent log/current/query facade: append-and-rebuild, get/list events, EventStore-backed bitemporal Datalog reads, projection-backed current Datalog reads, rebuild with changed `(e, a)` summaries, list current rows, read current entity, and list typed current entities |
+| `createDurableObjectSqliteCurrentSurface` | First component-equivalent log/current/query facade: append helpers with scoped current-coordinate projection reconcile, get/list events, EventStore-backed bitemporal Datalog reads, projection-backed current Datalog reads, rebuild with changed `(e, a)` summaries, list current rows, read current entity, and list typed current entities |
 | `DurableObjectWebSocketRelay` | version-vector hello/delta sync + event fan-out |
 | `MetaCrdtRelayDurableObject` / `relayWorker` | Worker/DO example shell |
 
@@ -174,7 +178,8 @@ truncate projections, replay `fact_events` ordered by `≺`. Cardinality-one
 reconcile reuses the Phase B helper.
 
 **Shipped seed:** `createDurableObjectSqliteCurrentSurface` wraps the SQLite
-runtime with `appendAssert` / `appendLifecycle` append-and-rebuild helpers,
+runtime with `appendAssert` / `appendLifecycle` helpers that reconcile only the
+touched current projection coordinate,
 `getEvent`, `listEvents`, `rebuildCurrent`, `listCurrent`, `getCurrentEntity`,
 `listCurrentEntities`, the default EventStore-backed `DatalogQueryService`
 methods (`query`, `page`, `aggregate`, `derivedRows`), and the
@@ -187,11 +192,13 @@ reads through the shared EventStore-backed query service, and routes current
 Datalog reads through runtime's projection-backed query provider over those
 SQLite projection rows. `rebuildCurrent` returns a deterministic `changed`
 summary of touched `(e, a)` coordinates with before/after event ids; append and
-lifecycle helpers surface that same rebuild result.
+lifecycle helpers surface the same change result from their scoped coordinate
+reconcile. Explicit `rebuildCurrent` remains the full truncate/replay recovery
+path.
 
 **Still ahead for parity:** richer append function surface, SQL-indexed query
-provider optimization/conformance for historical bitemporal queries, incremental
-component-style projection reconcile/live invalidation fanout, and the
+provider optimization/conformance for historical bitemporal queries,
+target-event-indexed incremental fold optimization, live invalidation fanout, and the
 collection/flow surface.
 
 ### Phase D — Operational surface + alarms
@@ -236,8 +243,11 @@ connection the relay already owns.
 2. **Make writes describe what changed.** `appendAssert` / `appendLifecycle` /
    `rebuildCurrent` now return the set of `(e, a)` coordinates whose current
    projection changed, with before/after event ids. A live query can be indexed
-   by it — it is the invalidation key for live queries. Emitting those summaries
-   to WebSocket subscribers is still future transport work.
+   by it — it is the invalidation key for live queries. Append/lifecycle writes
+   now update the materialized current projection by replacing the touched
+   coordinate through `ProjectionStoreService.replaceMatching`; explicit
+   `rebuildCurrent` still full-rebuilds for recovery. Emitting those summaries to
+   WebSocket subscribers is still future transport work.
 3. **Reuse the relay socket, don't add a second channel.** The
    `DurableObjectWebSocketRelay` already manages connections and fan-out for
    replica sync. Live-query subscriptions are the same socket carrying a second

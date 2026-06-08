@@ -68,6 +68,10 @@ export type ProjectionReplaceResult = {
 
 export interface ProjectionStore {
   replace(rows: Iterable<ProjectionRow>): Promise<ProjectionReplaceResult>;
+  replaceMatching?(
+    filter: ProjectionFilter,
+    rows: Iterable<ProjectionRow>,
+  ): Promise<ProjectionReplaceResult>;
   clear(): Promise<void>;
   scan(filter?: ProjectionFilter): Promise<ProjectionRow[]>;
 }

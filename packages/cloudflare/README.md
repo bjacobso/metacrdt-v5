@@ -26,7 +26,8 @@ implements them on Cloudflare.
   Effect `Layer`.
 - **Durable Object SQLite current-state surface** —
   `createDurableObjectSqliteCurrentSurface` plus Effect-native helpers for
-  append-and-rebuild, `getEvent`, `listEvents`, `rebuildCurrent`, `listCurrent`,
+  append with scoped current-coordinate projection reconcile, `getEvent`,
+  `listEvents`, `rebuildCurrent`, `listCurrent`,
   `getCurrentEntity`, `listCurrentEntities`, and the EventStore-backed
   bitemporal Datalog query methods (`query`, `page`, `aggregate`,
   `derivedRows`) plus projection-backed current query methods (`queryCurrent`,
@@ -39,7 +40,10 @@ implements them on Cloudflare.
   projection-backed `DatalogQueryService` provider over the SQLite projection
   table. `rebuildCurrent` and the append/lifecycle helpers report deterministic
   projection changes as touched `(e, a)` coordinates with before/after event ids,
-  giving the future live-query transport a concrete invalidation key.
+  giving the future live-query transport a concrete invalidation key; append and
+  lifecycle helpers replace only the touched current coordinate through
+  `ProjectionStoreService.replaceMatching`, while `rebuildCurrent` remains the
+  full recovery rebuild.
 - **WebSocket relay** — `DurableObjectWebSocketRelay` / `attachDurableObjectRelay`
   (`RelayConnection`, `RelayOptions`, `WebSocketLike`): accepts server sockets,
   answers version-vector hellos with deltas, merges client events through the
@@ -138,8 +142,9 @@ runtime, and the same facade now exposes protocol event reads (`getEvent` /
 (`queryCurrent`, `pageCurrent`, `aggregateCurrent`, `derivedRowsCurrent`) and
 deterministic `changed` summaries for current-projection rebuilds. The remaining
 parity plan — full historical SQL-indexed query optimization, incremental
-projection reconcile/live invalidation fanout, collection/flow surface, alarm
-multiplexing, and live frontend queries over DO WebSockets — is
+fold optimization / target-event indexing, live invalidation fanout,
+collection/flow surface, alarm multiplexing, and live frontend queries over DO
+WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth
