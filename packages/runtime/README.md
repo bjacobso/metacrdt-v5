@@ -97,5 +97,5 @@ const result = await Effect.runPromise(
 The Effect service/tag boundary plus memory and localStorage Layers are shipped.
 BroadcastChannel and p2p DataChannel compatibility paths are also shipped. Node,
 local, and Cloudflare target packages now expose their own runtime Layers;
-testkit conformance still needs to move from compatibility `RuntimeServices`
-objects to layer-provided targets.
+`@metacrdt/testkit` conformance runs over layer-provided targets while
+compatibility `RuntimeServices` facades remain for older callers.

@@ -58,10 +58,10 @@ different storage adapters behind the same runtime contracts.
 
 The memory, SQLite, and Postgres runtime services pass the shared
 `@metacrdt/testkit` EventStore / anti-entropy / deterministic-fold conformance
-suite. The package also verifies SQLite and Postgres persistence of the event
+suite through their Effect Layer providers. The package also verifies SQLite and
+Postgres persistence of the event
 log, HLC, and per-replica `seq` across runtime recreation, and tests the
-shared SQL lifecycle plan used by both SQL adapters. Memory, SQLite, and
-Postgres also provide Effect Layers tested through `applyOperationEffect`. It
+shared SQL lifecycle plan used by both SQL adapters. It
 also tests the HTTP/SSE handler's health, delta pull, event push, SSE response
 paths, and the native-style listener adapter's response writing and streamed
 POST body merge. The dev-server CLI is tested by starting a real ephemeral

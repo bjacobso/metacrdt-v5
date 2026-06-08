@@ -8,10 +8,11 @@ verified to behave identically at the boundaries that matter.
 
 ## What Testkit Owns
 
-- **The conformance target contract** — `RuntimeConformanceTarget`
-  (`createRuntime` / optional `disposeRuntime`), `RuntimeFactoryOptions`, and
-  `ConformanceReport`. A target package implements this once and gets the whole
-  suite.
+- **The conformance target contract** — `RuntimeLayerConformanceTarget`
+  (`createLayer`), `RuntimeFactoryOptions`, and `ConformanceReport`. A target
+  package implements this once and gets the whole suite. The older
+  `RuntimeConformanceTarget` (`createRuntime` / optional `disposeRuntime`) still
+  works as a compatibility adapter, but new targets should provide Layers.
 - **`runEventStoreConformance`** — that a target's `EventStore` is a correct
   grow-only-set log:
   - `append-idempotent` — re-appending the same event does not duplicate it.
@@ -43,6 +44,7 @@ verified to behave identically at the boundaries that matter.
 
 - `@metacrdt/core`
 - `@metacrdt/runtime`
+- `effect` v3 (`^3.21.3`) for Layer-provided conformance.
 
 ## Relation to SPEC
 
@@ -58,17 +60,18 @@ A target proves itself with a few lines in its own test suite:
 
 ```ts
 import { runRuntimeConformance } from "@metacrdt/testkit";
-import { createMemoryRuntime } from "@metacrdt/runtime";
+import { createMemoryRuntimeLayer } from "@metacrdt/runtime";
 
 const report = await runRuntimeConformance({
   name: "memory",
-  createRuntime: ({ replicaId, wall }) => createMemoryRuntime({ replicaId, wall }),
+  createLayer: ({ replicaId, wall }) =>
+    createMemoryRuntimeLayer({ replicaId, wall }),
 });
 // report.checks lists every passed check; a failure throws with the target name.
 ```
 
-`@metacrdt/cloudflare`, `@metacrdt/local`, and `@metacrdt/node` run this suite in
-their own `conformance`/index tests.
+`@metacrdt/cloudflare`, `@metacrdt/local`, and `@metacrdt/node` run this suite
+through their Effect Layer providers in their own `conformance`/index tests.
 
 ## Scope Today, and What's Next
 

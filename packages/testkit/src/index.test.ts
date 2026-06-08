@@ -1,31 +1,35 @@
 import { describe, expect, test } from "vitest";
-import { createMemoryRuntime, type RuntimeServices } from "@metacrdt/runtime";
+import {
+  createMemoryRuntime,
+  createMemoryRuntimeLayer,
+  runtimeServicesLayer,
+} from "@metacrdt/runtime";
 import {
   runEventStoreConformance,
   runRuntimeConformance,
   runRuntimeConvergenceConformance,
-  type RuntimeConformanceTarget,
+  type RuntimeLayerConformanceTarget,
   type RuntimeFactoryOptions,
 } from "./index.js";
 
-const memoryTarget: RuntimeConformanceTarget = {
+const memoryTarget: RuntimeLayerConformanceTarget = {
   name: "memory",
-  createRuntime(options: RuntimeFactoryOptions): RuntimeServices {
-    return createMemoryRuntime({
+  createLayer(options: RuntimeFactoryOptions) {
+    return createMemoryRuntimeLayer({
       replicaId: options.replicaId,
       wall: options.wall,
     });
   },
 };
 
-const brokenStoreTarget: RuntimeConformanceTarget = {
+const brokenStoreTarget: RuntimeLayerConformanceTarget = {
   name: "broken-store",
-  createRuntime(options: RuntimeFactoryOptions): RuntimeServices {
+  createLayer(options: RuntimeFactoryOptions) {
     const runtime = createMemoryRuntime({
       replicaId: options.replicaId,
       wall: options.wall,
     });
-    return {
+    return runtimeServicesLayer({
       ...runtime,
       store: {
         ...runtime.store,
@@ -42,7 +46,8 @@ const brokenStoreTarget: RuntimeConformanceTarget = {
           return { seen: [...events].length, inserted: 0 };
         },
       },
-    };
+      sequencer: runtime.sequencer,
+    });
   },
 };
 

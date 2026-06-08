@@ -174,9 +174,10 @@ Current packages:
   local sync server CLI over native `node:http`. Memory, SQLite, and Postgres
   runtimes expose Effect Layer providers and pass `@metacrdt/testkit`.
 - **`@metacrdt/testkit`** (`packages/testkit`) — target conformance helpers:
-  framework-neutral async checks for EventStore idempotency/filtering/content-id
+  Effect Layer-backed checks for EventStore idempotency/filtering/content-id
   verification, version-vector anti-entropy, and deterministic fold convergence.
-  The package proves itself against `@metacrdt/runtime`'s in-memory target.
+  The package proves itself against the in-memory Layer and is consumed by
+  Node/local/Cloudflare target Layer tests.
 
 Package build policy:
 
@@ -349,7 +350,8 @@ Built today:
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility
 - `@metacrdt/runtime` harness groundwork: target-neutral Effect services plus
   in-memory/localStorage convergence test targets and Layers; Node/local/
-  Cloudflare target packages also expose runtime Layers
+  Cloudflare target packages also expose runtime Layers and pass Layer-backed
+  `@metacrdt/testkit` conformance
 - Confect/Effect sidecars for typed read/planning/protocol inspection:
   `metacrdt.verifyEvents`, `metacrdt.explainDerived`, and a read-only compliance
   dry-run planner. The dry-run planner is now event-log-backed and

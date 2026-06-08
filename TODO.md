@@ -47,10 +47,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   memory/SQLite/Postgres Layers, `@metacrdt/local` exposes localStorage/async/
   IndexedDB/SQLite-compatible Layers, and `@metacrdt/cloudflare` exposes a
   Durable Object Layer. Tests execute Effect programs through each target Layer.
-- [ ] **Goal 111 next: testkit conformance over Layers** — move
-  `@metacrdt/testkit` from compatibility `RuntimeServices` factories to
-  Layer-provided targets, then add the Convex target Layer when the component
-  boundary is ready. Keep compatibility facades until every target has moved.
+- [x] **Goal 111 testkit conformance over Layers** — `@metacrdt/testkit` now
+  accepts `RuntimeLayerConformanceTarget` (`createLayer`) and runs EventStore /
+  anti-entropy / deterministic-fold conformance over service tags. Compatibility
+  `RuntimeServices` factories still adapt through `runtimeServicesLayer`.
+- [ ] **Goal 111 next: Convex target Layer + expanded suites** — add the Convex
+  target Layer when the component boundary is ready; then expand conformance to
+  persistence, scheduler, transport, and query/projection capabilities as second
+  implementations expose them.
 - [x] **Package build/release tooling** — Turbo now orchestrates package
   `build`/`typecheck`/`test`; tsdown/Rolldown emits `dist` ESM + declarations
   for every `@metacrdt/*` package; exports point at `dist`; package payloads are
@@ -493,6 +497,20 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-08 — Goal 111 Layer-backed conformance
+- [x] **`@metacrdt/testkit` now runs conformance over Effect Layers.** Added
+  `RuntimeLayerConformanceTarget` (`createLayer`) and rewired the EventStore /
+  anti-entropy / deterministic-fold checks to execute through `Context.Tag`
+  services (`RuntimeProfileService`, `EventStoreService`, `RuntimeClockService`,
+  `RuntimeSequencerService`, `TransportService`) rather than direct
+  `RuntimeServices` object calls.
+- [x] **Compatibility preserved:** existing `RuntimeConformanceTarget`
+  (`createRuntime` / optional `disposeRuntime`) still works by adapting through
+  `runtimeServicesLayer`, but new targets should provide Layers.
+- [x] **Target suites moved:** testkit's memory proof, Node memory/SQLite/
+  Postgres conformance, local async conformance, and Cloudflare Durable Object
+  conformance all use Layer factories.
 
 ### 2026-06-08 — Goal 111 target Layer providers
 - [x] **Node target Layers:** `@metacrdt/node` now exposes

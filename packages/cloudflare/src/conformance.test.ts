@@ -1,11 +1,11 @@
 import { describe, expect, test } from "vitest";
 import {
   runRuntimeConformance,
-  type RuntimeConformanceTarget,
+  type RuntimeLayerConformanceTarget,
   type RuntimeFactoryOptions,
 } from "@metacrdt/testkit";
 import {
-  createDurableObjectRuntime,
+  createDurableObjectRuntimeLayer,
   type DurableObjectStorageLike,
 } from "./index.js";
 
@@ -25,10 +25,10 @@ class FakeDurableObjectStorage implements DurableObjectStorageLike {
   }
 }
 
-const cloudflareTarget: RuntimeConformanceTarget = {
+const cloudflareTarget: RuntimeLayerConformanceTarget = {
   name: "cloudflare-do",
-  createRuntime(options: RuntimeFactoryOptions) {
-    return createDurableObjectRuntime({
+  createLayer(options: RuntimeFactoryOptions) {
+    return createDurableObjectRuntimeLayer({
       storage: new FakeDurableObjectStorage(),
       namespace: "conformance",
       replicaId: options.replicaId,

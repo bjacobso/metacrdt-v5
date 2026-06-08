@@ -60,8 +60,9 @@ This package today implements the **sync plane** — a convergent event log over
 Durable Object storage, plus the relay and Worker shells. It is storage-backed
 and protocol-correct, but not yet a queryable triple store or a live deployment.
 Its Durable Object runtime services pass the shared `@metacrdt/testkit`
-EventStore / anti-entropy / deterministic-fold conformance suite and provide an
-Effect Layer tested through `applyOperationEffect`.
+EventStore / anti-entropy / deterministic-fold conformance suite through the
+Durable Object Effect Layer. The Layer is also smoke-tested directly through
+`applyOperationEffect`.
 
 The plan to grow it to parity with `@metacrdt/convex` — an indexed, bitemporal
 triple store over Durable Object **SQLite** storage, with projections,

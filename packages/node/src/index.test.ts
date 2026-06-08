@@ -9,7 +9,7 @@ import {
 import { Effect } from "effect";
 import {
   runRuntimeConformance,
-  type RuntimeConformanceTarget,
+  type RuntimeLayerConformanceTarget,
   type RuntimeFactoryOptions,
 } from "@metacrdt/testkit";
 import {
@@ -221,20 +221,20 @@ function ascii(s: string): Uint8Array {
   return new Uint8Array([...s].map((ch) => ch.charCodeAt(0)));
 }
 
-const memoryTarget: RuntimeConformanceTarget = {
+const memoryTarget: RuntimeLayerConformanceTarget = {
   name: "node-memory",
-  createRuntime(options: RuntimeFactoryOptions) {
-    return createNodeMemoryRuntime({
+  createLayer(options: RuntimeFactoryOptions) {
+    return createNodeMemoryRuntimeLayer({
       replicaId: options.replicaId,
       wall: options.wall,
     });
   },
 };
 
-const sqliteTarget: RuntimeConformanceTarget = {
+const sqliteTarget: RuntimeLayerConformanceTarget = {
   name: "node-sqlite",
-  createRuntime(options: RuntimeFactoryOptions) {
-    return createNodeSqliteRuntime({
+  createLayer(options: RuntimeFactoryOptions) {
+    return createNodeSqliteRuntimeLayer({
       db: new FakeSqliteDatabase(),
       replicaId: options.replicaId,
       wall: options.wall,
@@ -242,10 +242,10 @@ const sqliteTarget: RuntimeConformanceTarget = {
   },
 };
 
-const postgresTarget: RuntimeConformanceTarget = {
+const postgresTarget: RuntimeLayerConformanceTarget = {
   name: "node-postgres",
-  createRuntime(options: RuntimeFactoryOptions) {
-    return createNodePostgresRuntime({
+  createLayer(options: RuntimeFactoryOptions) {
+    return createNodePostgresRuntimeLayer({
       client: new FakePostgresClient(),
       replicaId: options.replicaId,
       wall: options.wall,

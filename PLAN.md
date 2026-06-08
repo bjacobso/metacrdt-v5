@@ -1,13 +1,14 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** Goal 111 (Effect-Native Substrate) steps 1–2 have started:
+**Current goal:** Goal 111 (Effect-Native Substrate) steps 1–2 have advanced:
 `@metacrdt/runtime` has Effect v3 `Context.Tag` services, `Layer` helpers,
 tagged runtime errors, and memory/localStorage Layer providers; `@metacrdt/node`,
 `@metacrdt/local`, and `@metacrdt/cloudflare` now expose Effect Layer providers
-for their runtime targets while compatibility `RuntimeServices` facades remain
-for already-shipped code. The standing objective remains SPEC §1.2: every new or
-touched unit adopts Effect services/`Layer`s, `effect/Schema`, tagged errors, and
-Effect-based tests where the current dependency graph allows it, while
+for their runtime targets; `@metacrdt/testkit` runs conformance over Layer-provided
+targets while compatibility `RuntimeServices` facades remain for already-shipped
+code. The standing objective remains SPEC §1.2: every new or touched unit adopts
+Effect services/`Layer`s, `effect/Schema`, tagged errors, and Effect-based tests
+where the current dependency graph allows it, while
 `@metacrdt/core` stays a Schema-only deterministic fold (no Effect monad). The
 **Effect v4** bump is held until Confect ships a v4-compatible release; the repo
 stays on `effect@3` meanwhile, with `.context/effect-v4` pinned as the forward
@@ -9370,12 +9371,18 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
   IndexedDB, and SQLite-compatible runtime Layers; `@metacrdt/cloudflare`
   exposes a Durable Object runtime Layer. Tests execute Effect programs through
   those Layers.
-- **Remaining keystone work:** `@metacrdt/testkit` still consumes compatibility
-  `RuntimeServices` objects, and the Convex target package has not yet exposed a
-  Layer for its component-owned runtime surface. The next Effect-native migration
-  is testkit conformance over Layer-provided targets.
-- **Zero Effect today (by current design):** `core`, `schema`, `query`,
-  `convex` (package), `cloudflare`, `local`, `node`, `testkit`.
+- **Layer-backed conformance shipped:** `@metacrdt/testkit` now accepts
+  `RuntimeLayerConformanceTarget` (`createLayer`) and runs EventStore /
+  anti-entropy / deterministic-fold conformance through service tags. The older
+  `RuntimeConformanceTarget` (`createRuntime`) remains as a compatibility
+  adapter via `runtimeServicesLayer`.
+- **Remaining keystone work:** the Convex target package has not yet exposed a
+  Layer for its component-owned runtime surface, and conformance still covers
+  only the log/sync plane (not scheduler, transport, query/projection).
+- **Zero Effect today (by current design):** `core`, `schema`, `query`, and the
+  root Convex reference app stay pure/plain where appropriate. `runtime`,
+  `testkit`, and Node/local/Cloudflare target packages now use Effect v3 at their
+  service boundaries.
 
 ### Migration Order (each step additive, tests green between)
 
@@ -9392,8 +9399,10 @@ Rule #8), not a one-shot migration: code adopts it as it is written or touched.
    messages with `effect/Schema`; convert thrown errors to tagged errors in the
    Effect channel. `core`/`schema`/`query` may adopt `Schema` for value/clause
    types while staying pure.
-4. **Effect tests.** Move suites — starting with `@metacrdt/testkit` — onto
-   `@effect/vitest`, running conformance as Effect programs over provided Layers.
+4. **Effect tests.** Move suites — starting with `@metacrdt/testkit` — to
+   Effect programs over provided Layers.
+   **Started:** testkit, Node, local, and Cloudflare conformance now runs over
+   Layer-provided targets under Vitest 4.
    **Dependency note:** `@effect/vitest@0.29` supports Effect v3 but peers on
    Vitest 3; `@effect/vitest@4` supports Vitest 4 but requires Effect v4. Until
    the Confect-gated v4 bump, new Effect tests run as `Effect` programs under

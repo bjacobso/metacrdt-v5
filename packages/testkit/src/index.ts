@@ -6,11 +6,21 @@ import {
   type Event,
 } from "@metacrdt/core";
 import {
-  applyOperation,
-  exchangeDeltas,
+  applyOperationEffect,
+  mergeFromEffect,
+  runtimeServicesLayer,
   versionVector,
+  EventStoreService,
+  RuntimeClockService,
+  RuntimeProfileService,
+  RuntimeSequencerService,
+  SchedulerService,
+  TransportService,
+  type RuntimeError,
   type RuntimeServices,
 } from "@metacrdt/runtime";
+import { Effect, Layer } from "effect";
+import * as Either from "effect/Either";
 
 export interface RuntimeFactoryOptions {
   readonly replicaId: string;
@@ -25,6 +35,28 @@ export interface RuntimeConformanceTarget {
   disposeRuntime?(runtime: RuntimeServices): void | Promise<void>;
 }
 
+export type RuntimeConformanceServices =
+  | RuntimeProfileService
+  | EventStoreService
+  | RuntimeClockService
+  | RuntimeSequencerService
+  | SchedulerService
+  | TransportService;
+
+export type RuntimeConformanceLayer = Layer.Layer<
+  RuntimeConformanceServices,
+  unknown
+>;
+
+export interface RuntimeLayerConformanceTarget {
+  readonly name: string;
+  createLayer(options: RuntimeFactoryOptions): RuntimeConformanceLayer;
+}
+
+export type AnyRuntimeConformanceTarget =
+  | RuntimeConformanceTarget
+  | RuntimeLayerConformanceTarget;
+
 export interface ConformanceReport {
   readonly target: string;
   readonly checks: readonly string[];
@@ -34,12 +66,12 @@ const MANY = () => "many" as const;
 const ONE = () => "one" as const;
 const COORD = { txTime: 10_000, validTime: 1_000 };
 
-function fail(target: RuntimeConformanceTarget, message: string): never {
+function fail(target: AnyRuntimeConformanceTarget, message: string): never {
   throw new Error(`@metacrdt/testkit(${target.name}): ${message}`);
 }
 
 function expect(
-  target: RuntimeConformanceTarget,
+  target: AnyRuntimeConformanceTarget,
   condition: unknown,
   message: string,
 ): asserts condition {
@@ -52,25 +84,83 @@ function sameIds(a: readonly Event[], b: readonly Event[]): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-async function runtime(
-  target: RuntimeConformanceTarget,
-  replicaId: string,
-  wall: () => number = () => 1_000,
-): Promise<RuntimeServices> {
-  const rt = await target.createRuntime({ replicaId, wall });
-  expect(
-    target,
-    rt.profile.replicaId === replicaId,
-    "runtime profile replicaId mismatch",
-  );
-  return rt;
+function hasLayerTarget(
+  target: AnyRuntimeConformanceTarget,
+): target is RuntimeLayerConformanceTarget {
+  return "createLayer" in target;
 }
 
-async function cleanup(
+function requireSequencer(
   target: RuntimeConformanceTarget,
-  runtimes: readonly RuntimeServices[],
-): Promise<void> {
-  for (const rt of runtimes) await target.disposeRuntime?.(rt);
+  rt: RuntimeServices,
+) {
+  if (rt.sequencer === undefined) {
+    fail(target, "runtime target must provide a sequencer for Effect conformance");
+  }
+  return { ...rt, sequencer: rt.sequencer };
+}
+
+async function runWithTargetLayer<A>(
+  target: AnyRuntimeConformanceTarget,
+  options: RuntimeFactoryOptions,
+  program: Effect.Effect<A, RuntimeError, RuntimeConformanceServices>,
+): Promise<A> {
+  const session = await layerSession(target, options);
+  try {
+    return await runWithLayer(session.layer, program);
+  } finally {
+    await session.dispose();
+  }
+}
+
+type TargetLayerSession = {
+  readonly layer: RuntimeConformanceLayer;
+  dispose(): Promise<void>;
+};
+
+async function layerSession(
+  target: AnyRuntimeConformanceTarget,
+  options: RuntimeFactoryOptions,
+): Promise<TargetLayerSession> {
+  if (hasLayerTarget(target)) {
+    return {
+      layer: target.createLayer(options),
+      async dispose() {},
+    };
+  }
+
+  const rt = await target.createRuntime(options);
+  return {
+    layer: runtimeServicesLayer(requireSequencer(target, rt)),
+    async dispose() {
+      await target.disposeRuntime?.(rt);
+    },
+  };
+}
+
+async function runWithLayer<A>(
+  layer: RuntimeConformanceLayer,
+  program: Effect.Effect<A, RuntimeError, RuntimeConformanceServices>,
+): Promise<A> {
+  return await Effect.runPromise(Effect.provide(program, layer));
+}
+
+async function runWithSession<A>(
+  session: TargetLayerSession,
+  program: Effect.Effect<A, RuntimeError, RuntimeConformanceServices>,
+): Promise<A> {
+  return await runWithLayer(session.layer, program);
+}
+
+async function withLayerSessions<A>(
+  sessions: readonly TargetLayerSession[],
+  f: () => Promise<A>,
+): Promise<A> {
+  try {
+    return await f();
+  } finally {
+    for (const session of sessions) await session.dispose();
+  }
 }
 
 function sampleAssert(replicaId: string, n: number): Event {
@@ -86,47 +176,57 @@ function sampleAssert(replicaId: string, n: number): Event {
 }
 
 export async function runEventStoreConformance(
-  target: RuntimeConformanceTarget,
+  target: AnyRuntimeConformanceTarget,
 ): Promise<ConformanceReport> {
-  const checks: string[] = [];
-  const rt = await runtime(target, "testkit:store");
-  try {
-    const first = sampleAssert(rt.profile.replicaId, 1);
-    const second = sampleAssert(rt.profile.replicaId, 2);
+  return await runWithTargetLayer(
+    target,
+    { replicaId: "testkit:store", wall: () => 1_000 },
+    Effect.gen(function* () {
+      const checks: string[] = [];
+      const profile = yield* RuntimeProfileService;
+      const store = yield* EventStoreService;
+      expect(
+        target,
+        profile.replicaId === "testkit:store",
+        "runtime profile replicaId mismatch",
+      );
+
+      const first = sampleAssert(profile.replicaId, 1);
+      const second = sampleAssert(profile.replicaId, 2);
     expect(target, verifyId(first), "sample event should have a valid id");
 
-    const inserted = await rt.store.append(first);
+    const inserted = yield* store.append(first);
     expect(target, inserted.inserted, "first append should insert");
     expect(target, inserted.event.id === first.id, "append should echo the event");
-    const duplicate = await rt.store.append(first);
+    const duplicate = yield* store.append(first);
     expect(target, !duplicate.inserted, "duplicate append should be idempotent");
     checks.push("append-idempotent");
 
-    await rt.store.append(second);
+    yield* store.append(second);
     expect(
       target,
-      (await rt.store.get(first.id))?.id === first.id,
+      (yield* store.get(first.id))?.id === first.id,
       "get(id) failed",
     );
     expect(
       target,
-      (await rt.store.scan({ e: first.e })).length === 1,
+      (yield* store.scan({ e: first.e })).length === 1,
       "scan({e}) failed",
     );
     expect(
       target,
-      (await rt.store.scan({ a: "status" })).length === 2,
+      (yield* store.scan({ a: "status" })).length === 2,
       "scan({a}) failed",
     );
     expect(
       target,
-      (await rt.store.scan({ ids: [second.id] })).map((e) => e.id).join(",") ===
+      (yield* store.scan({ ids: [second.id] })).map((e) => e.id).join(",") ===
         second.id,
       "scan({ids}) failed",
     );
     checks.push("scan-filters");
 
-    const merge = await rt.store.merge([first, second]);
+    const merge = yield* store.merge([first, second]);
     expect(target, merge.seen === 2, "merge should count seen events");
     expect(
       target,
@@ -135,58 +235,73 @@ export async function runEventStoreConformance(
     );
     checks.push("gset-merge-idempotent");
 
-    let rejected = false;
-    try {
-      await rt.store.append({ ...first, id: "not-the-content-id" });
-    } catch {
-      rejected = true;
-    }
-    expect(target, rejected, "store MUST reject events with invalid content ids");
+    const invalid = yield* Effect.either(
+      store.append({ ...first, id: "not-the-content-id" }),
+    );
+    expect(
+      target,
+      Either.isLeft(invalid),
+      "store MUST reject events with invalid content ids",
+    );
     checks.push("content-id-verification");
 
-    return { target: target.name, checks };
-  } finally {
-    await cleanup(target, [rt]);
-  }
+      return { target: target.name, checks };
+    }),
+  );
 }
 
 export async function runRuntimeConvergenceConformance(
-  target: RuntimeConformanceTarget,
+  target: AnyRuntimeConformanceTarget,
 ): Promise<ConformanceReport> {
   const checks: string[] = [];
-  const left = await runtime(target, "testkit:left", () => 1_000);
-  const right = await runtime(target, "testkit:right", () => 1_000);
-  try {
-    const leftStatus = await applyOperation(left, {
+  const leftOptions = { replicaId: "testkit:left", wall: () => 1_000 };
+  const rightOptions = { replicaId: "testkit:right", wall: () => 1_000 };
+  const left = await layerSession(target, leftOptions);
+  const right = await layerSession(target, rightOptions);
+
+  return await withLayerSessions([left, right], async () => {
+    const leftStatus = await runWithSession(
+    left,
+    applyOperationEffect({
       op: "assert",
       e: "worker:maria",
       a: "worker.status",
       v: "active",
       actor: "alice",
-    });
-    const rightStatus = await applyOperation(right, {
+    }),
+  );
+  const rightStatus = await runWithSession(
+    right,
+    applyOperationEffect({
       op: "assert",
       e: "worker:maria",
       a: "worker.status",
       v: "terminated",
       actor: "bob",
-    });
-    await applyOperation(left, {
+    }),
+  );
+  await runWithSession(
+    left,
+    applyOperationEffect({
       op: "assert",
       e: "worker:maria",
       a: "worker.tag",
       v: "left",
       actor: "alice",
-    });
-    await applyOperation(right, {
+    }),
+  );
+  await runWithSession(
+    right,
+    applyOperationEffect({
       op: "assert",
       e: "worker:maria",
       a: "worker.tag",
       v: "right",
       actor: "bob",
-    });
+    }),
+  );
 
-    const first = await exchangeDeltas(left, right);
+    const first = await exchangeDeltasEffect(left, right);
     expect(
       target,
       first.insertedIntoA === 2,
@@ -199,8 +314,8 @@ export async function runRuntimeConvergenceConformance(
     );
     checks.push("bidirectional-delta-exchange");
 
-    const leftEvents = await left.store.scan();
-    const rightEvents = await right.store.scan();
+    const leftEvents = await eventsFor(left);
+    const rightEvents = await eventsFor(right);
     expect(
       target,
       sameIds(leftEvents, rightEvents),
@@ -246,7 +361,7 @@ export async function runRuntimeConvergenceConformance(
     );
     checks.push("deterministic-fold-convergence");
 
-    const second = await exchangeDeltas(left, right);
+    const second = await exchangeDeltasEffect(left, right);
     expect(
       target,
       second.sentFromA === 0,
@@ -270,18 +385,65 @@ export async function runRuntimeConvergenceConformance(
     checks.push("idempotent-second-sync");
 
     return { target: target.name, checks };
-  } finally {
-    await cleanup(target, [left, right]);
-  }
+  });
 }
 
 export async function runRuntimeConformance(
-  target: RuntimeConformanceTarget,
+  target: AnyRuntimeConformanceTarget,
 ): Promise<ConformanceReport> {
   const store = await runEventStoreConformance(target);
   const convergence = await runRuntimeConvergenceConformance(target);
   return {
     target: target.name,
     checks: [...store.checks, ...convergence.checks],
+  };
+}
+
+async function eventsFor(
+  session: TargetLayerSession,
+): Promise<Event[]> {
+  return await runWithSession(
+    session,
+    Effect.gen(function* () {
+      const store = yield* EventStoreService;
+      return yield* store.scan();
+    }),
+  );
+}
+
+async function mergeInto(
+  session: TargetLayerSession,
+  events: readonly Event[],
+): Promise<number> {
+  return await runWithSession(session, mergeFromEffect(events));
+}
+
+async function exchangeDeltasEffect(
+  a: TargetLayerSession,
+  b: TargetLayerSession,
+) {
+  const eventsA = await eventsFor(a);
+  const eventsB = await eventsFor(b);
+  const vvA0 = versionVector(eventsA);
+  const vvB0 = versionVector(eventsB);
+  const deltaA = eventsA.filter((event) => {
+    const seq = event.seq ?? 0;
+    return seq <= 0 || seq > (vvB0[event.hlc.r] ?? 0);
+  });
+  const deltaB = eventsB.filter((event) => {
+    const seq = event.seq ?? 0;
+    return seq <= 0 || seq > (vvA0[event.hlc.r] ?? 0);
+  });
+
+  const insertedIntoA = await mergeInto(a, deltaB);
+  const insertedIntoB = await mergeInto(b, deltaA);
+
+  return {
+    sentFromA: deltaA.length,
+    sentFromB: deltaB.length,
+    insertedIntoA,
+    insertedIntoB,
+    vvA: versionVector(await eventsFor(a)),
+    vvB: versionVector(await eventsFor(b)),
   };
 }

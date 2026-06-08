@@ -1,10 +1,13 @@
 import { describe, expect, test } from "vitest";
 import {
   runRuntimeConformance,
-  type RuntimeConformanceTarget,
+  type RuntimeLayerConformanceTarget,
   type RuntimeFactoryOptions,
 } from "@metacrdt/testkit";
-import { createAsyncLocalRuntime, type AsyncLocalRuntimeStorage } from "./index.js";
+import {
+  createAsyncLocalRuntimeLayer,
+  type AsyncLocalRuntimeStorage,
+} from "./index.js";
 
 class AsyncMemoryStorage implements AsyncLocalRuntimeStorage {
   readonly data = new Map<string, string>();
@@ -22,10 +25,10 @@ class AsyncMemoryStorage implements AsyncLocalRuntimeStorage {
   }
 }
 
-const localTarget: RuntimeConformanceTarget = {
+const localTarget: RuntimeLayerConformanceTarget = {
   name: "local-async",
-  createRuntime(options: RuntimeFactoryOptions) {
-    return createAsyncLocalRuntime({
+  createLayer(options: RuntimeFactoryOptions) {
+    return createAsyncLocalRuntimeLayer({
       storage: new AsyncMemoryStorage(),
       namespace: "conformance",
       replicaId: options.replicaId,
