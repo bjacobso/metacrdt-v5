@@ -1,6 +1,9 @@
-import { mutation } from "./_generated/server";
-import { api } from "./_generated/api";
+import { mutation, MutationCtx } from "./_generated/server";
+import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+import { attrId, typeId } from "./lib/meta";
+import { assertInTx, createTransaction, retractInTx } from "./facts";
 
 // Config-as-code. A tenant declares its shape — entity types, attributes, forms,
 // flows, requirements, actions — as one literal, and applyConfig *lowers* it into
@@ -20,6 +23,25 @@ type RequirementSpec = {
   validityDays?: number;
 };
 
+type ConfigKind =
+  | "attribute"
+  | "entityType"
+  | "form"
+  | "flow"
+  | "requirement"
+  | "action";
+
+const CONFIG_ENTITY = "config:default";
+
+const OWN_ATTR: Record<ConfigKind, string> = {
+  attribute: "owns.attribute",
+  entityType: "owns.entityType",
+  form: "owns.form",
+  flow: "owns.flow",
+  requirement: "owns.requirement",
+  action: "owns.action",
+};
+
 /** Build the requirement / task Datalog clauses for one requirement spec. */
 function requirementWhere(f: RequirementSpec): unknown[] {
   const where: unknown[] = [
@@ -34,6 +56,176 @@ function requirementDeps(f: RequirementSpec): string[] {
   const deps = ["type", "worker", f.scopeAttr];
   if (f.guard) deps.push(f.guard[0]);
   return [...new Set(deps)];
+}
+
+function formEntity(form: string): string {
+  return `form:${form}`;
+}
+
+function actionEntity(action: string): string {
+  return `action:${action}`;
+}
+
+async function currentRows(ctx: MutationCtx, e: string) {
+  return await ctx.db
+    .query("currentFacts")
+    .withIndex("by_e", (q) => q.eq("e", e))
+    .take(1000);
+}
+
+async function retractCurrentEntity(
+  ctx: MutationCtx,
+  txId: Id<"transactions">,
+  now: number,
+  e: string,
+  reason: string,
+): Promise<number> {
+  const rows = await currentRows(ctx, e);
+  for (const row of rows) {
+    await retractInTx(ctx, txId, now, row.factId, reason);
+  }
+  return rows.length;
+}
+
+async function previousOwned(ctx: MutationCtx): Promise<Record<ConfigKind, Set<string>>> {
+  const rows = await currentRows(ctx, CONFIG_ENTITY);
+  const out: Record<ConfigKind, Set<string>> = {
+    attribute: new Set(),
+    entityType: new Set(),
+    form: new Set(),
+    flow: new Set(),
+    requirement: new Set(),
+    action: new Set(),
+  };
+  const byAttr = new Map(Object.entries(OWN_ATTR).map(([k, a]) => [a, k as ConfigKind]));
+  for (const row of rows) {
+    const kind = byAttr.get(row.a);
+    if (kind) out[kind].add(String(row.v));
+  }
+  return out;
+}
+
+async function disableRuleByName(
+  ctx: MutationCtx,
+  name: string,
+  now: number,
+): Promise<boolean> {
+  const rule = await ctx.db
+    .query("rules")
+    .withIndex("by_name", (q) => q.eq("name", name))
+    .unique();
+  if (!rule) return false;
+  await ctx.db.patch("rules", rule._id, { enabled: false, updatedAt: now });
+  const derived = await ctx.db
+    .query("derivedFacts")
+    .withIndex("by_rule", (q) => q.eq("ruleId", rule._id))
+    .take(5000);
+  for (const d of derived) await ctx.db.delete("derivedFacts", d._id);
+  return true;
+}
+
+async function deleteFlowDefByName(
+  ctx: MutationCtx,
+  name: string,
+): Promise<boolean> {
+  const def = await ctx.db
+    .query("flowDefs")
+    .withIndex("by_name", (q) => q.eq("name", name))
+    .unique();
+  if (!def) return false;
+  await ctx.db.delete(def._id);
+  return true;
+}
+
+async function reconcileConfig(
+  ctx: MutationCtx,
+  desired: Record<ConfigKind, Set<string>>,
+  kinds: Set<ConfigKind>,
+): Promise<Record<ConfigKind, number>> {
+  const previous = await previousOwned(ctx);
+  const removed: Record<ConfigKind, number> = {
+    attribute: 0,
+    entityType: 0,
+    form: 0,
+    flow: 0,
+    requirement: 0,
+    action: 0,
+  };
+  const now = Date.now();
+  const txId = await createTransaction(ctx, {
+    actorId: "config",
+    reason: "reconcile config",
+    now,
+  });
+
+  for (const kind of kinds) {
+    for (const value of previous[kind]) {
+      if (desired[kind].has(value)) continue;
+      if (kind === "attribute") {
+        removed[kind] += await retractCurrentEntity(
+          ctx,
+          txId,
+          now,
+          attrId(value),
+          "attribute removed from config",
+        );
+      } else if (kind === "entityType") {
+        removed[kind] += await retractCurrentEntity(
+          ctx,
+          txId,
+          now,
+          typeId(value),
+          "entity type removed from config",
+        );
+      } else if (kind === "form") {
+        removed[kind] += await retractCurrentEntity(
+          ctx,
+          txId,
+          now,
+          formEntity(value),
+          "form removed from config",
+        );
+      } else if (kind === "action") {
+        removed[kind] += await retractCurrentEntity(
+          ctx,
+          txId,
+          now,
+          actionEntity(value),
+          "action removed from config",
+        );
+      } else if (kind === "requirement") {
+        if (await disableRuleByName(ctx, `require.${value}`, now)) removed[kind]++;
+        if (await disableRuleByName(ctx, `task.${value}`, now)) removed[kind]++;
+      } else if (kind === "flow") {
+        if (await deleteFlowDefByName(ctx, value)) removed[kind]++;
+      }
+    }
+
+    const manifestRows = await ctx.db
+      .query("currentFacts")
+      .withIndex("by_e_a", (q) => q.eq("e", CONFIG_ENTITY).eq("a", OWN_ATTR[kind]))
+      .take(1000);
+    for (const row of manifestRows) {
+      if (!desired[kind].has(String(row.v))) {
+        await retractInTx(
+          ctx,
+          txId,
+          now,
+          row.factId,
+          `${kind} removed from config manifest`,
+        );
+      }
+    }
+    for (const value of desired[kind]) {
+      await assertInTx(ctx, txId, now, {
+        e: CONFIG_ENTITY,
+        a: OWN_ATTR[kind],
+        value,
+      });
+    }
+  }
+
+  return removed;
 }
 
 /** Lower a config literal into the store. Idempotent. */
@@ -77,6 +269,21 @@ export const applyConfig = mutation({
       rules: 0,
       actions: 0,
     };
+    const desired: Record<ConfigKind, Set<string>> = {
+      attribute: new Set((cfg.attributes ?? []).map((a) => a.name)),
+      entityType: new Set((cfg.entityTypes ?? []).map((t) => t.name)),
+      form: new Set((cfg.forms ?? []).map((f) => f.form)),
+      flow: new Set((cfg.flows ?? []).map((f) => f.name)),
+      requirement: new Set((cfg.requirements ?? []).map((r) => r.form)),
+      action: new Set((cfg.actions ?? []).map((a) => a.name)),
+    };
+    const reconcileKinds = new Set<ConfigKind>();
+    if ("attributes" in cfg) reconcileKinds.add("attribute");
+    if ("entityTypes" in cfg) reconcileKinds.add("entityType");
+    if ("forms" in cfg) reconcileKinds.add("form");
+    if ("flows" in cfg) reconcileKinds.add("flow");
+    if ("requirements" in cfg) reconcileKinds.add("requirement");
+    if ("actions" in cfg) reconcileKinds.add("action");
 
     for (const a of cfg.attributes ?? []) {
       await ctx.runMutation(api.attributes.defineAttribute, {
@@ -147,7 +354,12 @@ export const applyConfig = mutation({
       applied.actions++;
     }
 
-    return applied;
+    const removed = await reconcileConfig(ctx, desired, reconcileKinds);
+    if (removed.requirement > 0) {
+      await ctx.scheduler.runAfter(0, internal.rebuild.rebuildProjections, {});
+    }
+
+    return { ...applied, removed };
   },
 });
 

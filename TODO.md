@@ -7,9 +7,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ## Now / up next
 
 **Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
-- [ ] Commutative supersession — implement the `≺` total order
-  (`hlc → actorId → eventId`, SPEC §5.1) so cardinality-one resolves by it, not
-  arrival order (SPEC §5.2). Small; makes "the log is a CRDT" structurally true.
+- [x] Commutative supersession — centralized Convex writes now stamp
+  event/HLC metadata, and cardinality-one current projection reconciles by the
+  `≺` total order (`hlc → actorId → eventId`, SPEC §5.1), not arrival order.
 - [ ] HLC `(l, r)` + per-replica `seq` + version-vector anti-entropy sync
   (SPEC §3.2, §8) — the multi-replica convergence runtime: offline / p2p /
   Durable-Object-per-group (see [foldkit.md](./docs/foldkit.md),
@@ -54,11 +54,15 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   boundary is real.
 
 **Current goal — true `applyConfig` reconcile (see [PLAN.md](./PLAN.md#goal-5--true-applyconfig-reconcile))**
-- [ ] Make `applyConfig` compute a stable desired set for configured artifacts.
-- [ ] Retract or deactivate previously configured facts/rows dropped from the
+- [x] Make `applyConfig` compute stable desired sets for explicitly supplied
+  config sections.
+- [x] Retract or deactivate previously configured facts/rows dropped from the
   blueprint, without touching runtime data or system/meta facts.
-- [ ] Add tests proving requirement/action/type-or-attribute removal and repeated
+- [x] Add tests proving requirement/action/type-or-attribute removal and repeated
   identical apply idempotence.
+- [ ] Choose the next active goal after Goal 5 lands. Leading candidates:
+  attribute-level PII authorization, schema-driven UI, or `@metacrdt/runtime`
+  harness groundwork.
 
 **Product / engine**
 - [ ] Attribute-level PII authorization — read grants; query layer omits ungranted
@@ -92,6 +96,22 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 ---
 
 ## Log
+
+### 2026-06-07 — true `applyConfig` reconcile
+- [x] **Goal 5 shipped:** `applyConfig` now reconciles configured artifacts
+  instead of only upserting them. It tracks ownership on `config:default`
+  (`owns.attribute`, `owns.entityType`, `owns.form`, `owns.flow`,
+  `owns.requirement`, `owns.action`) and computes desired sets for explicitly
+  supplied config sections.
+- [x] **Safe cleanup semantics:** dropped owned `attr:*`, `type:*`, `form:*`, and
+  `action:*` carriers are retracted through a new `actorId: "config"` transaction;
+  dropped requirements disable `require.*` / `task.*` rules and delete stale
+  derived facts; dropped flows delete the owned `flowDefs` row. Omitted config
+  sections are overlays and do not reconcile to empty.
+- [x] **Regression coverage:** tests prove removing the forklift requirement
+  removes the obligation, removing `terminate` removes only that action while
+  preserving forms, and removing the configured `Venue` type / `venue` attribute
+  does not delete runtime `venue:stadium7` data.
 
 ### 2026-06-07 — @metacrdt/forma extraction
 - [x] **Goal 4 shipped:** `packages/forma` now publishes `@metacrdt/forma`, the

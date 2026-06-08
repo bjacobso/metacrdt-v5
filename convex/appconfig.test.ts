@@ -2,6 +2,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
+import { STAFFING_BLUEPRINT } from "./appconfig";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -117,6 +118,105 @@ describe("config-as-code + origin + entity detail", () => {
       // 4 requirements → 8 compliance rules.
       const ruleStat = reconciler!.stats.find((s) => s.label === "compliance rules");
       expect(ruleStat!.value).toBe(8);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("applyConfig reconcile removes dropped requirements and obligations", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await setup(t);
+
+      let detail = await t.query(api.entities.entityDetail, { e: "worker:maria" });
+      expect(detail.obligations.some((o) => o.form === "forklift")).toBe(true);
+
+      await t.mutation(api.appconfig.applyConfig, {
+        config: {
+          requirements: STAFFING_BLUEPRINT.requirements.filter(
+            (r) => r.form !== "forklift",
+          ),
+        },
+      });
+      await flush(t);
+
+      detail = await t.query(api.entities.entityDetail, { e: "worker:maria" });
+      expect(detail.obligations.some((o) => o.form === "forklift")).toBe(false);
+      const rules = await t.query(api.rules.listRules, {});
+      expect(rules.find((r) => r.name === "require.forklift")?.enabled).toBe(false);
+      expect(rules.find((r) => r.name === "task.forklift")?.enabled).toBe(false);
+
+      await t.mutation(api.appconfig.applyConfig, {
+        config: { requirements: STAFFING_BLUEPRINT.requirements },
+      });
+      await flush(t);
+
+      detail = await t.query(api.entities.entityDetail, { e: "worker:maria" });
+      expect(detail.obligations.some((o) => o.form === "forklift")).toBe(true);
+      const restoredRules = await t.query(api.rules.listRules, {});
+      expect(restoredRules.find((r) => r.name === "require.forklift")?.enabled).toBe(
+        true,
+      );
+      expect(restoredRules.find((r) => r.name === "task.forklift")?.enabled).toBe(
+        true,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("applyConfig reconcile removes dropped actions only when actions are present", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await setup(t);
+
+      await t.mutation(api.appconfig.applyConfig, {
+        config: {
+          actions: STAFFING_BLUEPRINT.actions.filter((a) => a.name !== "terminate"),
+        },
+      });
+      await flush(t);
+
+      const actions = await t.query(api.actions.actionsForType, { type: "Worker" });
+      expect(actions.some((a) => a.name === "terminate")).toBe(false);
+      expect(actions.some((a) => a.name === "reactivate")).toBe(true);
+
+      // Partial action reconciliation did not wipe the rest of the blueprint.
+      const form = await t.query(api.forms.formFields, { form: "i9" });
+      expect(form?.title).toBe("Form I-9");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("applyConfig reconcile removes configured type and attribute without deleting data", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await setup(t);
+
+      await t.mutation(api.appconfig.applyConfig, {
+        config: {
+          attributes: STAFFING_BLUEPRINT.attributes.filter((a) => a.name !== "venue"),
+          entityTypes: STAFFING_BLUEPRINT.entityTypes.filter((e) => e.name !== "Venue"),
+        },
+      });
+      await flush(t);
+
+      const attrs = await t.query(api.attributes.listAttributes, {});
+      expect(attrs.some((a) => a.name === "venue")).toBe(false);
+
+      const types = await t.query(api.entities.listEntityTypes, {});
+      const venueType = types.find((t) => t.type === "Venue");
+      expect(venueType?.origin).toBe("data");
+
+      const venues = await t.query(api.entities.listEntities, {
+        type: "Venue",
+        origin: "data",
+      });
+      expect(venues.some((e) => e.id === "venue:stadium7")).toBe(true);
     } finally {
       vi.useRealTimers();
     }

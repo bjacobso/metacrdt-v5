@@ -225,9 +225,10 @@ Important tables:
 
 New writes already stamp `eventId` + HLC metadata onto `factEvents`, lifecycle
 events target protocol assert ids, and cardinality-one current projections
-reconcile by the core `≺` order. The next product/runtime step is making
-config-as-code reconciliation true: facts removed from a blueprint should retract
-from the configured shape instead of lingering.
+reconcile by the core `≺` order. Config-as-code now also reconciles the configured
+shape: dropping an owned type, attribute, form, flow, requirement, or action from
+an explicitly applied config section retracts or deactivates the old configured
+artifact without deleting runtime data.
 
 ---
 

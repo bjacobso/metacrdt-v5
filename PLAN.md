@@ -1,8 +1,8 @@
 # PLAN.md — MetaCRDT Execution Goal
 
-**Current goal:** make `applyConfig` a true reconciler, so configured facts
-removed from a blueprint are retracted instead of lingering after the next
-configuration apply.
+**Current goal:** Goal 5 (`applyConfig` reconcile) has shipped. The next
+product/runtime goal should be chosen from the TODO candidates: attribute-level
+PII authorization, schema-driven UI, or `@metacrdt/runtime` harness groundwork.
 
 This plan is the operational goal file. Read it with:
 
@@ -93,6 +93,13 @@ is still idempotent-by-upsert rather than a real reconcile loop.
     elaboration utilities
   - selected Open Ontology Lisp fixtures copied into package-local tests
   - no source imports from `.context/open-ontology`
+- `applyConfig` now behaves as a true section-scoped reconciler:
+  - configured artifact ownership is tracked on `config:default`
+  - explicitly supplied config sections compute desired sets
+  - dropped owned types/attributes/forms/actions are retracted through facts
+  - dropped requirements deactivate their rules and remove stale derived facts
+  - dropped flows remove their definitions
+  - runtime data and system/meta facts are not deleted
 
 ### Not Yet True
 
@@ -105,8 +112,6 @@ is still idempotent-by-upsert rather than a real reconcile loop.
   mutation factories, and cardinality-one reconcile helpers remain deferred
   until the package boundary is proven against more host-app usage.
 - Multi-replica sync is specified but not implemented.
-- `applyConfig` is still idempotent-by-upsert. Removing an item from the
-  blueprint does not currently retract the previously configured facts/rows.
 - Confect is integrated as a narrow sidecar spike:
   - `confect/` defines a typed Effect Schema function group.
   - `convex/metacrdtConfect.ts` manually mounts the generated registered
@@ -759,11 +764,31 @@ source map.
 
 ## Goal 5 — True `applyConfig` Reconcile
 
+**Status:** shipped in the reference runtime.
+
 **Objective:** make config-as-code behave like a reconciler, not just an
 idempotent upsert. If a configured type, attribute, form, flow, requirement, or
 action is removed from the blueprint and `applyConfig` runs again, the old
 configured shape must be retracted or deactivated through the same fact/history
 model instead of lingering.
+
+### Implementation Notes
+
+- Reconcile is **section-scoped**. A partial config such as
+  `{ actions: [...] }` reconciles only actions; omitted sections are treated as
+  untouched overlays, not empty desired sets. An explicit empty array means
+  "remove every artifact previously owned by this section."
+- Ownership is tracked as facts on `config:default`:
+  `owns.attribute`, `owns.entityType`, `owns.form`, `owns.flow`,
+  `owns.requirement`, and `owns.action`. This prevents config cleanup from
+  guessing whether an unrelated system/data artifact belongs to the tenant
+  blueprint.
+- Fact-backed carriers (`attr:*`, `type:*`, `form:*`, `action:*`) are removed by
+  retracting their current facts in a new `actorId: "config"` transaction.
+- Requirement cleanup disables `require.<form>` / `task.<form>` rules and deletes
+  their derived facts; flow cleanup deletes the owned `flowDefs` row. These rows
+  are not currently modeled as full retractable protocol events, so this is the
+  documented imperative edge for now.
 
 ### Acceptance Criteria
 
