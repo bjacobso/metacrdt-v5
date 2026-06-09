@@ -4,7 +4,7 @@ import {
   type ViewExpressionContext,
   type ViewNode,
   type ViewTableColumn,
-} from "@metacrdt/views";
+} from "@metacrdt/views/runtime";
 import { Mono, StatusBadge } from "../ui";
 
 // Phase 3 of plans/views.md — a MINIMAL ViewSpec -> React renderer, inline in

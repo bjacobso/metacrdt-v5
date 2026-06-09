@@ -260,21 +260,32 @@ Verified: app `tsc --noEmit`, full `npm run build` (packages + vite app), and a
 handling, mono ids, clickable rows; empty-state path). Package stays
 `effect`-only; the app gained `@metacrdt/views` as a dependency.
 
-**Finding (for Phase 4 extraction):** importing `@metacrdt/views` pulls the full
-Effect `Schema` IR into the app bundle (~+260 kB pre-gzip) because the generated
-Schema consts are side-effectful and don't tree-shake. The renderer only needs
-the plain TS types + `evaluateViewExpression`/`normalize` — not the Schema
-objects. `@metacrdt/views` should grow a **runtime-only entry** (types + runtime
-fns, no Schema consts) so `@metacrdt/views-react` and hosts can avoid the Schema
-weight. Track this with the Phase 4 extraction.
+**Finding + fix — runtime-only entry — SHIPPED ✅:** importing `@metacrdt/views`
+pulled the full Effect `Schema` IR into the app bundle (665 kB; +260 kB) because
+`index.ts` does `export * from "./generated/*"` and the Schema consts are
+side-effectful — even importing just `evaluateViewExpression` cost 373 kB.
+
+Fixed by splitting the effect-free runtime into `src/runtime.ts` (expression /
+value eval, state init, path helpers, and the plain types — imports **only types**
+from the generated IR) and exposing it as the `@metacrdt/views/runtime` subpath.
+`@metacrdt/views` (main entry) re-exports it and remains the superset with
+`normalizeViewSpec` / `validateViewSpecStructure` + the full Schema IR. The app
+renderer + `entitiesView` now import from `@metacrdt/views/runtime` and author the
+spec in already-normalized shape (no `normalizeViewSpec`).
+
+Result (esbuild, minified): eval from `/runtime` = **3.2 kB** vs **373 kB** from
+the main entry; the whole runtime entry is 4.7 kB. App bundle back to **410 kB**
+(baseline + ~5 kB for the renderer). `normalizeViewSpec`/`validateViewSpecStructure`
+can move to `/runtime` too once the generator splits the Schema consts out of the
+catalog/normalizer module.
 
 ### Phase 4 (later) — Extract `@metacrdt/views-react`
 
 Once the inline renderer is real and stable, extract it to `@metacrdt/views-react`
-(deps: views + react) so the React boundary is hard-enforced. Extract-when-proven,
-not before. **Prerequisite:** add a runtime-only entry to `@metacrdt/views` (types
-+ runtime fns, no Schema consts) so the renderer doesn't drag the Effect Schema IR
-into host bundles (see the Phase 3 finding).
+(deps: `@metacrdt/views/runtime` + react) so the React boundary is hard-enforced.
+Extract-when-proven, not before. The **runtime-only entry prerequisite is already
+done** (see the Phase 3 finding) — `@metacrdt/views-react` will depend on
+`@metacrdt/views/runtime`, not the Schema-bearing main entry.
 
 ### Phase 5 (later) — Edge binding layer
 

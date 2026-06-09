@@ -1,10 +1,14 @@
-import { normalizeViewSpec, type ViewSpec } from "@metacrdt/views";
+import type { ViewSpec } from "@metacrdt/views/runtime";
 import { shortId } from "../ui";
 import type { ViewRow } from "./ViewRenderer";
 
 // The Entities list as a ViewSpec, authored in the app (app content — the
 // package owns the contract/runtime, not specific specs). Columns are dynamic
 // per entity type, so the spec is built from the type's schema at runtime.
+//
+// We import from `@metacrdt/views/runtime` (effect-free) and author the spec in
+// already-normalized shape rather than calling `normalizeViewSpec`, so the app
+// bundle never pulls the Effect Schema IR.
 
 // Shape of one row as the backend `queryEntities` returns it.
 export interface RawEntityRow {
@@ -28,10 +32,9 @@ export function buildEntitiesViewSpec(type: string, columnNames: readonly string
       ...(name === "status" ? { kind: "status" as const } : {}),
     }));
 
-  return normalizeViewSpec({
+  return {
     $viewSpec: { version: "2" },
     description: `Entities of type ${type}`,
-    input: { type: { kind: "string", required: true } },
     queries: {
       entities: {
         queryRef: "entities.queryEntities",
@@ -49,12 +52,12 @@ export function buildEntitiesViewSpec(type: string, columnNames: readonly string
       ],
       events: {
         onRowClick: {
-          kind: "navigate",
-          to: { kind: "var", source: "row", path: ["id"] },
+          action: "navigate",
+          path: { kind: "var", source: "row", path: ["id"] },
         },
       },
     },
-  });
+  };
 }
 
 /** Edge: flatten backend rows into renderer-friendly display rows (one value per attribute). */

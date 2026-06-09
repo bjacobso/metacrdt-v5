@@ -525,11 +525,14 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   navigates. Verified by app `tsc`, full `npm run build`, and a `react-dom/server`
   smoke (status badges, denied handling, mono ids, empty-state). App gained
   `@metacrdt/views` as a dep.
-- [ ] **Follow-up (gates Phase 4):** importing `@metacrdt/views` pulls the full
-  Effect `Schema` IR into the app bundle (~+260 kB pre-gzip; Schema consts are
-  side-effectful, don't tree-shake). Add a **runtime-only entry** to
-  `@metacrdt/views` (types + runtime fns, no Schema consts) before extracting
-  `@metacrdt/views-react`.
+- [x] **Runtime-only entry shipped (`@metacrdt/views/runtime`).** Split the
+  effect-free runtime (eval/value/state/path + plain types; type-only generated
+  imports) into `src/runtime.ts` and exposed it as the `/runtime` subpath; the
+  main entry re-exports it and keeps `normalizeViewSpec`/`validateViewSpecStructure`
+  + the full Schema IR. The app renderer + `entitiesView` import from `/runtime`
+  and author the spec already-normalized. Bundle: eval from `/runtime` = 3.2 kB vs
+  373 kB from the main entry; app bundle back to 410 kB (was 665 kB). Unblocks the
+  `@metacrdt/views-react` extraction.
 
 ### 2026-06-08 — package build tooling
 - [x] **Goal 107 shipped:** centralized package build config. Added root
