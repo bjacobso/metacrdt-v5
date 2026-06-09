@@ -83,6 +83,27 @@ type StoredDagEvent = {
   message: string | null;
 };
 
+type StoredLiveQuerySubscription = {
+  id: string;
+  connection_id: string;
+  protocol: string | null;
+  status: "active" | "closed";
+  created_at: number;
+  updated_at: number;
+  closed_at: number | null;
+  query_json: string;
+  dependencies_json: string;
+  scope: string | null;
+};
+
+type StoredLiveQueryDependency = {
+  subscription_id: string;
+  e: string | null;
+  a: string | null;
+  e_key: string;
+  a_key: string;
+};
+
 function cursor(rows: unknown[] = []): DurableObjectSqlCursorLike {
   return {
     toArray: () => rows,
@@ -172,6 +193,14 @@ function dagRunStatusBinding(value: unknown, name: string): StoredDagRun["status
   throw new Error(`expected DAG run status binding for ${name}`);
 }
 
+function liveQuerySubscriptionStatusBinding(
+  value: unknown,
+  name: string,
+): StoredLiveQuerySubscription["status"] {
+  if (value === "active" || value === "closed") return value;
+  throw new Error(`expected live query subscription status binding for ${name}`);
+}
+
 /**
  * Narrow fake for the structural Cloudflare DO SQLite API. It supports only the
  * exact statement families emitted by `durableObjectSqlite.ts`, which keeps tests
@@ -185,6 +214,8 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
   readonly flowWaitTicks = new Map<string, StoredFlowWaitTick>();
   readonly dagRuns = new Map<string, StoredDagRun>();
   readonly dagEvents = new Map<string, StoredDagEvent>();
+  readonly liveQuerySubscriptions = new Map<string, StoredLiveQuerySubscription>();
+  readonly liveQueryDependencies = new Map<string, StoredLiveQueryDependency>();
   readonly meta = new Map<string, string>();
   projectionDeleteAllCount = 0;
   projectionDeleteMatchingCount = 0;
@@ -213,6 +244,12 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
     }
     if (sql.includes("_flow_dag_runs")) {
       return this.execDagRuns(sql, bindings);
+    }
+    if (sql.includes("_live_query_subscriptions")) {
+      return this.execLiveQuerySubscriptions(sql, bindings);
+    }
+    if (sql.includes("_live_query_dependencies")) {
+      return this.execLiveQueryDependencies(sql, bindings);
     }
     if (sql.includes("_collections")) return this.execCollections(sql, bindings);
     if (sql.includes("_events")) return this.execEvents(sql, bindings);
@@ -863,6 +900,255 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
       rows.sort((a, b) => {
         const ts = a.ts - b.ts;
         return ts !== 0 ? ts : a.event_id.localeCompare(b.event_id);
+      }),
+    );
+  }
+
+  private execLiveQuerySubscriptions(
+    sql: string,
+    bindings: readonly unknown[],
+  ): DurableObjectSqlCursorLike {
+    if (sql.startsWith("insert into")) {
+      const [
+        idRaw,
+        connectionIdRaw,
+        protocolRaw,
+        statusRaw,
+        createdAtRaw,
+        updatedAtRaw,
+        closedAtRaw,
+        queryJsonRaw,
+        dependenciesJsonRaw,
+        scopeRaw,
+      ] = bindings;
+      const id = stringBinding(idRaw, "live query subscription id");
+      if (this.liveQuerySubscriptions.has(id)) {
+        throw new Error(`live query subscription already exists: ${id}`);
+      }
+      this.liveQuerySubscriptions.set(id, {
+        id,
+        connection_id: stringBinding(
+          connectionIdRaw,
+          "live query connection_id",
+        ),
+        protocol: nullableStringBinding(protocolRaw, "live query protocol"),
+        status: liveQuerySubscriptionStatusBinding(
+          statusRaw,
+          "live query status",
+        ),
+        created_at: numberBinding(createdAtRaw, "live query created_at"),
+        updated_at: numberBinding(updatedAtRaw, "live query updated_at"),
+        closed_at: nullableNumberBinding(closedAtRaw, "live query closed_at"),
+        query_json: stringBinding(queryJsonRaw, "live query query_json"),
+        dependencies_json: stringBinding(
+          dependenciesJsonRaw,
+          "live query dependencies_json",
+        ),
+        scope: nullableStringBinding(scopeRaw, "live query scope"),
+      });
+      return cursor();
+    }
+
+    if (sql.startsWith("update")) {
+      if (sql.includes("where connection_id = ? and status = 'active'")) {
+        const [statusRaw, updatedAtRaw, closedAtRaw, connectionIdRaw] = bindings;
+        const connectionId = stringBinding(
+          connectionIdRaw,
+          "live query connection_id",
+        );
+        for (const [id, existing] of this.liveQuerySubscriptions.entries()) {
+          if (existing.connection_id !== connectionId || existing.status !== "active") {
+            continue;
+          }
+          this.liveQuerySubscriptions.set(id, {
+            ...existing,
+            status: liveQuerySubscriptionStatusBinding(
+              statusRaw,
+              "live query status",
+            ),
+            updated_at: numberBinding(updatedAtRaw, "live query updated_at"),
+            closed_at: numberBinding(closedAtRaw, "live query closed_at"),
+          });
+        }
+        return cursor();
+      }
+
+      if (sql.includes("set status = ?, updated_at = ?, closed_at = ?")) {
+        const [statusRaw, updatedAtRaw, closedAtRaw, idRaw] = bindings;
+        const id = stringBinding(idRaw, "live query subscription id");
+        const existing = this.liveQuerySubscriptions.get(id);
+        if (existing) {
+          this.liveQuerySubscriptions.set(id, {
+            ...existing,
+            status: liveQuerySubscriptionStatusBinding(
+              statusRaw,
+              "live query status",
+            ),
+            updated_at: numberBinding(updatedAtRaw, "live query updated_at"),
+            closed_at: numberBinding(closedAtRaw, "live query closed_at"),
+          });
+        }
+        return cursor();
+      }
+
+      const [
+        connectionIdRaw,
+        protocolRaw,
+        statusRaw,
+        updatedAtRaw,
+        closedAtRaw,
+        queryJsonRaw,
+        dependenciesJsonRaw,
+        scopeRaw,
+        idRaw,
+      ] = bindings;
+      const id = stringBinding(idRaw, "live query subscription id");
+      const existing = this.liveQuerySubscriptions.get(id);
+      if (existing) {
+        this.liveQuerySubscriptions.set(id, {
+          ...existing,
+          connection_id: stringBinding(
+            connectionIdRaw,
+            "live query connection_id",
+          ),
+          protocol: nullableStringBinding(protocolRaw, "live query protocol"),
+          status: liveQuerySubscriptionStatusBinding(
+            statusRaw,
+            "live query status",
+          ),
+          updated_at: numberBinding(updatedAtRaw, "live query updated_at"),
+          closed_at: nullableNumberBinding(closedAtRaw, "live query closed_at"),
+          query_json: stringBinding(queryJsonRaw, "live query query_json"),
+          dependencies_json: stringBinding(
+            dependenciesJsonRaw,
+            "live query dependencies_json",
+          ),
+          scope: nullableStringBinding(scopeRaw, "live query scope"),
+        });
+      }
+      return cursor();
+    }
+
+    let rows = [...this.liveQuerySubscriptions.values()];
+    if (sql.includes("join")) {
+      const matchingIds = new Set(this.matchLiveQueryDependencyIds(sql, bindings));
+      rows = rows.filter((row) => matchingIds.has(row.id));
+    } else if (sql.includes("where id = ?")) {
+      rows = rows.filter(
+        (row) =>
+          row.id === stringBinding(bindings[0], "live query subscription id"),
+      );
+    } else {
+      let bindingIndex = 0;
+      if (sql.includes("connection_id = ?")) {
+        const connectionId = stringBinding(
+          bindings[bindingIndex++],
+          "live query connection_id",
+        );
+        rows = rows.filter((row) => row.connection_id === connectionId);
+      }
+      if (sql.includes("status = ?")) {
+        const status = liveQuerySubscriptionStatusBinding(
+          bindings[bindingIndex++],
+          "live query status",
+        );
+        rows = rows.filter((row) => row.status === status);
+      }
+    }
+
+    return cursor(
+      rows.sort((a, b) => {
+        const created = a.created_at - b.created_at;
+        return created !== 0 ? created : a.id.localeCompare(b.id);
+      }),
+    );
+  }
+
+  private matchLiveQueryDependencyIds(
+    sql: string,
+    bindings: readonly unknown[],
+  ): string[] {
+    let subscriptionRows = [...this.liveQuerySubscriptions.values()];
+    let bindingIndex = 0;
+    if (sql.includes("s.connection_id = ?")) {
+      const connectionId = stringBinding(
+        bindings[bindingIndex++],
+        "live query connection_id",
+      );
+      subscriptionRows = subscriptionRows.filter(
+        (row) => row.connection_id === connectionId,
+      );
+    }
+    if (sql.includes("s.status = ?")) {
+      const status = liveQuerySubscriptionStatusBinding(
+        bindings[bindingIndex++],
+        "live query status",
+      );
+      subscriptionRows = subscriptionRows.filter((row) => row.status === status);
+    }
+    let dependencies = [...this.liveQueryDependencies.values()];
+    if (sql.includes("d.e = ?")) {
+      const e = stringBinding(bindings[bindingIndex++], "live query dependency e");
+      dependencies = dependencies.filter((row) => row.e === e);
+    }
+    if (sql.includes("d.a = ?")) {
+      const a = stringBinding(bindings[bindingIndex++], "live query dependency a");
+      dependencies = dependencies.filter((row) => row.a === a);
+    }
+    const subscriptionIds = new Set(subscriptionRows.map((row) => row.id));
+    return dependencies
+      .filter((row) => subscriptionIds.has(row.subscription_id))
+      .map((row) => row.subscription_id);
+  }
+
+  private execLiveQueryDependencies(
+    sql: string,
+    bindings: readonly unknown[],
+  ): DurableObjectSqlCursorLike {
+    if (sql.startsWith("delete from")) {
+      const subscriptionId = stringBinding(
+        bindings[0],
+        "live query subscription id",
+      );
+      for (const [key, row] of this.liveQueryDependencies.entries()) {
+        if (row.subscription_id === subscriptionId) {
+          this.liveQueryDependencies.delete(key);
+        }
+      }
+      return cursor();
+    }
+
+    if (sql.startsWith("insert into")) {
+      const [subscriptionIdRaw, eRaw, aRaw, eKeyRaw, aKeyRaw] = bindings;
+      const row: StoredLiveQueryDependency = {
+        subscription_id: stringBinding(
+          subscriptionIdRaw,
+          "live query subscription id",
+        ),
+        e: nullableStringBinding(eRaw, "live query dependency e"),
+        a: nullableStringBinding(aRaw, "live query dependency a"),
+        e_key: stringBinding(eKeyRaw, "live query dependency e_key"),
+        a_key: stringBinding(aKeyRaw, "live query dependency a_key"),
+      };
+      this.liveQueryDependencies.set(
+        `${row.subscription_id}\u0000${row.e_key}\u0000${row.a_key}`,
+        row,
+      );
+      return cursor();
+    }
+
+    let rows = [...this.liveQueryDependencies.values()];
+    if (sql.includes("where subscription_id = ?")) {
+      const subscriptionId = stringBinding(
+        bindings[0],
+        "live query subscription id",
+      );
+      rows = rows.filter((row) => row.subscription_id === subscriptionId);
+    }
+    return cursor(
+      rows.sort((a, b) => {
+        const e = a.e_key.localeCompare(b.e_key);
+        return e !== 0 ? e : a.a_key.localeCompare(b.a_key);
       }),
     );
   }

@@ -8,11 +8,11 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ### Current pulse
 
-- [x] Goal 133 shipped: Cloudflare indexed historical query provider
-  conformance-style coverage.
+- [x] Goal 134 shipped: Cloudflare persisted live current-query subscription
+  registry.
 - [ ] Choose the next active slice from remaining Cloudflare parity (full flow
-  interpreter/action execution, persisted/authenticated live-query frontend
-  plumbing, or broader historical SQL query-provider parity/performance
+  interpreter/action execution, authenticated live-query Worker/frontend
+  plumbing, reconnect/session hydration, or broader historical SQL query-provider parity/performance
   hardening), Node production hardening, provider-specific auth/UI wrapping, or a
   scoped Confect/domain wrapper.
 
@@ -195,8 +195,15 @@ After implementation:
   tests for joins, `or`, `not`, compare/compute, pagination, aggregation,
   derived-row shaping, lifecycle visibility, and bounded SQLite `e` / `a` /
   `(e, a)` / `target` scans without unrelated full event-log scans.
+- [x] **Goal 134 shipped: persisted live current-query subscription registry** —
+  `@metacrdt/cloudflare` now has `live_query_subscriptions` and
+  `live_query_dependencies` tables/stores over DO SQLite. `runtime.liveQueries`
+  can persist/list/close bounded current-query subscription rows across runtime
+  recreation, and `DurableObjectSqliteLiveCurrentQueryFanout` can optionally
+  persist subscribe/unsubscribe state through that registry.
 - [ ] **Remaining Cloudflare Phase D parity** — full flow interpreter/action
-  execution, persisted/authenticated live-query frontend plumbing, and broader
+  execution, authenticated live-query Worker/frontend plumbing, reconnect/session
+  hydration, and broader
   historical SQL query-provider parity/performance hardening remain open; do not
   claim full parity until those are implemented.
 
@@ -289,6 +296,10 @@ After implementation:
   conformance-style tests now exercise the target-specific indexed provider
   across joins, disjunction, negation, compare/compute, pagination, aggregation,
   derived rows, lifecycle visibility, and bounded index scan counters.
+- [x] Cloudflare Durable Object SQLite persisted live current-query registry —
+  `live_query_subscriptions` rows plus indexed dependency rows persist bounded
+  current-query subscription metadata, and the structural live-query fanout can
+  optionally write active/closed rows while keeping auth/routes/reconnects open.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -299,8 +310,8 @@ After implementation:
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — full
   SQL-indexed query-provider parity/performance hardening, full flow
-  interpreter/action execution, and persisted/authenticated live-query frontend
-  plumbing (see
+  interpreter/action execution, authenticated live-query Worker/frontend
+  plumbing, and reconnect/session hydration on top of the persisted registry (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).

@@ -18,6 +18,7 @@ import {
   type ProjectionReplaceResult,
   type ProjectionRow,
   type ProjectionRuntimeServices,
+  type DatalogQueryArgsType,
   type ProjectionStore,
   type RuntimeCapability,
   type RuntimeClock,
@@ -60,6 +61,7 @@ export type DurableObjectSqliteRuntime = RuntimeServices & {
   timers: DurableObjectSqliteTimerStore;
   flowWaitTimers: DurableObjectSqliteFlowWaitTimerStore;
   dag: DurableObjectSqliteDagStore;
+  liveQueries: DurableObjectSqliteLiveQuerySubscriptionStore;
   clock: DurableObjectSqliteClock;
   sequencer: DurableObjectSqliteSequencer;
 };
@@ -230,6 +232,47 @@ export type DurableObjectSqliteDagRunFilter = {
   readonly limit?: number;
 };
 
+export type DurableObjectSqliteLiveQuerySubscriptionStatus =
+  | "active"
+  | "closed";
+
+export type DurableObjectSqliteLiveQueryDependency = {
+  readonly e?: string;
+  readonly a?: string;
+};
+
+export type DurableObjectSqliteLiveQuerySubscriptionRow = {
+  readonly id: string;
+  readonly connectionId: string;
+  readonly protocol?: string;
+  readonly status: DurableObjectSqliteLiveQuerySubscriptionStatus;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly closedAt: number | null;
+  readonly query: DatalogQueryArgsType;
+  readonly dependencies: readonly DurableObjectSqliteLiveQueryDependency[];
+  readonly scope?: string;
+};
+
+export type DurableObjectSqliteUpsertLiveQuerySubscriptionInput = {
+  readonly id: string;
+  readonly connectionId: string;
+  readonly protocol?: string;
+  readonly query: DatalogQueryArgsType;
+  readonly dependencies: readonly DurableObjectSqliteLiveQueryDependency[];
+  readonly createdAt: number;
+  readonly updatedAt?: number;
+  readonly scope?: string;
+};
+
+export type DurableObjectSqliteLiveQuerySubscriptionFilter = {
+  readonly connectionId?: string;
+  readonly status?: DurableObjectSqliteLiveQuerySubscriptionStatus;
+  readonly e?: string;
+  readonly a?: string;
+  readonly limit?: number;
+};
+
 type SqlPlan = {
   prefix: string;
   tables: {
@@ -241,6 +284,8 @@ type SqlPlan = {
     flowWaitTimers: string;
     flowDagRuns: string;
     flowDagEvents: string;
+    liveQuerySubscriptions: string;
+    liveQueryDependencies: string;
   };
   indexes: {
     eventsByEntity: string;
@@ -263,6 +308,11 @@ type SqlPlan = {
     dagRunsByStatus: string;
     dagRunsByUpdatedAt: string;
     dagEventsByRun: string;
+    liveQueriesByConnection: string;
+    liveQueriesByStatusUpdatedAt: string;
+    liveQueryDependenciesBySubscription: string;
+    liveQueryDependenciesByEntity: string;
+    liveQueryDependenciesByAttribute: string;
   };
 };
 
@@ -285,6 +335,8 @@ function plan(prefix = "metacrdt"): SqlPlan {
       flowWaitTimers: identifier(`${prefix}_flow_wait_timers`),
       flowDagRuns: identifier(`${prefix}_flow_dag_runs`),
       flowDagEvents: identifier(`${prefix}_flow_dag_events`),
+      liveQuerySubscriptions: identifier(`${prefix}_live_query_subscriptions`),
+      liveQueryDependencies: identifier(`${prefix}_live_query_dependencies`),
     },
     indexes: {
       eventsByEntity: identifier(`${prefix}_events_by_e`),
@@ -311,6 +363,21 @@ function plan(prefix = "metacrdt"): SqlPlan {
       dagRunsByStatus: identifier(`${prefix}_flow_dag_runs_by_status`),
       dagRunsByUpdatedAt: identifier(`${prefix}_flow_dag_runs_by_updated_at`),
       dagEventsByRun: identifier(`${prefix}_flow_dag_events_by_run`),
+      liveQueriesByConnection: identifier(
+        `${prefix}_live_query_subscriptions_by_connection`,
+      ),
+      liveQueriesByStatusUpdatedAt: identifier(
+        `${prefix}_live_query_subscriptions_by_status_updated_at`,
+      ),
+      liveQueryDependenciesBySubscription: identifier(
+        `${prefix}_live_query_dependencies_by_subscription`,
+      ),
+      liveQueryDependenciesByEntity: identifier(
+        `${prefix}_live_query_dependencies_by_e`,
+      ),
+      liveQueryDependenciesByAttribute: identifier(
+        `${prefix}_live_query_dependencies_by_a`,
+      ),
     },
   };
 }
@@ -415,6 +482,12 @@ function dagRunStatus(
     value === "unsupported"
     ? value
     : undefined;
+}
+
+function liveQuerySubscriptionStatus(
+  value: string | undefined,
+): DurableObjectSqliteLiveQuerySubscriptionStatus | undefined {
+  return value === "active" || value === "closed" ? value : undefined;
 }
 
 function decodeCollection(
@@ -610,6 +683,49 @@ function decodeDagEvent(row: unknown): DurableObjectSqliteDagEvent | undefined {
   };
 }
 
+function decodeLiveQuerySubscription(
+  row: unknown,
+): DurableObjectSqliteLiveQuerySubscriptionRow | undefined {
+  const id = textColumn(row, "id");
+  const connectionId = textColumn(row, "connection_id");
+  const protocol = textColumn(row, "protocol");
+  const status = liveQuerySubscriptionStatus(textColumn(row, "status"));
+  const createdAt = numberColumn(row, "created_at");
+  const updatedAt = numberColumn(row, "updated_at");
+  const closedAt = numberColumn(row, "closed_at");
+  const queryJson = textColumn(row, "query_json");
+  const dependenciesJson = textColumn(row, "dependencies_json");
+  const scope = textColumn(row, "scope");
+  if (
+    id === undefined ||
+    connectionId === undefined ||
+    status === undefined ||
+    createdAt === undefined ||
+    createdAt === null ||
+    updatedAt === undefined ||
+    updatedAt === null ||
+    closedAt === undefined ||
+    queryJson === undefined ||
+    dependenciesJson === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    id,
+    connectionId,
+    ...(protocol === undefined ? {} : { protocol }),
+    status,
+    createdAt,
+    updatedAt,
+    closedAt,
+    query: JSON.parse(queryJson) as DatalogQueryArgsType,
+    dependencies: JSON.parse(
+      dependenciesJson,
+    ) as DurableObjectSqliteLiveQueryDependency[],
+    ...(scope === undefined ? {} : { scope }),
+  };
+}
+
 function eventJson(event: Event): string {
   return JSON.stringify(event);
 }
@@ -624,6 +740,20 @@ function collectionDataJson(data: unknown): string | null {
 
 function dagContextJson(context: unknown): string | null {
   return context === undefined ? null : JSON.stringify(context);
+}
+
+function liveQueryJson(query: DatalogQueryArgsType): string {
+  return JSON.stringify(query);
+}
+
+function liveQueryDependenciesJson(
+  dependencies: readonly DurableObjectSqliteLiveQueryDependency[],
+): string {
+  return JSON.stringify(dependencies);
+}
+
+function liveQueryDependencyKey(value: string | undefined): string {
+  return value ?? "*";
 }
 
 function clockKey(replicaId: string): string {
@@ -1590,6 +1720,222 @@ export class DurableObjectSqliteDagStore {
   }
 }
 
+export class DurableObjectSqliteLiveQuerySubscriptionStore {
+  private readonly plan: SqlPlan;
+
+  constructor(
+    private readonly sql: DurableObjectSqlStorageLike,
+    tablePrefix = "metacrdt",
+  ) {
+    this.plan = plan(tablePrefix);
+  }
+
+  async initialize(): Promise<void> {
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS ${this.plan.tables.liveQuerySubscriptions} (` +
+        "id TEXT PRIMARY KEY NOT NULL, " +
+        "connection_id TEXT NOT NULL, " +
+        "protocol TEXT NULL, " +
+        "status TEXT NOT NULL CHECK (status IN ('active', 'closed')), " +
+        "created_at REAL NOT NULL, " +
+        "updated_at REAL NOT NULL, " +
+        "closed_at REAL NULL, " +
+        "query_json TEXT NOT NULL, " +
+        "dependencies_json TEXT NOT NULL, " +
+        "scope TEXT NULL" +
+        ")",
+    );
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS ${this.plan.tables.liveQueryDependencies} (` +
+        "subscription_id TEXT NOT NULL, " +
+        "e TEXT NULL, " +
+        "a TEXT NULL, " +
+        "e_key TEXT NOT NULL, " +
+        "a_key TEXT NOT NULL, " +
+        "PRIMARY KEY (subscription_id, e_key, a_key)" +
+        ")",
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.liveQueriesByConnection} ` +
+        `ON ${this.plan.tables.liveQuerySubscriptions} (connection_id, status)`,
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.liveQueriesByStatusUpdatedAt} ` +
+        `ON ${this.plan.tables.liveQuerySubscriptions} (status, updated_at)`,
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.liveQueryDependenciesBySubscription} ` +
+        `ON ${this.plan.tables.liveQueryDependencies} (subscription_id)`,
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.liveQueryDependenciesByEntity} ` +
+        `ON ${this.plan.tables.liveQueryDependencies} (e)`,
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.liveQueryDependenciesByAttribute} ` +
+        `ON ${this.plan.tables.liveQueryDependencies} (a)`,
+    );
+  }
+
+  async upsert(
+    input: DurableObjectSqliteUpsertLiveQuerySubscriptionInput,
+  ): Promise<DurableObjectSqliteLiveQuerySubscriptionRow> {
+    const existing = await this.get(input.id);
+    const updatedAt = input.updatedAt ?? input.createdAt;
+    if (existing === undefined) {
+      this.sql.exec(
+        `INSERT INTO ${this.plan.tables.liveQuerySubscriptions} (` +
+          "id, connection_id, protocol, status, created_at, updated_at, closed_at, " +
+          "query_json, dependencies_json, scope" +
+          ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        input.id,
+        input.connectionId,
+        input.protocol ?? null,
+        "active",
+        input.createdAt,
+        updatedAt,
+        null,
+        liveQueryJson(input.query),
+        liveQueryDependenciesJson(input.dependencies),
+        input.scope ?? null,
+      );
+    } else {
+      this.sql.exec(
+        `UPDATE ${this.plan.tables.liveQuerySubscriptions} ` +
+          "SET connection_id = ?, protocol = ?, status = ?, updated_at = ?, " +
+          "closed_at = ?, query_json = ?, dependencies_json = ?, scope = ? " +
+          "WHERE id = ?",
+        input.connectionId,
+        input.protocol ?? null,
+        "active",
+        updatedAt,
+        null,
+        liveQueryJson(input.query),
+        liveQueryDependenciesJson(input.dependencies),
+        input.scope ?? null,
+        input.id,
+      );
+    }
+    this.sql.exec(
+      `DELETE FROM ${this.plan.tables.liveQueryDependencies} WHERE subscription_id = ?`,
+      input.id,
+    );
+    for (const dependency of input.dependencies) {
+      this.sql.exec(
+        `INSERT INTO ${this.plan.tables.liveQueryDependencies} ` +
+          "(subscription_id, e, a, e_key, a_key) VALUES (?, ?, ?, ?, ?)",
+        input.id,
+        dependency.e ?? null,
+        dependency.a ?? null,
+        liveQueryDependencyKey(dependency.e),
+        liveQueryDependencyKey(dependency.a),
+      );
+    }
+    const row = await this.get(input.id);
+    if (row === undefined) {
+      throw new Error(`failed to persist live query subscription: ${input.id}`);
+    }
+    return row;
+  }
+
+  async get(
+    id: string,
+  ): Promise<DurableObjectSqliteLiveQuerySubscriptionRow | undefined> {
+    return decodeLiveQuerySubscription(
+      rows(
+        this.sql.exec(
+          `SELECT id, connection_id, protocol, status, created_at, updated_at, closed_at, query_json, dependencies_json, scope ` +
+            `FROM ${this.plan.tables.liveQuerySubscriptions} WHERE id = ?`,
+          id,
+        ),
+      )[0],
+    );
+  }
+
+  async list(
+    filter: DurableObjectSqliteLiveQuerySubscriptionFilter = {},
+  ): Promise<DurableObjectSqliteLiveQuerySubscriptionRow[]> {
+    const clauses: string[] = [];
+    const bindings: unknown[] = [];
+    const hasDependencyFilter = filter.e !== undefined || filter.a !== undefined;
+    const subscriptionAlias = hasDependencyFilter ? "s." : "";
+    if (filter.connectionId !== undefined) {
+      clauses.push(`${subscriptionAlias}connection_id = ?`);
+      bindings.push(filter.connectionId);
+    }
+    if (filter.status !== undefined) {
+      clauses.push(`${subscriptionAlias}status = ?`);
+      bindings.push(filter.status);
+    }
+    if (filter.e !== undefined) {
+      clauses.push("d.e = ?");
+      bindings.push(filter.e);
+    }
+    if (filter.a !== undefined) {
+      clauses.push("d.a = ?");
+      bindings.push(filter.a);
+    }
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const select =
+      "id, connection_id, protocol, status, created_at, updated_at, closed_at, query_json, dependencies_json, scope";
+    const aliasedSelect =
+      "s.id, s.connection_id, s.protocol, s.status, s.created_at, s.updated_at, s.closed_at, s.query_json, s.dependencies_json, s.scope";
+    const rowsOut = rows(
+      hasDependencyFilter
+        ? this.sql.exec(
+          `SELECT DISTINCT ${aliasedSelect} ` +
+            `FROM ${this.plan.tables.liveQuerySubscriptions} s ` +
+            `JOIN ${this.plan.tables.liveQueryDependencies} d ` +
+            "ON d.subscription_id = s.id" +
+            `${where} ORDER BY s.created_at, s.id`,
+          ...bindings,
+        )
+        : this.sql.exec(
+          `SELECT ${select} FROM ${this.plan.tables.liveQuerySubscriptions}${where} ` +
+            "ORDER BY created_at, id",
+          ...bindings,
+        ),
+    )
+      .map(decodeLiveQuerySubscription)
+      .filter(
+        (row): row is DurableObjectSqliteLiveQuerySubscriptionRow =>
+          row !== undefined,
+      );
+    return rowsOut.slice(0, Math.max(1, Math.min(filter.limit ?? 100, 1000)));
+  }
+
+  async close(
+    id: string,
+    closedAt: number,
+  ): Promise<DurableObjectSqliteLiveQuerySubscriptionRow | undefined> {
+    this.sql.exec(
+      `UPDATE ${this.plan.tables.liveQuerySubscriptions} ` +
+        "SET status = ?, updated_at = ?, closed_at = ? WHERE id = ?",
+      "closed",
+      closedAt,
+      closedAt,
+      id,
+    );
+    return this.get(id);
+  }
+
+  async closeByConnection(
+    connectionId: string,
+    closedAt: number,
+  ): Promise<DurableObjectSqliteLiveQuerySubscriptionRow[]> {
+    this.sql.exec(
+      `UPDATE ${this.plan.tables.liveQuerySubscriptions} ` +
+        "SET status = ?, updated_at = ?, closed_at = ? " +
+        "WHERE connection_id = ? AND status = 'active'",
+      "closed",
+      closedAt,
+      closedAt,
+      connectionId,
+    );
+    return this.list({ connectionId, status: "closed" });
+  }
+}
+
 class DurableObjectSqliteMetaStore {
   private readonly plan: SqlPlan;
 
@@ -1718,6 +2064,10 @@ export async function createDurableObjectSqliteRuntime(
     tablePrefix,
   );
   const dag = new DurableObjectSqliteDagStore(options.sql, tablePrefix);
+  const liveQueries = new DurableObjectSqliteLiveQuerySubscriptionStore(
+    options.sql,
+    tablePrefix,
+  );
   const meta = new DurableObjectSqliteMetaStore(options.sql, tablePrefix);
   if (options.initialize ?? true) {
     await store.initialize();
@@ -1726,6 +2076,7 @@ export async function createDurableObjectSqliteRuntime(
     await timers.initialize();
     await flowWaitTimers.initialize();
     await dag.initialize();
+    await liveQueries.initialize();
     await meta.initialize();
   }
   const capabilities = new Set<RuntimeCapability>(
@@ -1748,6 +2099,7 @@ export async function createDurableObjectSqliteRuntime(
     timers,
     flowWaitTimers,
     dag,
+    liveQueries,
     clock: await DurableObjectSqliteClock.create(
       meta,
       options.replicaId,

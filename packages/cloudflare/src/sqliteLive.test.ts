@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   DurableObjectSqliteLiveCurrentQueryFanout,
   DurableObjectSqliteLiveInvalidationFanout,
+  createDurableObjectSqliteRuntime,
   durableObjectSqliteLiveQueryDependencies,
   publishDurableObjectSqliteLiveCurrentQueryChanges,
   publishDurableObjectSqliteLiveInvalidations,
@@ -14,6 +15,7 @@ import type {
   DatalogQueryArgsType,
   DatalogQueryResult,
 } from "@metacrdt/runtime";
+import { FakeDurableObjectSqlStorage } from "./sqliteFake.test-support.js";
 
 class FakeSocket implements WebSocketLike {
   accepted = false;
@@ -406,6 +408,53 @@ describe("@metacrdt/cloudflare SQLite live invalidation fanout", () => {
 
     await fanout.publishChanges([statusChange]);
     expect(socket.queryMessages()).toHaveLength(3);
+  });
+
+  test("optionally persists current-query subscriptions through the SQLite registry", async () => {
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql: new FakeDurableObjectSqlStorage(),
+      replicaId: "do-sqlite:live-query-persist",
+      wall: () => 700,
+    });
+    const fanout = new DurableObjectSqliteLiveCurrentQueryFanout({
+      from: "do:room",
+      protocol: "live-query.persist",
+      queryCurrent: async () => queryResult("persisted"),
+      subscriptions: runtime.liveQueries,
+      now: () => 42_000,
+      scope: "tenant:1",
+    });
+    const socket = new FakeSocket();
+    fanout.connect(socket, "client:persist");
+
+    await fanout.subscribeQuery("client:persist", liveQueryArgs, "query:persist");
+    await expect(runtime.liveQueries.get("query:persist")).resolves.toMatchObject({
+      id: "query:persist",
+      connectionId: "client:persist",
+      protocol: "live-query.persist",
+      status: "active",
+      createdAt: 42_000,
+      updatedAt: 42_000,
+      closedAt: null,
+      query: liveQueryArgs,
+      dependencies: [{ e: "task:1", a: "status" }],
+      scope: "tenant:1",
+    });
+
+    await expect(
+      runtime.liveQueries.list({ status: "active", a: "status" }),
+    ).resolves.toHaveLength(1);
+
+    await fanout.unsubscribeQuery("client:persist", "query:persist");
+    await expect(runtime.liveQueries.get("query:persist")).resolves.toMatchObject({
+      id: "query:persist",
+      status: "closed",
+      updatedAt: 42_000,
+      closedAt: 42_000,
+    });
+    await expect(
+      runtime.liveQueries.list({ status: "active", a: "status" }),
+    ).resolves.toEqual([]);
   });
 
   test("derives bounded query dependencies and rejects unbounded live queries", async () => {

@@ -55,9 +55,12 @@ implements them on Cloudflare.
   projection-backed current Datalog query subscriptions over structural
   WebSocket sockets, sends initial `query.subscribed` snapshots, and refreshes
   matching subscriptions with `query.updated` results when projection-change
-  summaries overlap derived `e` / `a` dependencies. This is snapshot/update
-  plumbing, not persisted subscriptions, query auth, Worker routing, reconnects,
-  result diffs, or a frontend SDK.
+  summaries overlap derived `e` / `a` dependencies. It can optionally persist
+  active/closed subscription metadata through
+  `DurableObjectSqliteLiveQuerySubscriptionStore`, which stores
+  `live_query_subscriptions` and indexed `live_query_dependencies` rows over DO
+  SQLite. This is snapshot/update and metadata persistence plumbing, not query
+  auth, Worker routing, reconnects, result diffs, or a frontend SDK.
 - **WebSocket relay** — `DurableObjectWebSocketRelay` / `attachDurableObjectRelay`
   (`RelayConnection`, `RelayOptions`, `WebSocketLike`): accepts server sockets,
   answers version-vector hellos with deltas, merges client events through the
@@ -163,8 +166,8 @@ historical provider has conformance-style coverage for joins, disjunction,
 negation, compare/compute, pagination, aggregation, derived rows, lifecycle
 visibility, and bounded SQLite scan counters. The remaining parity plan —
 broader historical SQL-indexed query optimization, full flow interpreter/action
-execution, and persisted/authenticated live frontend query plumbing over DO
-WebSockets — is
+execution, authenticated live frontend/Worker query plumbing, and
+reconnect/session hydration over DO WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth

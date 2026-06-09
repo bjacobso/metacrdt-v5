@@ -128,6 +128,78 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
     });
   });
 
+  test("persists live current-query subscription metadata across runtime recreation", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const first = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:live-query-store",
+      wall: () => 100,
+    });
+
+    const query = {
+      where: [["worker:live", "worker.status", "?status"]],
+      select: ["?status"],
+      coord: { txTime: 10_000, validTime: 10_000 },
+    };
+    const subscription = await first.liveQueries.upsert({
+      id: "query:worker-live-status",
+      connectionId: "socket:1",
+      protocol: "live-query.test",
+      query,
+      dependencies: [{ e: "worker:live", a: "worker.status" }],
+      createdAt: 20_000,
+      scope: "tenant:1",
+    });
+    expect(subscription).toMatchObject({
+      id: "query:worker-live-status",
+      connectionId: "socket:1",
+      protocol: "live-query.test",
+      status: "active",
+      createdAt: 20_000,
+      updatedAt: 20_000,
+      closedAt: null,
+      query,
+      dependencies: [{ e: "worker:live", a: "worker.status" }],
+      scope: "tenant:1",
+    });
+
+    const restarted = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:live-query-store",
+      wall: () => 101,
+    });
+    await expect(
+      restarted.liveQueries.get("query:worker-live-status"),
+    ).resolves.toEqual(subscription);
+    await expect(
+      restarted.liveQueries.list({
+        status: "active",
+        e: "worker:live",
+        a: "worker.status",
+      }),
+    ).resolves.toEqual([subscription]);
+    await expect(
+      restarted.liveQueries.list({ connectionId: "socket:missing" }),
+    ).resolves.toEqual([]);
+
+    const closed = await restarted.liveQueries.close(
+      "query:worker-live-status",
+      21_000,
+    );
+    expect(closed).toMatchObject({
+      id: "query:worker-live-status",
+      status: "closed",
+      updatedAt: 21_000,
+      closedAt: 21_000,
+    });
+    await expect(
+      restarted.liveQueries.list({ status: "active", a: "worker.status" }),
+    ).resolves.toEqual([]);
+    await expect(
+      restarted.liveQueries.list({ status: "closed", a: "worker.status" }),
+    ).resolves.toEqual([closed]);
+  });
+
   test("two SQLite runtimes exchange deltas and persist convergence", async () => {
     const leftSql = new FakeDurableObjectSqlStorage();
     const rightSql = new FakeDurableObjectSqlStorage();

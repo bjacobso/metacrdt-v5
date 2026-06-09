@@ -11,6 +11,9 @@ import {
 import { Data, Effect } from "effect";
 import * as Schema from "effect/Schema";
 import type { WebSocketLike } from "./relay.js";
+import type {
+  DurableObjectSqliteLiveQuerySubscriptionStore,
+} from "./durableObjectSqlite.js";
 import type { DurableObjectSqliteProjectionChange } from "./sqliteCurrent.js";
 
 const DEFAULT_PROTOCOL = "metacrdt.cloudflare.sqlite.live.v1";
@@ -170,6 +173,9 @@ export type DurableObjectSqliteLiveQueryOptions = {
   readonly queryCurrent: (
     args: DatalogQueryArgsType,
   ) => Promise<DatalogQueryResult>;
+  readonly subscriptions?: DurableObjectSqliteLiveQuerySubscriptionStore;
+  readonly now?: () => number;
+  readonly scope?: string;
 };
 
 function liveError(operation: string, cause: unknown): DurableObjectSqliteLiveError {
@@ -623,11 +629,17 @@ export class DurableObjectSqliteLiveCurrentQueryFanout {
   >();
   #subscriptions = new Map<string, DurableObjectSqliteLiveQuerySubscription>();
   #queryCurrent: (args: DatalogQueryArgsType) => Promise<DatalogQueryResult>;
+  #persistedSubscriptions?: DurableObjectSqliteLiveQuerySubscriptionStore;
+  #now: () => number;
+  #scope?: string;
 
   constructor(options: DurableObjectSqliteLiveQueryOptions) {
     this.protocol = options.protocol ?? DEFAULT_QUERY_PROTOCOL;
     this.from = options.from;
     this.#queryCurrent = options.queryCurrent;
+    this.#persistedSubscriptions = options.subscriptions;
+    this.#now = options.now ?? (() => Date.now());
+    this.#scope = options.scope;
   }
 
   get size(): number {
@@ -674,6 +686,7 @@ export class DurableObjectSqliteLiveCurrentQueryFanout {
         this.#subscriptions.delete(subscriptionId);
       }
     }
+    void this.#persistedSubscriptions?.closeByConnection(id, this.#now());
   }
 
   subscribeQuery(
@@ -714,6 +727,24 @@ export class DurableObjectSqliteLiveCurrentQueryFanout {
       const result = yield* self.#runQuery(decoded);
       const subscription = { id, connectionId, query: decoded, dependencies };
       self.#subscriptions.set(id, subscription);
+      if (self.#persistedSubscriptions !== undefined) {
+        const now = self.#now();
+        yield* Effect.tryPromise({
+          try: () =>
+            self.#persistedSubscriptions!.upsert({
+              id,
+              connectionId,
+              protocol: self.protocol,
+              query: decoded,
+              dependencies,
+              createdAt: now,
+              updatedAt: now,
+              ...(self.#scope === undefined ? {} : { scope: self.#scope }),
+            }),
+          catch: (cause) =>
+            liveError("subscribeLiveCurrentQuery.persist", cause),
+        });
+      }
       yield* Effect.try({
         try: () =>
           connection.socket.send(
@@ -745,6 +776,13 @@ export class DurableObjectSqliteLiveCurrentQueryFanout {
       const subscription = self.#subscriptions.get(id);
       const removed = subscription?.connectionId === connectionId &&
         self.#subscriptions.delete(id);
+      if (removed === true && self.#persistedSubscriptions !== undefined) {
+        yield* Effect.tryPromise({
+          try: () => self.#persistedSubscriptions!.close(id, self.#now()),
+          catch: (cause) =>
+            liveError("unsubscribeLiveCurrentQuery.persist", cause),
+        });
+      }
       const connection = self.#connections.get(connectionId);
       if (connection !== undefined) {
         yield* Effect.try({

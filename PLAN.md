@@ -261,13 +261,18 @@ diffing, or full frontend live-query parity. Goal 133 adds conformance-style
 coverage for the Cloudflare indexed historical query provider itself: the DO
 SQLite current facade now proves joins, disjunction, negation, compare/compute,
 pagination, aggregation, derived-row shaping, lifecycle visibility, and bounded
-SQLite index usage without unrelated full event-log scans. The next active goal
-should be chosen from the remaining TODO candidates:
+SQLite index usage without unrelated full event-log scans. Goal 134 adds a
+persisted live current-query subscription registry over DO SQLite: live-query
+subscription rows and dependency index rows can be stored/listed/closed across
+runtime recreation, and the structural live-query fanout can optionally persist
+subscribe/unsubscribe state through that registry without adding auth, Worker
+routes, reconnect hydration, or a frontend SDK. The next active goal should be
+chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (broader SQL query-provider
 parity/performance hardening, full flow interpreter/action execution,
-persisted/authenticated live-query frontend plumbing),
+authenticated live-query Worker/frontend plumbing),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9485,6 +9490,47 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
 
 ---
 
+## Goal 134 — Cloudflare Persisted Live Query Subscription Registry
+
+**Status:** shipped.
+
+**Objective:** start the persisted side of Cloudflare live-query frontend
+plumbing by storing bounded current-query subscription metadata over DO SQLite.
+
+### What Shipped
+
+- Added `DurableObjectSqliteLiveQuerySubscriptionStore`, owned by the DO SQLite
+  runtime, with `live_query_subscriptions` rows for caller/fanout-provided
+  subscription ids, connection ids, protocol, active/closed status, timestamps,
+  query JSON, dependency JSON, and optional scope.
+- Added `live_query_dependencies` rows indexed by subscription id, entity, and
+  attribute so persisted subscriptions can be listed by bounded dependency
+  coordinates without relying only on in-memory fanout state.
+- Exposed the store as `runtime.liveQueries` from
+  `createDurableObjectSqliteRuntime` and package exports.
+- Let `DurableObjectSqliteLiveCurrentQueryFanout` optionally persist active
+  subscriptions on `query.subscribe` and mark them closed on
+  `query.unsubscribe` / connection disconnect while preserving the existing
+  in-memory-only behavior when no store is supplied.
+- Added focused Cloudflare fake-SQL tests proving subscription persistence
+  across runtime recreation, dependency/status listing, explicit close behavior,
+  and fanout-backed persistence.
+
+### Non-Goals
+
+- Do not claim authenticated live-query access control, Worker route wiring,
+  reconnect/session hydration, result diffing, or a frontend SDK.
+- Do not persist live invalidation-only subscriptions in this slice.
+- Do not implement full Cloudflare flow interpreter/action execution or broader
+  historical SQL query-provider parity/performance hardening.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 49 Cloudflare tests.
+
+---
+
 ## Goal 133 — Cloudflare Indexed Historical Query Provider Conformance Coverage
 
 **Status:** shipped.
@@ -9512,8 +9558,8 @@ SQLite current facade.
   Cloudflare indexed provider path.
 - Do not add a new shared testkit API for target-specific query-provider
   injection.
-- Do not implement Cloudflare flow interpreter/action execution or
-  persisted/authenticated live-query frontend plumbing.
+- Do not implement Cloudflare flow interpreter/action execution or authenticated
+  live-query Worker/frontend plumbing.
 
 ### Verification
 
