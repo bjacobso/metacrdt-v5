@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
+  DurableObjectSqliteLiveCurrentQueryFanout,
   MetaCrdtRelayDurableObject,
+  attachDurableObjectSqliteLiveQueryWebSocket,
   createRelayWorker,
   type DurableObjectNamespaceLike,
   type DurableObjectStateLike,
@@ -8,6 +10,10 @@ import {
   type DurableObjectStubLike,
   type WebSocketLike,
 } from "./index.js";
+import type {
+  DatalogQueryArgsType,
+  DatalogQueryResult,
+} from "@metacrdt/runtime";
 
 class FakeStorage implements DurableObjectStorageLike {
   readonly data = new Map<string, unknown>();
@@ -27,7 +33,11 @@ class FakeStorage implements DurableObjectStorageLike {
 
 class FakeSocket implements WebSocketLike {
   accepted = false;
+  closed: { code?: number; reason?: string } | undefined;
   sent: string[] = [];
+  readonly messageListeners = new Set<(event: { data: unknown }) => void>();
+  readonly closeListeners = new Set<(event: { code?: number; reason?: string }) => void>();
+  readonly errorListeners = new Set<(event: { code?: number; reason?: string }) => void>();
 
   accept(): void {
     this.accepted = true;
@@ -37,8 +47,43 @@ class FakeSocket implements WebSocketLike {
     this.sent.push(message);
   }
 
-  addEventListener(): void {}
-  removeEventListener(): void {}
+  close(code?: number, reason?: string): void {
+    this.closed = { code, reason };
+  }
+
+  addEventListener(
+    type: "message" | "close" | "error",
+    listener:
+      | ((event: { data: unknown }) => void)
+      | ((event: { code?: number; reason?: string }) => void),
+  ): void {
+    if (type === "message") {
+      this.messageListeners.add(listener as (event: { data: unknown }) => void);
+    } else if (type === "close") {
+      this.closeListeners.add(listener as (event: { code?: number; reason?: string }) => void);
+    } else {
+      this.errorListeners.add(listener as (event: { code?: number; reason?: string }) => void);
+    }
+  }
+
+  removeEventListener(
+    type: "message" | "close" | "error",
+    listener:
+      | ((event: { data: unknown }) => void)
+      | ((event: { code?: number; reason?: string }) => void),
+  ): void {
+    if (type === "message") {
+      this.messageListeners.delete(listener as (event: { data: unknown }) => void);
+    } else if (type === "close") {
+      this.closeListeners.delete(listener as (event: { code?: number; reason?: string }) => void);
+    } else {
+      this.errorListeners.delete(listener as (event: { code?: number; reason?: string }) => void);
+    }
+  }
+
+  receive(message: unknown): void {
+    for (const listener of this.messageListeners) listener({ data: message });
+  }
 }
 
 class FakeStub implements DurableObjectStubLike {
@@ -76,6 +121,20 @@ async function flush(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+const liveQueryArgs: DatalogQueryArgsType = {
+  where: [["task:1", "status", "?status"]],
+  select: ["?status"],
+  coord: { txTime: 10, validTime: 10 },
+};
+
+function queryResult(status: string): DatalogQueryResult {
+  return {
+    states: [],
+    rows: [{ status }],
+    eventSourceIds: [`event:${status}`],
+  };
+}
+
 describe("@metacrdt/cloudflare Worker shell", () => {
   test("routes room requests by query or path to the configured DO binding", async () => {
     const worker = createRelayWorker();
@@ -98,6 +157,39 @@ describe("@metacrdt/cloudflare Worker shell", () => {
     expect(ns.ids).toEqual(["alpha", "beta"]);
   });
 
+  test("routes live-query room requests through the same authenticated DO binding", async () => {
+    const worker = createRelayWorker({
+      liveQueryPathPrefix: "/queries",
+      auth: { token: "secret" },
+    });
+    const ns = new FakeNamespace();
+    const env = { METACRDT_RELAY: ns };
+
+    const denied = await worker.fetch(
+      new Request("https://relay.example/queries/alpha", {
+        headers: { Upgrade: "websocket" },
+      }),
+      env,
+    );
+    expect(denied.status).toBe(401);
+    expect(ns.ids).toEqual([]);
+
+    const allowed = await worker.fetch(
+      new Request("https://relay.example/queries/alpha", {
+        headers: {
+          Upgrade: "websocket",
+          authorization: "Bearer secret",
+        },
+      }),
+      env,
+    );
+    expect(allowed.status).toBe(200);
+    expect(await allowed.text()).toBe("ok");
+    expect(ns.ids).toEqual(["alpha"]);
+    expect(ns.stub.requests[0]?.url).toBe("https://relay.example/queries/alpha");
+    expect(ns.stub.requests[0]?.headers.get("Upgrade")).toBe("websocket");
+  });
+
   test("reports health and clear routing errors", async () => {
     const worker = createRelayWorker();
     const health = await worker.fetch(
@@ -105,7 +197,11 @@ describe("@metacrdt/cloudflare Worker shell", () => {
       {},
     );
     expect(health.status).toBe(200);
-    expect(await body(health)).toEqual({ ok: true, binding: "METACRDT_RELAY" });
+    expect(await body(health)).toEqual({
+      ok: true,
+      binding: "METACRDT_RELAY",
+      liveQueryPathPrefix: "/live-query",
+    });
 
     const noBinding = await worker.fetch(
       new Request("https://relay.example/rooms/alpha"),
@@ -122,7 +218,8 @@ describe("@metacrdt/cloudflare Worker shell", () => {
     );
     expect(noRoom.status).toBe(400);
     expect(await body(noRoom)).toEqual({
-      error: "missing room; use ?room=<name> or /rooms/<name>",
+      error:
+        "missing room; use ?room=<name>, /rooms/<name>, or /live-query/<name>",
     });
   });
 
@@ -206,7 +303,11 @@ describe("@metacrdt/cloudflare Worker shell", () => {
       {},
     );
     expect(allowed.status).toBe(200);
-    expect(await body(allowed)).toEqual({ ok: true, binding: "METACRDT_RELAY" });
+    expect(await body(allowed)).toEqual({
+      ok: true,
+      binding: "METACRDT_RELAY",
+      liveQueryPathPrefix: "/live-query",
+    });
   });
 
   test("Durable Object health reports replica, connections, and version vector", async () => {
@@ -271,5 +372,57 @@ describe("@metacrdt/cloudflare Worker shell", () => {
     const res = await object.fetch(new Request("https://relay.example/sync"));
     expect(res.status).toBe(426);
     expect(await body(res)).toEqual({ error: "websocket upgrade required" });
+  });
+
+  test("attaches SQLite live-query WebSocket requests to a structural fanout", async () => {
+    const server = new FakeSocket();
+    const client = { client: true };
+    const fanout = new DurableObjectSqliteLiveCurrentQueryFanout({
+      from: "do:room",
+      protocol: "live-query.test",
+      queryCurrent: async () => queryResult("open"),
+    });
+
+    const res = attachDurableObjectSqliteLiveQueryWebSocket(
+      new Request("https://relay.example/live-query/room?client=alice", {
+        headers: { Upgrade: "websocket" },
+      }),
+      fanout,
+      {
+        webSocketPair: () => ({ 0: client, 1: server }),
+        webSocketResponse: (webSocket) =>
+          new Response(null, {
+            status: 200,
+            headers: { "x-test-upgrade": "live-query" },
+          } as ResponseInit & { webSocket?: unknown }) as Response & {
+            webSocket?: unknown;
+          } & { webSocket: unknown },
+      },
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-test-upgrade")).toBe("live-query");
+    expect(server.accepted).toBe(true);
+    expect(fanout.size).toBe(1);
+
+    server.receive(
+      JSON.stringify({
+        protocol: "live-query.test",
+        type: "query.subscribe",
+        id: "query:status",
+        query: liveQueryArgs,
+      }),
+    );
+    await flush();
+    expect(server.sent.map((message) => JSON.parse(message))).toEqual([
+      {
+        protocol: "live-query.test",
+        type: "query.subscribed",
+        from: "do:room",
+        id: "query:status",
+        dependencies: [{ e: "task:1", a: "status" }],
+        result: queryResult("open"),
+      },
+    ]);
   });
 });

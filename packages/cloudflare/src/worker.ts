@@ -10,6 +10,7 @@ import {
   type RelayOptions,
   type WebSocketLike,
 } from "./relay.js";
+import type { DurableObjectSqliteLiveCurrentQueryFanout } from "./sqliteLive.js";
 
 export interface DurableObjectStateLike {
   storage: DurableObjectStorageLike;
@@ -70,6 +71,7 @@ export type RelayWorkerOptions = {
   healthPath?: string;
   roomParam?: string;
   roomPathPrefix?: string;
+  liveQueryPathPrefix?: string;
   /**
    * Token auth for the Worker-facing relay routes. Omitted means "enforce when
    * METACRDT_RELAY_TOKEN exists"; `false` disables auth even if that env var is
@@ -87,6 +89,8 @@ type ResolvedRelayWorkerOptions = Required<
 };
 
 const DEFAULT_AUTH_ENV_KEY = "METACRDT_RELAY_TOKEN";
+const DEFAULT_CLIENT_PARAM = "client";
+const DEFAULT_CLIENT_HEADER = "Sec-WebSocket-Key";
 
 function defaultWebSocketPair(): WebSocketPairLike {
   const ctor = (globalThis as { WebSocketPair?: new () => WebSocketPairLike })
@@ -109,17 +113,22 @@ function json(value: unknown, init: ResponseInit = {}): Response {
   });
 }
 
-function roomFromRequest(request: Request, options: ResolvedRelayWorkerOptions): string | null {
+function roomFromRequest(
+  request: Request,
+  options: Pick<ResolvedRelayWorkerOptions, "roomParam">,
+  pathPrefixes: readonly string[],
+): string | null {
   const url = new URL(request.url);
   const byParam = url.searchParams.get(options.roomParam);
   if (byParam) return byParam;
 
-  const prefix = options.roomPathPrefix.endsWith("/")
-    ? options.roomPathPrefix
-    : `${options.roomPathPrefix}/`;
-  if (!url.pathname.startsWith(prefix)) return null;
-  const room = decodeURIComponent(url.pathname.slice(prefix.length)).replace(/^\/+/, "");
-  return room === "" ? null : room;
+  for (const pathPrefix of pathPrefixes) {
+    const prefix = pathPrefix.endsWith("/") ? pathPrefix : `${pathPrefix}/`;
+    if (!url.pathname.startsWith(prefix)) continue;
+    const room = decodeURIComponent(url.pathname.slice(prefix.length)).replace(/^\/+/, "");
+    return room === "" ? null : room;
+  }
+  return null;
 }
 
 function relayAuthOptions(auth: RelayWorkerOptions["auth"]): ResolvedRelayAuthOptions | undefined {
@@ -139,6 +148,7 @@ function relayWorkerOptions(options: RelayWorkerOptions = {}): ResolvedRelayWork
     healthPath: options.healthPath ?? "/health",
     roomParam: options.roomParam ?? "room",
     roomPathPrefix: options.roomPathPrefix ?? "/rooms",
+    liveQueryPathPrefix: options.liveQueryPathPrefix ?? "/live-query",
     auth: relayAuthOptions(options.auth),
   };
 }
@@ -292,6 +302,44 @@ export class MetaCrdtRelayDurableObject {
   }
 }
 
+export type DurableObjectSqliteLiveQueryWebSocketOptions = {
+  webSocketPair?: WebSocketPairFactory;
+  webSocketResponse?: WebSocketResponseFactory;
+  connectionIdParam?: string;
+  connectionIdHeader?: string;
+};
+
+export function attachDurableObjectSqliteLiveQueryWebSocket(
+  request: Request,
+  fanout: DurableObjectSqliteLiveCurrentQueryFanout,
+  options: DurableObjectSqliteLiveQueryWebSocketOptions = {},
+): Response {
+  if (!isUpgrade(request)) {
+    return json(
+      {
+        error: "websocket upgrade required",
+      },
+      { status: 426 },
+    );
+  }
+  const webSocketPair = options.webSocketPair ?? defaultWebSocketPair;
+  const webSocketResponse =
+    options.webSocketResponse ??
+    ((client) =>
+      new Response(null, {
+        status: 101,
+        webSocket: client,
+      } as ResponseInitWithWebSocket));
+  const pair = webSocketPair();
+  const url = new URL(request.url);
+  const connectionId =
+    url.searchParams.get(options.connectionIdParam ?? DEFAULT_CLIENT_PARAM) ??
+    request.headers.get(options.connectionIdHeader ?? DEFAULT_CLIENT_HEADER) ??
+    undefined;
+  fanout.connect(pair[1], connectionId);
+  return webSocketResponse(pair[0]);
+}
+
 export function createRelayWorker(options: RelayWorkerOptions = {}) {
   const resolved = relayWorkerOptions(options);
   return {
@@ -307,7 +355,11 @@ export function createRelayWorker(options: RelayWorkerOptions = {}) {
         ) {
           return unauthorized();
         }
-        return json({ ok: true, binding: resolved.binding });
+        return json({
+          ok: true,
+          binding: resolved.binding,
+          liveQueryPathPrefix: resolved.liveQueryPathPrefix,
+        });
       }
 
       if (!isAuthorized(request, env, resolved.auth)) {
@@ -319,11 +371,14 @@ export function createRelayWorker(options: RelayWorkerOptions = {}) {
         return json({ error: `missing Durable Object binding ${resolved.binding}` }, { status: 500 });
       }
 
-      const room = roomFromRequest(request, resolved);
+      const room = roomFromRequest(request, resolved, [
+        resolved.roomPathPrefix,
+        resolved.liveQueryPathPrefix,
+      ]);
       if (!room) {
         return json(
           {
-            error: `missing room; use ?${resolved.roomParam}=<name> or ${resolved.roomPathPrefix}/<name>`,
+            error: `missing room; use ?${resolved.roomParam}=<name>, ${resolved.roomPathPrefix}/<name>, or ${resolved.liveQueryPathPrefix}/<name>`,
           },
           { status: 400 },
         );

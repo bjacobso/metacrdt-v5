@@ -17,15 +17,15 @@ projection-backed `queryCurrent` / `pageCurrent` / `aggregateCurrent` /
 multiplexer, deterministic projection change summaries for touched `(e, a)`
 coordinates, a live invalidation fanout helper for those coordinates, and a
 bounded live current-query snapshot/update helper with optional persisted
-subscription rows and structural reconnect hydration). The indexed historical
-query provider now has
+subscription rows, structural reconnect hydration, and an authenticated Worker
+route seed for live-query sockets). The indexed historical query provider now has
 conformance-style coverage for joins, `or`, `not`, compare/compute, pagination,
 aggregation, derived rows, lifecycle visibility, and bounded SQLite index scan
 usage.
 Broader historical SQL query-provider parity/performance hardening, full
 Cloudflare flow interpreter/action-execution parity, and
-authenticated Worker/frontend live-query plumbing plus full frontend reconnect
-protocol are still ahead.
+production live-query DO assembly/frontend SDK behavior plus full frontend
+reconnect protocol are still ahead.
 
 **Scope:** Grow `@metacrdt/cloudflare` from a sync-plane shell into a full
 MetaCRDT target at parity with the `@metacrdt/convex` component — an indexed,
@@ -79,10 +79,12 @@ subscriptions can be snapshotted/refreshed through
 `DurableObjectSqliteLiveCurrentQueryFanout`; bounded current-query subscription
 metadata can now also be persisted in `live_query_subscriptions` and
 `live_query_dependencies` rows, and connected sockets can hydrate those active
-rows back into the structural fanout with fresh snapshots. It still has no
-broader SQL query-provider performance-hardening pass, no authenticated
-Worker/frontend live-query surface or full frontend reconnect protocol, and no
-Cloudflare DAG interpreter/action execution surface.
+rows back into the structural fanout with fresh snapshots. The Worker shell can
+now route `/live-query/<room>` through the same token auth boundary as relay
+rooms, and DO code can attach upgraded requests to an existing live current-query
+fanout. It still has no broader SQL query-provider performance-hardening pass,
+no production SQLite DO live-query assembly or frontend SDK/session protocol,
+and no Cloudflare DAG interpreter/action execution surface.
 
 This doc defines what it takes to bring Cloudflare to parity, in what order, and
 which decisions must be settled first — and it makes **live frontend queries an
@@ -152,6 +154,7 @@ function surface — backed by Durable Object SQLite instead of the Convex DB.
 | `createDurableObjectSqliteAlarmMultiplexer` | Structural single-alarm helper: arms `ctx.storage.setAlarm` to the earliest pending collection or flow-wait timer row, drains due ticks through the corresponding firing path, and re-arms or deletes the alarm |
 | `DurableObjectSqliteLiveInvalidationFanout` | Structural WebSocket invalidation helper: accepts bounded `e` / `a` subscriptions and broadcasts current-projection change summaries to matching sockets |
 | `DurableObjectSqliteLiveCurrentQueryFanout` | Structural WebSocket live-query helper: accepts bounded projection-backed current Datalog query subscriptions, sends initial snapshots, refreshes matching subscriptions from projection-change summaries, and hydrates active persisted rows for connected sockets |
+| `attachDurableObjectSqliteLiveQueryWebSocket` | Structural DO helper: attaches upgraded WebSocket requests to an existing live current-query fanout |
 | `DurableObjectWebSocketRelay` | version-vector hello/delta sync + event fan-out |
 | `MetaCrdtRelayDurableObject` / `relayWorker` | Worker/DO example shell |
 
@@ -325,12 +328,21 @@ The same live current-query fanout can now also hydrate connected sockets from
 active persisted subscription rows. `hydrateConnection` and socket
 `query.hydrate` reattach rows filtered by fanout protocol and optional scope,
 rerun current queries, and send fresh `query.subscribed` snapshots. This is a
-structural reconnect hydration seed only: it does not add authenticated Worker
-routes, durable client session tokens, result diffs, or frontend SDK behavior.
+structural reconnect hydration seed only: it does not add production DO
+assembly, durable client session tokens, result diffs, or frontend SDK behavior.
+
+Cloudflare now also has the first authenticated live-query Worker route seed.
+`createRelayWorker` forwards `/live-query/<room>` through the same
+Bearer/header/query-token auth boundary used by relay room routes, and
+`attachDurableObjectSqliteLiveQueryWebSocket` attaches upgraded DO requests to an
+already-created `DurableObjectSqliteLiveCurrentQueryFanout`. This is route and
+attachment plumbing only: it does not assemble the SQLite runtime/current
+surface/fanout in a production DO class, and it does not add frontend SDK
+behavior, durable session tokens, result diffs, or a full reconnect protocol.
 
 **Still ahead for Phase D parity:** full flow interpreter/action execution and
-authenticated WebSocket live-query Worker/frontend plumbing with a full frontend
-reconnect/session protocol.
+production WebSocket live-query DO assembly/frontend SDK behavior with a full
+frontend reconnect/session protocol.
 
 ### Phase E — Sharding + real multi-replica sync
 
@@ -418,8 +430,8 @@ The Phase B adapters (~600–800 LOC) get **shared, not rewritten**. The
 Cloudflare-specific work is comparable to the existing Convex component: the
 runtime-service SQLite seed and first log/current/query facade are now present;
 the remaining work is broader SQL-indexed query-provider parity/performance
-hardening, full flow interpreter/action execution, and authenticated live
-frontend/Worker query plumbing plus a full reconnect/session protocol over the
+hardening, full flow interpreter/action execution, and production live-query DO
+assembly/frontend SDK behavior plus a full reconnect/session protocol over the
 persisted snapshot/update helper.
 Roughly 2–4 focused sessions remain, gated on shared fold/reconcile reuse. The
 live-query stretch goal is a separate later increment on top.

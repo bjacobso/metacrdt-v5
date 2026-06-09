@@ -271,13 +271,19 @@ on top of that registry: `DurableObjectSqliteLiveCurrentQueryFanout` can reattac
 active persisted current-query rows for a connected socket, send fresh
 `query.subscribed` snapshots, and accept socket `query.hydrate` messages without
 claiming authenticated Worker/frontend routing, durable client sessions, result
-diffs, or a frontend SDK. The next active goal should be chosen from the
-remaining TODO candidates:
+diffs, or a frontend SDK. Goal 136 adds the first authenticated Worker route
+seed for live-query sockets: `createRelayWorker` now routes `/live-query/<room>`
+through the same token-protected Durable Object binding, and
+`attachDurableObjectSqliteLiveQueryWebSocket` attaches upgraded DO requests to an
+existing structural live current-query fanout. This still does not provide a
+production SQLite DO assembly, frontend SDK, durable client session protocol,
+or result diffs. The next active goal should be chosen from the remaining TODO
+candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (broader SQL query-provider
 parity/performance hardening, full flow interpreter/action execution,
-authenticated live-query Worker/frontend plumbing and full frontend reconnect
+production live-query DO assembly/frontend SDK and full frontend reconnect
 protocol),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
@@ -9493,6 +9499,43 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 136 — Cloudflare Authenticated Live Query Worker Route Seed
+
+**Status:** shipped.
+
+**Objective:** add the first authenticated Worker/DO route plumbing for
+Cloudflare live current-query WebSockets.
+
+### What Shipped
+
+- Added `liveQueryPathPrefix` to `createRelayWorker`, defaulting to
+  `/live-query`, so live-query room paths route to the same Durable Object
+  binding and use the existing Bearer/header/query-token auth boundary.
+- Added `attachDurableObjectSqliteLiveQueryWebSocket`, a DO-side helper that
+  accepts upgraded requests, derives a connection id from `?client=` or
+  `Sec-WebSocket-Key`, creates a WebSocket pair, and attaches the server socket
+  to an existing `DurableObjectSqliteLiveCurrentQueryFanout`.
+- Exported the helper and option type from `@metacrdt/cloudflare`.
+- Added focused Cloudflare Worker tests proving live-query route forwarding is
+  token-protected and that the attach helper wires socket `query.subscribe`
+  messages into the structural live current-query fanout.
+
+### Non-Goals
+
+- Do not claim a production SQLite Durable Object assembly that constructs the
+  runtime, current surface, fanout, alarm multiplexer, and route table together.
+- Do not claim frontend SDK/client behavior, durable session tokens, result
+  diffing, or a full reconnect/session protocol.
+- Do not implement full Cloudflare flow interpreter/action execution or broader
+  historical SQL query-provider parity/performance hardening.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 53 Cloudflare tests.
 
 ---
 

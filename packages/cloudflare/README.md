@@ -60,9 +60,15 @@ implements them on Cloudflare.
   `DurableObjectSqliteLiveQuerySubscriptionStore`, which stores
   `live_query_subscriptions` and indexed `live_query_dependencies` rows over DO
   SQLite, and it can hydrate connected sockets from active persisted rows with
-  fresh `query.subscribed` snapshots. This is snapshot/update, metadata
-  persistence, and structural hydration plumbing, not query auth, Worker
-  routing, durable client sessions, result diffs, or a frontend SDK.
+  fresh `query.subscribed` snapshots.
+- **Durable Object SQLite live-query route plumbing** —
+  `createRelayWorker` forwards `/live-query/<room>` through the same token auth
+  boundary as relay room routes, and
+  `attachDurableObjectSqliteLiveQueryWebSocket` attaches upgraded DO requests to
+  an existing `DurableObjectSqliteLiveCurrentQueryFanout`. This is
+  snapshot/update, metadata persistence, structural hydration, and route attach
+  plumbing, not a production SQLite DO assembly, frontend SDK, durable client
+  sessions, or result diffs.
 - **WebSocket relay** — `DurableObjectWebSocketRelay` / `attachDurableObjectRelay`
   (`RelayConnection`, `RelayOptions`, `WebSocketLike`): accepts server sockets,
   answers version-vector hellos with deltas, merges client events through the
@@ -103,6 +109,7 @@ to the same projections as any other target.
 import {
   createDurableObjectRuntime,
   createDurableObjectSqliteCurrentSurface,
+  attachDurableObjectSqliteLiveQueryWebSocket,
   DurableObjectSqliteLiveCurrentQueryFanout,
   DurableObjectSqliteLiveInvalidationFanout,
   createDurableObjectRuntimeLayer,
@@ -168,8 +175,8 @@ historical provider has conformance-style coverage for joins, disjunction,
 negation, compare/compute, pagination, aggregation, derived rows, lifecycle
 visibility, and bounded SQLite scan counters. The remaining parity plan —
 broader historical SQL-indexed query optimization, full flow interpreter/action
-execution, authenticated live frontend/Worker query plumbing, and
-full frontend reconnect/session protocol over DO WebSockets — is
+execution, production live-query DO assembly/frontend SDK behavior, and full
+frontend reconnect/session protocol over DO WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth

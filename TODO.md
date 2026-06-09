@@ -8,12 +8,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ### Current pulse
 
-- [x] Goal 135 shipped: Cloudflare live current-query reconnect hydration seed.
+- [x] Goal 136 shipped: Cloudflare authenticated live-query Worker route seed.
 - [ ] Choose the next active slice from remaining Cloudflare parity (full flow
-  interpreter/action execution, authenticated live-query Worker/frontend
-  plumbing and full frontend reconnect protocol, or broader historical SQL
-  query-provider parity/performance hardening), Node production hardening,
-  provider-specific auth/UI wrapping, or a scoped Confect/domain wrapper.
+  interpreter/action execution, production live-query DO assembly/frontend SDK
+  and full frontend reconnect protocol, or broader historical SQL query-provider
+  parity/performance hardening), Node production hardening, provider-specific
+  auth/UI wrapping, or a scoped Confect/domain wrapper.
 
 ### Handoff: continue MetaCRDT on `main` from commit `c6c4379`
 
@@ -205,8 +205,13 @@ After implementation:
   current-query rows for a connected socket, filter by protocol and optional
   scope, reattach them to in-memory fanout state, send fresh `query.subscribed`
   snapshots, and accept socket `query.hydrate` messages.
+- [x] **Goal 136 shipped: authenticated live-query Worker route seed** —
+  `createRelayWorker` now routes `/live-query/<room>` through the same
+  token-protected Durable Object binding as relay rooms, and
+  `attachDurableObjectSqliteLiveQueryWebSocket` attaches upgraded DO requests to
+  an existing structural live current-query fanout.
 - [ ] **Remaining Cloudflare Phase D parity** — full flow interpreter/action
-  execution, authenticated live-query Worker/frontend plumbing, full frontend
+  execution, production live-query DO assembly/frontend SDK, full frontend
   reconnect/session protocol, and broader
   historical SQL query-provider parity/performance hardening remain open; do not
   claim full parity until those are implemented.
@@ -308,8 +313,12 @@ After implementation:
 - [x] Cloudflare Durable Object SQLite live current-query reconnect hydration —
   `hydrateConnection` and socket `query.hydrate` reattach active persisted
   current-query rows for connected sockets and send fresh snapshots while
-  leaving authenticated routes, durable client session tokens, result diffs, and
-  a frontend SDK open.
+  leaving production DO assembly, durable client session tokens, result diffs,
+  and a frontend SDK open.
+- [x] Cloudflare Durable Object SQLite authenticated live-query route seed —
+  `createRelayWorker` forwards `/live-query/<room>` through the existing token
+  auth boundary, and `attachDurableObjectSqliteLiveQueryWebSocket` connects
+  upgraded DO requests to a live current-query fanout.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -320,9 +329,9 @@ After implementation:
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — full
   SQL-indexed query-provider parity/performance hardening, full flow
-  interpreter/action execution, authenticated live-query Worker/frontend
-  plumbing, and full frontend reconnect/session protocol on top of the persisted
-  registry (see [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
+  interpreter/action execution, production live-query DO assembly/frontend SDK,
+  and full frontend reconnect/session protocol on top of the persisted registry
+  (see [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
@@ -851,6 +860,19 @@ After implementation:
 ---
 
 ## Log
+
+### 2026-06-08 — Cloudflare live-query Worker route seed
+- [x] **Worker route is authenticated.** `createRelayWorker` now forwards
+  `/live-query/<room>` to the configured Durable Object binding through the
+  same Bearer/header/query-token auth boundary used for relay rooms.
+- [x] **DO attach helper.** `attachDurableObjectSqliteLiveQueryWebSocket`
+  accepts upgraded requests, derives a connection id from `?client=` or
+  `Sec-WebSocket-Key`, and connects the server socket to an existing
+  `DurableObjectSqliteLiveCurrentQueryFanout`.
+- [x] **Still scoped.** This is route/attachment plumbing only; production
+  SQLite DO assembly, frontend SDK behavior, durable session tokens, result
+  diffs, full reconnect protocol, flow execution, and broader SQL query-provider
+  hardening remain open.
 
 ### 2026-06-08 — Cloudflare DO SQLite live-query reconnect hydration
 - [x] **Hydration API for persisted subscriptions.**

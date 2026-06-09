@@ -224,11 +224,13 @@ export {
 
 export {
   MetaCrdtRelayDurableObject,
+  attachDurableObjectSqliteLiveQueryWebSocket,
   createRelayWorker,
   relayWorker,
   type DurableObjectNamespaceLike,
   type DurableObjectStateLike,
   type DurableObjectStubLike,
+  type DurableObjectSqliteLiveQueryWebSocketOptions,
   type RelayAuthOptions,
   type RelayDurableObjectOptions,
   type RelayWorkerEnv,
