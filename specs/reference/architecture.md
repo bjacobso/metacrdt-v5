@@ -40,7 +40,7 @@ MetaCRDT — the umbrella: the primitive, the thesis, the org
 │   @metacrdt/cloudflare ..... Durable-Object edge replica + WS sync
 │   @metacrdt/local .......... browser/local-first target (the foldkit client)
 │
-├─ TOOLING           @metacrdt/forma = Lisp authoring language → IR
+├─ TOOLING           @forma/ts = Lisp authoring language → IR
 │                    Schematics = the IDE/authoring surface
 │
 ├─ ONTOLOGY          "Alpha Ontology" = the default shipped blueprint
@@ -50,7 +50,7 @@ MetaCRDT — the umbrella: the primitive, the thesis, the org
 ```
 
 The detailed package fold from the Open Ontology submodule is specified in
-[package-consolidation.md](../archive/package-consolidation.md): `@metacrdt/forma` for
+[package-consolidation.md](../archive/package-consolidation.md): `@forma/ts` for
 the Lisp language, `@metacrdt/views` for ViewSpec, feature packages for schema /
 query / workflow / forms / agent, and target packages for Convex / Cloudflare /
 local / node.
@@ -80,7 +80,7 @@ whole point of the harness:
 | --- | --- |
 | **Open Ontology** | the open spec / community effort (SPEC.md) |
 | **Alpha Ontology** | the default ontology shipped with MetaCRDT (the standard blueprint library) |
-| **Onlang / Forma** | `@metacrdt/forma`, the Lisp authoring language / compiler frontend (authoring → IR) |
+| **Onlang / Forma** | `@forma/ts`, the Lisp authoring language / compiler frontend (authoring → IR) |
 | **Schematics** | the IDE / tooling |
 | **Onboarded** | the first application built on MetaCRDT (datarooms / compliance) |
 | **Meta-Effects** | absorbed: the runtime is `@metacrdt/runtime` + Effect Layers |
@@ -96,7 +96,7 @@ not invented:
 | `packages/schema` (`@metacrdt/schema`) | pure schema-as-facts conventions: carrier ids, bootstrap cardinalities, value/cardinality guards, meta-attributes, definition fact lowering, attribute-shape reconstruction |
 | `packages/query` (`@metacrdt/query`) | pure Datalog/query semantics: clause parsing, operator helpers, projection, pagination, aggregation, descriptions, rule-locality analysis, rule emit shaping, clause-pick planning, provenanced binding dedupe, pattern-input construction, provenanced pattern extension/candidate expansion with accumulated row-limit checking, negation candidate checking, compare/compute state transitions, intermediate-row limit guard, bound-variable advancement, solver-frame initialization, solver work-list clause selection/removal |
 | `packages/convex` (`@metacrdt/convex`) | Convex/core adapters, validators, Confect sidecar warning, component-owned protocol log, current projections, and cardinality-one reconciliation |
-| `packages/forma` (`@metacrdt/forma`) | Lisp authoring language: reader, formatter, evaluator, VM, type inference |
+| `packages/@forma/ts` (`@forma/ts`) | Lisp authoring language: reader, formatter, evaluator, VM, type inference |
 | `packages/runtime` (`@metacrdt/runtime`) | runtime service contracts + memory harness + localStorage target seed + BroadcastChannel and p2p DataChannel transports proving target-neutral convergence, restart durability, same-origin anti-entropy, and peer-to-peer gossip |
 | `packages/cloudflare` (`@metacrdt/cloudflare`) | Durable Object storage-backed runtime services, structural WebSocket relay shell, and Worker/DO example shell. Parity build-out to a DO + SQLite triple store (and live queries over DO WebSockets as a stretch goal) is planned in [cloudflare-target.md](../plans/cloudflare-target.md) |
 | `packages/local` (`@metacrdt/local`) | browser/local-first target package composing runtime localStorage services + BroadcastChannel transport, plus async local runtime services, IndexedDB-compatible persistence, and SQLite-compatible persistence |
@@ -118,7 +118,7 @@ not invented:
   JavaScript plus declarations into package-local `dist/` directories.
 - The root [`tsdown.config.ts`](../tsdown.config.ts) is the package build
   contract: most packages use the neutral ES2020 `src/index.ts` entry, while
-  outliers such as `@metacrdt/forma` and `@metacrdt/convex` declare their entry
+  outliers such as `@forma/ts` and `@metacrdt/convex` declare their entry
   surfaces there instead of copy-pasting long CLI flags in every package.
 - Package public surfaces resolve through `dist` exports, not raw TypeScript
   source. This keeps the package graph honest for downstream consumers while
@@ -138,7 +138,7 @@ not invented:
    at `packages/core`: pure, dependency-free, and tested (SPEC §4–5; the events,
    `≺` order, G-Set merge, and deterministic bitemporal fold). It's the determinism
    guarantee and the most reusable. **`@metacrdt/schema`, `@metacrdt/query`,
-   `@metacrdt/convex`, `@metacrdt/forma`, `@metacrdt/runtime`,
+   `@metacrdt/convex`, `@forma/ts`, `@metacrdt/runtime`,
    `@metacrdt/cloudflare`, `@metacrdt/local`, and
    `@metacrdt/testkit` now exist too**: schema owns the pure carrier-id,
    bootstrap-cardinality, meta-attribute, definition-lowering, and

@@ -7,4 +7,4 @@
 
 | Doc | Why it's archived |
 | --- | --- |
-| [`package-consolidation.md`](./package-consolidation.md) | The original proposal to fold the Open Ontology packages/specs into this repo as the canonical `@metacrdt/*` monorepo. The fold it describes has largely happened (`@metacrdt/forma`, `@metacrdt/views`, the `core`/`query`/target split); kept as the record of that decision. |
+| [`package-consolidation.md`](./package-consolidation.md) | The original proposal to fold the Open Ontology packages/specs into this repo as the canonical `@metacrdt/*` monorepo. The fold it describes has largely happened (`@forma/ts`, `@metacrdt/views`, the `core`/`query`/target split); kept as the record of that decision. |

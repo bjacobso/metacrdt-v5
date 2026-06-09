@@ -25,7 +25,7 @@ behavior. This is a tooling-only migration.
 - Package manager: `npm@11.6.2`, single lockfile `package-lock.json`.
 - Root `package.json` has `"workspaces": ["packages/*"]` and `"private": true`.
 - Workspace packages (all under `packages/*`):
-  `@metacrdt/cloudflare`, `@metacrdt/convex`, `@metacrdt/core`, `@metacrdt/forma`,
+  `@metacrdt/cloudflare`, `@metacrdt/convex`, `@metacrdt/core`, `@forma/ts`,
   `@metacrdt/local`, `@metacrdt/node`, `@metacrdt/query`, `@metacrdt/runtime`,
   `@metacrdt/schema`, `@metacrdt/testkit`, `@metacrdt/views`.
 - **Sibling deps are referenced by fixed version** (e.g. `"@metacrdt/core": "0.1.0"`),
@@ -157,7 +157,7 @@ pnpm pack:packages    # dry-run pack check per package
 Also sanity-check the per-package filter scripts resolve correctly, e.g.:
 
 ```bash
-pnpm test:forma       # -> pnpm --filter @metacrdt/forma test
+pnpm test:forma       # -> pnpm --filter @forma/ts test
 ```
 
 And confirm the app dev path still works (build only, don't leave a server running):

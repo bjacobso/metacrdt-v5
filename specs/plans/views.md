@@ -2,7 +2,7 @@
 
 Fold Open Ontology's ViewSpec into a new `@metacrdt/views` feature package, with
 the view contract **generated from in-package Forma preludes** and the output
-**vendored**. This is the first production exercise of `@metacrdt/forma`'s
+**vendored**. This is the first production exercise of `@forma/ts`'s
 descriptor codegen.
 
 ## Status at a glance
@@ -100,7 +100,7 @@ is authored in Forma; the typed protocol is a derived projection of it.
 layer. Of the six functions OO's view codegen used:
 
 - `buildProtocolObjectDescriptors`, `emitProtocolObjectSchema`,
-  `emitProtocolModule` → **already in** `packages/forma/src/Descriptor.ts`,
+  `emitProtocolModule` → **already in** `packages/@forma/ts/src/Descriptor.ts`,
   exported via `DescriptorCodegen`.
 - `parseDescriptorPrelude` / `parseDescriptor` → **not yet named exports**, but
   forma is the Lisp reader and `descriptor/parse-descriptor.ts` exists. Small
@@ -122,7 +122,7 @@ packages/views/
     index.ts           # runtime: normalize / validate / evaluate (ports OO index.ts)
   views.test.ts        # runtime tests + a DRIFT test
   package.json         # runtime dep: effect only
-                       # devDep: @metacrdt/forma  ← build-time only
+                       # devDep: @forma/ts  ← build-time only
 ```
 
 Properties that make this "best of both worlds":
@@ -146,14 +146,14 @@ Properties that make this "best of both worlds":
    consumes it change and version together.
 2. **Extract only when the boundary is proven.** The IR has exactly one
    consumer (the views runtime) → no package. Keep it a folder.
-3. **The engine already has a home.** The codegen lives in `@metacrdt/forma`
+3. **The engine already has a home.** The codegen lives in `@forma/ts`
    (`DescriptorCodegen`); a `view-ir` package would be an empty boundary.
 4. The self-hosting story lands in one unit: "the view contract is generated
    from Forma, inside the package that owns it."
 
 Split later **only** if a second protocol gets generated the same way (e.g. a
 forms-protocol, or a JIT HttpApi contract). Then the *generate harness* (not the
-IR) might graduate into a shared `@metacrdt/forma/codegen` entry. That is a
+IR) might graduate into a shared `@forma/ts/codegen` entry. That is a
 harness extraction, never a `view-ir` data package.
 
 ## Ownership
@@ -211,7 +211,7 @@ reframed as an *edge binding layer* that lives outside views.
 The whole layout rested on one unproven seam: can forma read a `.lisp` prelude →
 descriptors → emit the Schema that OO's `view-node.generated.ts` etc. produced?
 
-**Result: it round-trips exactly.** `@metacrdt/forma/descriptor` re-exports
+**Result: it round-trips exactly.** `@forma/ts/descriptor` re-exports
 *every* protocol-codegen function OO's `generate-view-node.ts` imported (22 of
 23 identically; the 23rd, `parseDescriptorPrelude`, is forma's `parsePrelude`
 with the same `{ forms }` shape). The OO type names map cleanly
@@ -238,13 +238,13 @@ collapsed into one step.
 - `preludes/{ui,viewspec,viewspec-protocol}.lisp` — the Forma source of truth.
 - `scripts/generate-view-node.ts` (+ `protocol-ir-snapshots.ts`,
   `viewspec-ir-snapshots.ts`, and the two `snapshot:*` CLIs) — drive
-  `@metacrdt/forma`'s descriptor codegen over the preludes.
+  `@forma/ts`'s descriptor codegen over the preludes.
 - `src/generated/*.generated.ts` — vendored, committed Schema IR.
 - `src/index.ts` — ported pure runtime (normalize/validate/evaluate/path
   helpers), `effect`-only.
 - `test/*` — 25 tests: contract, IR-snapshot conformance, runtime behavior, and
   the drift guard.
-- `@metacrdt/forma` is a build-time devDependency only; the shipped runtime +
+- `@forma/ts` is a build-time devDependency only; the shipped runtime +
   vendored Schema depend only on `effect`.
 
 Gates green: `pnpm test:packages`, `pnpm pack:packages`,
@@ -338,7 +338,7 @@ Likely starts as Forma preludes / app code; becomes a package only when proven.
 - [x] No import from `.context/open-ontology`.
 - [x] Runtime tests + drift test (`generated-sources.test.ts`) green; IR snapshot
   tests green (25 tests total).
-- [x] Runtime depends only on `effect`; `@metacrdt/forma` is a build-time
+- [x] Runtime depends only on `effect`; `@forma/ts` is a build-time
   devDependency only.
 - [x] `pnpm test:packages`, `pnpm build:packages`, `pnpm pack:packages`,
   `pnpm typecheck`, `pnpm build` pass.
