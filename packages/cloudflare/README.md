@@ -68,6 +68,15 @@ implements them on Cloudflare.
   registry lookup and one-effect execution only, not multi-effect configured
   action execution, branch evaluation, declarative workflow interpretation, or
   host action invocation.
+- **Durable Object SQLite caller-provided flow interpreter seed** —
+  `executeFlow` on `createDurableObjectSqliteCurrentSurface` interprets bounded
+  caller-provided flow steps over the existing DAG/action/collection/wait
+  substrate. It runs assert/notify/action steps inline, evaluates simple
+  current-state branch patterns, and parks collect/wait steps with
+  caller-provided operational ids. This is interpreter plumbing for supplied
+  step definitions, not persisted flow definition registry lookup, automatic
+  resume orchestration, multi-effect configured action execution, or host action
+  invocation.
 - **Durable Object SQLite live invalidation fanout** —
   `DurableObjectSqliteLiveInvalidationFanout` plus Effect/Promise publish
   helpers accept bounded `e` / `a` subscriptions over structural WebSocket
@@ -232,9 +241,9 @@ deterministic `changed` summaries for current-projection rebuilds. The indexed
 historical provider has conformance-style coverage for joins, disjunction,
 negation, compare/compute, pagination, aggregation, derived rows, lifecycle
 visibility, and bounded SQLite scan counters. The remaining parity plan —
-broader historical SQL-indexed query optimization, full flow
-interpreter/branching/host action invocation, and full React/frontend SDK
-live-query package/auth integration over DO WebSockets — is
+broader historical SQL-indexed query optimization, persisted flow registry /
+resume orchestration / host action invocation parity, and full React/frontend
+SDK live-query package/auth integration over DO WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth

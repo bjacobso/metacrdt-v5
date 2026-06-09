@@ -8,9 +8,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ### Current pulse
 
-- [x] Goal 144 shipped: Cloudflare registered action lookup seed.
+- [x] Goal 145 shipped: Cloudflare caller-provided flow interpreter seed.
 - [ ] Choose the next active slice from remaining Cloudflare parity (full flow
-  interpreter/branching/host action invocation, full React/frontend SDK
+  registry/resume orchestration/host action invocation parity, full React/frontend SDK
   live-query package, or broader historical SQL query-provider
   parity/performance hardening), Node production hardening, provider-specific
   auth/UI wrapping, or a scoped Confect/domain wrapper.
@@ -256,8 +256,14 @@ After implementation:
   resolves `$entity` / `$arg.*` placeholders, validates `appliesTo` against the
   target entity's current `type` facts, and delegates a single supported
   configured effect to `executeAction`.
-- [ ] **Remaining Cloudflare Phase D parity** — full flow interpreter, branch
-  evaluation, multi-effect configured action execution, host action invocation,
+- [x] **Goal 145 shipped: caller-provided flow interpreter seed** —
+  `executeFlow` interprets bounded caller-provided flow step arrays over the DO
+  SQLite current facade. It executes inline assert/notify/action steps, evaluates
+  simple current-state branch patterns, and parks on collect/wait steps through
+  existing collection and flow-wait timer rows.
+- [ ] **Remaining Cloudflare Phase D parity** — persisted flow definition
+  registry lookup, automatic resume orchestration after collection submission or
+  timer wake, multi-effect configured action execution, host action invocation,
   full React/frontend SDK live-query package/auth integration, and broader
   historical SQL query-provider parity/performance hardening remain open; do not
   claim full parity until those are implemented.
@@ -398,6 +404,11 @@ After implementation:
   `executeRegisteredAction` read configured action facts from current projection
   rows, resolve action args, validate entity type applicability, and execute one
   supported assertion or collection-opening effect.
+- [x] Cloudflare Durable Object SQLite caller-provided flow interpreter seed —
+  `executeFlow` runs bounded caller-provided flow definitions with assert,
+  notify, branch, action, collect, wait, done, and unsupported steps over the
+  current facade, without claiming persisted flow registry, automatic resume, or
+  host action parity.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -407,10 +418,10 @@ After implementation:
 - [x] p2p DataChannel transport — `@metacrdt/runtime` now has a structural
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — full
-  SQL-indexed query-provider parity/performance hardening, full flow
-  interpreter/branching/host action invocation, full React/frontend SDK
-  live-query package/auth integration, and broader production hardening on top
-  of the persisted registry (see
+  SQL-indexed query-provider parity/performance hardening,
+  persisted/resumable flow registry parity, host action invocation, full
+  React/frontend SDK live-query package/auth integration, and broader production
+  hardening on top of the persisted registry (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
@@ -941,6 +952,21 @@ After implementation:
 
 ## Log
 
+### 2026-06-09 — Cloudflare caller-provided flow interpreter seed
+- [x] **Bounded flow runner.**
+  `executeFlow` now interprets caller-provided flow steps over the DO SQLite
+  current facade with deterministic timeline ids derived from a caller-provided
+  `eventIdPrefix`.
+- [x] **Inline and parking steps.**
+  The runner handles assert, notify, branch, registered action, collect, wait,
+  done, and unsupported steps. Assert/action effects reuse existing
+  append/reconcile and registered-action paths; collect/wait steps park through
+  existing collection and flow-wait timer rows.
+- [x] **Still scoped.** Persisted flow definition registry lookup, automatic
+  resume orchestration after collection submission or timer wake, multi-effect
+  configured actions, host action invocation, React/frontend SDK integration,
+  and broader SQL query-provider hardening remain open.
+
 ### 2026-06-09 — Cloudflare registered action lookup seed
 - [x] **Projection-backed registry reads.**
   `actionByName`, `listActions`, and `actionsForType` now load
@@ -949,9 +975,10 @@ After implementation:
   `executeRegisteredAction` resolves `$entity` / `$arg.*` placeholders, validates
   the target entity's current `type` facts against `appliesTo`, and delegates one
   supported configured effect to `executeAction`.
-- [x] **Still scoped.** Multi-effect configured actions, branch evaluation,
-  declarative DAG interpretation, host action invocation, React/frontend SDK
-  integration, and broader SQL query-provider hardening remain open.
+- [x] **Still scoped.** Branch evaluation was added later in Goal 145; persisted
+  flow registry/resume orchestration, multi-effect configured actions, host
+  action invocation, React/frontend SDK integration, and broader SQL
+  query-provider hardening remain open.
 
 ### 2026-06-09 — Cloudflare action execution seed
 - [x] **Action facade.**

@@ -317,13 +317,20 @@ SQLite current projection rows, resolve `$entity` / `$arg.*` placeholders,
 validate `appliesTo` against the target entity's current type facts, and execute
 one supported configured effect. This still does not provide multi-effect action
 execution, branch evaluation, host action invocation, or a full flow
-interpreter. The next active goal should be chosen from
+interpreter. Goal 145 adds the first bounded Cloudflare flow interpreter seed:
+`executeFlow` runs caller-provided flow steps over the existing DO SQLite
+current facade, evaluates simple current-state branch patterns, executes inline
+assert/notify/action steps, and parks on collect/wait steps with
+caller-provided operational ids. This still does not provide persisted flow
+definition registry lookup, automatic resume orchestration after collection or
+timer wakeups, multi-effect configured action execution, host action invocation,
+or a full frontend SDK. The next active goal should be chosen from
 the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (broader SQL query-provider
-parity/performance hardening, a full flow interpreter/branching/host action
-invocation surface, or a full React/frontend SDK live-query package),
+parity/performance hardening, persisted/resumable flow registry parity, host
+action invocation, or a full React/frontend SDK live-query package),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9538,6 +9545,51 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 145 — Cloudflare Caller-Provided Flow Interpreter Seed
+
+**Status:** shipped.
+
+**Objective:** add the first bounded Cloudflare flow interpreter surface over
+DO SQLite current rows and operational DAG primitives, while keeping flow
+definitions caller-provided and all operational ids deterministic.
+
+### What Shipped
+
+- Added `DurableObjectSqliteFlowStep` / `DurableObjectSqliteExecuteFlowArgs`
+  schemas/types plus `executeFlow` on `createDurableObjectSqliteCurrentSurface`.
+- Added `executeDurableObjectSqliteFlowEffect`, which interprets a bounded
+  caller-provided step array with `assert`, `notify`, `branch`, `action`,
+  `collect`, `wait`, `done`, and `unsupported` steps.
+- Assert steps delegate through `executeDagStep` and append protocol events via
+  the existing scoped projection reconcile path.
+- Branch steps evaluate simple current-state triple patterns against the flow
+  subject, including `$subject` / `?s` entity terms and `$ctx.*` value
+  resolution.
+- Action steps delegate to `executeRegisteredAction`, so configured action facts
+  can drive one supported assertion or collection-opening effect.
+- Collect and wait steps park DAG runs through existing collection rows and
+  flow-wait timer rows. Collection tokens and wait timer ids remain
+  caller-provided; timeline ids are deterministically derived from a
+  caller-provided `eventIdPrefix`.
+- Focused Cloudflare tests prove inline assert/branch/notify/done execution,
+  collect parking with a caller token, and registered-action execution followed
+  by branch evaluation.
+
+### Non-Goals
+
+- Do not claim persisted flow definition registry lookup, automatic resume
+  orchestration after collection submission or timer wake, multi-effect
+  configured action execution, host action invocation, or complete flow parity.
+- Do not implement React hooks, frontend SDK auth storage, or broader historical
+  SQL query-provider parity/performance hardening.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 74 Cloudflare tests.
 
 ---
 

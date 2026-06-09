@@ -401,6 +401,42 @@ export const DurableObjectSqliteExecuteActionArgsSchema = Schema.Struct({
   ),
 });
 
+export const DurableObjectSqliteFlowStepTypeSchema = Schema.Literal(
+  "assert",
+  "collect",
+  "wait",
+  "action",
+  "branch",
+  "notify",
+  "done",
+  "unsupported",
+);
+
+export const DurableObjectSqliteFlowStepSchema = Schema.Struct({
+  id: Schema.String,
+  type: DurableObjectSqliteFlowStepTypeSchema,
+  next: Schema.optionalWith(Schema.String, { exact: true }),
+  config: Schema.optionalWith(Schema.Any, { exact: true }),
+});
+
+export const DurableObjectSqliteExecuteFlowArgsSchema = Schema.Struct({
+  runId: Schema.String,
+  flowDefName: Schema.String,
+  subject: Schema.String,
+  steps: Schema.Array(DurableObjectSqliteFlowStepSchema),
+  startStepId: Schema.optionalWith(Schema.String, { exact: true }),
+  subjectType: Schema.optionalWith(Schema.String, { exact: true }),
+  eventIdPrefix: Schema.String,
+  actor: Schema.String,
+  actorType: Schema.optionalWith(
+    Schema.Literal("human", "agent", "system", "migration"),
+    { exact: true },
+  ),
+  now: Schema.optionalWith(Schema.Number, { exact: true }),
+  context: Schema.optionalWith(Schema.Any, { exact: true }),
+  maxSteps: Schema.optionalWith(Schema.Number, { exact: true }),
+});
+
 export const DurableObjectSqliteRecordDagRunArgsSchema = Schema.Struct({
   runId: Schema.optionalWith(Schema.String, { exact: true }),
   flowDefName: Schema.String,
@@ -515,6 +551,10 @@ export type DurableObjectSqliteExecuteDagStepArgs =
   typeof DurableObjectSqliteExecuteDagStepArgsSchema.Type;
 export type DurableObjectSqliteExecuteActionArgs =
   typeof DurableObjectSqliteExecuteActionArgsSchema.Type;
+export type DurableObjectSqliteFlowStep =
+  typeof DurableObjectSqliteFlowStepSchema.Type;
+export type DurableObjectSqliteExecuteFlowArgs =
+  typeof DurableObjectSqliteExecuteFlowArgsSchema.Type;
 export type DurableObjectSqliteRecordDagRunArgs =
   typeof DurableObjectSqliteRecordDagRunArgsSchema.Type;
 export type DurableObjectSqliteDagRunByIdArgs =
@@ -589,6 +629,22 @@ export type DurableObjectSqliteExecuteActionResult =
 export type DurableObjectSqliteExecuteRegisteredActionResult = {
   readonly action: DurableObjectSqliteRegisteredAction;
   readonly execution: DurableObjectSqliteExecuteActionResult;
+};
+
+export type DurableObjectSqliteExecuteFlowStepSummary = {
+  readonly stepId: string;
+  readonly type: string;
+  readonly kind: string;
+  readonly message?: string;
+};
+
+export type DurableObjectSqliteExecuteFlowResult = {
+  readonly run: DurableObjectSqliteDagRun;
+  readonly steps: readonly DurableObjectSqliteExecuteFlowStepSummary[];
+  readonly assertions: readonly DurableObjectSqliteAppendAndRebuildResult[];
+  readonly collections: readonly DurableObjectSqliteCollection[];
+  readonly waitTicks: readonly DurableObjectSqliteFlowWaitTick[];
+  readonly actions: readonly DurableObjectSqliteExecuteRegisteredActionResult[];
 };
 
 export type DurableObjectSqliteCurrentSurfaceOptions = {
@@ -673,6 +729,9 @@ export type DurableObjectSqliteCurrentSurface = {
   executeAction(
     args: DurableObjectSqliteExecuteActionArgs,
   ): Promise<DurableObjectSqliteExecuteActionResult>;
+  executeFlow(
+    args: DurableObjectSqliteExecuteFlowArgs,
+  ): Promise<DurableObjectSqliteExecuteFlowResult>;
   executeRegisteredAction(
     args: DurableObjectSqliteExecuteRegisteredActionArgs,
   ): Promise<DurableObjectSqliteExecuteRegisteredActionResult>;
@@ -920,6 +979,102 @@ function resolveRegisteredActionString(
     throw new Error(`missing action ${label}`);
   }
   return String(value);
+}
+
+function recordOrEmpty(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function resolveFlowValue(
+  raw: unknown,
+  subject: string,
+  context: Readonly<Record<string, unknown>>,
+): unknown {
+  if (typeof raw !== "string") return raw;
+  if (raw === "$subject" || raw === "$entity") return subject;
+  if (raw.startsWith("$ctx.")) return context[raw.slice("$ctx.".length)];
+  if (raw.startsWith("$context.")) {
+    return context[raw.slice("$context.".length)];
+  }
+  return raw;
+}
+
+function flowEventId(prefix: string, index: number, stepId: string, kind: string): string {
+  return `${prefix}:${index}:${stepId}:${kind}`;
+}
+
+function flowStepSummary(
+  step: DurableObjectSqliteFlowStep,
+  kind: string,
+  message?: string,
+): DurableObjectSqliteExecuteFlowStepSummary {
+  return {
+    stepId: step.id,
+    type: step.type,
+    kind,
+    ...(message === undefined ? {} : { message }),
+  };
+}
+
+function flowTimelineEvent(
+  prefix: string,
+  index: number,
+  step: DurableObjectSqliteFlowStep,
+  kind: string,
+  message?: string,
+): DurableObjectSqliteDagEventInput {
+  return {
+    eventId: flowEventId(prefix, index, step.id, kind),
+    stepId: step.id,
+    type: step.type,
+    kind,
+    ...(message === undefined ? {} : { message }),
+  };
+}
+
+function hasCurrentValue(
+  entity: DurableObjectSqliteCurrentEntity | null,
+  attribute: string,
+  value: unknown,
+): boolean {
+  return (entity?.attributes[attribute] ?? []).some(
+    (candidate) => JSON.stringify(candidate) === JSON.stringify(value),
+  );
+}
+
+function flowEntityTermMatchesSubject(
+  term: unknown,
+  subjectVar: string,
+  subject: string,
+): boolean {
+  return term === `?${subjectVar}` || term === "$subject" || term === "$entity" ||
+    term === subject;
+}
+
+function branchMatchesCurrentEntity(
+  entity: DurableObjectSqliteCurrentEntity | null,
+  where: unknown,
+  subjectVar: string,
+  subject: string,
+  context: Readonly<Record<string, unknown>>,
+): boolean {
+  const clauses = Array.isArray(where) ? where : [];
+  const patterns = clauses.filter((clause): clause is readonly unknown[] =>
+    Array.isArray(clause) && clause.length >= 3
+  );
+  if (patterns.length === 0) return false;
+
+  for (const [e, a, v] of patterns) {
+    if (!flowEntityTermMatchesSubject(e, subjectVar, subject)) return false;
+    if (typeof a !== "string") return false;
+    if (typeof v === "string" && v.startsWith("?")) return false;
+    if (!hasCurrentValue(entity, a, resolveFlowValue(v, subject, context))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function listItemFromRows(
@@ -1505,6 +1660,463 @@ export function executeDurableObjectSqliteRegisteredActionEffect(
       coord,
     );
     return { action, execution };
+  });
+}
+
+export function executeDurableObjectSqliteFlowEffect(
+  dag: DurableObjectSqliteDagStore,
+  collections: DurableObjectSqliteCollectionStore,
+  flowWaitTimers: DurableObjectSqliteFlowWaitTimerStore,
+  args: DurableObjectSqliteExecuteFlowArgs,
+  defaultNow: number,
+  cardinalityOf: CardinalityOf,
+  coord: Coord,
+): Effect.Effect<
+  DurableObjectSqliteExecuteFlowResult,
+  RuntimeError | DurableObjectSqliteCurrentSurfaceError,
+  | EventStoreService
+  | ProjectionStoreService
+  | RuntimeClockService
+  | RuntimeSequencerService
+  | RuntimeProfileService
+  | TransportService
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "executeFlow",
+      DurableObjectSqliteExecuteFlowArgsSchema,
+      args,
+    );
+    const now = decoded.now ?? defaultNow;
+    const context = recordOrEmpty(decoded.context);
+    const maxSteps = limit(decoded.maxSteps, 50, 200);
+    if (decoded.steps.length === 0) {
+      return yield* Effect.fail(
+        surfaceError("executeFlow", new Error("executeFlow requires at least one step")),
+      );
+    }
+
+    const stepsById = new Map(decoded.steps.map((step) => [step.id, step]));
+    let currentStepId = decoded.startStepId ?? decoded.steps[0]!.id;
+    let currentEntity = yield* getDurableObjectSqliteCurrentEntityEffect({
+      e: decoded.subject,
+    });
+    if (decoded.subjectType !== undefined) {
+      const types = currentEntity?.attributes.type?.map((value) => String(value)) ?? [];
+      if (!types.includes(decoded.subjectType)) {
+        return yield* Effect.fail(
+          surfaceError(
+            "executeFlow",
+            new Error(
+              `flow ${decoded.flowDefName} applies to ${decoded.subjectType}, not ${types.join(", ") || "(untyped)"}`,
+            ),
+          ),
+        );
+      }
+    }
+
+    const summaries: DurableObjectSqliteExecuteFlowStepSummary[] = [];
+    const assertions: DurableObjectSqliteAppendAndRebuildResult[] = [];
+    const collectionsOut: DurableObjectSqliteCollection[] = [];
+    const waitTicks: DurableObjectSqliteFlowWaitTick[] = [];
+    const actions: DurableObjectSqliteExecuteRegisteredActionResult[] = [];
+
+    const recordTimeline = (
+      step: DurableObjectSqliteFlowStep,
+      index: number,
+      status: DurableObjectSqliteDagRunStatus,
+      current: string | undefined,
+      kind: string,
+      message?: string,
+    ) =>
+      Effect.tryPromise({
+        try: () =>
+          dag.record({
+            runId: decoded.runId,
+            flowDefName: decoded.flowDefName,
+            subject: decoded.subject,
+            status,
+            currentStepId: current,
+            context,
+            events: [
+              flowTimelineEvent(
+                decoded.eventIdPrefix,
+                index,
+                step,
+                kind,
+                message,
+              ),
+            ],
+            now,
+          }),
+        catch: (cause) => surfaceError("executeFlow", cause),
+      });
+
+    for (let index = 0; index < maxSteps; index++) {
+      const step = stepsById.get(currentStepId);
+      if (step === undefined || step.type === "done") {
+        const doneStep = step ?? {
+          id: currentStepId || "done",
+          type: "done" as const,
+        };
+        summaries.push(flowStepSummary(doneStep, "completed"));
+        const run = yield* recordTimeline(
+          doneStep,
+          index,
+          "completed",
+          doneStep.id,
+          "completed",
+        );
+        return { run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
+      }
+
+      const cfg = recordOrEmpty(step.config);
+      if (step.type === "assert") {
+        if (typeof cfg.a !== "string") {
+          const message = "assert missing string attr";
+          summaries.push(flowStepSummary(step, "unsupported", message));
+          const run = yield* recordTimeline(
+            step,
+            index,
+            "unsupported",
+            step.id,
+            "unsupported",
+            message,
+          );
+          return { run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
+        }
+        const value = resolveFlowValue(cfg.v, decoded.subject, context);
+        const result = yield* executeDurableObjectSqliteDagStepEffect(
+          dag,
+          collections,
+          flowWaitTimers,
+          {
+            runId: decoded.runId,
+            flowDefName: decoded.flowDefName,
+            subject: decoded.subject,
+            stepId: step.id,
+            kind: "assert",
+            eventId: flowEventId(decoded.eventIdPrefix, index, step.id, "asserted"),
+            now,
+            ...(step.next === undefined ? {} : { nextStepId: step.next }),
+            context,
+            assertions: [
+              {
+                a: cfg.a,
+                v: value,
+                actor: decoded.actor,
+                ...(decoded.actorType === undefined
+                  ? {}
+                  : { actorType: decoded.actorType as ActorType }),
+                reason: `flow ${decoded.flowDefName} step ${step.id}`,
+              },
+            ],
+            message: `${cfg.a} = ${JSON.stringify(value)}`,
+          },
+          defaultNow,
+          cardinalityOf,
+          coord,
+        );
+        assertions.push(...result.assertions);
+        summaries.push(flowStepSummary(step, "asserted", `${cfg.a}`));
+        currentEntity = yield* getDurableObjectSqliteCurrentEntityEffect({
+          e: decoded.subject,
+        });
+        if (result.run.status !== "running" || step.next === undefined) {
+          return { run: result.run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
+        }
+        currentStepId = step.next;
+        continue;
+      }
+
+      if (step.type === "notify") {
+        const message = cfg.message === undefined ? undefined : String(cfg.message);
+        summaries.push(flowStepSummary(step, "notify", message));
+        const next = step.next;
+        const run = yield* recordTimeline(
+          step,
+          index,
+          next === undefined ? "completed" : "running",
+          next ?? step.id,
+          "notify",
+          message,
+        );
+        if (next === undefined) {
+          return { run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
+        }
+        currentStepId = next;
+        continue;
+      }
+
+      if (step.type === "branch") {
+        currentEntity = yield* getDurableObjectSqliteCurrentEntityEffect({
+          e: decoded.subject,
+        });
+        const subjectVar = String(cfg.subjectVar ?? "s");
+        const taken = branchMatchesCurrentEntity(
+          currentEntity,
+          cfg.where,
+          subjectVar,
+          decoded.subject,
+          context,
+        );
+        const next = String((taken ? cfg.ifTrue : cfg.ifFalse) ?? "");
+        const message = taken ? `true -> ${next}` : `false -> ${next}`;
+        summaries.push(flowStepSummary(step, "branch", message));
+        const run = yield* recordTimeline(
+          step,
+          index,
+          next === "" ? "completed" : "running",
+          next === "" ? "done" : next,
+          "branch",
+          message,
+        );
+        if (next === "") {
+          return { run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
+        }
+        currentStepId = next;
+        continue;
+      }
+
+      if (step.type === "collect") {
+        if (typeof cfg.form !== "string") {
+          const message = "collect missing string form";
+          summaries.push(flowStepSummary(step, "unsupported", message));
+          const run = yield* recordTimeline(
+            step,
+            index,
+            "unsupported",
+            step.id,
+            "unsupported",
+            message,
+          );
+          return { run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
+        }
+        const rawScope = cfg.scope ??
+          (typeof cfg.scopeFrom === "string" ? `$ctx.${cfg.scopeFrom}` : undefined);
+        const resolvedScope = rawScope === undefined
+          ? undefined
+          : resolveFlowValue(rawScope, decoded.subject, context);
+        const scope = resolvedScope === undefined || resolvedScope === null
+          ? undefined
+          : String(resolvedScope);
+        if (scope !== undefined && hasCurrentValue(currentEntity, `submitted.${cfg.form}`, scope)) {
+          const message = `${cfg.form} already submitted for ${scope}`;
+          summaries.push(flowStepSummary(step, "collect-satisfied", message));
+          const next = step.next;
+          const run = yield* recordTimeline(
+            step,
+            index,
+            next === undefined ? "completed" : "running",
+            next ?? step.id,
+            "collect-satisfied",
+            message,
+          );
+          if (next === undefined) {
+            return { run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
+          }
+          currentStepId = next;
+          continue;
+        }
+
+        const token = typeof cfg.token === "string"
+          ? cfg.token
+          : typeof cfg.collectionToken === "string"
+            ? cfg.collectionToken
+            : undefined;
+        if (token === undefined) {
+          const message = "collect missing caller-provided token";
+          summaries.push(flowStepSummary(step, "unsupported", message));
+          const run = yield* recordTimeline(
+            step,
+            index,
+            "unsupported",
+            step.id,
+            "unsupported",
+            message,
+          );
+          return { run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
+        }
+
+        const result = yield* executeDurableObjectSqliteDagStepEffect(
+          dag,
+          collections,
+          flowWaitTimers,
+          {
+            runId: decoded.runId,
+            flowDefName: decoded.flowDefName,
+            subject: decoded.subject,
+            stepId: step.id,
+            kind: "collect",
+            eventId: flowEventId(decoded.eventIdPrefix, index, step.id, "collect-issued"),
+            now,
+            ...(step.next === undefined ? {} : { nextStepId: step.next }),
+            context,
+            collection: {
+              token,
+              form: cfg.form,
+              ...(cfg.expiresAt === undefined
+                ? {}
+                : { expiresAt: cfg.expiresAt as number | null }),
+              ...(scope === undefined ? {} : { scope }),
+            },
+            ...(scope === undefined ? {} : { message: `${cfg.form} for ${scope}` }),
+          },
+          defaultNow,
+          cardinalityOf,
+          coord,
+        );
+        if (result.collection !== undefined) collectionsOut.push(result.collection);
+        summaries.push(flowStepSummary(step, "collect-issued", cfg.form));
+        return { run: result.run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
+      }
+
+      if (step.type === "wait") {
+        if (
+          typeof cfg.id !== "string" ||
+          typeof cfg.fireAt !== "number"
+        ) {
+          const message = "wait missing id or fireAt";
+          summaries.push(flowStepSummary(step, "unsupported", message));
+          const run = yield* recordTimeline(
+            step,
+            index,
+            "unsupported",
+            step.id,
+            "unsupported",
+            message,
+          );
+          return { run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
+        }
+        const result = yield* executeDurableObjectSqliteDagStepEffect(
+          dag,
+          collections,
+          flowWaitTimers,
+          {
+            runId: decoded.runId,
+            flowDefName: decoded.flowDefName,
+            subject: decoded.subject,
+            stepId: step.id,
+            kind: "wait",
+            eventId: flowEventId(decoded.eventIdPrefix, index, step.id, "wait"),
+            now,
+            ...(step.next === undefined ? {} : { nextStepId: step.next }),
+            context,
+            wait: {
+              id: cfg.id,
+              eventId: typeof cfg.eventId === "string"
+                ? cfg.eventId
+                : flowEventId(decoded.eventIdPrefix, index, step.id, "fired"),
+              fireAt: cfg.fireAt,
+            },
+            message: `${cfg.fireAt}`,
+          },
+          defaultNow,
+          cardinalityOf,
+          coord,
+        );
+        if (result.waitTick !== undefined) waitTicks.push(result.waitTick);
+        summaries.push(flowStepSummary(step, "wait", String(cfg.fireAt)));
+        return { run: result.run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
+      }
+
+      if (step.type === "action") {
+        const actionName = typeof cfg.action === "string"
+          ? cfg.action
+          : typeof cfg.name === "string"
+            ? cfg.name
+            : undefined;
+        if (actionName === undefined) {
+          const message = "action missing registered action name";
+          summaries.push(flowStepSummary(step, "unsupported", message));
+          const run = yield* recordTimeline(
+            step,
+            index,
+            "unsupported",
+            step.id,
+            "unsupported",
+            message,
+          );
+          return { run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
+        }
+        const actionArgs = Object.fromEntries(
+          Object.entries(recordOrEmpty(cfg.args)).map(([key, value]) => [
+            key,
+            resolveFlowValue(value, decoded.subject, context),
+          ]),
+        );
+        const result = yield* executeDurableObjectSqliteRegisteredActionEffect(
+          dag,
+          collections,
+          flowWaitTimers,
+          {
+            action: actionName,
+            entity: decoded.subject,
+            runId: decoded.runId,
+            flowDefName: decoded.flowDefName,
+            stepId: step.id,
+            ...(step.next === undefined ? {} : { nextStepId: step.next }),
+            eventId: flowEventId(decoded.eventIdPrefix, index, step.id, "action"),
+            actor: decoded.actor,
+            ...(decoded.actorType === undefined
+              ? {}
+              : { actorType: decoded.actorType as ActorType }),
+            now,
+            args: actionArgs,
+            ...(typeof cfg.collectionToken === "string"
+              ? { collectionToken: cfg.collectionToken }
+              : {}),
+            ...(cfg.collectionExpiresAt === undefined
+              ? {}
+              : { collectionExpiresAt: cfg.collectionExpiresAt as number | null }),
+          },
+          defaultNow,
+          cardinalityOf,
+          coord,
+        );
+        actions.push(result);
+        assertions.push(...result.execution.assertions);
+        if (result.execution.collection !== undefined) {
+          collectionsOut.push(result.execution.collection);
+        }
+        summaries.push(flowStepSummary(step, "action", actionName));
+        currentEntity = yield* getDurableObjectSqliteCurrentEntityEffect({
+          e: decoded.subject,
+        });
+        if (result.execution.run.status !== "running" || step.next === undefined) {
+          return { run: result.execution.run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
+        }
+        currentStepId = step.next;
+        continue;
+      }
+
+      const message = step.type === "unsupported"
+        ? "unsupported step"
+        : `unsupported step type ${step.type}`;
+      summaries.push(flowStepSummary(step, "unsupported", message));
+      const run = yield* recordTimeline(
+        step,
+        index,
+        "unsupported",
+        step.id,
+        "unsupported",
+        message,
+      );
+      return { run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
+    }
+
+    const loopStep = { id: currentStepId, type: "unsupported" as const };
+    const message = `flow exceeded ${maxSteps} steps`;
+    summaries.push(flowStepSummary(loopStep, "unsupported", message));
+    const run = yield* recordTimeline(
+      loopStep,
+      maxSteps,
+      "unsupported",
+      currentStepId,
+      "unsupported",
+      message,
+    );
+    return { run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
   });
 }
 
@@ -2673,6 +3285,18 @@ export function createDurableObjectSqliteCurrentSurface(
     executeAction: (args) =>
       run(
         executeDurableObjectSqliteActionEffect(
+          runtime.dag,
+          runtime.collections,
+          runtime.flowWaitTimers,
+          args,
+          coord().txTime,
+          options.cardinalityOf,
+          coord(),
+        ),
+      ),
+    executeFlow: (args) =>
+      run(
+        executeDurableObjectSqliteFlowEffect(
           runtime.dag,
           runtime.collections,
           runtime.flowWaitTimers,
