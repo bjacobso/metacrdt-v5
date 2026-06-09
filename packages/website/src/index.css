@@ -2,17 +2,18 @@
 
 @theme {
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-serif: Georgia, Cambria, "Times New Roman", Times, serif;
   --font-mono: ui-monospace, "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
-  --color-canvas: #0b1020;
-  --color-ink: #e5edf6;
-  --color-muted: #96a3b5;
-  --color-panel: #111827;
-  --color-panel-soft: #162033;
-  --color-line: #314158;
-  --color-cyan-line: #22d3ee;
-  --color-amber-line: #f59e0b;
-  --color-green-line: #34d399;
-  --color-rose-line: #fb7185;
+  --color-canvas: #f7f9fb;
+  --color-ink: #16202a;
+  --color-muted: #596775;
+  --color-panel: #ffffff;
+  --color-panel-soft: #eef3f7;
+  --color-line: #c9d3dd;
+  --color-cyan-line: #007c92;
+  --color-amber-line: #9b5b00;
+  --color-green-line: #0b7a55;
+  --color-rose-line: #a63854;
 }
 
 :root {
@@ -36,9 +37,10 @@ body {
   min-width: 320px;
   margin: 0;
   background:
-    linear-gradient(180deg, rgba(34, 211, 238, 0.045), transparent 14rem),
-    radial-gradient(circle at 78% 8%, rgba(245, 158, 11, 0.055), transparent 18rem),
+    linear-gradient(90deg, rgba(22, 32, 42, 0.045) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(22, 32, 42, 0.035) 1px, transparent 1px),
     var(--color-canvas);
+  background-size: 32px 32px;
 }
 
 a {
@@ -46,21 +48,21 @@ a {
 }
 
 ::selection {
-  color: #0b1020;
-  background: var(--color-green-line);
+  color: #ffffff;
+  background: var(--color-cyan-line);
 }
 
 .site-section {
-  padding: clamp(3.25rem, 6vw, 5.25rem) 0;
+  padding: clamp(2.75rem, 5vw, 4.6rem) 0;
 }
 
 .section-inner {
-  width: min(980px, calc(100% - 2rem));
+  width: min(960px, calc(100% - 2rem));
   margin: 0 auto;
 }
 
 .eyebrow {
-  color: var(--color-amber-line);
+  color: var(--color-cyan-line);
   font-family: var(--font-mono);
   font-size: 0.68rem;
   font-weight: 700;
@@ -69,29 +71,31 @@ a {
 }
 
 .section-title {
-  max-width: 680px;
+  max-width: 760px;
   margin: 0.55rem 0 0;
-  font-size: clamp(2rem, 3.6vw, 3.45rem);
-  line-height: 1.04;
+  font-family: var(--font-serif);
+  font-size: clamp(2rem, 3.1vw, 3rem);
+  font-weight: 500;
+  line-height: 1.08;
   letter-spacing: 0;
 }
 
 .section-copy {
-  max-width: 660px;
+  max-width: 700px;
   color: var(--color-muted);
-  font-size: clamp(0.95rem, 1.25vw, 1.06rem);
-  line-height: 1.65;
+  font-size: clamp(1rem, 1.2vw, 1.08rem);
+  line-height: 1.72;
 }
 
 .ascii-shell {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 8px;
+  border: 1px solid rgba(22, 32, 42, 0.18);
+  border-radius: 3px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 42%),
-    rgba(8, 13, 26, 0.9);
-  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.22);
+    #08111e;
+  box-shadow: none;
 }
 
 .ascii-pre {
@@ -112,14 +116,15 @@ a {
   color: var(--color-muted);
   font-size: 0.78rem;
   line-height: 1.45;
+  font-family: var(--font-serif);
 }
 
 .ascii-control {
   position: absolute;
   top: 0.55rem;
   right: 0.55rem;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 6px;
+  border: 1px solid rgba(226, 232, 240, 0.35);
+  border-radius: 3px;
   padding: 0.32rem 0.5rem;
   color: var(--color-ink);
   background: rgba(11, 16, 32, 0.78);
@@ -152,16 +157,16 @@ a {
 }
 
 .grid-card {
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 8px;
-  background: rgba(17, 24, 39, 0.52);
+  border: 1px solid rgba(22, 32, 42, 0.14);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.74);
 }
 
 .stack-diagram {
   overflow-x: auto;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 8px;
-  background: rgba(8, 13, 26, 0.82);
+  border: 1px solid rgba(22, 32, 42, 0.16);
+  border-radius: 3px;
+  background: #08111e;
 }
 
 .stack-diagram pre {
@@ -175,13 +180,45 @@ a {
 }
 
 .section-rule {
-  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  border-top: 1px solid rgba(22, 32, 42, 0.16);
 }
 
 .tight-list {
   display: grid;
   gap: 0.65rem;
   padding: 0;
+}
+
+.paper-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+
+.paper-meta li {
+  list-style: none;
+}
+
+.paper-meta li:not(:last-child)::after {
+  content: "/";
+  margin-left: 0.55rem;
+  color: var(--color-line);
+}
+
+.paper-rule {
+  border-top: 1px solid rgba(22, 32, 42, 0.18);
+}
+
+.paper-label {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
 }
 
 @media (max-width: 760px) {

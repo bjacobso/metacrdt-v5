@@ -2,7 +2,7 @@ import { layerStack, layers } from "../content/copy";
 
 export function Layers() {
   return (
-    <section className="site-section section-rule border-b border-white/10" id="layers">
+    <section className="site-section section-rule border-b border-black/10" id="layers">
       <div className="section-inner">
         <p className="eyebrow">{layers.eyebrow}</p>
         <h2 className="section-title">{layers.title}</h2>

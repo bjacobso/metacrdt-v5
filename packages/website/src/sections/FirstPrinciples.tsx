@@ -4,7 +4,7 @@ import { firstPrinciples } from "../content/copy";
 
 export function FirstPrinciples() {
   return (
-    <section className="site-section section-rule border-b border-white/10" id="principles">
+    <section className="site-section section-rule border-b border-black/10" id="principles">
       <div className="section-inner">
         <p className="eyebrow">{firstPrinciples.eyebrow}</p>
         <div className="grid gap-8 lg:grid-cols-[0.92fr_1.08fr]">

@@ -10,13 +10,13 @@ export function Footer() {
         </div>
         <div className="flex flex-wrap gap-3 font-mono text-xs">
           <a className="text-link" href={sourceLinks.repo}>
-            repo
+            repository
           </a>
           <a className="text-link" href={sourceLinks.specs}>
-            specs
+            source docs
           </a>
           <a className="text-link" href={sourceLinks.protocol}>
-            protocol
+            specification
           </a>
         </div>
       </div>

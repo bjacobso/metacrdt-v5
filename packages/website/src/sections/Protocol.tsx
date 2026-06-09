@@ -4,7 +4,7 @@ import { protocol } from "../content/copy";
 
 export function Protocol() {
   return (
-    <section className="site-section section-rule border-b border-white/10" id="protocol">
+    <section className="site-section section-rule border-b border-black/10" id="protocol">
       <div className="section-inner">
         <p className="eyebrow">{protocol.eyebrow}</p>
         <h2 className="section-title">{protocol.title}</h2>

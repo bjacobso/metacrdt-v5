@@ -2,7 +2,7 @@ import { conformance } from "../content/copy";
 
 export function Conformance() {
   return (
-    <section className="site-section section-rule border-b border-white/10" id="conformance">
+    <section className="site-section section-rule border-b border-black/10" id="conformance">
       <div className="section-inner">
         <p className="eyebrow">{conformance.eyebrow}</p>
         <h2 className="section-title">{conformance.title}</h2>

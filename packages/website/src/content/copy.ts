@@ -1,88 +1,90 @@
 export const navLinks = [
-  { href: "#principles", label: "Principles" },
+  { href: "#problem", label: "Abstract" },
+  { href: "#principles", label: "Model" },
   { href: "#protocol", label: "Protocol" },
-  { href: "#layers", label: "Layers" },
+  { href: "#meta", label: "Derivation" },
   { href: "#status", label: "Status" },
 ] as const;
 
 export const sourceLinks = {
-  repo: "https://github.com/benjacobson/homepage",
-  specs: "https://github.com/benjacobson/homepage/tree/main/specs",
-  protocol: "https://github.com/benjacobson/homepage/blob/main/specs/reference/protocol.md",
+  repo: "https://github.com/bjacobso/convex-triples",
+  specs: "https://github.com/bjacobso/convex-triples/tree/main/specs",
+  protocol: "https://github.com/bjacobso/convex-triples/blob/main/specs/reference/protocol.md",
 } as const;
 
 export const hero = {
-  eyebrow: "Research Preview",
+  eyebrow: "Draft Protocol Specification · Research Preview",
   title: "MetaCRDT",
   thesis:
-    "Databases store facts. CRDTs synchronize facts. MetaCRDT synchronizes facts, logic, workflows, permissions, agents, and interfaces.",
+    "A convergent, bitemporal event protocol for facts, derivations, workflows, permissions, agents, and interfaces.",
   body:
-    "A convergence substrate for structured coordination across distributed runtimes: immutable events, bitemporal reads, deterministic folds, and derivation that converges with the base facts.",
+    "MetaCRDT models operational state as a grow-only set of immutable, content-addressed events. Application state is not synchronized directly; it is reconstructed as a deterministic fold at a transaction-time and valid-time coordinate.",
+  meta: ["Version 0.1", "Draft", "Static explainer", "No backend dependency"],
 } as const;
 
 export const problem = {
-  eyebrow: "The Problem",
-  title: "Business software keeps rebuilding the same primitives.",
+  eyebrow: "Abstract",
+  title: "Convergence as a projection over bitemporal event history.",
   body:
-    "Things, facts about things over time, rules that derive new facts, processes that wait for the world to change, and obligations that fall out of all three. MetaCRDT starts from those primitives once, correctly, on an append-only bitemporal fact log.",
+    "MetaCRDT specifies a representation for structured coordination domains in which facts, schema, rule output, workflow state, permissions, and agent actions are explained by the same append-only event log. The central construction is deliberately small: the log is a CRDT; every readable artifact is a pure fold over that log.",
   points: [
-    "Audit trails are not a feature bolted onto state; they are the shape of the log.",
-    "What did we know when is a normal read coordinate, not a special forensic path.",
-    "Products become declared configurations over facts instead of separate applications.",
+    "History is conserved. Assertions, retractions, tombstones, corrections, actors, reasons, and clocks remain part of the substrate.",
+    "Reads are bitemporal. A query asks what was known at transaction time tx about valid time vt.",
+    "Derived state is local. Obligations, workflows, rules, and views are recomputed rather than replicated as independent state.",
   ],
 } as const;
 
 export const firstPrinciples = {
-  eyebrow: "First Principles",
-  title: "The log is a CRDT. Everything else is a fold.",
+  eyebrow: "1. Model",
+  title: "A two-layer construction: event G-Set plus deterministic folds.",
   body:
-    "State is not mutated in place. Current facts, historical reads, Datalog derivations, obligations, workflow state, generated views, and agent explanations are deterministic projections of the same event set.",
+    "A replica holds a set of immutable events keyed by EventId. Merging replicas is set union. Given an equal event set, each replica sorts events by the protocol order and computes identical projections for current state, historical state, Datalog output, obligations, workflow runs, generated views, and provenance.",
   properties: [
     {
-      name: "Fact Convergence",
+      name: "Invariant 1 · Fact convergence",
       meaning: "Operational facts merge as a grow-only set of immutable events.",
     },
     {
-      name: "Provenance",
-      meaning: "Every assertion records who made it, when, and why.",
+      name: "Invariant 2 · Provenance",
+      meaning: "Every event carries actor identity, clock metadata, and optional causal references.",
     },
     {
-      name: "Derived Coherence",
-      meaning: "Rules, obligations, views, and workflows recompute from facts.",
+      name: "Invariant 3 · Derived coherence",
+      meaning: "Rules, obligations, views, and workflows are deterministic functions of visible facts.",
     },
     {
-      name: "Agent Participation",
-      meaning: "Agents write proposals and actions under the same semantics as humans.",
+      name: "Invariant 4 · Agent participation",
+      meaning: "Agents author proposals and actions under the same merge and provenance semantics as humans.",
     },
   ],
 } as const;
 
 export const protocol = {
-  eyebrow: "The Protocol, Animated",
-  title: "Events accumulate. Folds explain what is visible.",
+  eyebrow: "2. Protocol Mechanics",
+  title: "Event identity, ordering, visibility, and merge are specified independently.",
   body:
-    "The draft protocol defines assert, retract, tombstone, and untombstone events; content-addressed EventIds; Hybrid Logical Clock timestamps; a deterministic total order; grow-only-set merge; and the bitemporal visibility predicate.",
+    "The draft protocol defines four event kinds (`assert`, `retract`, `tombstone`, `untombstone`), content-addressed EventIds, Hybrid Logical Clock timestamps, a replica-independent total order, grow-only-set merge, and a deterministic bitemporal visibility predicate.",
   bullets: [
-    "Merge is set union: commutative, associative, and idempotent.",
-    "Order is deterministic: HLC, then actorId, then EventId.",
-    "Transaction time and valid time are independent axes.",
+    "Merge: L1 union L2. Commutative, associative, idempotent.",
+    "Order: HLC, then actorId, then EventId.",
+    "Visibility: txTime bounds what was known; validTime bounds what was true in the modeled world.",
   ],
 } as const;
 
 export const meta = {
-  eyebrow: "The Meta",
-  title: "Derivation also converges.",
+  eyebrow: "3. Derived Coherence",
+  title: "If derivation is a deterministic fold, derived state converges without synchronization.",
   body:
-    "Rules, obligations, permissions, workflow runs, and generated views are pure deterministic folds over visible facts. They are recomputed from the shared event set, not synchronized as separate state.",
-  tagline: "Truth has a tense, and derivation inherits it.",
+    "Let D be a pure rule over visible facts at coordinate C. If two replicas have observed the same event set L, then visible(L, C) is equal on both replicas, and D(visible(L, C)) is equal as well. Derived facts therefore inherit convergence from the base log while retaining source EventIds for explanation.",
+  tagline: "Truth has a tense; derivation inherits that tense.",
 } as const;
 
 export const layerStack = String.raw`+-------------------------------------------------------------+
-| Products       compliance . onboarding . staffing . ...    |
-| (configured)   config-as-code lowers to the layers below    |
+| Configured     product definitions . flows . requirements   |
+| surfaces       actions . generated views                    |
 +-------------------------------------------------------------+
-| Emergence      obligations . reuse . tasks . derived state  |
-| (rules+flows)  durable workflows . actions . reconcilers    |
+| Derivation     obligations . reuse . tasks . permissions    |
+| layer          workflows . rule output . materializations    |
 +-------------------------------------------------------------+
 | Engine         Datalog joins . negation . closure . agg     |
 |                materialization + provenance                 |
@@ -95,15 +97,15 @@ export const layerStack = String.raw`+------------------------------------------
 +-------------------------------------------------------------+`;
 
 export const layers = {
-  eyebrow: "The Layer Stack",
-  title: "Each layer is only facts.",
+  eyebrow: "4. Reference Architecture",
+  title: "The reference runtime is an implementation, not the protocol boundary.",
   body:
-    "The platform machinery, a tenant's configured shape, and runtime data live in one store with origin facets: system, configured, and data. A product is a set of type, attribute, form, flow, requirement, and action definitions in the same log as the data they govern.",
+    "The repository currently uses Convex as a centralized reactive reference runtime. The protocol itself is target-neutral: the substrate is the event model, merge function, fold, bitemporal visibility predicate, derivation discipline, and conformance ladder.",
 } as const;
 
 export const conformance = {
-  eyebrow: "Conformance",
-  title: "A protocol ladder from core log to coordination.",
+  eyebrow: "5. Conformance Levels",
+  title: "Implementations may conform incrementally from core log semantics to coordination.",
   levels: [
     { level: "L1 Core", requires: "Data model, log/merge, ordering, and fold." },
     { level: "L2 Bitemporal", requires: "L1 plus the bitemporal visibility predicate." },
@@ -114,8 +116,8 @@ export const conformance = {
 } as const;
 
 export const status = {
-  eyebrow: "Status",
-  title: "Research Preview, with built and frontier work marked explicitly.",
+  eyebrow: "6. Implementation Status",
+  title: "Research preview: centralized reference runtime now, multi-replica runtime frontier.",
   built: [
     "Convex reference runtime",
     "datarooms/compliance elaboration",
@@ -134,7 +136,7 @@ export const status = {
 } as const;
 
 export const footer = {
-  label: "Research Preview",
+  label: "Draft · Research Preview",
   text:
-    "The log is a CRDT today. The multi-replica convergence runtime is research. The homepage is static and independent of the Convex reference app.",
+    "The log is a CRDT today. Multi-replica convergence, HLC/version-vector sync, and production coordination profiles remain frontier work. This page is a static explanatory companion to the specification.",
 } as const;

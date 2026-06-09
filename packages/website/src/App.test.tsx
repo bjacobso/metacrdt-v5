@@ -7,10 +7,10 @@ describe("App", () => {
     const html = renderToString(<App />);
 
     expect(html).toContain("MetaCRDT");
-    expect(html).toContain("The log is a CRDT. Everything else is a fold.");
-    expect(html).toContain("Events accumulate. Folds explain what is visible.");
-    expect(html).toContain("Derivation also converges.");
-    expect(html).toContain("Each layer is only facts.");
+    expect(html).toContain("A two-layer construction");
+    expect(html).toContain("Event identity, ordering, visibility, and merge");
+    expect(html).toContain("If derivation is a deterministic fold");
+    expect(html).toContain("The reference runtime is an implementation");
     expect(html).toContain("Research Preview");
   });
 });
