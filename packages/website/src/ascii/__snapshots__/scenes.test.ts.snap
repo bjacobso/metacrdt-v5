@@ -1,0 +1,96 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ascii scenes > renders stable explanatory frames 1`] = `
+[
+  "events -- append-only log                                                               
+                                                                                        
+ +----------------------------------------------------------------------------------+   
+ |  > #a3f1  hlc 7.n2  assert    worker:42   status   "active"                      |   
+ |    #91be  hlc 6.n1  assert    worker:42   name     "Ada"                         |   
+ |  .  #4c0d  hlc 5.n2  retract   worker:7    status                                |   
+ |  .  #2200  hlc 4.n1  assert    worker:7    status   "pending"                    |   
+ |  .  #0f33  hlc 3.n1  assert    rule:kyc    emits    requires.kyc                 |   
+ |  .  #a3f1  hlc 7.n2  assert    worker:42   status   "active"                     |   
+ |  .  #91be  hlc 6.n1  assert    worker:42   name     "Ada"                        |   
+ |  .  #4c0d  hlc 5.n2  retract   worker:7    status                                |   
+ |  .  #2200  hlc 4.n1  assert    worker:7    status   "pending"                    |   
+ |                                                                                  |   
+ +--------------------------------------new event docks; older rows never rewrite       
+                                                                                        
+                                                                                        
+   EventId = content hash | HLC gives deterministic order                               
+                                                                                        ",
+  "LOG (input)                            FOLD -> STATE (output)                     
+..................................................................................
+                                                                                  
+   assert name "Ada"               --> +----------------------------------------+ 
+                                       |                                        | 
+ > assert role "eng"               ==> | { name: "Ada", role: "eng" }           | 
+                                       |                                        | 
+   retract role                    --> |                                        | 
+                                       | state is computed, not stored          | 
+   assert role "lead"              --> |                                        | 
+                                       +----------------------------------------+ 
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+ State = fold(events). Change the events, re-fold, done.                          
+                                                                                  
+                                                                                  ",
+  "CONVERGENCE = SET UNION                                                           
+                                                                                  
+                                                                                  
+ +------------------------------------+    +-----------------------------------+  
+ |                                    |    |                                   |  
+ | Replica A {#a3,#91,#4c}            |    | Replica B {#91,#22,#a3}           |  
+ |                                    |    |                                   |  
+ +------------------------------------+    +-----------------------------------+  
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  
+                                                                                  ",
+  "BITEMPORAL READ                                                           
+                                                                          
+  txTime   validTime ->                                                   
+                                                                          
+         |  .  .  .  .  .  .  .  .  .                                     
+         |  .  .  .  #  .  .  .  .  .   as-of tx=3 valid=3                
+         |  .  .  #  #  .  .  .  .  .                                     
+         |  .  #  #  O  .  .  .  .  .   { worker:42 status = "active" }   
+         |  .  .  .  .  .  .  .  .  .                                     
+         |  .  .  .  .  .  .  .  .  .                                     
+         |  .  .  .  .  .  .  .  .  .   retract != tombstone != correct>  
+                                                                          
+                                                                          
+                                                                          
+                                                                          
+  Read what we knew then about what was true then.                        
+                                                                          
+                                                                          ",
+  "DERIVATION ALSO CONVERGES ("META")                                                
+                                                                                  
+                                                                                  
+                                                                                  
+  events   ----+----> derived facts      requires.kyc on worker:42                
+                                                                                  
+               +----> obligation       > [ ] "KYC form" -> [x]                    
+                                                                                  
+               +----> workflow run       step 2 unblocks                          
+                                                                                  
+               +----> generated view     row updates from same fold               
+                                                                                  
+                                                                                  
+                                                                                  
+  one fold per layer | no layer is separately synchronized                        
+                                                                                  
+  Truth has a tense, and derivation inherits it.                                  
+                                                                                  ",
+]
+`;
