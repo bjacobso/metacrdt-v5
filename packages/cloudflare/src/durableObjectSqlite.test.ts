@@ -2064,4 +2064,286 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       }),
     ).rejects.toThrow(/requires exactly one supported action effect/);
   });
+
+  test("current surface reads registered action definitions from current projection rows", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:action-registry",
+      wall: () => 1_005,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.appendAssert({
+      e: "action:terminate",
+      a: "type",
+      v: "Action",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:terminate",
+      a: "label",
+      v: "Terminate worker",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:terminate",
+      a: "appliesTo",
+      v: "Worker",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:terminate",
+      a: "asserts",
+      v: { "worker.status": "terminated" },
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:archive_client",
+      a: "type",
+      v: "Action",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:archive_client",
+      a: "appliesTo",
+      v: "Client",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:archive_client",
+      a: "asserts",
+      v: { "client.status": "archived" },
+      actor: "config",
+    });
+
+    await expect(surface.actionByName({ name: "terminate" })).resolves.toEqual({
+      name: "terminate",
+      label: "Terminate worker",
+      appliesTo: "Worker",
+      asserts: { "worker.status": "terminated" },
+      fields: [],
+    });
+    await expect(surface.actionByName({ name: "missing" })).resolves.toBeUndefined();
+    await expect(surface.listActions()).resolves.toMatchObject([
+      { name: "archive_client" },
+      { name: "terminate" },
+    ]);
+    await expect(surface.actionsForType({ type: "Worker" })).resolves.toEqual([
+      {
+        name: "terminate",
+        label: "Terminate worker",
+        appliesTo: "Worker",
+        asserts: { "worker.status": "terminated" },
+        fields: [],
+      },
+    ]);
+  });
+
+  test("current surface executes registered assertion actions with arg resolution", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:registered-action-assert",
+      wall: () => 1_010,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.appendAssert({
+      e: "worker:registered-action",
+      a: "type",
+      v: "Worker",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "client:registered-action",
+      a: "type",
+      v: "Client",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "action:set_status",
+      a: "type",
+      v: "Action",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:set_status",
+      a: "appliesTo",
+      v: "Worker",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:set_status",
+      a: "fields",
+      v: [
+        {
+          name: "status",
+          label: "Status",
+          type: "select",
+          options: ["active", "terminated"],
+        },
+      ],
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:set_status",
+      a: "asserts",
+      v: { "worker.status": "$arg.status" },
+      actor: "config",
+    });
+
+    const executed = await surface.executeRegisteredAction({
+      action: "set_status",
+      entity: "worker:registered-action",
+      runId: "dag:registered-action:set-status",
+      eventId: "dag:event:registered-action:set-status",
+      actor: "system:registry",
+      actorType: "system",
+      now: 76_000,
+      args: { status: "terminated" },
+    });
+
+    expect(executed.action).toMatchObject({
+      name: "set_status",
+      appliesTo: "Worker",
+      asserts: { "worker.status": "$arg.status" },
+    });
+    expect(executed.execution.actionName).toBe("set_status");
+    expect(executed.execution.assertions[0]?.event).toMatchObject({
+      e: "worker:registered-action",
+      a: "worker.status",
+      v: "terminated",
+    });
+    await expect(
+      surface.listCurrent({
+        e: "worker:registered-action",
+        a: "worker.status",
+      }),
+    ).resolves.toMatchObject([
+      {
+        e: "worker:registered-action",
+        a: "worker.status",
+        v: "terminated",
+      },
+    ]);
+
+    await expect(
+      surface.executeRegisteredAction({
+        action: "set_status",
+        entity: "worker:registered-action",
+        runId: "dag:registered-action:missing-arg",
+        eventId: "dag:event:registered-action:missing-arg",
+        actor: "system:registry",
+        args: {},
+      }),
+    ).rejects.toThrow(/missing action arg: status/);
+    await expect(
+      surface.executeRegisteredAction({
+        action: "set_status",
+        entity: "client:registered-action",
+        runId: "dag:registered-action:wrong-type",
+        eventId: "dag:event:registered-action:wrong-type",
+        actor: "system:registry",
+        args: { status: "active" },
+      }),
+    ).rejects.toThrow(/applies to Worker, not Client/);
+  });
+
+  test("current surface executes registered collection-opening actions with caller tokens", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:registered-action-collect",
+      wall: () => 1_015,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.appendAssert({
+      e: "worker:registered-collect",
+      a: "type",
+      v: "Worker",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "action:collect_i9",
+      a: "type",
+      v: "Action",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:collect_i9",
+      a: "appliesTo",
+      v: "Worker",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:collect_i9",
+      a: "fields",
+      v: [{ name: "scope", label: "Employer", type: "string" }],
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:collect_i9",
+      a: "asserts",
+      v: {},
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:collect_i9",
+      a: "opensForm",
+      v: { form: "i9", scope: "$arg.scope" },
+      actor: "config",
+    });
+
+    await expect(
+      surface.executeRegisteredAction({
+        action: "collect_i9",
+        entity: "worker:registered-collect",
+        runId: "dag:registered-action:collect-missing-token",
+        eventId: "dag:event:registered-action:collect-missing-token",
+        actor: "system:registry",
+        args: { scope: "employer:acme" },
+      }),
+    ).rejects.toThrow(/requires collectionToken/);
+
+    const executed = await surface.executeRegisteredAction({
+      action: "collect_i9",
+      entity: "worker:registered-collect",
+      runId: "dag:registered-action:collect-i9",
+      eventId: "dag:event:registered-action:collect-i9",
+      actor: "system:registry",
+      now: 77_000,
+      args: { scope: "employer:acme" },
+      collectionToken: "collection:registered-action:i9",
+      collectionExpiresAt: 90_000,
+    });
+
+    expect(executed.execution.collection).toMatchObject({
+      token: "collection:registered-action:i9",
+      subject: "worker:registered-collect",
+      form: "i9",
+      status: "issued",
+      issuedAt: 77_000,
+      expiresAt: 90_000,
+      scope: "employer:acme",
+    });
+    expect(executed.execution.run).toMatchObject({
+      runId: "dag:registered-action:collect-i9",
+      status: "waiting",
+      currentStepId: "collect_i9",
+    });
+    await expect(
+      surface.collectionByToken({ token: "collection:registered-action:i9" }),
+    ).resolves.toEqual(executed.execution.collection);
+  });
 });

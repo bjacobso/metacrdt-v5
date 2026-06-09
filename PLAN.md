@@ -310,13 +310,20 @@ full workflow parity. Goal 143 adds a narrow Cloudflare action execution seed:
 supported effect to those same DAG-step primitives, either appending protocol
 assertions or opening a caller-provided collection token. This still does not
 provide configured action registry lookup, branch evaluation, host action
-invocation, or a full flow interpreter. The next active goal should be chosen from
+invocation, or a full flow interpreter. Goal 144 adds the first registered
+action lookup seed on that surface: `actionByName`, `listActions`,
+`actionsForType`, and `executeRegisteredAction` load action definitions from DO
+SQLite current projection rows, resolve `$entity` / `$arg.*` placeholders,
+validate `appliesTo` against the target entity's current type facts, and execute
+one supported configured effect. This still does not provide multi-effect action
+execution, branch evaluation, host action invocation, or a full flow
+interpreter. The next active goal should be chosen from
 the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (broader SQL query-provider
-parity/performance hardening, a full flow interpreter/registry lookup/host
-action invocation surface, or a full React/frontend SDK live-query package),
+parity/performance hardening, a full flow interpreter/branching/host action
+invocation surface, or a full React/frontend SDK live-query package),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9531,6 +9538,48 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 144 — Cloudflare Registered Action Lookup Seed
+
+**Status:** shipped.
+
+**Objective:** add the first Cloudflare configured-action registry surface over
+DO SQLite current projection rows, then delegate one resolved registered action
+effect into the existing action execution seed without claiming a full flow
+interpreter.
+
+### What Shipped
+
+- Added `DurableObjectSqliteRegisteredAction` schemas/types plus
+  `actionByName`, `listActions`, and `actionsForType` on
+  `createDurableObjectSqliteCurrentSurface`.
+- Registry reads use current projection facts shaped like the Convex reference
+  path: `(action:<name>, type, "Action")`, `label`, `appliesTo`, `asserts`,
+  `fields`, and optional `opensForm`.
+- Added `executeRegisteredAction` plus
+  `executeDurableObjectSqliteRegisteredActionEffect`.
+- The executor loads the configured action from current projection rows, checks
+  the target entity's current `type` facts against `appliesTo`, resolves
+  `$entity` and `$arg.*` placeholders with field defaults/select validation, and
+  delegates exactly one supported effect to `executeAction`.
+- Focused Cloudflare tests prove registry listing/filtering, assertion action
+  arg resolution, applies-to rejection, collection-token opening, deterministic
+  caller-provided collection tokens, and missing-token rejection.
+
+### Non-Goals
+
+- Do not claim multi-effect configured action execution, branch evaluation,
+  declarative DAG interpretation, host action invocation, or complete flow
+  parity.
+- Do not implement React hooks, frontend SDK auth storage, or broader historical
+  SQL query-provider parity/performance hardening.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 71 Cloudflare tests.
 
 ---
 

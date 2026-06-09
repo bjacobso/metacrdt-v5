@@ -241,6 +241,69 @@ export const DurableObjectSqliteResumeDagRunStatusSchema = Schema.Literal(
   "unsupported",
 );
 
+export const DurableObjectSqliteActionFieldSchema = Schema.Struct({
+  name: Schema.String,
+  label: Schema.optionalWith(Schema.String, { exact: true }),
+  type: Schema.Literal("string", "number", "boolean", "select"),
+  required: Schema.optionalWith(Schema.Boolean, { exact: true }),
+  options: Schema.optionalWith(Schema.Array(Schema.String), { exact: true }),
+  defaultValue: Schema.optionalWith(Schema.Any, { exact: true }),
+});
+
+export const DurableObjectSqliteRegisteredActionSchema = Schema.Struct({
+  name: Schema.String,
+  label: Schema.optionalWith(Schema.String, { exact: true }),
+  appliesTo: Schema.optionalWith(Schema.String, { exact: true }),
+  asserts: Schema.Record({ key: Schema.String, value: Schema.Any }),
+  fields: Schema.Array(DurableObjectSqliteActionFieldSchema),
+  opensForm: Schema.optionalWith(
+    Schema.Struct({
+      form: Schema.Any,
+      scope: Schema.Any,
+    }),
+    { exact: true },
+  ),
+});
+
+export const DurableObjectSqliteActionByNameArgsSchema = Schema.Struct({
+  name: Schema.String,
+});
+
+export const DurableObjectSqliteActionsForTypeArgsSchema = Schema.Struct({
+  type: Schema.String,
+  limit: Schema.optionalWith(Schema.Number, { exact: true }),
+});
+
+export const DurableObjectSqliteListActionsArgsSchema = Schema.Struct({
+  limit: Schema.optionalWith(Schema.Number, { exact: true }),
+});
+
+export const DurableObjectSqliteExecuteRegisteredActionArgsSchema = Schema.Struct({
+  action: Schema.String,
+  entity: Schema.String,
+  runId: Schema.String,
+  eventId: Schema.String,
+  actor: Schema.String,
+  actorType: Schema.optionalWith(
+    Schema.Literal("human", "agent", "system", "migration"),
+    { exact: true },
+  ),
+  flowDefName: Schema.optionalWith(Schema.String, { exact: true }),
+  stepId: Schema.optionalWith(Schema.String, { exact: true }),
+  nextStepId: Schema.optionalWith(Schema.String, { exact: true }),
+  now: Schema.optionalWith(Schema.Number, { exact: true }),
+  args: Schema.optionalWith(
+    Schema.Record({ key: Schema.String, value: Schema.Any }),
+    { exact: true },
+  ),
+  collectionToken: Schema.optionalWith(Schema.String, { exact: true }),
+  collectionExpiresAt: Schema.optionalWith(
+    Schema.Union(Schema.Number, Schema.Null),
+    { exact: true },
+  ),
+  message: Schema.optionalWith(Schema.String, { exact: true }),
+});
+
 export const DurableObjectSqliteDagEventInputSchema = Schema.Struct({
   eventId: Schema.String,
   stepId: Schema.String,
@@ -436,6 +499,18 @@ export type DurableObjectSqliteListFlowWaitTicksArgs =
   typeof DurableObjectSqliteListFlowWaitTicksArgsSchema.Type;
 export type DurableObjectSqliteFireFlowWaitTickArgs =
   typeof DurableObjectSqliteFireFlowWaitTickArgsSchema.Type;
+export type DurableObjectSqliteActionField =
+  typeof DurableObjectSqliteActionFieldSchema.Type;
+export type DurableObjectSqliteRegisteredAction =
+  typeof DurableObjectSqliteRegisteredActionSchema.Type;
+export type DurableObjectSqliteActionByNameArgs =
+  typeof DurableObjectSqliteActionByNameArgsSchema.Type;
+export type DurableObjectSqliteActionsForTypeArgs =
+  typeof DurableObjectSqliteActionsForTypeArgsSchema.Type;
+export type DurableObjectSqliteListActionsArgs =
+  typeof DurableObjectSqliteListActionsArgsSchema.Type;
+export type DurableObjectSqliteExecuteRegisteredActionArgs =
+  typeof DurableObjectSqliteExecuteRegisteredActionArgsSchema.Type;
 export type DurableObjectSqliteExecuteDagStepArgs =
   typeof DurableObjectSqliteExecuteDagStepArgsSchema.Type;
 export type DurableObjectSqliteExecuteActionArgs =
@@ -511,6 +586,11 @@ export type DurableObjectSqliteExecuteActionResult =
     readonly actionName: string;
   };
 
+export type DurableObjectSqliteExecuteRegisteredActionResult = {
+  readonly action: DurableObjectSqliteRegisteredAction;
+  readonly execution: DurableObjectSqliteExecuteActionResult;
+};
+
 export type DurableObjectSqliteCurrentSurfaceOptions = {
   readonly cardinalityOf: CardinalityOf;
   readonly currentCoord?: () => Coord;
@@ -554,6 +634,15 @@ export type DurableObjectSqliteCurrentSurface = {
   submitCollection(
     args: DurableObjectSqliteSubmitCollectionArgs,
   ): Promise<DurableObjectSqliteSubmitCollectionResult>;
+  actionByName(
+    args: DurableObjectSqliteActionByNameArgs,
+  ): Promise<DurableObjectSqliteRegisteredAction | undefined>;
+  listActions(
+    args?: DurableObjectSqliteListActionsArgs,
+  ): Promise<DurableObjectSqliteRegisteredAction[]>;
+  actionsForType(
+    args: DurableObjectSqliteActionsForTypeArgs,
+  ): Promise<DurableObjectSqliteRegisteredAction[]>;
   scheduleCollectionTick(
     args: DurableObjectSqliteScheduleCollectionTickArgs,
   ): Promise<DurableObjectSqliteCollectionTick>;
@@ -584,6 +673,9 @@ export type DurableObjectSqliteCurrentSurface = {
   executeAction(
     args: DurableObjectSqliteExecuteActionArgs,
   ): Promise<DurableObjectSqliteExecuteActionResult>;
+  executeRegisteredAction(
+    args: DurableObjectSqliteExecuteRegisteredActionArgs,
+  ): Promise<DurableObjectSqliteExecuteRegisteredActionResult>;
   recordDagRun(
     args: DurableObjectSqliteRecordDagRunArgs,
   ): Promise<DurableObjectSqliteDagRun>;
@@ -716,6 +808,118 @@ function entityFromRows(
     attributes[row.a] = values;
   }
   return { e, attributes, rows: sortRows(rows) };
+}
+
+function actionEntityId(name: string): string {
+  return `action:${name}`;
+}
+
+function firstAttributeValue(
+  entity: DurableObjectSqliteCurrentEntity,
+  attribute: string,
+): unknown {
+  return entity.attributes[attribute]?.[0];
+}
+
+function decodeActionDefinitionValue<A, I>(
+  operation: string,
+  schema: Schema.Schema<A, I>,
+  value: unknown,
+): Effect.Effect<A, DurableObjectSqliteCurrentSurfaceError> {
+  return decode(operation, schema, value);
+}
+
+function actionDefinitionFromEntity(
+  operation: string,
+  name: string,
+  entity: DurableObjectSqliteCurrentEntity | null,
+): Effect.Effect<
+  DurableObjectSqliteRegisteredAction | undefined,
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    if (entity === null) return undefined;
+    const types = entity.attributes.type ?? [];
+    if (!types.some((value) => value === "Action")) return undefined;
+    const assertsValue = firstAttributeValue(entity, "asserts") ?? {};
+    const fieldsValue = firstAttributeValue(entity, "fields") ?? [];
+    const opensFormValue = firstAttributeValue(entity, "opensForm");
+    const asserts = yield* decodeActionDefinitionValue(
+      operation,
+      Schema.Record({ key: Schema.String, value: Schema.Any }),
+      assertsValue,
+    );
+    const fields = yield* decodeActionDefinitionValue(
+      operation,
+      Schema.Array(DurableObjectSqliteActionFieldSchema),
+      fieldsValue,
+    );
+    const opensForm = opensFormValue === undefined
+      ? undefined
+      : yield* decodeActionDefinitionValue(
+        operation,
+        Schema.Struct({ form: Schema.Any, scope: Schema.Any }),
+        opensFormValue,
+      );
+    return yield* decodeActionDefinitionValue(
+      operation,
+      DurableObjectSqliteRegisteredActionSchema,
+      {
+        name,
+        ...(typeof firstAttributeValue(entity, "label") === "string"
+          ? { label: firstAttributeValue(entity, "label") }
+          : {}),
+        ...(typeof firstAttributeValue(entity, "appliesTo") === "string"
+          ? { appliesTo: firstAttributeValue(entity, "appliesTo") }
+          : {}),
+        asserts,
+        fields,
+        ...(opensForm === undefined ? {} : { opensForm }),
+      },
+    );
+  });
+}
+
+function resolveRegisteredActionValue(
+  raw: unknown,
+  entity: string,
+  fields: readonly DurableObjectSqliteActionField[],
+  args: Readonly<Record<string, unknown>>,
+): unknown {
+  if (typeof raw !== "string") return raw;
+  if (raw === "$entity") return entity;
+  if (!raw.startsWith("$arg.")) return raw;
+  const name = raw.slice("$arg.".length);
+  const field = fields.find((candidate) => candidate.name === name);
+  if (field === undefined) {
+    throw new Error(`unknown action arg placeholder: ${name}`);
+  }
+  const value = args[name] ?? field.defaultValue;
+  if (value === undefined && field.required !== false) {
+    throw new Error(`missing action arg: ${name}`);
+  }
+  if (value === undefined) return null;
+  if (field.type === "select") {
+    const allowed = field.options ?? [];
+    if (!allowed.includes(String(value))) {
+      throw new Error(`invalid action arg ${name}: ${String(value)}`);
+    }
+  }
+  return value;
+}
+
+function resolveRegisteredActionString(
+  label: string,
+  raw: unknown,
+  entity: string,
+  fields: readonly DurableObjectSqliteActionField[],
+  args: Readonly<Record<string, unknown>>,
+): string {
+  const value = resolveRegisteredActionValue(raw, entity, fields, args);
+  if (value === null || value === "") {
+    throw new Error(`missing action ${label}`);
+  }
+  return String(value);
 }
 
 function listItemFromRows(
@@ -1037,6 +1241,270 @@ export function submitAndLowerDurableObjectSqliteCollectionEffect(
       assertions.push({ event, projection });
     }
     return { collection, assertions };
+  });
+}
+
+export function getDurableObjectSqliteActionByNameEffect(
+  args: DurableObjectSqliteActionByNameArgs,
+): Effect.Effect<
+  DurableObjectSqliteRegisteredAction | undefined,
+  RuntimeError | DurableObjectSqliteCurrentSurfaceError,
+  ProjectionStoreService
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "actionByName",
+      DurableObjectSqliteActionByNameArgsSchema,
+      args,
+    );
+    const entity = yield* getDurableObjectSqliteCurrentEntityEffect({
+      e: actionEntityId(decoded.name),
+    });
+    return yield* actionDefinitionFromEntity("actionByName", decoded.name, entity);
+  });
+}
+
+export function listDurableObjectSqliteActionsEffect(
+  args: DurableObjectSqliteListActionsArgs = {},
+): Effect.Effect<
+  DurableObjectSqliteRegisteredAction[],
+  RuntimeError | DurableObjectSqliteCurrentSurfaceError,
+  ProjectionStoreService
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "listActions",
+      DurableObjectSqliteListActionsArgsSchema,
+      args,
+    );
+    const projection = yield* ProjectionStoreService;
+    const typeRows = yield* projection.scan({ a: "type" });
+    const actionIds = [
+      ...new Set(
+        typeRows
+          .filter((row) => row.v === "Action" && row.e.startsWith("action:"))
+          .map((row) => row.e)
+          .sort((a, b) => a.localeCompare(b)),
+      ),
+    ];
+    const actions: DurableObjectSqliteRegisteredAction[] = [];
+    for (const actionId of actionIds) {
+      const entity = yield* getDurableObjectSqliteCurrentEntityEffect({
+        e: actionId,
+      });
+      const action = yield* actionDefinitionFromEntity(
+        "listActions",
+        actionId.slice("action:".length),
+        entity,
+      );
+      if (action !== undefined) actions.push(action);
+    }
+    return actions
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, limit(decoded.limit, 100, 500));
+  });
+}
+
+export function listDurableObjectSqliteActionsForTypeEffect(
+  args: DurableObjectSqliteActionsForTypeArgs,
+): Effect.Effect<
+  DurableObjectSqliteRegisteredAction[],
+  RuntimeError | DurableObjectSqliteCurrentSurfaceError,
+  ProjectionStoreService
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "actionsForType",
+      DurableObjectSqliteActionsForTypeArgsSchema,
+      args,
+    );
+    const actions = yield* listDurableObjectSqliteActionsEffect({
+      limit: limit(decoded.limit, 100, 500),
+    });
+    return actions.filter((action) => action.appliesTo === decoded.type);
+  });
+}
+
+export function executeDurableObjectSqliteRegisteredActionEffect(
+  dag: DurableObjectSqliteDagStore,
+  collections: DurableObjectSqliteCollectionStore,
+  flowWaitTimers: DurableObjectSqliteFlowWaitTimerStore,
+  args: DurableObjectSqliteExecuteRegisteredActionArgs,
+  defaultNow: number,
+  cardinalityOf: CardinalityOf,
+  coord: Coord,
+): Effect.Effect<
+  DurableObjectSqliteExecuteRegisteredActionResult,
+  RuntimeError | DurableObjectSqliteCurrentSurfaceError,
+  | EventStoreService
+  | ProjectionStoreService
+  | RuntimeClockService
+  | RuntimeSequencerService
+  | RuntimeProfileService
+  | TransportService
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "executeRegisteredAction",
+      DurableObjectSqliteExecuteRegisteredActionArgsSchema,
+      args,
+    );
+    const action = yield* getDurableObjectSqliteActionByNameEffect({
+      name: decoded.action,
+    });
+    if (action === undefined) {
+      return yield* Effect.fail(
+        surfaceError(
+          "executeRegisteredAction",
+          new Error(`unknown action: ${decoded.action}`),
+        ),
+      );
+    }
+    const entity = yield* getDurableObjectSqliteCurrentEntityEffect({
+      e: decoded.entity,
+    });
+    if (entity === null) {
+      return yield* Effect.fail(
+        surfaceError(
+          "executeRegisteredAction",
+          new Error(`entity ${decoded.entity} not found`),
+        ),
+      );
+    }
+    const types = entity.attributes.type?.map((value) => String(value)) ?? [];
+    if (action.appliesTo !== undefined && !types.includes(action.appliesTo)) {
+      return yield* Effect.fail(
+        surfaceError(
+          "executeRegisteredAction",
+          new Error(
+            `action ${decoded.action} applies to ${action.appliesTo}, not ${types.join(", ") || "(untyped)"}`,
+          ),
+        ),
+      );
+    }
+
+    const actionArgs = decoded.args ?? {};
+    const assertEntries = Object.entries(action.asserts);
+    if (assertEntries.length > 0 && action.opensForm !== undefined) {
+      return yield* Effect.fail(
+        surfaceError(
+          "executeRegisteredAction",
+          new Error(
+            "executeRegisteredAction supports exactly one registered action effect in this slice",
+          ),
+        ),
+      );
+    }
+    if (assertEntries.length === 0 && action.opensForm === undefined) {
+      return yield* Effect.fail(
+        surfaceError(
+          "executeRegisteredAction",
+          new Error("registered action has no supported effect"),
+        ),
+      );
+    }
+
+    if (assertEntries.length > 0) {
+      const assertions = yield* Effect.try({
+        try: () =>
+          assertEntries.map(([attribute, raw]) => ({
+            a: attribute,
+            v: resolveRegisteredActionValue(
+              raw,
+              decoded.entity,
+              action.fields,
+              actionArgs,
+            ),
+            actor: decoded.actor,
+            ...(decoded.actorType === undefined
+              ? {}
+              : { actorType: decoded.actorType as ActorType }),
+            reason: `registered action ${decoded.action} on ${decoded.entity}`,
+          })),
+        catch: (cause) => surfaceError("executeRegisteredAction", cause),
+      });
+      const execution = yield* executeDurableObjectSqliteActionEffect(
+        dag,
+        collections,
+        flowWaitTimers,
+        {
+          runId: decoded.runId,
+          flowDefName: decoded.flowDefName ?? `action:${decoded.action}`,
+          subject: decoded.entity,
+          actionName: decoded.action,
+          eventId: decoded.eventId,
+          now: decoded.now ?? defaultNow,
+          ...(decoded.stepId === undefined ? {} : { stepId: decoded.stepId }),
+          ...(decoded.nextStepId === undefined
+            ? {}
+            : { nextStepId: decoded.nextStepId }),
+          ...(decoded.message === undefined ? {} : { message: decoded.message }),
+          assertions,
+        },
+        defaultNow,
+        cardinalityOf,
+        coord,
+      );
+      return { action, execution };
+    }
+
+    if (decoded.collectionToken === undefined) {
+      return yield* Effect.fail(
+        surfaceError(
+          "executeRegisteredAction",
+          new Error("registered collection action requires collectionToken"),
+        ),
+      );
+    }
+    const collection = yield* Effect.try({
+      try: () => {
+        const opensForm = action.opensForm!;
+        return {
+          token: decoded.collectionToken!,
+          form: resolveRegisteredActionString(
+            "form",
+            opensForm.form,
+            decoded.entity,
+            action.fields,
+            actionArgs,
+          ),
+          ...(decoded.collectionExpiresAt === undefined
+            ? {}
+            : { expiresAt: decoded.collectionExpiresAt }),
+          scope: resolveRegisteredActionString(
+            "scope",
+            opensForm.scope,
+            decoded.entity,
+            action.fields,
+            actionArgs,
+          ),
+        };
+      },
+      catch: (cause) => surfaceError("executeRegisteredAction", cause),
+    });
+    const execution = yield* executeDurableObjectSqliteActionEffect(
+      dag,
+      collections,
+      flowWaitTimers,
+      {
+        runId: decoded.runId,
+        flowDefName: decoded.flowDefName ?? `action:${decoded.action}`,
+        subject: decoded.entity,
+        actionName: decoded.action,
+        eventId: decoded.eventId,
+        now: decoded.now ?? defaultNow,
+        ...(decoded.stepId === undefined ? {} : { stepId: decoded.stepId }),
+        ...(decoded.nextStepId === undefined
+          ? {}
+          : { nextStepId: decoded.nextStepId }),
+        ...(decoded.message === undefined ? {} : { message: decoded.message }),
+        collection,
+      },
+      defaultNow,
+      cardinalityOf,
+      coord,
+    );
+    return { action, execution };
   });
 }
 
@@ -2126,6 +2594,12 @@ export function createDurableObjectSqliteCurrentSurface(
           coord(),
         ),
       ),
+    actionByName: (args) =>
+      run(getDurableObjectSqliteActionByNameEffect(args)),
+    listActions: (args = {}) =>
+      run(listDurableObjectSqliteActionsEffect(args)),
+    actionsForType: (args) =>
+      run(listDurableObjectSqliteActionsForTypeEffect(args)),
     scheduleCollectionTick: (args) =>
       runCollection(
         scheduleDurableObjectSqliteCollectionTickEffect(
@@ -2199,6 +2673,18 @@ export function createDurableObjectSqliteCurrentSurface(
     executeAction: (args) =>
       run(
         executeDurableObjectSqliteActionEffect(
+          runtime.dag,
+          runtime.collections,
+          runtime.flowWaitTimers,
+          args,
+          coord().txTime,
+          options.cardinalityOf,
+          coord(),
+        ),
+      ),
+    executeRegisteredAction: (args) =>
+      run(
+        executeDurableObjectSqliteRegisteredActionEffect(
           runtime.dag,
           runtime.collections,
           runtime.flowWaitTimers,

@@ -8,14 +8,18 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ### Current pulse
 
-- [x] Goal 143 shipped: Cloudflare action execution seed.
+- [x] Goal 144 shipped: Cloudflare registered action lookup seed.
 - [ ] Choose the next active slice from remaining Cloudflare parity (full flow
-  interpreter/registry lookup/host action invocation, full React/frontend SDK
+  interpreter/branching/host action invocation, full React/frontend SDK
   live-query package, or broader historical SQL query-provider
   parity/performance hardening), Node production hardening, provider-specific
   auth/UI wrapping, or a scoped Confect/domain wrapper.
 
-### Handoff: continue MetaCRDT on `main` from commit `c6c4379`
+### Archived handoff: continue MetaCRDT on `main` from commit `c6c4379`
+
+Preserved from an earlier continuation prompt. The collection-capability surface
+requested here shipped in Goal 123, with field-to-fact lowering in Goal 124,
+timers/alarm plumbing in Goals 125/127, and flow-wait extensions in Goal 128.
 
 **TASK:** Start the next Cloudflare target parity slice: add the first
 operational collection capability surface to the Durable Object + SQLite target.
@@ -246,11 +250,17 @@ After implementation:
   assertions or collection-token opening. Assertion actions append protocol
   events and reconcile current projection rows; collection-opening actions issue
   caller-provided tokens and park the run.
-- [ ] **Remaining Cloudflare Phase D parity** — full flow interpreter,
-  configured registry lookup/branching/host action invocation, full
-  React/frontend SDK live-query package/auth integration, and broader historical
-  SQL query-provider parity/performance hardening remain open; do not claim full
-  parity until those are implemented.
+- [x] **Goal 144 shipped: registered action lookup seed** —
+  `actionByName`, `listActions`, and `actionsForType` load schema-as-facts
+  action definitions from DO SQLite current projection rows. `executeRegisteredAction`
+  resolves `$entity` / `$arg.*` placeholders, validates `appliesTo` against the
+  target entity's current `type` facts, and delegates a single supported
+  configured effect to `executeAction`.
+- [ ] **Remaining Cloudflare Phase D parity** — full flow interpreter, branch
+  evaluation, multi-effect configured action execution, host action invocation,
+  full React/frontend SDK live-query package/auth integration, and broader
+  historical SQL query-provider parity/performance hardening remain open; do not
+  claim full parity until those are implemented.
 
 **Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
 - [x] Commutative supersession — centralized Convex writes now stamp
@@ -383,6 +393,11 @@ After implementation:
   `executeAction` runs one caller-described action effect by delegating to the
   DAG-step primitives for assertions or collection-token opening, without
   claiming configured registry lookup, branching, or host action invocation.
+- [x] Cloudflare Durable Object SQLite registered action lookup seed —
+  `actionByName`, `listActions`, `actionsForType`, and
+  `executeRegisteredAction` read configured action facts from current projection
+  rows, resolve action args, validate entity type applicability, and execute one
+  supported assertion or collection-opening effect.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -393,7 +408,7 @@ After implementation:
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — full
   SQL-indexed query-provider parity/performance hardening, full flow
-  interpreter/registry lookup/host action invocation, full React/frontend SDK
+  interpreter/branching/host action invocation, full React/frontend SDK
   live-query package/auth integration, and broader production hardening on top
   of the persisted registry (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
@@ -925,6 +940,18 @@ After implementation:
 ---
 
 ## Log
+
+### 2026-06-09 — Cloudflare registered action lookup seed
+- [x] **Projection-backed registry reads.**
+  `actionByName`, `listActions`, and `actionsForType` now load
+  schema-as-facts action definitions from DO SQLite current projection rows.
+- [x] **Registered action execution.**
+  `executeRegisteredAction` resolves `$entity` / `$arg.*` placeholders, validates
+  the target entity's current `type` facts against `appliesTo`, and delegates one
+  supported configured effect to `executeAction`.
+- [x] **Still scoped.** Multi-effect configured actions, branch evaluation,
+  declarative DAG interpretation, host action invocation, React/frontend SDK
+  integration, and broader SQL query-provider hardening remain open.
 
 ### 2026-06-09 — Cloudflare action execution seed
 - [x] **Action facade.**

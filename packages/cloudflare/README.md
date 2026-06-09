@@ -59,6 +59,15 @@ implements them on Cloudflare.
   protocol assertions or collection-token opening. This is an action-effect
   primitive, not configured action registry lookup, branch evaluation,
   declarative workflow interpretation, or host action invocation.
+- **Durable Object SQLite registered action lookup seed** —
+  `actionByName`, `listActions`, `actionsForType`, and
+  `executeRegisteredAction` on `createDurableObjectSqliteCurrentSurface` read
+  configured action facts from current projection rows, resolve `$entity` /
+  `$arg.*` placeholders, validate `appliesTo`, and delegate one supported
+  assertion or collection-opening effect through `executeAction`. This is
+  registry lookup and one-effect execution only, not multi-effect configured
+  action execution, branch evaluation, declarative workflow interpretation, or
+  host action invocation.
 - **Durable Object SQLite live invalidation fanout** —
   `DurableObjectSqliteLiveInvalidationFanout` plus Effect/Promise publish
   helpers accept bounded `e` / `a` subscriptions over structural WebSocket
@@ -224,7 +233,7 @@ historical provider has conformance-style coverage for joins, disjunction,
 negation, compare/compute, pagination, aggregation, derived rows, lifecycle
 visibility, and bounded SQLite scan counters. The remaining parity plan —
 broader historical SQL-indexed query optimization, full flow
-interpreter/registry lookup/host action invocation, and full React/frontend SDK
+interpreter/branching/host action invocation, and full React/frontend SDK
 live-query package/auth integration over DO WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
