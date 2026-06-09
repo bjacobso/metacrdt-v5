@@ -8,7 +8,7 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ### Current pulse
 
-- [x] Goal 137 shipped: Cloudflare SQLite live-query Durable Object assembly seed.
+- [x] Goal 138 shipped: Cloudflare SQLite live-query write publish route seed.
 - [ ] Choose the next active slice from remaining Cloudflare parity (full flow
   interpreter/action execution, frontend SDK/live-query reconnect protocol
   integration, or broader historical SQL query-provider parity/performance
@@ -214,11 +214,16 @@ After implementation:
   `MetaCrdtSqliteLiveQueryDurableObject` now constructs the DO SQLite runtime,
   current-query surface, persisted live-query registry, and structural fanout for
   upgraded live current-query WebSocket requests.
+- [x] **Goal 138 shipped: SQLite live-query write publish route seed** —
+  `createRelayWorker` now forwards `/write/<room>/<operation>` requests through
+  the same authenticated Durable Object binding, and
+  `MetaCrdtSqliteLiveQueryDurableObject` exposes POST JSON write routes for
+  append assert, append lifecycle, and collection submit that publish returned
+  projection-change summaries to live current-query subscribers.
 - [ ] **Remaining Cloudflare Phase D parity** — full flow interpreter/action
-  execution, frontend SDK/live-query reconnect protocol integration, application
-  write-route publish orchestration, and broader historical SQL query-provider
-  parity/performance hardening remain open; do not claim full parity until those
-  are implemented.
+  execution, frontend SDK/live-query reconnect protocol integration, and broader
+  historical SQL query-provider parity/performance hardening remain open; do not
+  claim full parity until those are implemented.
 
 **Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
 - [x] Commutative supersession — centralized Convex writes now stamp
@@ -317,8 +322,8 @@ After implementation:
 - [x] Cloudflare Durable Object SQLite live current-query reconnect hydration —
   `hydrateConnection` and socket `query.hydrate` reattach active persisted
   current-query rows for connected sockets and send fresh snapshots while
-  leaving durable client session tokens, result diffs, frontend SDK behavior, and
-  write-route publish orchestration open.
+  leaving durable client session tokens, result diffs, frontend SDK behavior,
+  and write-route publish orchestration open at the time.
 - [x] Cloudflare Durable Object SQLite authenticated live-query route seed —
   `createRelayWorker` forwards `/live-query/<room>` through the existing token
   auth boundary, and `attachDurableObjectSqliteLiveQueryWebSocket` connects
@@ -327,6 +332,11 @@ After implementation:
   `MetaCrdtSqliteLiveQueryDurableObject` assembles the SQLite runtime, current
   surface, persisted live-query registry, and structural fanout for upgraded
   live current-query sockets while leaving frontend/session behavior open.
+- [x] Cloudflare Durable Object SQLite live-query write publish route seed —
+  authenticated Worker-compatible `/write/<room>/<operation>` POST routes can
+  append asserts, append lifecycle events, or submit collection assertions
+  through the current surface and publish changed `(e, a)` summaries to live
+  current-query subscribers.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -338,8 +348,8 @@ After implementation:
 - [ ] Cloudflare remaining component-equivalent SQLite surface — full
   SQL-indexed query-provider parity/performance hardening, full flow
   interpreter/action execution, frontend SDK/live-query reconnect protocol
-  integration, and application write-route publish orchestration on top of the
-  persisted registry (see [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
+  integration, and broader production hardening on top of the persisted registry
+  (see [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
@@ -868,6 +878,19 @@ After implementation:
 ---
 
 ## Log
+
+### 2026-06-09 — Cloudflare SQLite live-query write publish route seed
+- [x] **Authenticated write route forwarding.** `createRelayWorker` now includes
+  a `/write/<room>/<operation>` prefix that routes through the same Durable
+  Object binding and token auth boundary as relay and live-query room paths.
+- [x] **DO write-and-publish paths.**
+  `MetaCrdtSqliteLiveQueryDurableObject` can POST append assert, append
+  lifecycle, and collection submit writes through the existing current surface
+  and publish the returned changed `(e, a)` summaries through
+  `DurableObjectSqliteLiveCurrentQueryFanout`.
+- [x] **Still scoped.** This is write publish orchestration only; frontend SDK
+  behavior, durable session tokens, result diffs, reconnect retry policy, full
+  flow execution, and broader SQL query-provider hardening remain open.
 
 ### 2026-06-08 — Cloudflare SQLite live-query Durable Object assembly seed
 - [x] **DO assembly class.** `MetaCrdtSqliteLiveQueryDurableObject` now

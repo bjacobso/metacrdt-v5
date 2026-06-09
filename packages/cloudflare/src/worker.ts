@@ -18,11 +18,15 @@ import {
 } from "./relay.js";
 import {
   DurableObjectSqliteLiveCurrentQueryFanout,
+  type DurableObjectSqliteLiveQueryPublishResult,
 } from "./sqliteLive.js";
 import {
   createDurableObjectSqliteCurrentSurface,
+  type DurableObjectSqliteAppendAndRebuildResult,
   type DurableObjectSqliteCurrentSurface,
   type DurableObjectSqliteCurrentSurfaceOptions,
+  type DurableObjectSqliteProjectionChange,
+  type DurableObjectSqliteSubmitCollectionResult,
 } from "./sqliteCurrent.js";
 
 export interface DurableObjectStateLike {
@@ -91,6 +95,7 @@ export type RelayWorkerOptions = {
   roomParam?: string;
   roomPathPrefix?: string;
   liveQueryPathPrefix?: string;
+  writePathPrefix?: string;
   /**
    * Token auth for the Worker-facing relay routes. Omitted means "enforce when
    * METACRDT_RELAY_TOKEN exists"; `false` disables auth even if that env var is
@@ -114,12 +119,18 @@ export type DurableObjectSqliteLiveQueryDurableObjectOptions =
     webSocketResponse?: WebSocketResponseFactory;
     connectionIdParam?: string;
     connectionIdHeader?: string;
+    writePathPrefix?: string;
   };
 
 export type DurableObjectSqliteLiveQueryDurableObjectRuntime = {
   runtime: DurableObjectSqliteRuntime;
   surface: DurableObjectSqliteCurrentSurface;
   fanout: DurableObjectSqliteLiveCurrentQueryFanout;
+};
+
+export type DurableObjectSqliteLiveQueryWriteResult<T> = {
+  readonly result: T;
+  readonly live: DurableObjectSqliteLiveQueryPublishResult;
 };
 
 type ResolvedRelayAuthOptions = Required<RelayAuthOptions>;
@@ -191,6 +202,7 @@ function relayWorkerOptions(options: RelayWorkerOptions = {}): ResolvedRelayWork
     roomParam: options.roomParam ?? "room",
     roomPathPrefix: options.roomPathPrefix ?? "/rooms",
     liveQueryPathPrefix: options.liveQueryPathPrefix ?? "/live-query",
+    writePathPrefix: options.writePathPrefix ?? "/write",
     auth: relayAuthOptions(options.auth),
   };
 }
@@ -252,6 +264,78 @@ function unauthorized(): Response {
       status: 401,
       headers: { "www-authenticate": 'Bearer realm="metacrdt-relay"' },
     },
+  );
+}
+
+function pathSegmentsAfterPrefix(
+  pathname: string,
+  pathPrefix: string,
+): string[] | null {
+  const prefix = pathPrefix.endsWith("/") ? pathPrefix : `${pathPrefix}/`;
+  if (pathname === pathPrefix) return [];
+  if (!pathname.startsWith(prefix)) return null;
+  return pathname
+    .slice(prefix.length)
+    .split("/")
+    .map((segment) => decodeURIComponent(segment))
+    .filter((segment) => segment !== "");
+}
+
+function writeRoomFromRequest(
+  request: Request,
+  options: Pick<ResolvedRelayWorkerOptions, "roomParam" | "writePathPrefix">,
+): string | null {
+  const url = new URL(request.url);
+  const byParam = url.searchParams.get(options.roomParam);
+  if (byParam) return byParam;
+
+  const segments = pathSegmentsAfterPrefix(url.pathname, options.writePathPrefix);
+  if (segments === null || segments.length < 2) return null;
+  return segments[0] ?? null;
+}
+
+function writeOperationFromPath(
+  pathname: string,
+  writePathPrefix: string,
+): "assert" | "lifecycle" | "collection.submit" | undefined {
+  const segments = pathSegmentsAfterPrefix(pathname, writePathPrefix);
+  if (segments === null) return undefined;
+  const operationAtPrefix =
+    segments[0] === "assert" ||
+    segments[0] === "lifecycle" ||
+    segments[0] === "collection";
+  const operation = operationAtPrefix ? segments : segments.slice(1);
+  if (operation[0] === "assert") return "assert";
+  if (operation[0] === "lifecycle") return "lifecycle";
+  if (operation[0] === "collection" && operation[1] === "submit") {
+    return "collection.submit";
+  }
+  return undefined;
+}
+
+async function requestJson(request: Request): Promise<unknown> {
+  const text = await request.text();
+  return text === "" ? {} : JSON.parse(text) as unknown;
+}
+
+function errorJson(error: unknown, status = 400): Response {
+  return json(
+    {
+      error: error instanceof Error ? error.message : String(error),
+    },
+    { status },
+  );
+}
+
+function dedupeProjectionChanges(
+  changed: readonly DurableObjectSqliteProjectionChange[],
+): DurableObjectSqliteProjectionChange[] {
+  return [
+    ...new Map(
+      changed.map((change) => [`${change.e}\u0000${change.a}`, change]),
+    ).values(),
+  ].sort((left, right) =>
+    left.e === right.e ? left.a.localeCompare(right.a) : left.e.localeCompare(right.e)
   );
 }
 
@@ -347,8 +431,9 @@ export class MetaCrdtRelayDurableObject {
 /**
  * Durable Object class shell for projection-backed live current queries over
  * DO SQLite. It assembles the SQLite runtime, current query surface, persisted
- * subscription registry, and in-memory fanout, but leaves application write
- * routes and frontend reconnect/session policy to callers.
+ * subscription registry, in-memory fanout, and narrow HTTP write routes that
+ * publish projection-change summaries to live current-query subscribers. It
+ * still leaves frontend reconnect/session policy to callers.
  */
 export class MetaCrdtSqliteLiveQueryDurableObject {
   readonly namespace: string;
@@ -357,6 +442,7 @@ export class MetaCrdtSqliteLiveQueryDurableObject {
   readonly webSocketResponse: WebSocketResponseFactory;
   readonly connectionIdParam?: string;
   readonly connectionIdHeader?: string;
+  readonly writePathPrefix: string;
   #runtime: DurableObjectSqliteLiveQueryDurableObjectRuntime | undefined;
 
   constructor(
@@ -375,6 +461,7 @@ export class MetaCrdtSqliteLiveQueryDurableObject {
         } as ResponseInitWithWebSocket));
     this.connectionIdParam = options.connectionIdParam;
     this.connectionIdHeader = options.connectionIdHeader;
+    this.writePathPrefix = options.writePathPrefix ?? "/write";
   }
 
   async liveQueryRuntime(): Promise<DurableObjectSqliteLiveQueryDurableObjectRuntime> {
@@ -405,6 +492,50 @@ export class MetaCrdtSqliteLiveQueryDurableObject {
     return this.#runtime;
   }
 
+  async appendAssertAndPublish(
+    args: Parameters<DurableObjectSqliteCurrentSurface["appendAssert"]>[0],
+  ): Promise<
+    DurableObjectSqliteLiveQueryWriteResult<
+      DurableObjectSqliteAppendAndRebuildResult
+    >
+  > {
+    const live = await this.liveQueryRuntime();
+    const result = await live.surface.appendAssert(args);
+    const changed = dedupeProjectionChanges(result.projection.changed);
+    const published = await live.fanout.publishChanges(changed);
+    return { result, live: published };
+  }
+
+  async appendLifecycleAndPublish(
+    args: Parameters<DurableObjectSqliteCurrentSurface["appendLifecycle"]>[0],
+  ): Promise<
+    DurableObjectSqliteLiveQueryWriteResult<
+      DurableObjectSqliteAppendAndRebuildResult
+    >
+  > {
+    const live = await this.liveQueryRuntime();
+    const result = await live.surface.appendLifecycle(args);
+    const changed = dedupeProjectionChanges(result.projection.changed);
+    const published = await live.fanout.publishChanges(changed);
+    return { result, live: published };
+  }
+
+  async submitCollectionAndPublish(
+    args: Parameters<DurableObjectSqliteCurrentSurface["submitCollection"]>[0],
+  ): Promise<
+    DurableObjectSqliteLiveQueryWriteResult<
+      DurableObjectSqliteSubmitCollectionResult
+    >
+  > {
+    const live = await this.liveQueryRuntime();
+    const result = await live.surface.submitCollection(args);
+    const changed = dedupeProjectionChanges(
+      result.assertions.flatMap((assertion) => assertion.projection.changed),
+    );
+    const published = await live.fanout.publishChanges(changed);
+    return { result, live: published };
+  }
+
   async fetch(request: Request): Promise<Response> {
     const live = await this.liveQueryRuntime();
     if (isUpgrade(request)) {
@@ -430,9 +561,47 @@ export class MetaCrdtSqliteLiveQueryDurableObject {
       });
     }
 
+    const url = new URL(request.url);
+    const writeOperation = writeOperationFromPath(
+      url.pathname,
+      this.writePathPrefix,
+    );
+    if (writeOperation !== undefined) {
+      if (request.method !== "POST") {
+        return json({ error: "write route requires POST" }, { status: 405 });
+      }
+      try {
+        const body = await requestJson(request);
+        if (writeOperation === "assert") {
+          return json({
+            ok: true,
+            ...(await this.appendAssertAndPublish(body as Parameters<
+              DurableObjectSqliteCurrentSurface["appendAssert"]
+            >[0])),
+          });
+        }
+        if (writeOperation === "lifecycle") {
+          return json({
+            ok: true,
+            ...(await this.appendLifecycleAndPublish(body as Parameters<
+              DurableObjectSqliteCurrentSurface["appendLifecycle"]
+            >[0])),
+          });
+        }
+        return json({
+          ok: true,
+          ...(await this.submitCollectionAndPublish(body as Parameters<
+            DurableObjectSqliteCurrentSurface["submitCollection"]
+          >[0])),
+        });
+      } catch (error) {
+        return errorJson(error);
+      }
+    }
+
     return json(
       {
-        error: "websocket upgrade required",
+        error: "websocket upgrade or write route required",
       },
       { status: 426 },
     );
@@ -496,6 +665,7 @@ export function createRelayWorker(options: RelayWorkerOptions = {}) {
           ok: true,
           binding: resolved.binding,
           liveQueryPathPrefix: resolved.liveQueryPathPrefix,
+          writePathPrefix: resolved.writePathPrefix,
         });
       }
 
@@ -508,14 +678,18 @@ export function createRelayWorker(options: RelayWorkerOptions = {}) {
         return json({ error: `missing Durable Object binding ${resolved.binding}` }, { status: 500 });
       }
 
-      const room = roomFromRequest(request, resolved, [
-        resolved.roomPathPrefix,
-        resolved.liveQueryPathPrefix,
-      ]);
+      const writeRoute =
+        pathSegmentsAfterPrefix(url.pathname, resolved.writePathPrefix) !== null;
+      const room = writeRoute
+        ? writeRoomFromRequest(request, resolved)
+        : roomFromRequest(request, resolved, [
+            resolved.roomPathPrefix,
+            resolved.liveQueryPathPrefix,
+          ]);
       if (!room) {
         return json(
           {
-            error: `missing room; use ?${resolved.roomParam}=<name>, ${resolved.roomPathPrefix}/<name>, or ${resolved.liveQueryPathPrefix}/<name>`,
+            error: `missing room; use ?${resolved.roomParam}=<name>, ${resolved.roomPathPrefix}/<name>, ${resolved.liveQueryPathPrefix}/<name>, or ${resolved.writePathPrefix}/<name>/<operation>`,
           },
           { status: 400 },
         );

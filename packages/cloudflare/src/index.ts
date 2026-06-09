@@ -233,6 +233,7 @@ export {
   type DurableObjectStubLike,
   type DurableObjectSqliteLiveQueryDurableObjectOptions,
   type DurableObjectSqliteLiveQueryDurableObjectRuntime,
+  type DurableObjectSqliteLiveQueryWriteResult,
   type DurableObjectSqliteStateLike,
   type DurableObjectSqliteLiveQueryWebSocketOptions,
   type RelayAuthOptions,

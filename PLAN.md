@@ -281,9 +281,14 @@ protocol, or result diffs. Goal 137 adds a SQLite live-query Durable Object
 assembly seed:
 `MetaCrdtSqliteLiveQueryDurableObject` constructs the DO SQLite runtime,
 current-query surface, persisted live-query registry, and structural fanout for
-upgraded WebSocket requests. This still does not provide application write-route
-orchestration, frontend SDK behavior, durable client session protocol, or result
-diffs. The next active goal should be chosen from the remaining TODO candidates:
+upgraded WebSocket requests. Goal 138 adds a narrow application write-route
+publish seed on top of that assembly: `MetaCrdtSqliteLiveQueryDurableObject`
+accepts authenticated-Worker-compatible POST write routes for append assert,
+append lifecycle, and collection submit, routes them through the existing
+current surface, and publishes returned projection-change summaries through the
+live current-query fanout. This still does not provide frontend SDK behavior,
+durable client session protocol, result diffs, or full flow execution. The next
+active goal should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (broader SQL query-provider
@@ -9503,6 +9508,51 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 138 — Cloudflare SQLite Live Query Write Publish Route Seed
+
+**Status:** shipped.
+
+**Objective:** add the first application write-route orchestration for the
+Cloudflare SQLite live-query Durable Object, so writes that mutate current
+projection rows can publish the resulting invalidation summary to live current
+query subscribers.
+
+### What Shipped
+
+- Added `writePathPrefix` to `createRelayWorker`, defaulting to `/write`, so
+  `/write/<room>/<operation>` requests route through the same Durable Object
+  binding and Bearer/header/query-token auth boundary as relay and live-query
+  routes.
+- Added write-and-publish helpers on
+  `MetaCrdtSqliteLiveQueryDurableObject` for append assert, append lifecycle,
+  and collection submit. Each helper uses the existing
+  `createDurableObjectSqliteCurrentSurface` write method, dedupes the returned
+  `(e, a)` projection-change summary, and publishes it through
+  `DurableObjectSqliteLiveCurrentQueryFanout`.
+- Added POST JSON DO routes for `/write/assert`, `/write/lifecycle`,
+  `/write/collection/submit`, and the Worker-forwarded
+  `/write/<room>/...` forms.
+- Exported the write publish result type from `@metacrdt/cloudflare`.
+- Added focused Cloudflare Worker/DO tests proving write routes use the existing
+  auth-forwarded Durable Object binding and that a POST append produces a live
+  `query.updated` message for a subscribed current query.
+
+### Non-Goals
+
+- Do not claim frontend SDK/client behavior, durable session tokens, result
+  diffing, reconnect retry policy, or a full live-query client protocol.
+- Do not implement Cloudflare flow interpreter/action execution or broader
+  historical SQL query-provider parity/performance hardening.
+- Do not add generic external write adapters outside the assembled SQLite live
+  query Durable Object.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 56 Cloudflare tests.
 
 ---
 

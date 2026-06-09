@@ -207,6 +207,7 @@ describe("@metacrdt/cloudflare Worker shell", () => {
       ok: true,
       binding: "METACRDT_RELAY",
       liveQueryPathPrefix: "/live-query",
+      writePathPrefix: "/write",
     });
 
     const noBinding = await worker.fetch(
@@ -225,8 +226,37 @@ describe("@metacrdt/cloudflare Worker shell", () => {
     expect(noRoom.status).toBe(400);
     expect(await body(noRoom)).toEqual({
       error:
-        "missing room; use ?room=<name>, /rooms/<name>, or /live-query/<name>",
+        "missing room; use ?room=<name>, /rooms/<name>, /live-query/<name>, or /write/<name>/<operation>",
     });
+  });
+
+  test("routes write requests through the same authenticated DO binding", async () => {
+    const worker = createRelayWorker({ auth: { token: "secret" } });
+    const ns = new FakeNamespace();
+    const env = { METACRDT_RELAY: ns };
+
+    const denied = await worker.fetch(
+      new Request("https://relay.example/write/alpha/assert", {
+        method: "POST",
+      }),
+      env,
+    );
+    expect(denied.status).toBe(401);
+    expect(ns.ids).toEqual([]);
+
+    const allowed = await worker.fetch(
+      new Request("https://relay.example/write/alpha/assert", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+      }),
+      env,
+    );
+    expect(allowed.status).toBe(200);
+    expect(await allowed.text()).toBe("ok");
+    expect(ns.ids).toEqual(["alpha"]);
+    expect(ns.stub.requests[0]?.url).toBe(
+      "https://relay.example/write/alpha/assert",
+    );
   });
 
   test("requires relay token when configured by Worker env", async () => {
@@ -313,6 +343,7 @@ describe("@metacrdt/cloudflare Worker shell", () => {
       ok: true,
       binding: "METACRDT_RELAY",
       liveQueryPathPrefix: "/live-query",
+      writePathPrefix: "/write",
     });
   });
 
@@ -511,5 +542,137 @@ describe("@metacrdt/cloudflare Worker shell", () => {
       status: "active",
       dependencies: [{ e: "task:1", a: "status" }],
     });
+  });
+
+  test("SQLite live-query Durable Object write routes publish query updates", async () => {
+    const server = new FakeSocket();
+    const live = new MetaCrdtSqliteLiveQueryDurableObject(
+      { storage: new FakeSqliteStorage() },
+      {
+        replicaId: "do:sqlite-live",
+        wall: () => 100,
+        cardinalityOf: () => "one",
+        currentCoord: () => ({ txTime: 10_000, validTime: 10_000 }),
+        webSocketPair: () => ({ 0: { client: true }, 1: server }),
+        webSocketResponse: () =>
+          new Response(null, {
+            status: 200,
+            headers: { "x-test-upgrade": "sqlite-live-query" },
+          } as ResponseInit & { webSocket?: unknown }),
+      },
+    );
+    const assembled = await live.liveQueryRuntime();
+
+    await live.fetch(
+      new Request("https://relay.example/live-query/room?client=alice", {
+        headers: { Upgrade: "websocket" },
+      }),
+    );
+    server.receive(
+      JSON.stringify({
+        protocol: assembled.fanout.protocol,
+        type: "query.subscribe",
+        id: "query:status",
+        query: {
+          where: [["task:1", "status", "?status"]],
+          select: ["?status"],
+          coord: { txTime: 10_000, validTime: 10_000 },
+        },
+      }),
+    );
+    await flush();
+
+    expect(server.sent.map((message) => JSON.parse(message))).toEqual([
+      {
+        protocol: assembled.fanout.protocol,
+        type: "query.subscribed",
+        from: "do:sqlite-live",
+        id: "query:status",
+        dependencies: [{ e: "task:1", a: "status" }],
+        result: {
+          states: [],
+          rows: [],
+          eventSourceIds: [],
+        },
+      },
+    ]);
+
+    const write = await live.fetch(
+      new Request("https://relay.example/write/room/assert", {
+        method: "POST",
+        body: JSON.stringify({
+          e: "task:1",
+          a: "status",
+          v: "open",
+          actor: "user:1",
+          actorType: "human",
+        }),
+      }),
+    );
+    expect(write.status).toBe(200);
+    expect(await body(write)).toMatchObject({
+      ok: true,
+      live: {
+        delivered: 1,
+        subscriptions: ["query:status"],
+        changed: [
+          {
+            e: "task:1",
+            a: "status",
+            beforeEventIds: [],
+            afterEventIds: [expect.stringMatching(/^e_/)],
+          },
+        ],
+      },
+      result: {
+        projection: {
+          changed: [
+            {
+              e: "task:1",
+              a: "status",
+              beforeEventIds: [],
+              afterEventIds: [expect.stringMatching(/^e_/)],
+            },
+          ],
+        },
+      },
+    });
+
+    await flush();
+    expect(server.sent.map((message) => JSON.parse(message))).toEqual([
+      expect.objectContaining({
+        type: "query.subscribed",
+        result: {
+          states: [],
+          rows: [],
+          eventSourceIds: [],
+        },
+      }),
+      {
+        protocol: assembled.fanout.protocol,
+        type: "query.updated",
+        from: "do:sqlite-live",
+        id: "query:status",
+        changed: [
+          {
+            e: "task:1",
+            a: "status",
+            beforeEventIds: [],
+            afterEventIds: [expect.stringMatching(/^e_/)],
+          },
+        ],
+        result: {
+          states: [
+            {
+              binding: { status: "open" },
+              sources: [expect.stringMatching(/^e_/)],
+              eventSources: [expect.stringMatching(/^e_/)],
+            },
+          ],
+          rows: [{ status: "open" }],
+          eventSourceIds: [expect.stringMatching(/^e_/)],
+        },
+      },
+    ]);
   });
 });

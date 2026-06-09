@@ -67,14 +67,20 @@ implements them on Cloudflare.
   `attachDurableObjectSqliteLiveQueryWebSocket` attaches upgraded DO requests to
   an existing `DurableObjectSqliteLiveCurrentQueryFanout`. This is
   snapshot/update, metadata persistence, structural hydration, and route attach
-  plumbing, not a frontend SDK, durable client session protocol, write-route
-  publish orchestration, or result diffs.
+  plumbing, not a frontend SDK, durable client session protocol, or result
+  diffs.
 - **Durable Object SQLite live-query DO assembly** —
   `MetaCrdtSqliteLiveQueryDurableObject` constructs the DO SQLite runtime,
   current query surface, persisted live-query registry, and structural fanout for
-  upgraded current-query sockets over `ctx.storage.sql`. This is assembly
-  plumbing, not a frontend SDK, durable client session protocol, write-route
-  publish orchestration, or result diffs.
+  upgraded current-query sockets over `ctx.storage.sql`.
+- **Durable Object SQLite live-query write publishing** —
+  `createRelayWorker` forwards `/write/<room>/<operation>` through the same auth
+  boundary as relay and live-query routes, and
+  `MetaCrdtSqliteLiveQueryDurableObject` accepts POST JSON append assert,
+  append lifecycle, and collection submit routes that publish returned
+  projection-change summaries through the live current-query fanout. This is
+  write publish orchestration, not a frontend SDK, durable client session
+  protocol, result diffing, or reconnect retry policy.
 - **WebSocket relay** — `DurableObjectWebSocketRelay` / `attachDurableObjectRelay`
   (`RelayConnection`, `RelayOptions`, `WebSocketLike`): accepts server sockets,
   answers version-vector hellos with deltas, merges client events through the
@@ -182,8 +188,8 @@ historical provider has conformance-style coverage for joins, disjunction,
 negation, compare/compute, pagination, aggregation, derived rows, lifecycle
 visibility, and bounded SQLite scan counters. The remaining parity plan —
 broader historical SQL-indexed query optimization, full flow interpreter/action
-execution, frontend SDK/live-query reconnect protocol integration, and
-write-route publish orchestration over DO WebSockets — is
+execution, and frontend SDK/live-query reconnect protocol integration over DO
+WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth
