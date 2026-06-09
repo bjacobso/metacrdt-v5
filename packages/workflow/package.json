@@ -1,7 +1,7 @@
 {
-  "name": "@metacrdt/cloudflare",
+  "name": "@metacrdt/workflow",
   "version": "0.1.0",
-  "description": "MetaCRDT Cloudflare target helpers: Durable Object storage-backed runtime services for event logs, HLC clocks, and per-replica sequencing.",
+  "description": "MetaCRDT workflow semantics: DAG validation, pure step transitions, wait keys, and flow-definition lowering.",
   "type": "module",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -13,8 +13,7 @@
     }
   },
   "files": [
-    "dist",
-    "wrangler.example.toml"
+    "dist"
   ],
   "scripts": {
     "build": "tsdown --config ../../tsdown.config.ts",
@@ -27,11 +26,9 @@
     "@metacrdt/core": "workspace:*",
     "@metacrdt/query": "workspace:*",
     "@metacrdt/runtime": "workspace:*",
-    "@metacrdt/workflow": "workspace:*",
     "effect": "^3.21.3"
   },
   "devDependencies": {
-    "@metacrdt/testkit": "workspace:*",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
   }

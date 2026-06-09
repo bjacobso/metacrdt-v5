@@ -10,6 +10,7 @@ import {
   eventLogBaseWithDerivedTripleSource,
   eventLogTripleSource,
 } from "./lib/eventLogTripleSource";
+import { waitKeyFromSubmission } from "./lib/workflow";
 
 type ClosureSupport = {
   from: string;
@@ -138,10 +139,12 @@ export const processFactChange = internalMutation({
     if (args.changeKind === "assert" && args.a.startsWith("submitted.")) {
       const fact = await ctx.db.get("facts", args.factId);
       if (fact) {
+        const key = waitKeyFromSubmission(args.e, args.a, String(fact.v));
+        if (!key) return;
         await ctx.scheduler.runAfter(0, internal.flows.resumeOnSubmission, {
-          subject: args.e,
-          form: args.a.slice("submitted.".length),
-          scope: String(fact.v),
+          subject: key.subject,
+          form: key.form,
+          scope: key.scope,
         });
       }
     }

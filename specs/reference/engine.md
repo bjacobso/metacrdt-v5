@@ -238,7 +238,7 @@ Planned package graph:
 @metacrdt/schema      schema-as-facts, types, attributes (definition lowering shipped)
 @metacrdt/query       Datalog, rules, derivation (query helpers + emit shaping + planner + dedupe + pattern inputs + join expansion + negation/state/limit/bound-var/frame helpers shipped)
 @metacrdt/workflow    processes, flows, obligations
-@metacrdt/forms       forms, collection, prompt-response
+@metacrdt/collect     forms, collection, prompt-response
 @metacrdt/views       ViewSpec / generated response surfaces
 @metacrdt/agent       agent actors, proposals, skills
 @metacrdt/runtime     IR + Effect service interfaces/Layers

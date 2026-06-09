@@ -30,7 +30,7 @@ MetaCRDT — the umbrella: the primitive, the thesis, the org
 │   @metacrdt/schema ..... schema-as-facts (types, attributes, cardinality)
 │   @metacrdt/query ...... the Datalog engine / derivation evaluator         (SPEC §6)
 │   @metacrdt/workflow ... durable flows & steps
-│   @metacrdt/forms ...... form defs + collection
+│   @metacrdt/collect .... form defs + collection runs/tokens/submissions
 │   @metacrdt/agent ...... agent participation
 │
 ├─ THE HARNESS       @metacrdt/runtime  ·  the IR + service interfaces (multi-runtime)
@@ -52,7 +52,7 @@ MetaCRDT — the umbrella: the primitive, the thesis, the org
 The detailed package fold from the Open Ontology submodule is specified in
 [package-consolidation.md](../archive/package-consolidation.md): `@forma/ts` for
 the Lisp language, `@metacrdt/views` for ViewSpec, feature packages for schema /
-query / workflow / forms / agent, and target packages for Convex / Cloudflare /
+query / workflow / collect / agent, and target packages for Convex / Cloudflare /
 local / node.
 
 ## Three axes, kept separate
@@ -61,7 +61,7 @@ The common mistake is to flatten these into one list (e.g. putting `cloudflare`
 next to `workflow`). They are **different axes**, and keeping them apart is the
 whole point of the harness:
 
-- **Features** (`core` / `schema` / `query` / `workflow` / `forms` / `agent`) —
+- **Features** (`core` / `schema` / `query` / `workflow` / `collect` / `agent`) —
   *what the substrate does*. Pure; depend only on `@metacrdt/core` + service
   interfaces. They MUST NOT know about any runtime.
 - **The IR / harness** (`@metacrdt/runtime`) — *the portable program* + the
@@ -104,7 +104,7 @@ not invented:
 | `convex/attributes.ts`, `convex/lib/meta.ts` | Convex schema runtime over `@metacrdt/schema` constants/lowering/read-model helpers |
 | `convex/datalog.ts`, `convex/lib/engine.ts` | Convex Datalog runtime over `@metacrdt/query` helpers |
 | `convex/flows.ts` | `@metacrdt/workflow` |
-| `convex/forms.ts` | `@metacrdt/forms` |
+| `convex/forms.ts` | `@metacrdt/collect` |
 | `convex/facts.ts` mutations + Convex bindings | `@metacrdt/convex` (target) |
 | `convex/appconfig.ts` blueprint + the Effect-Schema DSL | Schematics / Onlang |
 | the staffing blueprint | first entry in **Alpha Ontology** |

@@ -118,7 +118,7 @@ packages/
 ├── schema/           @metacrdt/schema     # done: ids, cardinality, meta attrs, definition lowering
 ├── query/            @metacrdt/query      # done slices: parser, operators, rows, aggregation, emit shaping, planner, dedupe, source inputs, join expansion, negation/state/limit/bound-var/frame helpers
 ├── workflow/         @metacrdt/workflow   # durable steps, processes, obligations
-├── forms/            @metacrdt/forms      # forms, collection, prompt-response
+├── collect/          @metacrdt/collect    # forms, collection, prompt-response
 ├── views/            @metacrdt/views      # ViewSpec / response surfaces
 ├── agent/            @metacrdt/agent      # agent actors, proposals, skills
 ├── runtime/          @metacrdt/runtime    # done: services + memory/localStorage + BroadcastChannel + p2p
@@ -277,7 +277,7 @@ are one representation of facts inside a convergent event log.
   Bound-variable advancement, solver-frame initialization, and solver work-list
   clause selection/removal for scheduler state have shipped too.
 - `@metacrdt/workflow` — processes, flows, obligations.
-- `@metacrdt/forms` — collection surfaces and prompt-response forms.
+- `@metacrdt/collect` — collection surfaces and prompt-response forms.
 - `@metacrdt/views` — ViewSpec and generated response surfaces.
 - `@metacrdt/runtime` — IR + service harness.
 - `@metacrdt/convex`, `@metacrdt/cloudflare`, `@metacrdt/local`, `@metacrdt/node` — targets.
@@ -379,7 +379,7 @@ Deliverables:
 - [x] fixtures proving compatibility with selected Open Ontology Lisp examples
 - [x] no imports from `.context/open-ontology`
 
-### Phase 4 — Extract query/schema/workflow/forms/views
+### Phase 4 — Extract query/schema/workflow/collect/views
 
 Extract only when each package has a concrete use in the current reference app:
 
@@ -411,8 +411,23 @@ Extract only when each package has a concrete use in the current reference app:
    Convex-specific triple fetching, read authorization, provenance
    interpretation, solving, async join execution, negation IO, and branch
    recursion remain in the reference runtime.
-3. `@metacrdt/forms` from current `convex/forms.ts` and `/collect`.
-4. `@metacrdt/workflow` from current `convex/flows.ts`.
+3. `@metacrdt/collect` from current `convex/forms.ts`, `/collect`, and
+   collection-backed compliance requirements. This supersedes the older
+   `@metacrdt/forms` name because the portable package owns collection runs,
+   token predicates, submission-to-fact lowering, and `requires AND NOT
+   submitted` clause shaping; form definitions are one input to that collection
+   surface. The first pure slice has shipped: field definitions, form-definition
+   facts, submission validation/lowering, scope-key derivation, token validity,
+   and requirement/task clauses, with Convex consuming it through
+   `convex/lib/collect.ts`.
+4. `@metacrdt/workflow` from current `convex/flows.ts`. The first pure slice has
+   shipped: step types, value resolution, wait-key derivation, DAG validation,
+   flow-definition row/fact lowering, and a target-neutral step reducer that
+   emits intents. Convex consumes the package through `convex/lib/workflow.ts`.
+   The Cloudflare registered-flow runner now executes through the same reducer,
+   translating intents back into its Durable Object SQLite effects. Target-local
+   IO, transaction, scheduling, and unsupported-step behavior remain in the
+   targets.
 5. `@metacrdt/views` from Open Ontology `view-protocol` only after schema-driven
    UI exists in the app.
 
@@ -491,6 +506,7 @@ Open Ontology app/editor surfaces   → Schematics / apps, not substrate core
 ```
 
 The canonical repo is this one. `@metacrdt/core` is the convergence kernel,
-`@forma/ts` is the language package, and `@metacrdt/testkit` is now the
-first conformance package. Everything else is extracted only when the boundary is
-proven by real code.
+`@forma/ts` is the language package, `@metacrdt/collect` and
+`@metacrdt/workflow` hold the portable collection/workflow semantics, and
+`@metacrdt/testkit` is now the first conformance package. Everything else is
+extracted only when the boundary is proven by real code.

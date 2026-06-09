@@ -12,6 +12,13 @@
 > Status: **synthesis / narrative.** The load-bearing specs live in `workflows.md` §6–§7; this doc is the
 > map.
 
+> **Package status (2026-06-09).** The collection/compliance seam now lives in
+> `@metacrdt/collect`: form-definition facts, submission validation/lowering,
+> scope-key helpers, token predicates, and `requires AND NOT submitted` rule
+> clauses. Convex re-exports it from `convex/lib/collect.ts`; the actual
+> database writes, scheduler wiring, and obligation projection remain target
+> responsibilities.
+
 ---
 
 ## 0. Thesis: compliance is a configuration, not a subsystem

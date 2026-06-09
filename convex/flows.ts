@@ -12,6 +12,20 @@ import { runWhere } from "./lib/engine";
 import { assertInTx, createTransaction, retractInTx } from "./facts";
 import { obligationsFromEventLog } from "./lib/obligations";
 import { requireWritePrincipal } from "./lib/writeAuth";
+import {
+  COLLECT_TOKEN_TTL_MS,
+  isLiveToken,
+  tokenExpiresAt as collectTokenExpiresAt,
+} from "./lib/collect";
+import {
+  FLOW_RUN_STATUS_ATTR,
+  flowRunEntity,
+  stepFlow,
+  validateFlowDef,
+  type FlowDef,
+  type FlowRun,
+  type StepIntent,
+} from "./lib/workflow";
 
 // A minimal durable workflow runner for the compliance `collect` step:
 //   issue → park (waiting) → resume on the matching submission fact → complete,
@@ -21,25 +35,13 @@ import { requireWritePrincipal } from "./lib/writeAuth";
 // stand-in for a durable step engine (no BullMQ, no separate workflow service).
 
 const DEFAULTS = { reminderSeconds: 10, escalateSeconds: 30 };
-const DEFAULT_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const FLOW_RUN_STATUS_ATTR = "flow.run.status";
 
 type FlowRunStatus = Doc<"flowRuns">["status"];
 
 function tokenExpiresAt(now: number, expireSeconds?: number): number {
-  return now + (expireSeconds !== undefined ? expireSeconds * 1000 : DEFAULT_TOKEN_TTL_MS);
-}
-
-function hasLiveToken(
-  run: { status: string; token?: string; tokenConsumedAt?: number; tokenExpiresAt?: number },
-  now: number,
-): boolean {
-  return (
-    run.status === "waiting" &&
-    run.token !== undefined &&
-    run.tokenConsumedAt === undefined &&
-    (run.tokenExpiresAt === undefined || run.tokenExpiresAt > now)
-  );
+  return expireSeconds === undefined
+    ? now + COLLECT_TOKEN_TTL_MS
+    : collectTokenExpiresAt(now, expireSeconds);
 }
 
 async function log(
@@ -49,10 +51,6 @@ async function log(
   message?: string,
 ): Promise<void> {
   await ctx.db.insert("flowEvents", { runId, ts: Date.now(), kind, message });
-}
-
-function flowRunEntity(runId: Id<"flowRuns">): string {
-  return `flowRun:${runId}`;
 }
 
 async function recordFlowRunStatus(
@@ -106,7 +104,7 @@ export const startCollect = mutation({
       )
       .collect();
     const now = Date.now();
-    const live = existing.find((r) => hasLiveToken(r, now));
+    const live = existing.find((r) => isLiveToken(r, now));
     if (live) return { runId: live._id, reused: true };
 
     const reminderSeconds = args.reminderSeconds ?? DEFAULTS.reminderSeconds;
@@ -180,7 +178,7 @@ export const startCollectInternal = internalMutation({
       )
       .collect();
     const now = Date.now();
-    const live = existing.find((r) => hasLiveToken(r, now));
+    const live = existing.find((r) => isLiveToken(r, now));
     if (live) return { runId: live._id, reused: true };
 
     const runId = await ctx.db.insert("flowRuns", {
@@ -392,17 +390,6 @@ const stepTypeValidator = v.union(
   v.literal("done"),
 );
 
-/** Resolve a config value: "$subject", "$ctx.<key>", or a literal. */
-function resolveVal(raw: unknown, run: Doc<"flowRuns">): unknown {
-  if (typeof raw !== "string") return raw;
-  if (raw === "$subject") return run.subject;
-  if (raw.startsWith("$ctx.")) {
-    const ctxObj = (run.context ?? {}) as Record<string, unknown>;
-    return ctxObj[raw.slice("$ctx.".length)];
-  }
-  return raw;
-}
-
 /** Move a parked run to its current step's `next` and re-enter the interpreter. */
 async function resumeToNext(
   ctx: MutationCtx,
@@ -444,6 +431,12 @@ export const defineFlow = mutation({
   },
   handler: async (ctx, args) => {
     await requireWritePrincipal(ctx);
+    const validation = validateFlowDef(args as FlowDef);
+    if (!validation.ok) {
+      throw new Error(
+        `invalid flow ${args.name}: ${validation.diagnostics.map((d) => d.message).join("; ")}`,
+      );
+    }
     const existing = await ctx.db
       .query("flowDefs")
       .withIndex("by_name", (q) => q.eq("name", args.name))
@@ -500,6 +493,58 @@ export const startFlow = mutation({
   },
 });
 
+function flowDefFromDoc(def: Doc<"flowDefs">): FlowDef {
+  return {
+    name: def.name,
+    ...(def.title === undefined ? {} : { title: def.title }),
+    ...(def.subjectType === undefined ? {} : { subjectType: def.subjectType }),
+    origin: def.origin ?? "configured",
+    startStepId: def.startStepId,
+    steps: def.steps,
+  };
+}
+
+function flowRunFromDoc(run: Doc<"flowRuns">): FlowRun {
+  return {
+    id: run._id,
+    flowName: run.flowName,
+    ...(run.flowDefName === undefined ? {} : { flowDefName: run.flowDefName }),
+    subject: run.subject,
+    status: run.status,
+    step: run.step,
+    ...(run.currentStepId === undefined ? {} : { currentStepId: run.currentStepId }),
+    ...(run.context === undefined ? {} : { context: run.context as Record<string, unknown> }),
+    ...(run.form === undefined ? {} : { form: run.form }),
+    ...(run.scope === undefined ? {} : { scope: run.scope }),
+  };
+}
+
+async function patchFlowRunFromReducer(
+  ctx: MutationCtx,
+  runId: Id<"flowRuns">,
+  run: FlowRun,
+  now: number,
+  extra: Partial<Doc<"flowRuns">> = {},
+): Promise<void> {
+  await ctx.db.patch("flowRuns", runId, {
+    status: run.status as FlowRunStatus,
+    step: run.step ?? run.currentStepId ?? "",
+    ...(run.currentStepId === undefined ? {} : { currentStepId: run.currentStepId }),
+    ...(run.context === undefined ? {} : { context: run.context }),
+    ...(run.form === undefined ? {} : { form: run.form }),
+    ...(run.scope === undefined ? {} : { scope: run.scope }),
+    updatedAt: now,
+    ...extra,
+  });
+}
+
+function collectTimerPhase(timer: { kind: string }): "reminder" | "escalate" | "expire" | null {
+  if (timer.kind === "collect-reminder") return "reminder";
+  if (timer.kind === "collect-escalate") return "escalate";
+  if (timer.kind === "collect-expire") return "expire";
+  return null;
+}
+
 /** The interpreter: execute steps until a parking step or completion. */
 export const advanceFlow = internalMutation({
   args: { runId: v.id("flowRuns") },
@@ -516,116 +561,86 @@ export const advanceFlow = internalMutation({
     let txId: Id<"transactions"> | null = null;
     const getTx = async () =>
       (txId ??= await createTransaction(ctx, { reason: `flow ${def.name}`, now }));
-    let stepId = run.currentStepId ?? def.startStepId;
-
-    const complete = async (at: string) => {
-      await ctx.db.patch("flowRuns", run._id, {
-        status: "completed",
-        step: at,
-        currentStepId: at,
-        updatedAt: now,
-      });
-      await log(ctx, run._id, "completed");
-      await recordFlowRunStatus(ctx, run._id, "completed", now, "flow completed");
-    };
+    const flowDef = flowDefFromDoc(def);
+    let runState = flowRunFromDoc(run);
+    const branchResults: Record<string, boolean> = {};
 
     for (let i = 0; i < 50; i++) {
-      const step = def.steps.find((s) => s.id === stepId);
-      if (!step || step.type === "done") {
-        await complete(stepId || "done");
-        return;
-      }
-      const cfg = (step.config ?? {}) as Record<string, unknown>;
+      const result = stepFlow(flowDef, runState, {
+        branchResults,
+        runId: run._id,
+      });
+      let branchIntent: Extract<StepIntent, { kind: "branch" }> | null = null;
+      let extraPatch: Partial<Doc<"flowRuns">> = {};
 
-      if (step.type === "assert") {
-        const tx = await getTx();
-        const value = resolveVal(cfg.v, run);
-        await assertInTx(ctx, tx, now, {
-          e: run.subject,
-          a: String(cfg.a),
-          value,
-        });
-        await log(ctx, run._id, "assert", `${cfg.a} = ${JSON.stringify(value)}`);
-      } else if (step.type === "notify") {
-        await log(ctx, run._id, "notify", String(cfg.message ?? ""));
-      } else if (step.type === "branch") {
-        const subjectVar = String(cfg.subjectVar ?? "s");
+      for (const intent of result.intents) {
+        if (intent.kind === "assert") {
+          const tx = await getTx();
+          await assertInTx(ctx, tx, now, {
+            e: intent.e,
+            a: intent.a,
+            value: intent.v,
+          });
+        } else if (intent.kind === "log") {
+          await log(ctx, run._id, intent.event, intent.message);
+        } else if (intent.kind === "branch") {
+          branchIntent = intent;
+          break;
+        } else if (intent.kind === "park") {
+          await recordFlowRunStatus(ctx, run._id, "waiting", now, "flow waiting");
+          if (intent.reason === "collect") {
+            const timers = intent.timers ?? [];
+            extraPatch = {
+              ...extraPatch,
+              token: crypto.randomUUID(),
+              tokenExpiresAt: tokenExpiresAt(now),
+            };
+            if (timers.length === 0) {
+              await ctx.scheduler.runAfter(DEFAULTS.reminderSeconds * 1000, internal.flows.tick, {
+                runId: run._id,
+                phase: "reminder",
+              });
+            } else {
+              for (const timer of timers) {
+                const phase = collectTimerPhase(timer);
+                if (phase === null) continue;
+                await ctx.scheduler.runAfter(timer.afterMs, internal.flows.tick, {
+                  runId: run._id,
+                  phase,
+                });
+              }
+            }
+          }
+        } else if (intent.kind === "schedule") {
+          if (intent.op.op === "flow.resume") {
+            await ctx.scheduler.runAfter(intent.afterMs, internal.flows.wake, {
+              runId: run._id,
+            });
+          } else if (intent.op.op === "flow.action") {
+            await ctx.scheduler.runAfter(intent.afterMs, internal.flows.runActionStep, {
+              runId: run._id,
+            });
+          }
+        } else if (intent.kind === "complete") {
+          await recordFlowRunStatus(ctx, run._id, "completed", now, "flow completed");
+        }
+      }
+
+      await patchFlowRunFromReducer(ctx, run._id, result.run, now, extraPatch);
+      runState = result.run;
+
+      if (branchIntent) {
         const bindings = await runWhere(
           ctx,
-          (cfg.where ?? []) as unknown[],
+          [...branchIntent.where],
           { txTime: now, validTime: now },
-          { [subjectVar]: run.subject },
+          { [branchIntent.subjectVar]: run.subject },
         );
-        const taken = bindings.length > 0;
-        stepId = String((taken ? cfg.ifTrue : cfg.ifFalse) ?? "");
-        await log(
-          ctx,
-          run._id,
-          "branch",
-          taken ? `true → ${stepId}` : `false → ${stepId}`,
-        );
-        if (!stepId) {
-          await complete("done");
-          return;
-        }
-        await ctx.db.patch("flowRuns", run._id, { currentStepId: stepId, step: stepId, updatedAt: now });
+        branchResults[branchIntent.stepId] = bindings.length > 0;
         continue;
-      } else if (step.type === "collect") {
-        const scope = String(resolveVal(cfg.scope ?? `$ctx.${cfg.scopeFrom}`, run) ?? "");
-        await ctx.db.patch("flowRuns", run._id, {
-          status: "waiting",
-          step: stepId,
-          currentStepId: stepId,
-          form: String(cfg.form),
-          scope,
-          token: crypto.randomUUID(),
-          tokenExpiresAt: tokenExpiresAt(now),
-          updatedAt: now,
-        });
-        await log(ctx, run._id, "issued", `collect ${cfg.form} for ${scope}`);
-        await recordFlowRunStatus(ctx, run._id, "waiting", now, "flow waiting");
-        await ctx.scheduler.runAfter(DEFAULTS.reminderSeconds * 1000, internal.flows.tick, {
-          runId: run._id,
-          phase: "reminder",
-        });
-        return; // parked
-      } else if (step.type === "wait") {
-        await ctx.db.patch("flowRuns", run._id, {
-          status: "waiting",
-          step: stepId,
-          currentStepId: stepId,
-          updatedAt: now,
-        });
-        await log(ctx, run._id, "wait", `${cfg.seconds ?? 5}s`);
-        await recordFlowRunStatus(ctx, run._id, "waiting", now, "flow waiting");
-        await ctx.scheduler.runAfter(Number(cfg.seconds ?? 5) * 1000, internal.flows.wake, {
-          runId: run._id,
-        });
-        return; // parked
-      } else if (step.type === "action") {
-        await ctx.db.patch("flowRuns", run._id, {
-          status: "waiting",
-          step: stepId,
-          currentStepId: stepId,
-          updatedAt: now,
-        });
-        await log(ctx, run._id, "action", String(cfg.label ?? "external action"));
-        await recordFlowRunStatus(ctx, run._id, "waiting", now, "flow waiting");
-        await ctx.scheduler.runAfter(
-          Number(cfg.delaySeconds ?? 1) * 1000,
-          internal.flows.runActionStep,
-          { runId: run._id },
-        );
-        return; // parked
       }
 
-      // Non-parking step done → advance to its `next`.
-      stepId = step.next ?? "";
-      if (!stepId) {
-        await complete("done");
-        return;
-      }
-      await ctx.db.patch("flowRuns", run._id, { currentStepId: stepId, step: stepId, updatedAt: now });
+      return;
     }
   },
 });

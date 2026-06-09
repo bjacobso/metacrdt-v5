@@ -3,6 +3,13 @@ import { components } from "./_generated/api";
 import { v } from "convex/values";
 import { assertInTx, createTransaction, retractInTx } from "./facts";
 import { requireWritePrincipal } from "./lib/writeAuth";
+import {
+  formDefinitionFacts,
+  formEntity,
+  submissionFacts,
+  tokenInvalidReason,
+  type FormDef,
+} from "./lib/collect";
 
 // A form's field schema is itself a fact: (form:<name>, "formDef", {title, fields}).
 // Keeps definitions on the schema-as-facts thesis; the collection page renders
@@ -25,24 +32,6 @@ const fieldValidator = v.object({
   pii: v.optional(v.boolean()),
   sensitive: v.optional(v.boolean()),
 });
-
-function tokenInvalidReason(
-  run: {
-    status: string;
-    tokenConsumedAt?: number;
-    tokenExpiresAt?: number;
-  },
-  now: number,
-): "used" | "expired" | "not waiting" | null {
-  if (run.tokenConsumedAt !== undefined) return "used";
-  if (run.tokenExpiresAt !== undefined && run.tokenExpiresAt <= now) return "expired";
-  if (run.status !== "waiting") return "not waiting";
-  return null;
-}
-
-function formEntity(form: string): string {
-  return `form:${form}`;
-}
 
 /** Define (or replace) a form's field schema. */
 export const defineForm = mutation({
@@ -69,12 +58,13 @@ export const defineForm = mutation({
       await retractInTx(ctx, txId, now, row.factId, "form redefined");
     }
 
-    await assertInTx(ctx, txId, now, { e, a: "type", value: "Form" });
-    await assertInTx(ctx, txId, now, {
-      e,
-      a: "formDef",
-      value: { title: args.title, fields: args.fields },
-    });
+    for (const fact of formDefinitionFacts({
+      form: args.form,
+      title: args.title,
+      fields: args.fields,
+    })) {
+      await assertInTx(ctx, txId, now, fact);
+    }
     return { formEntity: e };
   },
 });
@@ -186,29 +176,48 @@ export const submitCollection = mutation({
     if (invalid) return { ok: false as const, reason: "already submitted" };
 
     const values = (args.values ?? {}) as Record<string, unknown>;
+    const def =
+      run.collectionTarget === "component"
+        ? await loadComponentFormDef(ctx, run.form)
+        : await loadFormDef(ctx, run.form);
+    let facts;
+    try {
+      facts = def
+        ? submissionFacts(
+            run.subject,
+            { form: run.form, title: def.title, fields: def.fields } as FormDef,
+            values,
+            run.scope,
+            now,
+          )
+        : [
+            ...Object.entries(values).map(([field, value]) => ({
+              e: run.subject,
+              a: `${run.form}/${field}`,
+              value,
+            })),
+            { e: run.subject, a: `submitted.${run.form}`, value: run.scope },
+          ];
+    } catch (error) {
+      return {
+        ok: false as const,
+        reason: error instanceof Error ? error.message : "invalid submission",
+      };
+    }
+
     if (run.collectionTarget === "component") {
-      for (const [field, value] of Object.entries(values)) {
+      for (const fact of facts) {
         await ctx.runMutation(components.metacrdt.log.appendAssert, {
           actorId: run.subject,
           actorType: "user",
           txTime: now,
           reason: `submit ${run.form}`,
           source: "forms.submitCollection",
-          e: run.subject,
-          a: `${run.form}/${field}`,
-          v: value,
+          e: fact.e,
+          a: fact.a,
+          v: fact.value,
         });
       }
-      await ctx.runMutation(components.metacrdt.log.appendAssert, {
-        actorId: run.subject,
-        actorType: "user",
-        txTime: now,
-        reason: `submit ${run.form}`,
-        source: "forms.submitCollection",
-        e: run.subject,
-        a: `submitted.${run.form}`,
-        v: run.scope,
-      });
     } else {
       const txId = await createTransaction(ctx, {
         actorId: run.subject,
@@ -216,19 +225,9 @@ export const submitCollection = mutation({
         now,
       });
 
-      for (const [field, value] of Object.entries(values)) {
-        await assertInTx(ctx, txId, now, {
-          e: run.subject,
-          a: `${run.form}/${field}`,
-          value,
-        });
+      for (const fact of facts) {
+        await assertInTx(ctx, txId, now, fact);
       }
-      // The marker that satisfies the obligation and resumes the flow.
-      await assertInTx(ctx, txId, now, {
-        e: run.subject,
-        a: `submitted.${run.form}`,
-        value: run.scope,
-      });
     }
 
     await ctx.db.patch("flowRuns", run._id, {
