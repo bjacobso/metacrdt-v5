@@ -2605,4 +2605,186 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       },
     ]);
   });
+
+  test("current surface persists and lists registered flow definitions", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:flow-registry",
+      wall: () => 1_040,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const saved = await surface.upsertFlowDefinition({
+      name: "onboarding",
+      subjectType: "Worker",
+      description: "worker onboarding seed",
+      steps: [
+        {
+          id: "activate",
+          type: "assert",
+          config: { a: "worker.status", v: "active" },
+          next: "done",
+        },
+        { id: "done", type: "done" },
+      ],
+    });
+
+    expect(saved).toMatchObject({
+      name: "onboarding",
+      status: "active",
+      subjectType: "Worker",
+      createdAt: 10_000,
+      updatedAt: 10_000,
+      description: "worker onboarding seed",
+    });
+    await expect(
+      surface.flowDefinitionByName({ name: "onboarding" }),
+    ).resolves.toEqual(saved);
+
+    const recreated = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:flow-registry",
+      wall: () => 1_045,
+    });
+    const recreatedSurface = createDurableObjectSqliteCurrentSurface(recreated, {
+      cardinalityOf,
+      currentCoord: () => ({ txTime: 11_000, validTime: 11_000 }),
+    });
+
+    await expect(
+      recreatedSurface.flowDefinitionByName({ name: "onboarding" }),
+    ).resolves.toEqual(saved);
+    await recreatedSurface.upsertFlowDefinition({
+      name: "retired",
+      subjectType: "Worker",
+      status: "disabled",
+      steps: [{ id: "done", type: "done" }],
+    });
+
+    await expect(
+      recreatedSurface.listFlowDefinitions({
+        subjectType: "Worker",
+        status: "active",
+      }),
+    ).resolves.toEqual([saved]);
+  });
+
+  test("current surface executes registered flow definitions through the interpreter", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:registered-flow",
+      wall: () => 1_050,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.appendAssert({
+      e: "worker:registered-flow",
+      a: "type",
+      v: "Worker",
+      actor: "user:1",
+    });
+    await surface.upsertFlowDefinition({
+      name: "activate_worker",
+      subjectType: "Worker",
+      steps: [
+        {
+          id: "activate",
+          type: "assert",
+          config: { a: "worker.status", v: "$ctx.status" },
+          next: "branch",
+        },
+        {
+          id: "branch",
+          type: "branch",
+          config: {
+            where: [["$subject", "worker.status", "active"]],
+            ifTrue: "done",
+            ifFalse: "unsupported",
+          },
+        },
+        { id: "done", type: "done" },
+      ],
+    });
+
+    const executed = await surface.executeRegisteredFlow({
+      name: "activate_worker",
+      subject: "worker:registered-flow",
+      runId: "dag:registered-flow:activate",
+      eventIdPrefix: "dag:event:registered-flow:activate",
+      actor: "system:flow",
+      now: 83_000,
+      context: { status: "active" },
+    });
+
+    expect(executed.run).toMatchObject({
+      runId: "dag:registered-flow:activate",
+      flowDefName: "activate_worker",
+      status: "completed",
+      currentStepId: "done",
+    });
+    expect(executed.steps.map((step) => step.kind)).toEqual([
+      "asserted",
+      "branch",
+      "completed",
+    ]);
+    await expect(
+      surface.listCurrent({
+        e: "worker:registered-flow",
+        a: "worker.status",
+      }),
+    ).resolves.toMatchObject([
+      {
+        e: "worker:registered-flow",
+        a: "worker.status",
+        v: "active",
+      },
+    ]);
+  });
+
+  test("current surface rejects disabled or missing registered flow definitions", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:registered-flow-disabled",
+      wall: () => 1_055,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.upsertFlowDefinition({
+      name: "disabled_flow",
+      status: "disabled",
+      steps: [{ id: "done", type: "done" }],
+    });
+
+    await expect(
+      surface.executeRegisteredFlow({
+        name: "disabled_flow",
+        subject: "worker:disabled-flow",
+        runId: "dag:registered-flow:disabled",
+        eventIdPrefix: "dag:event:registered-flow:disabled",
+        actor: "system:flow",
+      }),
+    ).rejects.toThrow(/flow definition is disabled/);
+
+    await expect(
+      surface.executeRegisteredFlow({
+        name: "missing_flow",
+        subject: "worker:missing-flow",
+        runId: "dag:registered-flow:missing",
+        eventIdPrefix: "dag:event:registered-flow:missing",
+        actor: "system:flow",
+      }),
+    ).rejects.toThrow(/unknown flow definition: missing_flow/);
+  });
 });

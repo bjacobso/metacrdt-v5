@@ -14,7 +14,9 @@ projection-backed `queryCurrent` / `pageCurrent` / `aggregateCurrent` /
 `listCurrentEntities`, collection `issueCollection` / `collectionByToken` /
 `listCollections` / `submitCollection`, DAG `recordDagRun` / `getDagRun` /
 `listDagRuns` / `resumeDagRun` / `executeDagStep` / `executeAction` /
-`executeFlow`, action registry `actionByName` / `listActions` /
+`executeFlow`, flow definition registry `upsertFlowDefinition` /
+`flowDefinitionByName` / `listFlowDefinitions` / `executeRegisteredFlow`,
+action registry `actionByName` / `listActions` /
 `actionsForType` / `executeRegisteredAction`, flow-wait timer rows, an
 operational timer
 alarm multiplexer, deterministic projection change summaries for touched `(e, a)`
@@ -29,9 +31,9 @@ The indexed historical query provider now has
 conformance-style coverage for joins, `or`, `not`, compare/compute, pagination,
 aggregation, derived rows, lifecycle visibility, and bounded SQLite index scan
 usage.
-Broader historical SQL query-provider parity/performance hardening, persisted
-Cloudflare flow definition registry/resume/host action invocation parity, and
-full React/frontend SDK live-query package/auth integration are still ahead.
+Broader historical SQL query-provider parity/performance hardening, automatic
+Cloudflare flow resume orchestration, host action invocation parity, and full
+React/frontend SDK live-query package/auth integration are still ahead.
 
 **Scope:** Grow `@metacrdt/cloudflare` from a sync-plane shell into a full
 MetaCRDT target at parity with the `@metacrdt/convex` component — an indexed,
@@ -83,7 +85,10 @@ delegate one supported action effect to that substrate. `executeFlow` now
 interprets bounded caller-provided flow step arrays over the same substrate:
 assert/notify/action steps run inline, simple current-state branch patterns are
 evaluated against the flow subject, and collect/wait steps park through existing
-collection and flow-wait rows with caller-provided operational ids. Flow-wait timer rows can
+collection and flow-wait rows with caller-provided operational ids.
+`flow_definitions` rows now persist active/disabled flow definitions with
+optional subject type and step JSON; `executeRegisteredFlow` loads an active
+persisted definition and delegates it to the bounded interpreter. Flow-wait timer rows can
 now be scheduled, listed, fired, and drained through the DO alarm multiplexer.
 Historical Datalog queries now use a Cloudflare-specific indexed SQLite
 candidate source for bounded assertion patterns and target-indexed lifecycle
@@ -115,10 +120,9 @@ the previous delivered snapshot. A structural
 connection-id URLs, delegates hydrate/reconnect behavior to the client, and
 caches latest per-subscription snapshots for frontend/SDK callers. It still has
 no broader SQL query-provider performance-hardening pass, no React/frontend SDK
-package or auth storage layer, no persisted Cloudflare flow definition registry
-lookup or automatic resume orchestration after collection submission/timer wake,
-and no multi-effect configured action execution or host action invocation
-surface.
+package or auth storage layer, no automatic resume orchestration after
+collection submission/timer wake, and no multi-effect configured action
+execution or host action invocation surface.
 
 This doc defines what it takes to bring Cloudflare to parity, in what order, and
 which decisions must be settled first — and it makes **live frontend queries an
@@ -182,8 +186,9 @@ function surface — backed by Durable Object SQLite instead of the Convex DB.
 | `DurableObjectSqliteCollectionStore` | SQLite-backed collection capability rows; indexed by subject, status, and expiry |
 | `DurableObjectSqliteDagStore` | SQLite-backed DAG run rows and child timeline events; indexed by subject, status, updated time, and run id |
 | `DurableObjectSqliteFlowWaitTimerStore` | SQLite-backed flow-wait timer rows; indexed by run, step, status, and fire time |
+| `DurableObjectSqliteFlowDefinitionStore` | SQLite-backed active/disabled flow definition rows with subject-type/status indexes and persisted step JSON |
 | `DurableObjectSqliteClock` / `DurableObjectSqliteSequencer` | SQLite-backed HLC + per-replica `seq` metadata |
-| `createDurableObjectSqliteCurrentSurface` | First component-equivalent log/current/query/collection/DAG facade: append helpers with scoped current-coordinate projection reconcile, get/list events, indexed historical bitemporal Datalog reads, projection-backed current Datalog reads, rebuild with changed `(e, a)` summaries, list current rows, read current entity, list typed current entities, issue/read/list/submit collection tokens, collection tick rows, flow-wait tick rows, record/read/list DAG runs, terminally resume running DAG rows, and execute one caller-described DAG step |
+| `createDurableObjectSqliteCurrentSurface` | First component-equivalent log/current/query/collection/DAG facade: append helpers with scoped current-coordinate projection reconcile, get/list events, indexed historical bitemporal Datalog reads, projection-backed current Datalog reads, rebuild with changed `(e, a)` summaries, list current rows, read current entity, list typed current entities, issue/read/list/submit collection tokens, collection tick rows, flow-wait tick rows, record/read/list DAG runs, terminally resume running DAG rows, execute one caller-described DAG step, and register/read/list/execute persisted flow definitions through the bounded interpreter |
 | `durableObjectSqliteIndexedHistoricalDatalogQueryService` | Cloudflare-specific historical Datalog source: reuses the shared runtime solver, scans bounded assertion candidates through SQLite `e` / `a` indexes, and checks lifecycle visibility through target-indexed rows |
 | `createDurableObjectSqliteAlarmMultiplexer` | Structural single-alarm helper: arms `ctx.storage.setAlarm` to the earliest pending collection or flow-wait timer row, drains due ticks through the corresponding firing path, and re-arms or deletes the alarm |
 | `DurableObjectSqliteLiveInvalidationFanout` | Structural WebSocket invalidation helper: accepts bounded `e` / `a` subscriptions and broadcasts current-projection change summaries to matching sockets |
@@ -212,10 +217,11 @@ patterns, run
 projection-backed current Datalog reads over SQLite projection rows, rebuild
 SQLite-backed current projection rows, serve current entity/list reads, and
 persist simple collection capability rows plus DAG run/timeline history,
-flow-wait timer rows, single-step DAG execution, live-query write publish
+flow-wait timer rows, single-step DAG execution, persisted flow definition
+lookup/execution through the bounded interpreter, live-query write publish
 routes, and a structural live-query client helper; it cannot yet expose the full
 historical SQL query-provider parity/conformance surface or the full
-**persisted/resumable flow registry and host invocation** surface.
+**automatic flow resume orchestration and host invocation** surface.
 
 ---
 
@@ -294,8 +300,8 @@ lifecycle events discovered through the SQLite `target` index. Explicit
 **Still ahead for parity:** richer append function surface, broader SQL-indexed
 query-provider parity/performance hardening for historical bitemporal queries,
 authenticated live Worker/frontend query plumbing plus reconnect/session
-hydration on top of persisted rows, persisted/resumable flow registry parity,
-and host action invocation.
+hydration on top of persisted rows, automatic flow resume orchestration, and
+host action invocation.
 
 ### Phase D — Operational surface + alarms
 
@@ -303,9 +309,9 @@ Port `flowRuns` / `flowDagRuns` / `flowDagEvents` and the collection/DAG
 functions. Collection rows, timer rows, DAG history rows, flow-wait alarm
 wakeups, terminal DAG resume decisions, single-step execution, action-effect
 execution, registered action lookup, and caller-provided flow interpretation
-have started; persisted flow definition registry lookup, automatic resume
-orchestration, and host action invocation remain. Map **Convex scheduler → Durable
-Object `setAlarm()`**. Caveat: a DO has a single alarm, but the operational
+have started; persisted flow definition registry lookup/execution has started;
+automatic resume orchestration and host action invocation remain. Map **Convex
+scheduler → Durable Object `setAlarm()`**. Caveat: a DO has a single alarm, but the operational
 layer has reminder + escalation + expiry + flow-wait timers — so introduce a
 `timers` table and set
 `next alarm = MIN(fire_at)`, re-arming on each wake.
@@ -361,6 +367,13 @@ parks collect/wait steps through existing operational rows. This is
 caller-provided interpreter plumbing only, not persisted flow definition
 registry lookup, automatic resume orchestration after collection submission or
 timer wake, multi-effect configured action execution, or host action invocation.
+The facade also exposes `upsertFlowDefinition`, `flowDefinitionByName`,
+`listFlowDefinitions`, and `executeRegisteredFlow` over persisted
+`flow_definitions` rows. Registered flow execution loads an active stored
+definition and delegates its steps to the bounded `executeFlow` interpreter.
+This is registry lookup and interpreter delegation only, not automatic resume
+orchestration after collection submission or timer wake, multi-effect
+configured action execution, or host action invocation.
 The package also
 exports `createDurableObjectSqliteAlarmMultiplexer`, which maps the single DO
 alarm to the earliest pending collection or flow-wait timer row, drains due
@@ -457,10 +470,10 @@ coordinates plus result `diff` metadata. This is a frontend/session primitive
 only: it does not add React hooks, browser auth/session storage, server-issued
 durable session tokens, or a full frontend SDK package.
 
-**Still ahead for Phase D parity:** persisted flow definition registry lookup,
-automatic resume orchestration after collection submission or timer wake,
-multi-effect configured action execution, host action invocation, and full
-React/frontend SDK live-query package/auth integration.
+**Still ahead for Phase D parity:** automatic resume orchestration after
+collection submission or timer wake, multi-effect configured action execution,
+host action invocation, and full React/frontend SDK live-query package/auth
+integration.
 
 ### Phase E — Sharding + real multi-replica sync
 
@@ -548,7 +561,7 @@ The Phase B adapters (~600–800 LOC) get **shared, not rewritten**. The
 Cloudflare-specific work is comparable to the existing Convex component: the
 runtime-service SQLite seed and first log/current/query facade are now present;
 the remaining work is broader SQL-indexed query-provider parity/performance
-hardening, persisted/resumable flow registry parity, host action invocation, and
+hardening, automatic flow resume orchestration, host action invocation, and
 frontend SDK live-query package/auth integration over the persisted
 snapshot/update/diff/session helper.
 Roughly 2–4 focused sessions remain, gated on shared fold/reconcile reuse. The
