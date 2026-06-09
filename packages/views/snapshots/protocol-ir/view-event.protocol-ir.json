@@ -1,0 +1,244 @@
+{
+  "source": "preludes/viewspec-protocol.lisp",
+  "module": {
+    "kind": "module",
+    "descriptorName": "view-event-module",
+    "name": "ViewEvent",
+    "types": [],
+    "enums": [],
+    "objects": [
+      "ViewClickEventMap",
+      "ViewActionButtonEventMap",
+      "ViewRowClickEventMap",
+      "ViewNodeClickEventMap",
+      "ViewChangeEventMap",
+      "ViewSubmitEventMap",
+      "ViewOpenChangeEventMap",
+      "ViewEventMap"
+    ],
+    "unions": [],
+    "imports": [
+      {
+        "name": "ViewActionOrList",
+        "from": "ViewAction",
+        "schemaName": "ViewActionOrListSchema",
+        "typeOnly": false
+      }
+    ],
+    "literalSchemas": [],
+    "extensionKey": "protocol/module"
+  },
+  "typeAliases": [],
+  "enums": [],
+  "objects": [
+    {
+      "kind": "object",
+      "descriptorName": "view-click-event-map",
+      "name": "ViewClickEventMap",
+      "schemaName": "ViewClickEventMapSchema",
+      "fields": [
+        {
+          "name": "onClick",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-action-button-event-map",
+      "name": "ViewActionButtonEventMap",
+      "schemaName": "ViewActionButtonEventMapSchema",
+      "fields": [
+        {
+          "name": "onClick",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-row-click-event-map",
+      "name": "ViewRowClickEventMap",
+      "schemaName": "ViewRowClickEventMapSchema",
+      "fields": [
+        {
+          "name": "onRowClick",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-node-click-event-map",
+      "name": "ViewNodeClickEventMap",
+      "schemaName": "ViewNodeClickEventMapSchema",
+      "fields": [
+        {
+          "name": "onNodeClick",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-change-event-map",
+      "name": "ViewChangeEventMap",
+      "schemaName": "ViewChangeEventMapSchema",
+      "fields": [
+        {
+          "name": "onChange",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-submit-event-map",
+      "name": "ViewSubmitEventMap",
+      "schemaName": "ViewSubmitEventMapSchema",
+      "fields": [
+        {
+          "name": "onSubmit",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-open-change-event-map",
+      "name": "ViewOpenChangeEventMap",
+      "schemaName": "ViewOpenChangeEventMapSchema",
+      "fields": [
+        {
+          "name": "onOpenChange",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-event-map",
+      "name": "ViewEventMap",
+      "schemaName": "ViewEventMapSchema",
+      "fields": [
+        {
+          "name": "onClick",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onSuccess",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onRowClick",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onNodeClick",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onChange",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onSubmit",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onOpenChange",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    }
+  ],
+  "unions": [],
+  "catalogs": []
+}

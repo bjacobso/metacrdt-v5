@@ -1,0 +1,5821 @@
+{
+  "source": "preludes/ui.lisp + preludes/viewspec.lisp",
+  "descriptors": [
+    {
+      "name": "text",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "content",
+          "mode": "expr",
+          "aliases": ["text"]
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": true,
+          "compile": {
+            "expr-props": ["visible", "bind"]
+          },
+          "children": "none",
+          "positional-prop": "content"
+        }
+      }
+    },
+    {
+      "name": "rows",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "gap",
+          "mode": "value",
+          "type": "Number"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true
+          },
+          "children": "any"
+        }
+      }
+    },
+    {
+      "name": "columns",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "gap",
+          "mode": "value",
+          "type": "Number"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true
+          },
+          "children": "any"
+        }
+      }
+    },
+    {
+      "name": "card",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "title",
+          "mode": "expr"
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        },
+        {
+          "name": "subject-mode",
+          "mode": "expr"
+        },
+        {
+          "name": "action",
+          "mode": "form",
+          "many": true
+        },
+        {
+          "name": "footer",
+          "mode": "form",
+          "many": true
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true,
+            "node-slots": ["action", "footer"]
+          },
+          "children": "any"
+        }
+      }
+    },
+    {
+      "name": "item-group",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": true,
+          "compile": {
+            "expr-props": ["visible", "bind"],
+            "required-children": true
+          },
+          "children": "any"
+        }
+      }
+    },
+    {
+      "name": "item",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "variant",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "size",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "icon",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "title",
+          "mode": "expr",
+          "aliases": ["text", "content"]
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        },
+        {
+          "name": "value",
+          "mode": "expr"
+        },
+        {
+          "name": "badge",
+          "mode": "expr"
+        },
+        {
+          "name": "badge-variant",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "variant",
+            "values": ["default", "outline", "muted"]
+          },
+          {
+            "kind": "one-of",
+            "slot": "size",
+            "values": ["default", "sm", "xs"]
+          },
+          {
+            "kind": "one-of",
+            "slot": "badge-variant",
+            "values": ["default", "secondary", "outline", "destructive"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "any",
+          "events": {
+            "on-click": "onClick"
+          }
+        }
+      }
+    },
+    {
+      "name": "button",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "label",
+          "mode": "expr",
+          "aliases": ["text", "title", "content"]
+        },
+        {
+          "name": "variant",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "size",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "disabled",
+          "mode": "expr"
+        },
+        {
+          "name": "button-type",
+          "mode": "value",
+          "type": "String",
+          "aliases": ["type"]
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "variant",
+            "values": ["default", "destructive", "outline", "secondary", "ghost", "link"]
+          },
+          {
+            "kind": "one-of",
+            "slot": "size",
+            "values": ["default", "sm", "lg", "icon"]
+          },
+          {
+            "kind": "one-of",
+            "slot": "button-type",
+            "values": ["button", "submit", "reset"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible", "disabled"]
+          },
+          "children": "any",
+          "events": {
+            "on-click": "onClick"
+          },
+          "positional-prop": "label"
+        }
+      }
+    },
+    {
+      "name": "progress",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "value",
+          "mode": "expr"
+        },
+        {
+          "name": "label",
+          "mode": "expr",
+          "aliases": ["title"]
+        },
+        {
+          "name": "hint",
+          "mode": "expr",
+          "aliases": ["description"]
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": true,
+          "compile": {
+            "expr-props": ["visible", "bind"]
+          },
+          "children": "none"
+        }
+      }
+    },
+    {
+      "name": "workflow-strip",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "title",
+          "mode": "expr"
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "children": ["only", ["workflow-step"]],
+          "compile": {
+            "required-children": true
+          }
+        }
+      }
+    },
+    {
+      "name": "workflow-step",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "label",
+          "mode": "expr",
+          "required": true,
+          "aliases": ["title"]
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        },
+        {
+          "name": "status",
+          "mode": "expr"
+        },
+        {
+          "name": "icon",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "children": "none",
+          "parents": ["workflow-strip"]
+        }
+      }
+    },
+    {
+      "name": "empty-state",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "icon",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "title",
+          "mode": "expr",
+          "aliases": ["text", "content"]
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "any"
+        }
+      }
+    },
+    {
+      "name": "badge",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "content",
+          "mode": "expr",
+          "aliases": ["text", "label", "value"]
+        },
+        {
+          "name": "variant",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "dot",
+          "mode": "value",
+          "type": "Boolean"
+        },
+        {
+          "name": "dot-color",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "variant",
+            "values": ["default", "secondary", "outline", "destructive"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none",
+          "positional-prop": "content"
+        }
+      }
+    },
+    {
+      "name": "avatar",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "src",
+          "mode": "expr"
+        },
+        {
+          "name": "alt",
+          "mode": "expr"
+        },
+        {
+          "name": "fallback",
+          "mode": "expr",
+          "aliases": ["text", "label"]
+        },
+        {
+          "name": "size",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "size",
+            "values": ["default", "sm", "lg"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none"
+        }
+      }
+    },
+    {
+      "name": "kbd",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "content",
+          "mode": "expr",
+          "aliases": ["text", "label"]
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none",
+          "positional-prop": "content"
+        }
+      }
+    },
+    {
+      "name": "spinner",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "label",
+          "mode": "expr"
+        },
+        {
+          "name": "size",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "size",
+            "values": ["sm", "default", "lg"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none"
+        }
+      }
+    },
+    {
+      "name": "separator",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "orientation",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "orientation",
+            "values": ["horizontal", "vertical"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none"
+        }
+      }
+    },
+    {
+      "name": "tabs",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true
+          },
+          "children": ["only", ["tab-panel"]]
+        }
+      }
+    },
+    {
+      "name": "tab-panel",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "label",
+          "mode": "expr",
+          "aliases": ["title"]
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true,
+            "extra-fields": [
+              {
+                "name": "title",
+                "optional": true,
+                "ts": "ViewExpr",
+                "schema": "ViewExpression"
+              }
+            ],
+            "extra-normalize-fields": [
+              {
+                "field": "title",
+                "keys": ["title", "label"],
+                "kind": "expr"
+              }
+            ]
+          },
+          "children": "any",
+          "parents": ["tabs"]
+        }
+      }
+    },
+    {
+      "name": "accordion",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "mode",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "mode",
+            "values": ["single", "multiple"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true
+          },
+          "children": ["only", ["accordion-item"]]
+        }
+      }
+    },
+    {
+      "name": "accordion-item",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "title",
+          "mode": "expr",
+          "aliases": ["label", "text"]
+        },
+        {
+          "name": "default-open",
+          "mode": "value",
+          "type": "Boolean"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true
+          },
+          "children": "any",
+          "parents": ["accordion"]
+        }
+      }
+    },
+    {
+      "name": "grid",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "columns",
+          "mode": "value",
+          "type": "Number"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true
+          },
+          "children": "any"
+        }
+      }
+    },
+    {
+      "name": "aspect-ratio",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "ratio",
+          "mode": "value",
+          "type": "Number"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true
+          },
+          "children": "any"
+        }
+      }
+    },
+    {
+      "name": "spacer",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "height",
+          "mode": "value",
+          "type": "Number"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none"
+        }
+      }
+    },
+    {
+      "name": "split-pane",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "direction",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "sizes",
+          "mode": "value",
+          "type": "Array"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "direction",
+            "values": ["horizontal", "vertical"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true,
+            "slot-normalize-kinds": {
+              "sizes": "number-array"
+            },
+            "slot-types": {
+              "sizes": {
+                "kind": "array",
+                "item": "number"
+              }
+            }
+          },
+          "children": "any"
+        }
+      }
+    },
+    {
+      "name": "for-each",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "empty-text",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": true,
+          "compile": {
+            "expr-props": ["visible", "bind"],
+            "required-children": true,
+            "required-bind": true
+          },
+          "children": "any"
+        }
+      }
+    },
+    {
+      "name": "condition",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true
+          },
+          "children": ["only", ["case", "else"]]
+        }
+      }
+    },
+    {
+      "name": "case",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "when",
+          "mode": "expr",
+          "required": true,
+          "type": "Bool"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true,
+            "slot-defaults": {
+              "when": "false-expr-or-bind"
+            }
+          },
+          "children": "any",
+          "parents": ["condition"]
+        }
+      }
+    },
+    {
+      "name": "else",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true
+          },
+          "children": "any",
+          "parents": ["condition"]
+        }
+      }
+    },
+    {
+      "name": "slot",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "name",
+          "mode": "value",
+          "type": "String",
+          "aliases": ["ref"]
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": true,
+          "compile": {
+            "expr-props": ["visible", "bind"]
+          },
+          "children": "any",
+          "positional-prop": "name"
+        }
+      }
+    },
+    {
+      "name": "use",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "name",
+          "mode": "value",
+          "required": true,
+          "type": "String",
+          "aliases": ["ref", "def"]
+        },
+        {
+          "name": "overrides",
+          "mode": "value",
+          "type": "Object",
+          "aliases": ["params"]
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "any",
+          "positional-prop": "name"
+        }
+      }
+    },
+    {
+      "name": "tooltip",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "content",
+          "mode": "expr",
+          "required": true,
+          "aliases": ["text", "label"]
+        },
+        {
+          "name": "side",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "side",
+            "values": ["top", "right", "bottom", "left"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true
+          },
+          "children": "any"
+        }
+      }
+    },
+    {
+      "name": "popover",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "trigger",
+          "mode": "form",
+          "required": true,
+          "many": true
+        },
+        {
+          "name": "title",
+          "mode": "expr"
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        },
+        {
+          "name": "side",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "align",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "side",
+            "values": ["top", "right", "bottom", "left"]
+          },
+          {
+            "kind": "one-of",
+            "slot": "align",
+            "values": ["start", "center", "end"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true,
+            "node-slots": ["trigger"]
+          },
+          "children": "any"
+        }
+      }
+    },
+    {
+      "name": "hover-card",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "trigger",
+          "mode": "form",
+          "required": true,
+          "many": true
+        },
+        {
+          "name": "side",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "align",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "side",
+            "values": ["top", "right", "bottom", "left"]
+          },
+          {
+            "kind": "one-of",
+            "slot": "align",
+            "values": ["start", "center", "end"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true,
+            "node-slots": ["trigger"]
+          },
+          "children": "any"
+        }
+      }
+    },
+    {
+      "name": "dialog",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "dialog-id",
+          "mode": "value",
+          "required": true,
+          "type": "String",
+          "aliases": ["id", "name"]
+        },
+        {
+          "name": "title",
+          "mode": "expr"
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true
+          },
+          "children": "any",
+          "events": {
+            "on-open-change": "onOpenChange"
+          }
+        }
+      }
+    },
+    {
+      "name": "table",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "columns",
+          "mode": "value",
+          "type": "Array"
+        },
+        {
+          "name": "filters",
+          "mode": "value",
+          "type": "Array"
+        },
+        {
+          "name": "page-size",
+          "mode": "value",
+          "type": "Number"
+        },
+        {
+          "name": "default-sort",
+          "mode": "value",
+          "type": "Object"
+        },
+        {
+          "name": "empty-state",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": true,
+          "compile": {
+            "expr-props": ["visible", "bind"],
+            "required-bind": true,
+            "slot-normalize-kinds": {
+              "columns": "table-columns",
+              "filters": "table-filters",
+              "default-sort": "table-sort"
+            },
+            "slot-types": {
+              "columns": {
+                "kind": "array",
+                "item": ["string", "ViewTableColumn"]
+              },
+              "filters": {
+                "kind": "array",
+                "item": ["string", "ViewTableFilter"]
+              },
+              "default-sort": "ViewTableSort"
+            }
+          },
+          "children": "none",
+          "events": {
+            "on-row-click": "onRowClick"
+          }
+        }
+      }
+    },
+    {
+      "name": "tree",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "id-key",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "parent-id-key",
+          "mode": "value",
+          "type": "String",
+          "aliases": ["parent-key"]
+        },
+        {
+          "name": "label-key",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "default-expanded",
+          "mode": "value",
+          "type": "Any"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": true,
+          "compile": {
+            "expr-props": ["visible", "bind"],
+            "slot-normalize-kinds": {
+              "default-expanded": "boolean-or-number"
+            },
+            "slot-types": {
+              "default-expanded": ["boolean", "number"]
+            }
+          },
+          "children": "any",
+          "events": {
+            "on-node-click": "onNodeClick"
+          }
+        }
+      }
+    },
+    {
+      "name": "metric",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "label",
+          "mode": "expr",
+          "aliases": ["title"]
+        },
+        {
+          "name": "value",
+          "mode": "expr"
+        },
+        {
+          "name": "value-key",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": true,
+          "compile": {
+            "expr-props": ["visible", "bind"],
+            "required-bind": true,
+            "slot-normalize-kinds": {
+              "series": "chart-series"
+            }
+          },
+          "children": "none"
+        }
+      }
+    },
+    {
+      "name": "chart",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "title",
+          "mode": "expr"
+        },
+        {
+          "name": "chart-type",
+          "mode": "value",
+          "type": "String",
+          "aliases": ["variant"]
+        },
+        {
+          "name": "category-key",
+          "mode": "value",
+          "type": "String",
+          "aliases": ["x-key"]
+        },
+        {
+          "name": "series",
+          "mode": "value",
+          "type": "Array"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "chart-type",
+            "values": ["bar", "line", "area", "pie", "radar", "radial", "scatter"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": true,
+          "compile": {
+            "expr-props": ["visible", "bind"],
+            "slot-types": {
+              "series": {
+                "kind": "array",
+                "item": ["string", "ViewChartSeries"]
+              }
+            }
+          },
+          "children": "none"
+        }
+      }
+    },
+    {
+      "name": "markdown",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "content",
+          "mode": "expr"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": true,
+          "compile": {
+            "expr-props": ["visible", "bind"]
+          },
+          "children": "none",
+          "positional-prop": "content"
+        }
+      }
+    },
+    {
+      "name": "stat-group",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "gap",
+          "mode": "value",
+          "type": "Number"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true
+          },
+          "children": "any"
+        }
+      }
+    },
+    {
+      "name": "heading",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "text",
+          "mode": "expr",
+          "aliases": ["title", "content"]
+        },
+        {
+          "name": "level",
+          "mode": "value",
+          "type": "Number"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none",
+          "positional-prop": "text"
+        }
+      }
+    },
+    {
+      "name": "divider",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none"
+        }
+      }
+    },
+    {
+      "name": "alert",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "variant",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "message",
+          "mode": "expr",
+          "required": true,
+          "aliases": ["text"]
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "variant",
+            "values": ["default", "warning", "error", "info"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "slot-defaults": {
+              "message": "empty-expr"
+            }
+          },
+          "children": "none",
+          "positional-prop": "message"
+        }
+      }
+    },
+    {
+      "name": "form",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "title",
+          "mode": "expr"
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true
+          },
+          "children": "any",
+          "events": {
+            "on-submit": "onSubmit"
+          }
+        }
+      }
+    },
+    {
+      "name": "button-group",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "orientation",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "orientation",
+            "values": ["horizontal", "vertical"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true
+          },
+          "children": "any"
+        }
+      }
+    },
+    {
+      "name": "breadcrumb",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "required-children": true
+          },
+          "children": ["only", ["breadcrumb-item"]]
+        }
+      }
+    },
+    {
+      "name": "breadcrumb-item",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "label",
+          "mode": "expr",
+          "required": true,
+          "aliases": ["text", "title"]
+        },
+        {
+          "name": "href",
+          "mode": "expr"
+        },
+        {
+          "name": "current",
+          "mode": "value",
+          "type": "Boolean"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none",
+          "parents": ["breadcrumb"],
+          "events": {
+            "on-click": "onClick"
+          }
+        }
+      }
+    },
+    {
+      "name": "input",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "name",
+          "mode": "value",
+          "required": true,
+          "type": "String",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "name": "default-value",
+          "mode": "expr"
+        },
+        {
+          "name": "label",
+          "mode": "expr"
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        },
+        {
+          "name": "placeholder",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "input-type",
+          "mode": "value",
+          "type": "String",
+          "aliases": ["type"]
+        },
+        {
+          "name": "prefix",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "suffix",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "input-type",
+            "values": ["text", "email", "password", "number", "url", "date"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none",
+          "events": {
+            "on-change": "onChange"
+          }
+        }
+      }
+    },
+    {
+      "name": "textarea",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "name",
+          "mode": "value",
+          "required": true,
+          "type": "String",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "name": "default-value",
+          "mode": "expr"
+        },
+        {
+          "name": "label",
+          "mode": "expr"
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        },
+        {
+          "name": "placeholder",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none",
+          "events": {
+            "on-change": "onChange"
+          }
+        }
+      }
+    },
+    {
+      "name": "checkbox",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "name",
+          "mode": "value",
+          "required": true,
+          "type": "String",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "name": "default-value",
+          "mode": "expr"
+        },
+        {
+          "name": "label",
+          "mode": "expr",
+          "aliases": ["text", "title"]
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none",
+          "events": {
+            "on-change": "onChange"
+          }
+        }
+      }
+    },
+    {
+      "name": "switch",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "name",
+          "mode": "value",
+          "required": true,
+          "type": "String",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "name": "default-value",
+          "mode": "expr"
+        },
+        {
+          "name": "label",
+          "mode": "expr",
+          "aliases": ["text", "title"]
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none",
+          "events": {
+            "on-change": "onChange"
+          }
+        }
+      }
+    },
+    {
+      "name": "select",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "name",
+          "mode": "value",
+          "required": true,
+          "type": "String",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "name": "default-value",
+          "mode": "expr"
+        },
+        {
+          "name": "label",
+          "mode": "expr"
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        },
+        {
+          "name": "placeholder",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "options",
+          "mode": "value",
+          "type": "Array"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "slot-normalize-kinds": {
+              "options": "select-options"
+            },
+            "slot-types": {
+              "options": {
+                "kind": "array",
+                "item": ["string", "ViewSelectOptionValue"]
+              }
+            }
+          },
+          "children": ["only", ["select-option"]],
+          "events": {
+            "on-change": "onChange"
+          }
+        }
+      }
+    },
+    {
+      "name": "select-option",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "value",
+          "mode": "value",
+          "required": true,
+          "type": "String",
+          "aliases": ["key"]
+        },
+        {
+          "name": "label",
+          "mode": "expr",
+          "aliases": ["text"]
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "extra-normalize-fields": [
+              {
+                "field": "label",
+                "keys": ["label", "text", "value"],
+                "kind": "expr"
+              }
+            ]
+          },
+          "children": "none",
+          "parents": ["select"]
+        }
+      }
+    },
+    {
+      "name": "radio-group",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "name",
+          "mode": "value",
+          "required": true,
+          "type": "String",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "name": "default-value",
+          "mode": "expr"
+        },
+        {
+          "name": "label",
+          "mode": "expr"
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        },
+        {
+          "name": "options",
+          "mode": "value",
+          "type": "Array"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "slot-normalize-kinds": {
+              "options": "select-options"
+            },
+            "slot-types": {
+              "options": {
+                "kind": "array",
+                "item": ["string", "ViewSelectOptionValue"]
+              }
+            }
+          },
+          "children": ["only", ["radio-option"]],
+          "events": {
+            "on-change": "onChange"
+          }
+        }
+      }
+    },
+    {
+      "name": "radio-option",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "value",
+          "mode": "value",
+          "required": true,
+          "type": "String",
+          "aliases": ["key"]
+        },
+        {
+          "name": "label",
+          "mode": "expr",
+          "aliases": ["text"]
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "extra-normalize-fields": [
+              {
+                "field": "label",
+                "keys": ["label", "text", "value"],
+                "kind": "expr"
+              }
+            ]
+          },
+          "children": "none",
+          "parents": ["radio-group"]
+        }
+      }
+    },
+    {
+      "name": "slider",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "name",
+          "mode": "value",
+          "required": true,
+          "type": "String",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "name": "default-value",
+          "mode": "expr"
+        },
+        {
+          "name": "label",
+          "mode": "expr"
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        },
+        {
+          "name": "min",
+          "mode": "value",
+          "type": "Number"
+        },
+        {
+          "name": "max",
+          "mode": "value",
+          "type": "Number"
+        },
+        {
+          "name": "step",
+          "mode": "value",
+          "type": "Number"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "slot-normalize-kinds": {
+              "options": "select-options"
+            }
+          },
+          "children": "none",
+          "events": {
+            "on-change": "onChange"
+          }
+        }
+      }
+    },
+    {
+      "name": "toggle-group",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "name",
+          "mode": "value",
+          "required": true,
+          "type": "String",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "name": "default-value",
+          "mode": "expr"
+        },
+        {
+          "name": "mode",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "variant",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "options",
+          "mode": "value",
+          "type": "Array"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "mode",
+            "values": ["single", "multiple"]
+          },
+          {
+            "kind": "one-of",
+            "slot": "variant",
+            "values": ["default", "outline"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "slot-types": {
+              "options": {
+                "kind": "array",
+                "item": ["string", "ViewSelectOptionValue"]
+              }
+            }
+          },
+          "children": "none",
+          "events": {
+            "on-change": "onChange"
+          }
+        }
+      }
+    },
+    {
+      "name": "skeleton",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "lines",
+          "mode": "value",
+          "type": "Number"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none"
+        }
+      }
+    },
+    {
+      "name": "raw-html",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "content",
+          "mode": "expr",
+          "required": true,
+          "aliases": ["html"]
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none",
+          "positional-prop": "content"
+        }
+      }
+    },
+    {
+      "name": "raw-css",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "content",
+          "mode": "expr",
+          "required": true,
+          "aliases": ["css"]
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none",
+          "positional-prop": "content"
+        }
+      }
+    },
+    {
+      "name": "raw-js",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "code",
+          "mode": "expr",
+          "required": true,
+          "aliases": ["js", "content"]
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none",
+          "positional-prop": "code"
+        }
+      }
+    },
+    {
+      "name": "custom",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "component-name",
+          "mode": "value",
+          "required": true,
+          "type": "String"
+        },
+        {
+          "name": "props",
+          "mode": "value",
+          "type": "Object"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "json-slots": ["props"],
+            "unknown-props": "json",
+            "slot-types": {
+              "props": {
+                "kind": "record",
+                "value": "unknown"
+              }
+            }
+          },
+          "children": "any"
+        }
+      }
+    },
+    {
+      "name": "component-ref",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "component-ref",
+          "to": "view-ref"
+        }
+      }
+    },
+    {
+      "name": "cond",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "cond",
+          "to": "condition"
+        }
+      }
+    },
+    {
+      "name": "entity-browser",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "title",
+          "mode": "expr"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": true,
+          "compile": {
+            "expr-props": ["visible", "bind"]
+          },
+          "children": "none",
+          "events": {
+            "on-row-click": "onRowClick"
+          }
+        }
+      }
+    },
+    {
+      "name": "action-button",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "label",
+          "mode": "expr",
+          "aliases": ["text"]
+        },
+        {
+          "name": "variant",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "action-ref",
+          "mode": "value",
+          "type": "String",
+          "aliases": ["action-name"]
+        },
+        {
+          "name": "entity-id",
+          "mode": "expr",
+          "aliases": ["entity-id-bind"]
+        },
+        {
+          "name": "parameters",
+          "mode": "value",
+          "type": "Object"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "variant",
+            "values": ["default", "destructive", "outline", "secondary", "ghost"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "json-slots": ["parameters"],
+            "slot-types": {
+              "parameters": {
+                "kind": "record",
+                "value": "unknown"
+              }
+            }
+          },
+          "children": "none",
+          "events": {
+            "on-click": "onClick",
+            "on-success": "onSuccess"
+          }
+        }
+      }
+    },
+    {
+      "name": "create-entity-button",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "label",
+          "mode": "expr",
+          "aliases": ["text"]
+        },
+        {
+          "name": "entity-type",
+          "mode": "value",
+          "required": true,
+          "type": "String",
+          "aliases": ["entity"]
+        },
+        {
+          "name": "variant",
+          "mode": "value",
+          "type": "String"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "static",
+        "checks": [
+          {
+            "kind": "one-of",
+            "slot": "variant",
+            "values": ["default", "destructive", "outline", "secondary", "ghost"]
+          }
+        ]
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none",
+          "events": {
+            "on-click": "onClick",
+            "on-success": "onSuccess"
+          }
+        }
+      }
+    },
+    {
+      "name": "entity-picker",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "name",
+          "mode": "value",
+          "required": true,
+          "type": "String",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "name": "label",
+          "mode": "expr"
+        },
+        {
+          "name": "description",
+          "mode": "expr"
+        },
+        {
+          "name": "placeholder",
+          "mode": "value",
+          "type": "String"
+        },
+        {
+          "name": "entity-type",
+          "mode": "value",
+          "type": "String",
+          "aliases": ["entity"]
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none",
+          "events": {
+            "on-change": "onChange"
+          }
+        }
+      }
+    },
+    {
+      "name": "query-console",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "title",
+          "mode": "expr"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"]
+          },
+          "children": "none"
+        }
+      }
+    },
+    {
+      "name": "view-ref",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [
+        {
+          "name": "name",
+          "mode": "value",
+          "required": true,
+          "type": "String",
+          "aliases": ["ref"]
+        },
+        {
+          "name": "input",
+          "mode": "value",
+          "type": "Object"
+        }
+      ],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/component": {
+          "allows-bind": false,
+          "compile": {
+            "expr-props": ["visible"],
+            "json-slots": ["input"],
+            "slot-types": {
+              "input": {
+                "kind": "record",
+                "value": "unknown"
+              }
+            }
+          },
+          "children": "none",
+          "positional-prop": "name"
+        }
+      }
+    },
+    {
+      "name": "action-form",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "action-form",
+          "to": "action-button"
+        }
+      }
+    },
+    {
+      "name": "entity-table",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "entity-table",
+          "component-name": "runtime/entity-table"
+        }
+      }
+    },
+    {
+      "name": "entity-detail",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "entity-detail",
+          "component-name": "runtime/entity-detail"
+        }
+      }
+    },
+    {
+      "name": "entity-form",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "entity-form",
+          "component-name": "runtime/entity-form"
+        }
+      }
+    },
+    {
+      "name": "task-queue",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "task-queue",
+          "component-name": "runtime/task-queue"
+        }
+      }
+    },
+    {
+      "name": "task-detail",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "task-detail",
+          "component-name": "runtime/task-detail"
+        }
+      }
+    },
+    {
+      "name": "task-summary",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "task-summary",
+          "component-name": "runtime/task-summary"
+        }
+      }
+    },
+    {
+      "name": "task-status-editor",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "task-status-editor",
+          "component-name": "runtime/task-status-editor"
+        }
+      }
+    },
+    {
+      "name": "task-document-links",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "task-document-links",
+          "component-name": "runtime/task-document-links"
+        }
+      }
+    },
+    {
+      "name": "task-metadata",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "task-metadata",
+          "component-name": "runtime/task-metadata"
+        }
+      }
+    },
+    {
+      "name": "violation-list",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "violation-list",
+          "component-name": "runtime/violation-list"
+        }
+      }
+    },
+    {
+      "name": "violation-detail",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "violation-detail",
+          "component-name": "runtime/violation-detail"
+        }
+      }
+    },
+    {
+      "name": "violation-summary",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "violation-summary",
+          "component-name": "runtime/violation-summary"
+        }
+      }
+    },
+    {
+      "name": "violation-status-editor",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "violation-status-editor",
+          "component-name": "runtime/violation-status-editor"
+        }
+      }
+    },
+    {
+      "name": "violation-related-records",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "violation-related-records",
+          "component-name": "runtime/violation-related-records"
+        }
+      }
+    },
+    {
+      "name": "violation-timeline",
+      "phase": "meta",
+      "identifiers": [],
+      "slots": [],
+      "bindings": {
+        "kind": "none"
+      },
+      "validation": {
+        "kind": "none"
+      },
+      "elaboration": {
+        "kind": "none"
+      },
+      "resultType": {
+        "kind": "none"
+      },
+      "extensions": {
+        "view/layout-alias": {
+          "form": "violation-timeline",
+          "component-name": "runtime/violation-timeline"
+        }
+      }
+    }
+  ],
+  "compileSpecs": [
+    {
+      "name": "text",
+      "component": {
+        "allowsBind": true,
+        "children": {
+          "kind": "none"
+        },
+        "positionalProp": "content"
+      },
+      "slots": [
+        {
+          "key": "content",
+          "field": "content",
+          "kind": "expr",
+          "aliases": ["text"]
+        }
+      ],
+      "aliases": [
+        ["content", "content"],
+        ["text", "content"]
+      ],
+      "events": []
+    },
+    {
+      "name": "rows",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        }
+      },
+      "slots": [
+        {
+          "key": "gap",
+          "field": "gap",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [["gap", "gap"]],
+      "events": []
+    },
+    {
+      "name": "columns",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        }
+      },
+      "slots": [
+        {
+          "key": "gap",
+          "field": "gap",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [["gap", "gap"]],
+      "events": []
+    },
+    {
+      "name": "card",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        }
+      },
+      "slots": [
+        {
+          "key": "title",
+          "field": "title",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "subjectMode",
+          "field": "subjectMode",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "action",
+          "field": "action",
+          "kind": "node-list",
+          "aliases": []
+        },
+        {
+          "key": "footer",
+          "field": "footer",
+          "kind": "node-list",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["title", "title"],
+        ["description", "description"],
+        ["subjectMode", "subjectMode"],
+        ["action", "action"],
+        ["footer", "footer"]
+      ],
+      "events": []
+    },
+    {
+      "name": "item-group",
+      "component": {
+        "allowsBind": true,
+        "children": {
+          "kind": "any"
+        }
+      },
+      "slots": [],
+      "aliases": [],
+      "events": []
+    },
+    {
+      "name": "item",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        },
+        "events": ["on-click"]
+      },
+      "slots": [
+        {
+          "key": "variant",
+          "field": "variant",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "size",
+          "field": "size",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "icon",
+          "field": "icon",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "title",
+          "field": "title",
+          "kind": "expr",
+          "aliases": ["text", "content"]
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "value",
+          "field": "value",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "badge",
+          "field": "badge",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "badgeVariant",
+          "field": "badgeVariant",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["variant", "variant"],
+        ["size", "size"],
+        ["icon", "icon"],
+        ["title", "title"],
+        ["text", "title"],
+        ["content", "title"],
+        ["description", "description"],
+        ["value", "value"],
+        ["badge", "badge"],
+        ["badgeVariant", "badgeVariant"]
+      ],
+      "events": [["on-click", "onClick"]]
+    },
+    {
+      "name": "button",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        },
+        "events": ["on-click"],
+        "positionalProp": "label"
+      },
+      "slots": [
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": ["text", "title", "content"]
+        },
+        {
+          "key": "variant",
+          "field": "variant",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "size",
+          "field": "size",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "disabled",
+          "field": "disabled",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "buttonType",
+          "field": "buttonType",
+          "kind": "value",
+          "aliases": ["type"]
+        }
+      ],
+      "aliases": [
+        ["label", "label"],
+        ["text", "label"],
+        ["title", "label"],
+        ["content", "label"],
+        ["variant", "variant"],
+        ["size", "size"],
+        ["disabled", "disabled"],
+        ["buttonType", "buttonType"],
+        ["type", "buttonType"]
+      ],
+      "events": [["on-click", "onClick"]]
+    },
+    {
+      "name": "progress",
+      "component": {
+        "allowsBind": true,
+        "children": {
+          "kind": "none"
+        }
+      },
+      "slots": [
+        {
+          "key": "value",
+          "field": "value",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": ["title"]
+        },
+        {
+          "key": "hint",
+          "field": "hint",
+          "kind": "expr",
+          "aliases": ["description"]
+        }
+      ],
+      "aliases": [
+        ["value", "value"],
+        ["label", "label"],
+        ["title", "label"],
+        ["hint", "hint"],
+        ["description", "hint"]
+      ],
+      "events": []
+    },
+    {
+      "name": "workflow-strip",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "only",
+          "types": ["workflow-step"]
+        }
+      },
+      "slots": [
+        {
+          "key": "title",
+          "field": "title",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["title", "title"],
+        ["description", "description"]
+      ],
+      "events": []
+    },
+    {
+      "name": "workflow-step",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "parents": ["workflow-strip"]
+      },
+      "slots": [
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": ["title"]
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "status",
+          "field": "status",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "icon",
+          "field": "icon",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["label", "label"],
+        ["title", "label"],
+        ["description", "description"],
+        ["status", "status"],
+        ["icon", "icon"]
+      ],
+      "events": []
+    },
+    {
+      "name": "empty-state",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        }
+      },
+      "slots": [
+        {
+          "key": "icon",
+          "field": "icon",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "title",
+          "field": "title",
+          "kind": "expr",
+          "aliases": ["text", "content"]
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["icon", "icon"],
+        ["title", "title"],
+        ["text", "title"],
+        ["content", "title"],
+        ["description", "description"]
+      ],
+      "events": []
+    },
+    {
+      "name": "badge",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "positionalProp": "content"
+      },
+      "slots": [
+        {
+          "key": "content",
+          "field": "content",
+          "kind": "expr",
+          "aliases": ["text", "label", "value"]
+        },
+        {
+          "key": "variant",
+          "field": "variant",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "dot",
+          "field": "dot",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "dotColor",
+          "field": "dotColor",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["content", "content"],
+        ["text", "content"],
+        ["label", "content"],
+        ["value", "content"],
+        ["variant", "variant"],
+        ["dot", "dot"],
+        ["dotColor", "dotColor"]
+      ],
+      "events": []
+    },
+    {
+      "name": "avatar",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        }
+      },
+      "slots": [
+        {
+          "key": "src",
+          "field": "src",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "alt",
+          "field": "alt",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "fallback",
+          "field": "fallback",
+          "kind": "expr",
+          "aliases": ["text", "label"]
+        },
+        {
+          "key": "size",
+          "field": "size",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["src", "src"],
+        ["alt", "alt"],
+        ["fallback", "fallback"],
+        ["text", "fallback"],
+        ["label", "fallback"],
+        ["size", "size"]
+      ],
+      "events": []
+    },
+    {
+      "name": "kbd",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "positionalProp": "content"
+      },
+      "slots": [
+        {
+          "key": "content",
+          "field": "content",
+          "kind": "expr",
+          "aliases": ["text", "label"]
+        }
+      ],
+      "aliases": [
+        ["content", "content"],
+        ["text", "content"],
+        ["label", "content"]
+      ],
+      "events": []
+    },
+    {
+      "name": "spinner",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        }
+      },
+      "slots": [
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "size",
+          "field": "size",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["label", "label"],
+        ["size", "size"]
+      ],
+      "events": []
+    },
+    {
+      "name": "separator",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        }
+      },
+      "slots": [
+        {
+          "key": "orientation",
+          "field": "orientation",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [["orientation", "orientation"]],
+      "events": []
+    },
+    {
+      "name": "tabs",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "only",
+          "types": ["tab-panel"]
+        }
+      },
+      "slots": [],
+      "aliases": [],
+      "events": []
+    },
+    {
+      "name": "tab-panel",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        },
+        "parents": ["tabs"]
+      },
+      "slots": [
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": ["title"]
+        }
+      ],
+      "aliases": [
+        ["label", "label"],
+        ["title", "label"]
+      ],
+      "events": []
+    },
+    {
+      "name": "accordion",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "only",
+          "types": ["accordion-item"]
+        }
+      },
+      "slots": [
+        {
+          "key": "mode",
+          "field": "mode",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [["mode", "mode"]],
+      "events": []
+    },
+    {
+      "name": "accordion-item",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        },
+        "parents": ["accordion"]
+      },
+      "slots": [
+        {
+          "key": "title",
+          "field": "title",
+          "kind": "expr",
+          "aliases": ["label", "text"]
+        },
+        {
+          "key": "defaultOpen",
+          "field": "defaultOpen",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["title", "title"],
+        ["label", "title"],
+        ["text", "title"],
+        ["defaultOpen", "defaultOpen"]
+      ],
+      "events": []
+    },
+    {
+      "name": "grid",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        }
+      },
+      "slots": [
+        {
+          "key": "columns",
+          "field": "columns",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [["columns", "columns"]],
+      "events": []
+    },
+    {
+      "name": "aspect-ratio",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        }
+      },
+      "slots": [
+        {
+          "key": "ratio",
+          "field": "ratio",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [["ratio", "ratio"]],
+      "events": []
+    },
+    {
+      "name": "spacer",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        }
+      },
+      "slots": [
+        {
+          "key": "height",
+          "field": "height",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [["height", "height"]],
+      "events": []
+    },
+    {
+      "name": "split-pane",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        }
+      },
+      "slots": [
+        {
+          "key": "direction",
+          "field": "direction",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "sizes",
+          "field": "sizes",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["direction", "direction"],
+        ["sizes", "sizes"]
+      ],
+      "events": []
+    },
+    {
+      "name": "for-each",
+      "component": {
+        "allowsBind": true,
+        "children": {
+          "kind": "any"
+        }
+      },
+      "slots": [
+        {
+          "key": "emptyText",
+          "field": "emptyText",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [["emptyText", "emptyText"]],
+      "events": []
+    },
+    {
+      "name": "condition",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "only",
+          "types": ["case", "else"]
+        }
+      },
+      "slots": [],
+      "aliases": [],
+      "events": []
+    },
+    {
+      "name": "case",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        },
+        "parents": ["condition"]
+      },
+      "slots": [
+        {
+          "key": "when",
+          "field": "when",
+          "kind": "expr",
+          "aliases": []
+        }
+      ],
+      "aliases": [["when", "when"]],
+      "events": []
+    },
+    {
+      "name": "else",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        },
+        "parents": ["condition"]
+      },
+      "slots": [],
+      "aliases": [],
+      "events": []
+    },
+    {
+      "name": "slot",
+      "component": {
+        "allowsBind": true,
+        "children": {
+          "kind": "any"
+        },
+        "positionalProp": "name"
+      },
+      "slots": [
+        {
+          "key": "name",
+          "field": "name",
+          "kind": "value",
+          "aliases": ["ref"]
+        }
+      ],
+      "aliases": [
+        ["name", "name"],
+        ["ref", "name"]
+      ],
+      "events": []
+    },
+    {
+      "name": "use",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        },
+        "positionalProp": "name"
+      },
+      "slots": [
+        {
+          "key": "name",
+          "field": "name",
+          "kind": "value",
+          "aliases": ["ref", "def"]
+        },
+        {
+          "key": "overrides",
+          "field": "overrides",
+          "kind": "value",
+          "aliases": ["params"]
+        }
+      ],
+      "aliases": [
+        ["name", "name"],
+        ["ref", "name"],
+        ["def", "name"],
+        ["overrides", "overrides"],
+        ["params", "overrides"]
+      ],
+      "events": []
+    },
+    {
+      "name": "tooltip",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        }
+      },
+      "slots": [
+        {
+          "key": "content",
+          "field": "content",
+          "kind": "expr",
+          "aliases": ["text", "label"]
+        },
+        {
+          "key": "side",
+          "field": "side",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["content", "content"],
+        ["text", "content"],
+        ["label", "content"],
+        ["side", "side"]
+      ],
+      "events": []
+    },
+    {
+      "name": "popover",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        }
+      },
+      "slots": [
+        {
+          "key": "trigger",
+          "field": "trigger",
+          "kind": "node-list",
+          "aliases": []
+        },
+        {
+          "key": "title",
+          "field": "title",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "side",
+          "field": "side",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "align",
+          "field": "align",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["trigger", "trigger"],
+        ["title", "title"],
+        ["description", "description"],
+        ["side", "side"],
+        ["align", "align"]
+      ],
+      "events": []
+    },
+    {
+      "name": "hover-card",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        }
+      },
+      "slots": [
+        {
+          "key": "trigger",
+          "field": "trigger",
+          "kind": "node-list",
+          "aliases": []
+        },
+        {
+          "key": "side",
+          "field": "side",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "align",
+          "field": "align",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["trigger", "trigger"],
+        ["side", "side"],
+        ["align", "align"]
+      ],
+      "events": []
+    },
+    {
+      "name": "dialog",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        },
+        "events": ["on-open-change"]
+      },
+      "slots": [
+        {
+          "key": "dialogId",
+          "field": "dialogId",
+          "kind": "value",
+          "aliases": ["id", "name"]
+        },
+        {
+          "key": "title",
+          "field": "title",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["dialogId", "dialogId"],
+        ["id", "dialogId"],
+        ["name", "dialogId"],
+        ["title", "title"],
+        ["description", "description"]
+      ],
+      "events": [["on-open-change", "onOpenChange"]]
+    },
+    {
+      "name": "table",
+      "component": {
+        "allowsBind": true,
+        "children": {
+          "kind": "none"
+        },
+        "events": ["on-row-click"]
+      },
+      "slots": [
+        {
+          "key": "columns",
+          "field": "columns",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "filters",
+          "field": "filters",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "pageSize",
+          "field": "pageSize",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "defaultSort",
+          "field": "defaultSort",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "emptyState",
+          "field": "emptyState",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["columns", "columns"],
+        ["filters", "filters"],
+        ["pageSize", "pageSize"],
+        ["defaultSort", "defaultSort"],
+        ["emptyState", "emptyState"]
+      ],
+      "events": [["on-row-click", "onRowClick"]]
+    },
+    {
+      "name": "tree",
+      "component": {
+        "allowsBind": true,
+        "children": {
+          "kind": "any"
+        },
+        "events": ["on-node-click"]
+      },
+      "slots": [
+        {
+          "key": "idKey",
+          "field": "idKey",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "parentIdKey",
+          "field": "parentIdKey",
+          "kind": "value",
+          "aliases": ["parent-key"]
+        },
+        {
+          "key": "labelKey",
+          "field": "labelKey",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "defaultExpanded",
+          "field": "defaultExpanded",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["idKey", "idKey"],
+        ["parentIdKey", "parentIdKey"],
+        ["parentKey", "parentIdKey"],
+        ["labelKey", "labelKey"],
+        ["defaultExpanded", "defaultExpanded"]
+      ],
+      "events": [["on-node-click", "onNodeClick"]]
+    },
+    {
+      "name": "metric",
+      "component": {
+        "allowsBind": true,
+        "children": {
+          "kind": "none"
+        }
+      },
+      "slots": [
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": ["title"]
+        },
+        {
+          "key": "value",
+          "field": "value",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "valueKey",
+          "field": "valueKey",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["label", "label"],
+        ["title", "label"],
+        ["value", "value"],
+        ["valueKey", "valueKey"]
+      ],
+      "events": []
+    },
+    {
+      "name": "chart",
+      "component": {
+        "allowsBind": true,
+        "children": {
+          "kind": "none"
+        }
+      },
+      "slots": [
+        {
+          "key": "title",
+          "field": "title",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "chartType",
+          "field": "chartType",
+          "kind": "value",
+          "aliases": ["variant"]
+        },
+        {
+          "key": "categoryKey",
+          "field": "categoryKey",
+          "kind": "value",
+          "aliases": ["x-key"]
+        },
+        {
+          "key": "series",
+          "field": "series",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["title", "title"],
+        ["chartType", "chartType"],
+        ["variant", "chartType"],
+        ["categoryKey", "categoryKey"],
+        ["xKey", "categoryKey"],
+        ["series", "series"]
+      ],
+      "events": []
+    },
+    {
+      "name": "markdown",
+      "component": {
+        "allowsBind": true,
+        "children": {
+          "kind": "none"
+        },
+        "positionalProp": "content"
+      },
+      "slots": [
+        {
+          "key": "content",
+          "field": "content",
+          "kind": "expr",
+          "aliases": []
+        }
+      ],
+      "aliases": [["content", "content"]],
+      "events": []
+    },
+    {
+      "name": "stat-group",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        }
+      },
+      "slots": [
+        {
+          "key": "gap",
+          "field": "gap",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [["gap", "gap"]],
+      "events": []
+    },
+    {
+      "name": "heading",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "positionalProp": "text"
+      },
+      "slots": [
+        {
+          "key": "text",
+          "field": "text",
+          "kind": "expr",
+          "aliases": ["title", "content"]
+        },
+        {
+          "key": "level",
+          "field": "level",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["text", "text"],
+        ["title", "text"],
+        ["content", "text"],
+        ["level", "level"]
+      ],
+      "events": []
+    },
+    {
+      "name": "divider",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        }
+      },
+      "slots": [],
+      "aliases": [],
+      "events": []
+    },
+    {
+      "name": "alert",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "positionalProp": "message"
+      },
+      "slots": [
+        {
+          "key": "variant",
+          "field": "variant",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "message",
+          "field": "message",
+          "kind": "expr",
+          "aliases": ["text"]
+        }
+      ],
+      "aliases": [
+        ["variant", "variant"],
+        ["message", "message"],
+        ["text", "message"]
+      ],
+      "events": []
+    },
+    {
+      "name": "form",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        },
+        "events": ["on-submit"]
+      },
+      "slots": [
+        {
+          "key": "title",
+          "field": "title",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["title", "title"],
+        ["description", "description"]
+      ],
+      "events": [["on-submit", "onSubmit"]]
+    },
+    {
+      "name": "button-group",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        }
+      },
+      "slots": [
+        {
+          "key": "orientation",
+          "field": "orientation",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [["orientation", "orientation"]],
+      "events": []
+    },
+    {
+      "name": "breadcrumb",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "only",
+          "types": ["breadcrumb-item"]
+        }
+      },
+      "slots": [],
+      "aliases": [],
+      "events": []
+    },
+    {
+      "name": "breadcrumb-item",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "events": ["on-click"],
+        "parents": ["breadcrumb"]
+      },
+      "slots": [
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": ["text", "title"]
+        },
+        {
+          "key": "href",
+          "field": "href",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "current",
+          "field": "current",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["label", "label"],
+        ["text", "label"],
+        ["title", "label"],
+        ["href", "href"],
+        ["current", "current"]
+      ],
+      "events": [["on-click", "onClick"]]
+    },
+    {
+      "name": "input",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "events": ["on-change"]
+      },
+      "slots": [
+        {
+          "key": "name",
+          "field": "name",
+          "kind": "value",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "key": "defaultValue",
+          "field": "defaultValue",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "placeholder",
+          "field": "placeholder",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "inputType",
+          "field": "inputType",
+          "kind": "value",
+          "aliases": ["type"]
+        },
+        {
+          "key": "prefix",
+          "field": "prefix",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "suffix",
+          "field": "suffix",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["name", "name"],
+        ["stateKey", "name"],
+        ["key", "name"],
+        ["defaultValue", "defaultValue"],
+        ["label", "label"],
+        ["description", "description"],
+        ["placeholder", "placeholder"],
+        ["inputType", "inputType"],
+        ["type", "inputType"],
+        ["prefix", "prefix"],
+        ["suffix", "suffix"]
+      ],
+      "events": [["on-change", "onChange"]]
+    },
+    {
+      "name": "textarea",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "events": ["on-change"]
+      },
+      "slots": [
+        {
+          "key": "name",
+          "field": "name",
+          "kind": "value",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "key": "defaultValue",
+          "field": "defaultValue",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "placeholder",
+          "field": "placeholder",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["name", "name"],
+        ["stateKey", "name"],
+        ["key", "name"],
+        ["defaultValue", "defaultValue"],
+        ["label", "label"],
+        ["description", "description"],
+        ["placeholder", "placeholder"]
+      ],
+      "events": [["on-change", "onChange"]]
+    },
+    {
+      "name": "checkbox",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "events": ["on-change"]
+      },
+      "slots": [
+        {
+          "key": "name",
+          "field": "name",
+          "kind": "value",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "key": "defaultValue",
+          "field": "defaultValue",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": ["text", "title"]
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["name", "name"],
+        ["stateKey", "name"],
+        ["key", "name"],
+        ["defaultValue", "defaultValue"],
+        ["label", "label"],
+        ["text", "label"],
+        ["title", "label"],
+        ["description", "description"]
+      ],
+      "events": [["on-change", "onChange"]]
+    },
+    {
+      "name": "switch",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "events": ["on-change"]
+      },
+      "slots": [
+        {
+          "key": "name",
+          "field": "name",
+          "kind": "value",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "key": "defaultValue",
+          "field": "defaultValue",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": ["text", "title"]
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["name", "name"],
+        ["stateKey", "name"],
+        ["key", "name"],
+        ["defaultValue", "defaultValue"],
+        ["label", "label"],
+        ["text", "label"],
+        ["title", "label"],
+        ["description", "description"]
+      ],
+      "events": [["on-change", "onChange"]]
+    },
+    {
+      "name": "select",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "only",
+          "types": ["select-option"]
+        },
+        "events": ["on-change"]
+      },
+      "slots": [
+        {
+          "key": "name",
+          "field": "name",
+          "kind": "value",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "key": "defaultValue",
+          "field": "defaultValue",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "placeholder",
+          "field": "placeholder",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "options",
+          "field": "options",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["name", "name"],
+        ["stateKey", "name"],
+        ["key", "name"],
+        ["defaultValue", "defaultValue"],
+        ["label", "label"],
+        ["description", "description"],
+        ["placeholder", "placeholder"],
+        ["options", "options"]
+      ],
+      "events": [["on-change", "onChange"]]
+    },
+    {
+      "name": "select-option",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "parents": ["select"]
+      },
+      "slots": [
+        {
+          "key": "value",
+          "field": "value",
+          "kind": "value",
+          "aliases": ["key"]
+        },
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": ["text"]
+        }
+      ],
+      "aliases": [
+        ["value", "value"],
+        ["key", "value"],
+        ["label", "label"],
+        ["text", "label"]
+      ],
+      "events": []
+    },
+    {
+      "name": "radio-group",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "only",
+          "types": ["radio-option"]
+        },
+        "events": ["on-change"]
+      },
+      "slots": [
+        {
+          "key": "name",
+          "field": "name",
+          "kind": "value",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "key": "defaultValue",
+          "field": "defaultValue",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "options",
+          "field": "options",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["name", "name"],
+        ["stateKey", "name"],
+        ["key", "name"],
+        ["defaultValue", "defaultValue"],
+        ["label", "label"],
+        ["description", "description"],
+        ["options", "options"]
+      ],
+      "events": [["on-change", "onChange"]]
+    },
+    {
+      "name": "radio-option",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "parents": ["radio-group"]
+      },
+      "slots": [
+        {
+          "key": "value",
+          "field": "value",
+          "kind": "value",
+          "aliases": ["key"]
+        },
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": ["text"]
+        }
+      ],
+      "aliases": [
+        ["value", "value"],
+        ["key", "value"],
+        ["label", "label"],
+        ["text", "label"]
+      ],
+      "events": []
+    },
+    {
+      "name": "slider",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "events": ["on-change"]
+      },
+      "slots": [
+        {
+          "key": "name",
+          "field": "name",
+          "kind": "value",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "key": "defaultValue",
+          "field": "defaultValue",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "min",
+          "field": "min",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "max",
+          "field": "max",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "step",
+          "field": "step",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["name", "name"],
+        ["stateKey", "name"],
+        ["key", "name"],
+        ["defaultValue", "defaultValue"],
+        ["label", "label"],
+        ["description", "description"],
+        ["min", "min"],
+        ["max", "max"],
+        ["step", "step"]
+      ],
+      "events": [["on-change", "onChange"]]
+    },
+    {
+      "name": "toggle-group",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "events": ["on-change"]
+      },
+      "slots": [
+        {
+          "key": "name",
+          "field": "name",
+          "kind": "value",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "key": "defaultValue",
+          "field": "defaultValue",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "mode",
+          "field": "mode",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "variant",
+          "field": "variant",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "options",
+          "field": "options",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["name", "name"],
+        ["stateKey", "name"],
+        ["key", "name"],
+        ["defaultValue", "defaultValue"],
+        ["mode", "mode"],
+        ["variant", "variant"],
+        ["options", "options"]
+      ],
+      "events": [["on-change", "onChange"]]
+    },
+    {
+      "name": "skeleton",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        }
+      },
+      "slots": [
+        {
+          "key": "lines",
+          "field": "lines",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [["lines", "lines"]],
+      "events": []
+    },
+    {
+      "name": "raw-html",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "positionalProp": "content"
+      },
+      "slots": [
+        {
+          "key": "content",
+          "field": "content",
+          "kind": "expr",
+          "aliases": ["html"]
+        }
+      ],
+      "aliases": [
+        ["content", "content"],
+        ["html", "content"]
+      ],
+      "events": []
+    },
+    {
+      "name": "raw-css",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "positionalProp": "content"
+      },
+      "slots": [
+        {
+          "key": "content",
+          "field": "content",
+          "kind": "expr",
+          "aliases": ["css"]
+        }
+      ],
+      "aliases": [
+        ["content", "content"],
+        ["css", "content"]
+      ],
+      "events": []
+    },
+    {
+      "name": "raw-js",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "positionalProp": "code"
+      },
+      "slots": [
+        {
+          "key": "code",
+          "field": "code",
+          "kind": "expr",
+          "aliases": ["js", "content"]
+        }
+      ],
+      "aliases": [
+        ["code", "code"],
+        ["js", "code"],
+        ["content", "code"]
+      ],
+      "events": []
+    },
+    {
+      "name": "custom",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "any"
+        }
+      },
+      "slots": [
+        {
+          "key": "componentName",
+          "field": "componentName",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "props",
+          "field": "props",
+          "kind": "json",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["componentName", "componentName"],
+        ["props", "props"]
+      ],
+      "events": [],
+      "unknownPropsKind": "json"
+    },
+    {
+      "name": "entity-browser",
+      "component": {
+        "allowsBind": true,
+        "children": {
+          "kind": "none"
+        },
+        "events": ["on-row-click"]
+      },
+      "slots": [
+        {
+          "key": "title",
+          "field": "title",
+          "kind": "expr",
+          "aliases": []
+        }
+      ],
+      "aliases": [["title", "title"]],
+      "events": [["on-row-click", "onRowClick"]]
+    },
+    {
+      "name": "action-button",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "events": ["on-click", "on-success"]
+      },
+      "slots": [
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": ["text"]
+        },
+        {
+          "key": "variant",
+          "field": "variant",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "actionRef",
+          "field": "actionRef",
+          "kind": "value",
+          "aliases": ["action-name"]
+        },
+        {
+          "key": "entityId",
+          "field": "entityId",
+          "kind": "expr",
+          "aliases": ["entity-id-bind"]
+        },
+        {
+          "key": "parameters",
+          "field": "parameters",
+          "kind": "json",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["label", "label"],
+        ["text", "label"],
+        ["variant", "variant"],
+        ["actionRef", "actionRef"],
+        ["actionName", "actionRef"],
+        ["entityId", "entityId"],
+        ["entityIdBind", "entityId"],
+        ["parameters", "parameters"]
+      ],
+      "events": [
+        ["on-click", "onClick"],
+        ["on-success", "onSuccess"]
+      ]
+    },
+    {
+      "name": "create-entity-button",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "events": ["on-click", "on-success"]
+      },
+      "slots": [
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": ["text"]
+        },
+        {
+          "key": "entityType",
+          "field": "entityType",
+          "kind": "value",
+          "aliases": ["entity"]
+        },
+        {
+          "key": "variant",
+          "field": "variant",
+          "kind": "value",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["label", "label"],
+        ["text", "label"],
+        ["entityType", "entityType"],
+        ["entity", "entityType"],
+        ["variant", "variant"]
+      ],
+      "events": [
+        ["on-click", "onClick"],
+        ["on-success", "onSuccess"]
+      ]
+    },
+    {
+      "name": "entity-picker",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "events": ["on-change"]
+      },
+      "slots": [
+        {
+          "key": "name",
+          "field": "name",
+          "kind": "value",
+          "aliases": ["state-key", "key"]
+        },
+        {
+          "key": "label",
+          "field": "label",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "description",
+          "field": "description",
+          "kind": "expr",
+          "aliases": []
+        },
+        {
+          "key": "placeholder",
+          "field": "placeholder",
+          "kind": "value",
+          "aliases": []
+        },
+        {
+          "key": "entityType",
+          "field": "entityType",
+          "kind": "value",
+          "aliases": ["entity"]
+        }
+      ],
+      "aliases": [
+        ["name", "name"],
+        ["stateKey", "name"],
+        ["key", "name"],
+        ["label", "label"],
+        ["description", "description"],
+        ["placeholder", "placeholder"],
+        ["entityType", "entityType"],
+        ["entity", "entityType"]
+      ],
+      "events": [["on-change", "onChange"]]
+    },
+    {
+      "name": "query-console",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        }
+      },
+      "slots": [
+        {
+          "key": "title",
+          "field": "title",
+          "kind": "expr",
+          "aliases": []
+        }
+      ],
+      "aliases": [["title", "title"]],
+      "events": []
+    },
+    {
+      "name": "view-ref",
+      "component": {
+        "allowsBind": false,
+        "children": {
+          "kind": "none"
+        },
+        "positionalProp": "name"
+      },
+      "slots": [
+        {
+          "key": "name",
+          "field": "name",
+          "kind": "value",
+          "aliases": ["ref"]
+        },
+        {
+          "key": "input",
+          "field": "input",
+          "kind": "json",
+          "aliases": []
+        }
+      ],
+      "aliases": [
+        ["name", "name"],
+        ["ref", "name"],
+        ["input", "input"]
+      ],
+      "events": []
+    }
+  ]
+}

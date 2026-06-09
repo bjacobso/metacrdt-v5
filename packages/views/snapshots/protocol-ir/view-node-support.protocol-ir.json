@@ -1,0 +1,187 @@
+{
+  "source": "preludes/viewspec-protocol.lisp",
+  "module": {
+    "kind": "module",
+    "descriptorName": "view-node-support-module",
+    "name": "ViewNodeSupport",
+    "types": [],
+    "enums": [],
+    "objects": [
+      "ViewTableColumn",
+      "ViewTableFilter",
+      "ViewTableSort",
+      "ViewChartSeries",
+      "ViewSelectOptionValue"
+    ],
+    "unions": [],
+    "imports": [],
+    "literalSchemas": [],
+    "extensionKey": "protocol/module"
+  },
+  "typeAliases": [],
+  "enums": [],
+  "objects": [
+    {
+      "kind": "object",
+      "descriptorName": "view-table-column",
+      "name": "ViewTableColumn",
+      "schemaName": "ViewTableColumnSchema",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "literal",
+            "values": ["text", "status", "severity", "priority", "date", "mono"]
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-table-filter",
+      "name": "ViewTableFilter",
+      "schemaName": "ViewTableFilterSchema",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "placeholder",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "op",
+          "type": {
+            "kind": "literal",
+            "values": ["ilike", "like", "=", "!=", ">", ">=", "<", "<="]
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-table-sort",
+      "name": "ViewTableSort",
+      "schemaName": "ViewTableSortSchema",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "direction",
+          "type": {
+            "kind": "literal",
+            "values": ["asc", "desc"]
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-chart-series",
+      "name": "ViewChartSeries",
+      "schemaName": "ViewChartSeriesSchema",
+      "fields": [
+        {
+          "name": "dataKey",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-select-option-value",
+      "name": "ViewSelectOptionValue",
+      "schemaName": "ViewSelectOptionValueSchema",
+      "fields": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    }
+  ],
+  "unions": [],
+  "catalogs": []
+}

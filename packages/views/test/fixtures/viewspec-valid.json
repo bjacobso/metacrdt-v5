@@ -1,0 +1,37 @@
+{
+  "$viewSpec": {
+    "version": "2"
+  },
+  "description": "Fixture ViewSpec",
+  "input": {
+    "entityId": {
+      "type": "string",
+      "description": "Entity id"
+    }
+  },
+  "state": {
+    "count": {
+      "kind": "number",
+      "initial": 0
+    }
+  },
+  "queries": {
+    "employee": {
+      "queryRef": "employee-by-id",
+      "params": {
+        "id": {
+          "kind": "var",
+          "source": "input",
+          "path": ["entityId"]
+        }
+      }
+    }
+  },
+  "root": {
+    "type": "text",
+    "value": {
+      "kind": "literal",
+      "value": "Hello"
+    }
+  }
+}

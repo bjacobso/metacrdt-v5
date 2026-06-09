@@ -1,0 +1,54 @@
+{
+  "$viewSpec": { "version": "2" },
+  "description": "Entities of a given type — a generic list surface authored as a ViewSpec.",
+  "input": {
+    "type": { "kind": "string", "required": true }
+  },
+  "state": {
+    "selectedId": { "kind": "string", "initial": "" }
+  },
+  "queries": {
+    "entities": {
+      "queryRef": "entities.queryEntities",
+      "params": {
+        "type": { "kind": "var", "source": "input", "path": ["type"] },
+        "pageSize": 50
+      },
+      "dependsOn": []
+    }
+  },
+  "root": {
+    "type": "rows",
+    "gap": 16,
+    "children": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": {
+          "kind": "binary",
+          "op": "+",
+          "left": { "kind": "literal", "value": "Entities · " },
+          "right": { "kind": "var", "source": "input", "path": ["type"] }
+        }
+      },
+      {
+        "type": "table",
+        "bind": { "kind": "var", "source": "query", "path": ["entities", "page"] },
+        "pageSize": 50,
+        "emptyState": "No entities of this type yet.",
+        "columns": [
+          { "key": "id", "label": "Entity", "kind": "mono" },
+          { "key": "name", "label": "Name", "kind": "text" },
+          { "key": "status", "label": "Status", "kind": "status" }
+        ],
+        "events": {
+          "onRowClick": {
+            "kind": "set-state",
+            "path": "selectedId",
+            "value": { "kind": "var", "source": "row", "path": ["id"] }
+          }
+        }
+      }
+    ]
+  }
+}

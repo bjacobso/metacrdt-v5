@@ -1,0 +1,42 @@
+{
+  "name": "@metacrdt/views",
+  "version": "0.1.0",
+  "description": "MetaCRDT ViewSpec: a host-agnostic, data-native view contract whose Effect Schema IR is generated from in-package Forma preludes, plus the pure normalize/validate/evaluate runtime.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "import": "./dist/runtime.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown --config ../../tsdown.config.ts",
+    "generate": "tsx scripts/generate-view-node.ts",
+    "snapshot:protocol-ir": "tsx scripts/snapshot-protocol-ir.ts",
+    "snapshot:viewspec-ir": "tsx scripts/snapshot-viewspec-ir.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "pack:check": "npm pack --dry-run --json"
+  },
+  "dependencies": {
+    "effect": "^3.21.3"
+  },
+  "devDependencies": {
+    "@metacrdt/forma": "0.1.0",
+    "@types/node": "^24.10.1",
+    "tsx": "^4.19.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}

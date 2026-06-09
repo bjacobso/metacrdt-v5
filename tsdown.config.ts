@@ -24,6 +24,7 @@ const packageEntries: Record<string, UserConfig["entry"]> = {
   ],
   "@metacrdt/forma": ["src/*.ts"],
   "@metacrdt/node": ["src/index.ts", "src/dev-server.ts"],
+  "@metacrdt/views": ["src/index.ts", "src/runtime.ts"],
 };
 
 const nodeLikePackages = new Set(["@metacrdt/forma", "@metacrdt/node"]);

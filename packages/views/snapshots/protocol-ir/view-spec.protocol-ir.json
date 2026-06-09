@@ -1,0 +1,447 @@
+{
+  "source": "preludes/viewspec-protocol.lisp",
+  "module": {
+    "kind": "module",
+    "descriptorName": "view-spec-module",
+    "name": "ViewSpec",
+    "types": [],
+    "enums": [],
+    "objects": [
+      "ViewQueryInlineBinding",
+      "ViewQueryRefBinding",
+      "ViewInputParam",
+      "ViewTheme",
+      "ViewCapabilities",
+      "ViewSpecMarker",
+      "ViewSpec"
+    ],
+    "unions": ["ViewQueryBinding"],
+    "imports": [
+      {
+        "name": "ViewActionOrList",
+        "from": "ViewAction",
+        "schemaName": "ViewActionOrListSchema",
+        "typeOnly": false
+      },
+      {
+        "name": "ViewStateDecl",
+        "from": "ViewState",
+        "schemaName": "ViewStateDecl",
+        "typeOnly": false
+      },
+      {
+        "name": "ViewNode",
+        "from": "ViewNode",
+        "schemaName": "ViewNode",
+        "typeOnly": false
+      }
+    ],
+    "literalSchemas": [],
+    "extensionKey": "protocol/module"
+  },
+  "typeAliases": [],
+  "enums": [],
+  "objects": [
+    {
+      "kind": "object",
+      "descriptorName": "view-query-inline-binding",
+      "name": "ViewQueryInlineBinding",
+      "schemaName": "ViewQueryInlineBindingSchema",
+      "fields": [
+        {
+          "name": "query",
+          "type": {
+            "kind": "unknown"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "params",
+          "type": {
+            "kind": "record",
+            "value": {
+              "kind": "unknown"
+            }
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "dependsOn",
+          "type": {
+            "kind": "array",
+            "item": {
+              "kind": "string"
+            }
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-query-ref-binding",
+      "name": "ViewQueryRefBinding",
+      "schemaName": "ViewQueryRefBindingSchema",
+      "fields": [
+        {
+          "name": "queryRef",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "params",
+          "type": {
+            "kind": "record",
+            "value": {
+              "kind": "unknown"
+            }
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "dependsOn",
+          "type": {
+            "kind": "array",
+            "item": {
+              "kind": "string"
+            }
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-input-param",
+      "name": "ViewInputParam",
+      "schemaName": "ViewInputParam",
+      "fields": [
+        {
+          "name": "type",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "aliases": []
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "default",
+          "type": {
+            "kind": "unknown"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-theme",
+      "name": "ViewTheme",
+      "schemaName": "ViewTheme",
+      "fields": [
+        {
+          "name": "background",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "foreground",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "accent",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "accentForeground",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "muted",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "border",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "fontFamily",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-capabilities",
+      "name": "ViewCapabilities",
+      "schemaName": "ViewCapabilities",
+      "fields": [
+        {
+          "name": "toolCall",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "filePicker",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "displayMode",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "fetch",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "sendMessage",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "updateContext",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-spec-marker",
+      "name": "ViewSpecMarker",
+      "schemaName": "ViewSpecMarkerSchema",
+      "fields": [
+        {
+          "name": "version",
+          "type": {
+            "kind": "literal",
+            "values": ["2"]
+          },
+          "required": true,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    },
+    {
+      "kind": "object",
+      "descriptorName": "view-spec",
+      "name": "ViewSpec",
+      "schemaName": "ViewSpec",
+      "fields": [
+        {
+          "name": "$viewSpec",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewSpecMarker"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "input",
+          "type": {
+            "kind": "record",
+            "value": {
+              "kind": "ref",
+              "ref": "ViewInputParam"
+            }
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "state",
+          "type": {
+            "kind": "record",
+            "value": {
+              "kind": "ref",
+              "ref": "ViewStateDecl"
+            }
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "queries",
+          "type": {
+            "kind": "record",
+            "value": {
+              "kind": "ref",
+              "ref": "ViewQueryBinding"
+            }
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "defs",
+          "type": {
+            "kind": "record",
+            "value": {
+              "kind": "ref",
+              "ref": "ViewNode"
+            }
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "theme",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewTheme"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "capabilities",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewCapabilities"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "onMount",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewActionOrList"
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "keyBindings",
+          "type": {
+            "kind": "record",
+            "value": {
+              "kind": "ref",
+              "ref": "ViewActionOrList"
+            }
+          },
+          "required": false,
+          "aliases": []
+        },
+        {
+          "name": "root",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewNode"
+          },
+          "required": true,
+          "aliases": []
+        }
+      ],
+      "extensionKey": "protocol/object"
+    }
+  ],
+  "unions": [
+    {
+      "kind": "union",
+      "descriptorName": "view-query-binding",
+      "name": "ViewQueryBinding",
+      "schemaName": "ViewQueryBinding",
+      "members": [
+        {
+          "name": "inline",
+          "tag": "inline",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewQueryInlineBinding"
+          }
+        },
+        {
+          "name": "ref",
+          "tag": "ref",
+          "type": {
+            "kind": "ref",
+            "ref": "ViewQueryRefBinding"
+          }
+        }
+      ],
+      "extensionKey": "protocol/union"
+    }
+  ],
+  "catalogs": []
+}
