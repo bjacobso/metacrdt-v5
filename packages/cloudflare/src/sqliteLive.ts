@@ -68,9 +68,16 @@ export const DurableObjectSqliteLiveQueryUnsubscribeMessageSchema =
     id: Schema.String,
   });
 
+export const DurableObjectSqliteLiveQueryHydrateMessageSchema = Schema.Struct({
+  protocol: Schema.String,
+  type: Schema.Literal("query.hydrate"),
+  connectionId: Schema.optionalWith(Schema.String, { exact: true }),
+});
+
 export const DurableObjectSqliteLiveQueryClientMessageSchema = Schema.Union(
   DurableObjectSqliteLiveQuerySubscribeMessageSchema,
   DurableObjectSqliteLiveQueryUnsubscribeMessageSchema,
+  DurableObjectSqliteLiveQueryHydrateMessageSchema,
 );
 
 export type DurableObjectSqliteLiveSubscriptionFilter =
@@ -85,6 +92,8 @@ export type DurableObjectSqliteLiveQuerySubscribeMessage =
   typeof DurableObjectSqliteLiveQuerySubscribeMessageSchema.Type;
 export type DurableObjectSqliteLiveQueryUnsubscribeMessage =
   typeof DurableObjectSqliteLiveQueryUnsubscribeMessageSchema.Type;
+export type DurableObjectSqliteLiveQueryHydrateMessage =
+  typeof DurableObjectSqliteLiveQueryHydrateMessageSchema.Type;
 export type DurableObjectSqliteLiveQueryClientMessage =
   typeof DurableObjectSqliteLiveQueryClientMessageSchema.Type;
 
@@ -164,6 +173,12 @@ export type DurableObjectSqliteLiveQuerySubscription = {
 export type DurableObjectSqliteLiveQueryPublishResult = {
   readonly changed: readonly DurableObjectSqliteProjectionChange[];
   readonly delivered: number;
+  readonly subscriptions: readonly string[];
+};
+
+export type DurableObjectSqliteLiveQueryHydrateResult = {
+  readonly connectionId: string;
+  readonly hydrated: number;
   readonly subscriptions: readonly string[];
 };
 
@@ -808,6 +823,87 @@ export class DurableObjectSqliteLiveCurrentQueryFanout {
     return Effect.runPromise(this.publishChangesEffect(changed));
   }
 
+  hydrateConnection(
+    connectionId: string,
+  ): Promise<DurableObjectSqliteLiveQueryHydrateResult> {
+    return Effect.runPromise(this.hydrateConnectionEffect(connectionId));
+  }
+
+  hydrateConnectionEffect(
+    connectionId: string,
+  ): Effect.Effect<
+    DurableObjectSqliteLiveQueryHydrateResult,
+    DurableObjectSqliteLiveError
+  > {
+    const self = this;
+    return Effect.gen(function* () {
+      const store = self.#persistedSubscriptions;
+      if (store === undefined) {
+        return yield* Effect.fail(
+          liveError(
+            "hydrateLiveCurrentQuery",
+            new Error("live query hydration requires persisted subscriptions"),
+          ),
+        );
+      }
+      const connection = self.#connections.get(connectionId);
+      if (connection === undefined) {
+        return yield* Effect.fail(
+          liveError(
+            "hydrateLiveCurrentQuery",
+            new Error(`unknown live query connection: ${connectionId}`),
+          ),
+        );
+      }
+      const rows = yield* Effect.tryPromise({
+        try: () => store.list({ connectionId, status: "active" }),
+        catch: (cause) => liveError("hydrateLiveCurrentQuery.list", cause),
+      });
+      const matching = rows
+        .filter((row) =>
+          row.protocol === self.protocol &&
+          (self.#scope === undefined || row.scope === self.#scope)
+        )
+        .sort((left, right) => left.id.localeCompare(right.id));
+      const hydrated: string[] = [];
+      for (const row of matching) {
+        const query = yield* decode(
+          "hydrateLiveCurrentQuery.query",
+          DatalogQueryArgs,
+          row.query,
+        );
+        const dependencies = row.dependencies.map(compactFilter);
+        const result = yield* self.#runQuery(query);
+        self.#subscriptions.set(row.id, {
+          id: row.id,
+          connectionId,
+          query,
+          dependencies,
+        });
+        yield* Effect.try({
+          try: () =>
+            connection.socket.send(
+              serializeQuery({
+                protocol: self.protocol,
+                type: "query.subscribed",
+                from: self.from,
+                id: row.id,
+                dependencies,
+                result,
+              }),
+            ),
+          catch: (cause) => liveError("hydrateLiveCurrentQuery.send", cause),
+        });
+        hydrated.push(row.id);
+      }
+      return {
+        connectionId,
+        hydrated: hydrated.length,
+        subscriptions: hydrated,
+      };
+    });
+  }
+
   publishChangesEffect(
     changed: readonly DurableObjectSqliteProjectionChange[],
   ): Effect.Effect<
@@ -899,13 +995,23 @@ export class DurableObjectSqliteLiveCurrentQueryFanout {
         );
         this.disconnect(connectionId);
       }
-    } else {
+    } else if (message.type === "query.unsubscribe") {
       try {
         await this.unsubscribeQuery(connectionId, message.id);
       } catch {
         this.#connections.get(connectionId)?.socket.close?.(
           1011,
           "live query unsubscribe failed",
+        );
+        this.disconnect(connectionId);
+      }
+    } else {
+      try {
+        await this.hydrateConnection(message.connectionId ?? connectionId);
+      } catch {
+        this.#connections.get(connectionId)?.socket.close?.(
+          1011,
+          "live query hydrate failed",
         );
         this.disconnect(connectionId);
       }

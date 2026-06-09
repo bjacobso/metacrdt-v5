@@ -266,13 +266,19 @@ persisted live current-query subscription registry over DO SQLite: live-query
 subscription rows and dependency index rows can be stored/listed/closed across
 runtime recreation, and the structural live-query fanout can optionally persist
 subscribe/unsubscribe state through that registry without adding auth, Worker
-routes, reconnect hydration, or a frontend SDK. The next active goal should be
-chosen from the remaining TODO candidates:
+routes, or a frontend SDK. Goal 135 adds a structural reconnect hydration seed
+on top of that registry: `DurableObjectSqliteLiveCurrentQueryFanout` can reattach
+active persisted current-query rows for a connected socket, send fresh
+`query.subscribed` snapshots, and accept socket `query.hydrate` messages without
+claiming authenticated Worker/frontend routing, durable client sessions, result
+diffs, or a frontend SDK. The next active goal should be chosen from the
+remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (broader SQL query-provider
 parity/performance hardening, full flow interpreter/action execution,
-authenticated live-query Worker/frontend plumbing),
+authenticated live-query Worker/frontend plumbing and full frontend reconnect
+protocol),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9487,6 +9493,44 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 135 — Cloudflare Live Query Reconnect Hydration Seed
+
+**Status:** shipped.
+
+**Objective:** add the first reconnect/session hydration surface on top of the
+persisted Cloudflare live current-query subscription registry.
+
+### What Shipped
+
+- Added `query.hydrate` to the structural live-query client message schema.
+- Added `hydrateConnection` / `hydrateConnectionEffect` to
+  `DurableObjectSqliteLiveCurrentQueryFanout`. Hydration requires a configured
+  `DurableObjectSqliteLiveQuerySubscriptionStore`, loads active rows for the
+  connected socket's connection id, filters them by fanout protocol and optional
+  scope, reattaches them to in-memory fanout state, reruns each current query,
+  and sends fresh `query.subscribed` snapshots.
+- Exported the hydrate message schema and hydrate result/message types from
+  `@metacrdt/cloudflare`.
+- Added focused Cloudflare fake-SQL tests proving direct hydration, protocol /
+  scope filtering, socket `query.hydrate` handling, and subsequent
+  projection-change refresh delivery for hydrated subscriptions.
+
+### Non-Goals
+
+- Do not claim authenticated live-query access control, Worker route wiring,
+  durable client session tokens, result diffing, or a frontend SDK.
+- Do not change the default disconnect behavior that marks active persisted
+  rows closed for an explicitly closed connection.
+- Do not implement full Cloudflare flow interpreter/action execution or broader
+  historical SQL query-provider parity/performance hardening.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 51 Cloudflare tests.
 
 ---
 

@@ -8,13 +8,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ### Current pulse
 
-- [x] Goal 134 shipped: Cloudflare persisted live current-query subscription
-  registry.
+- [x] Goal 135 shipped: Cloudflare live current-query reconnect hydration seed.
 - [ ] Choose the next active slice from remaining Cloudflare parity (full flow
   interpreter/action execution, authenticated live-query Worker/frontend
-  plumbing, reconnect/session hydration, or broader historical SQL query-provider parity/performance
-  hardening), Node production hardening, provider-specific auth/UI wrapping, or a
-  scoped Confect/domain wrapper.
+  plumbing and full frontend reconnect protocol, or broader historical SQL
+  query-provider parity/performance hardening), Node production hardening,
+  provider-specific auth/UI wrapping, or a scoped Confect/domain wrapper.
 
 ### Handoff: continue MetaCRDT on `main` from commit `c6c4379`
 
@@ -201,9 +200,14 @@ After implementation:
   can persist/list/close bounded current-query subscription rows across runtime
   recreation, and `DurableObjectSqliteLiveCurrentQueryFanout` can optionally
   persist subscribe/unsubscribe state through that registry.
+- [x] **Goal 135 shipped: live current-query reconnect hydration seed** —
+  `DurableObjectSqliteLiveCurrentQueryFanout` can hydrate active persisted
+  current-query rows for a connected socket, filter by protocol and optional
+  scope, reattach them to in-memory fanout state, send fresh `query.subscribed`
+  snapshots, and accept socket `query.hydrate` messages.
 - [ ] **Remaining Cloudflare Phase D parity** — full flow interpreter/action
-  execution, authenticated live-query Worker/frontend plumbing, reconnect/session
-  hydration, and broader
+  execution, authenticated live-query Worker/frontend plumbing, full frontend
+  reconnect/session protocol, and broader
   historical SQL query-provider parity/performance hardening remain open; do not
   claim full parity until those are implemented.
 
@@ -299,7 +303,13 @@ After implementation:
 - [x] Cloudflare Durable Object SQLite persisted live current-query registry —
   `live_query_subscriptions` rows plus indexed dependency rows persist bounded
   current-query subscription metadata, and the structural live-query fanout can
-  optionally write active/closed rows while keeping auth/routes/reconnects open.
+  optionally write active/closed rows while keeping auth, routes, and frontend
+  SDK behavior open.
+- [x] Cloudflare Durable Object SQLite live current-query reconnect hydration —
+  `hydrateConnection` and socket `query.hydrate` reattach active persisted
+  current-query rows for connected sockets and send fresh snapshots while
+  leaving authenticated routes, durable client session tokens, result diffs, and
+  a frontend SDK open.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -311,8 +321,8 @@ After implementation:
 - [ ] Cloudflare remaining component-equivalent SQLite surface — full
   SQL-indexed query-provider parity/performance hardening, full flow
   interpreter/action execution, authenticated live-query Worker/frontend
-  plumbing, and reconnect/session hydration on top of the persisted registry (see
-  [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
+  plumbing, and full frontend reconnect/session protocol on top of the persisted
+  registry (see [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
@@ -841,6 +851,19 @@ After implementation:
 ---
 
 ## Log
+
+### 2026-06-08 — Cloudflare DO SQLite live-query reconnect hydration
+- [x] **Hydration API for persisted subscriptions.**
+  `DurableObjectSqliteLiveCurrentQueryFanout.hydrateConnection` now loads active
+  persisted current-query rows for a connected socket, filters them by protocol
+  and optional scope, reattaches them to in-memory fanout state, reruns current
+  queries, and sends fresh `query.subscribed` snapshots.
+- [x] **Socket protocol seed.** Structural live-query sockets now accept
+  `query.hydrate` messages for the same hydration path.
+- [x] **Still scoped.** This is reconnect hydration plumbing over the existing
+  persisted registry only; authenticated Worker routes, durable client session
+  tokens, result diffs, frontend SDK behavior, full flow execution, and broader
+  SQL query-provider hardening remain open.
 
 ### 2026-06-08 — Cloudflare DO SQLite target-indexed coordinate fold
 - [x] **Runtime target lookup is now contractual.** `EventFilter.target` lets

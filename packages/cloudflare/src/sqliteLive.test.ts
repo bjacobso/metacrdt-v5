@@ -457,6 +457,131 @@ describe("@metacrdt/cloudflare SQLite live invalidation fanout", () => {
     ).resolves.toEqual([]);
   });
 
+  test("hydrates persisted current-query subscriptions for reconnecting sockets", async () => {
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql: new FakeDurableObjectSqlStorage(),
+      replicaId: "do-sqlite:live-query-hydrate",
+      wall: () => 701,
+    });
+    await runtime.liveQueries.upsert({
+      id: "query:rehydrate",
+      connectionId: "client:reconnect",
+      protocol: "live-query.persist",
+      query: liveQueryArgs,
+      dependencies: [{ e: "task:1", a: "status" }],
+      createdAt: 41_000,
+      scope: "tenant:1",
+    });
+    await runtime.liveQueries.upsert({
+      id: "query:other-protocol",
+      connectionId: "client:reconnect",
+      protocol: "live-query.other",
+      query: liveQueryArgs,
+      dependencies: [{ e: "task:1", a: "status" }],
+      createdAt: 41_001,
+      scope: "tenant:1",
+    });
+    await runtime.liveQueries.upsert({
+      id: "query:other-scope",
+      connectionId: "client:reconnect",
+      protocol: "live-query.persist",
+      query: liveQueryArgs,
+      dependencies: [{ e: "task:1", a: "status" }],
+      createdAt: 41_002,
+      scope: "tenant:2",
+    });
+
+    const calls: DatalogQueryArgsType[] = [];
+    const fanout = new DurableObjectSqliteLiveCurrentQueryFanout({
+      from: "do:room",
+      protocol: "live-query.persist",
+      queryCurrent: async (args) => {
+        calls.push(args);
+        return queryResult(`hydrate-${calls.length}`);
+      },
+      subscriptions: runtime.liveQueries,
+      scope: "tenant:1",
+    });
+    const socket = new FakeSocket();
+    fanout.connect(socket, "client:reconnect");
+
+    await expect(fanout.hydrateConnection("client:reconnect")).resolves.toEqual({
+      connectionId: "client:reconnect",
+      hydrated: 1,
+      subscriptions: ["query:rehydrate"],
+    });
+    expect(fanout.subscriptionCount).toBe(1);
+    expect(calls).toEqual([liveQueryArgs]);
+    expect(socket.queryMessages()).toEqual([
+      {
+        protocol: "live-query.persist",
+        type: "query.subscribed",
+        from: "do:room",
+        id: "query:rehydrate",
+        dependencies: [{ e: "task:1", a: "status" }],
+        result: queryResult("hydrate-1"),
+      },
+    ]);
+
+    await expect(fanout.publishChanges([statusChange])).resolves.toEqual({
+      changed: [statusChange],
+      delivered: 1,
+      subscriptions: ["query:rehydrate"],
+    });
+    expect(socket.queryMessages()[1]).toEqual({
+      protocol: "live-query.persist",
+      type: "query.updated",
+      from: "do:room",
+      id: "query:rehydrate",
+      changed: [statusChange],
+      result: queryResult("hydrate-2"),
+    });
+  });
+
+  test("handles socket current-query hydrate messages", async () => {
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql: new FakeDurableObjectSqlStorage(),
+      replicaId: "do-sqlite:live-query-socket-hydrate",
+      wall: () => 702,
+    });
+    await runtime.liveQueries.upsert({
+      id: "query:socket-hydrate",
+      connectionId: "client:socket",
+      protocol: "live-query.persist",
+      query: liveQueryArgs,
+      dependencies: [{ e: "task:1", a: "status" }],
+      createdAt: 42_000,
+    });
+    const fanout = new DurableObjectSqliteLiveCurrentQueryFanout({
+      from: "do:room",
+      protocol: "live-query.persist",
+      queryCurrent: async () => queryResult("socket-hydrate"),
+      subscriptions: runtime.liveQueries,
+    });
+    const socket = new FakeSocket();
+    fanout.connect(socket, "client:socket");
+
+    socket.receive(
+      JSON.stringify({
+        protocol: "live-query.persist",
+        type: "query.hydrate",
+      }),
+    );
+    await flush();
+
+    expect(fanout.subscriptionCount).toBe(1);
+    expect(socket.queryMessages()).toEqual([
+      {
+        protocol: "live-query.persist",
+        type: "query.subscribed",
+        from: "do:room",
+        id: "query:socket-hydrate",
+        dependencies: [{ e: "task:1", a: "status" }],
+        result: queryResult("socket-hydrate"),
+      },
+    ]);
+  });
+
   test("derives bounded query dependencies and rejects unbounded live queries", async () => {
     await expect(
       durableObjectSqliteLiveQueryDependencies({

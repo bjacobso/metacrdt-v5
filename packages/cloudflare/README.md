@@ -59,8 +59,10 @@ implements them on Cloudflare.
   active/closed subscription metadata through
   `DurableObjectSqliteLiveQuerySubscriptionStore`, which stores
   `live_query_subscriptions` and indexed `live_query_dependencies` rows over DO
-  SQLite. This is snapshot/update and metadata persistence plumbing, not query
-  auth, Worker routing, reconnects, result diffs, or a frontend SDK.
+  SQLite, and it can hydrate connected sockets from active persisted rows with
+  fresh `query.subscribed` snapshots. This is snapshot/update, metadata
+  persistence, and structural hydration plumbing, not query auth, Worker
+  routing, durable client sessions, result diffs, or a frontend SDK.
 - **WebSocket relay** — `DurableObjectWebSocketRelay` / `attachDurableObjectRelay`
   (`RelayConnection`, `RelayOptions`, `WebSocketLike`): accepts server sockets,
   answers version-vector hellos with deltas, merges client events through the
@@ -167,7 +169,7 @@ negation, compare/compute, pagination, aggregation, derived rows, lifecycle
 visibility, and bounded SQLite scan counters. The remaining parity plan —
 broader historical SQL-indexed query optimization, full flow interpreter/action
 execution, authenticated live frontend/Worker query plumbing, and
-reconnect/session hydration over DO WebSockets — is
+full frontend reconnect/session protocol over DO WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth
