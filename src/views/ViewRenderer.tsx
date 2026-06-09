@@ -7,7 +7,7 @@ import {
 } from "@metacrdt/views/runtime";
 import { Mono, StatusBadge } from "../ui";
 
-// Phase 3 of plans/views.md — a MINIMAL ViewSpec -> React renderer, inline in
+// Phase 3 of specs/plans/views.md — a MINIMAL ViewSpec -> React renderer, inline in
 // the app. It covers exactly the nodes the Entities list needs (rows, columns,
 // heading, text, table, empty-state). It is intentionally not exhaustive; once
 // it grows up it gets extracted to `@metacrdt/views-react`.
