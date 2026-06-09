@@ -174,10 +174,10 @@ Current packages:
   reads, full-recovery rebuild, current rows/entities, projection invalidation
   summaries as `changed` `(e, a)` before/after event ids), collection rows and
   timers, DAG run/timeline rows, flow-wait alarm plumbing, live invalidation and
-  current-query fanout, persisted live-query subscription rows, authenticated
-  live-query and write routes, a SQLite live-query DO assembly, a structural
-  live-query client helper, WebSocket relay shell, Worker router, and example
-  Wrangler config.
+  current-query fanout with result-diff metadata, persisted live-query
+  subscription rows, authenticated live-query and write routes, a SQLite
+  live-query DO assembly, a structural live-query client helper, WebSocket relay
+  shell, Worker router, and example Wrangler config.
 - **`@metacrdt/local`** (`packages/local`) — browser/local-first target package:
   localStorage-backed event/HLC/seq services composed with BroadcastChannel
   anti-entropy, IndexedDB-compatible async persistence, SQLite-compatible local

@@ -672,6 +672,16 @@ describe("@metacrdt/cloudflare Worker shell", () => {
           rows: [{ status: "open" }],
           eventSourceIds: [expect.stringMatching(/^e_/)],
         },
+        diff: {
+          rows: {
+            added: [{ status: "open" }],
+            removed: [],
+          },
+          eventSourceIds: {
+            added: [expect.stringMatching(/^e_/)],
+            removed: [],
+          },
+        },
       },
     ]);
   });

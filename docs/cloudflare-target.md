@@ -19,14 +19,15 @@ coordinates, a live invalidation fanout helper for those coordinates, and a
 bounded live current-query snapshot/update helper with optional persisted
 subscription rows, structural reconnect hydration, an authenticated Worker route
 seed for live-query sockets, a SQLite live-query Durable Object assembly seed,
-write-route publish seed, and a structural live-query client reconnect seed).
+write-route publish seed, a structural live-query client reconnect seed, and
+live current-query result-diff metadata).
 The indexed historical query provider now has
 conformance-style coverage for joins, `or`, `not`, compare/compute, pagination,
 aggregation, derived rows, lifecycle visibility, and bounded SQLite index scan
 usage.
 Broader historical SQL query-provider parity/performance hardening, full
 Cloudflare flow interpreter/action-execution parity, and
-frontend SDK live-query session/result-diff integration are still ahead.
+frontend SDK live-query session integration are still ahead.
 
 **Scope:** Grow `@metacrdt/cloudflare` from a sync-plane shell into a full
 MetaCRDT target at parity with the `@metacrdt/convex` component — an indexed,
@@ -91,9 +92,11 @@ through the existing current surface and publishing returned projection-change
 summaries to live current-query subscribers. A structural
 `createDurableObjectSqliteLiveQueryClient` can now subscribe/unsubscribe current
 queries, filter protocol messages, request stable connection-id hydration, and
-opt into bounded reconnect attempts. It still has no broader SQL query-provider
-performance-hardening pass, no React/frontend SDK session-token or result-diff
-layer, and no Cloudflare DAG interpreter/action execution surface.
+opt into bounded reconnect attempts. Live current-query updates now also include
+deterministic added/removed row and event-source-id diff metadata relative to
+the previous delivered snapshot. It still has no broader SQL query-provider
+performance-hardening pass, no React/frontend SDK session-token layer, and no
+Cloudflare DAG interpreter/action execution surface.
 
 This doc defines what it takes to bring Cloudflare to parity, in what order, and
 which decisions must be settled first — and it makes **live frontend queries an
@@ -164,6 +167,7 @@ function surface — backed by Durable Object SQLite instead of the Convex DB.
 | `DurableObjectSqliteLiveInvalidationFanout` | Structural WebSocket invalidation helper: accepts bounded `e` / `a` subscriptions and broadcasts current-projection change summaries to matching sockets |
 | `DurableObjectSqliteLiveCurrentQueryFanout` | Structural WebSocket live-query helper: accepts bounded projection-backed current Datalog query subscriptions, sends initial snapshots, refreshes matching subscriptions from projection-change summaries, and hydrates active persisted rows for connected sockets |
 | `createDurableObjectSqliteLiveQueryClient` | Structural frontend/client helper: sends live current-query subscribe/unsubscribe/hydrate messages over WebSocket, filters server messages by protocol, and supports stable connection-id hydration plus opt-in reconnect |
+| `durableObjectSqliteLiveQueryResultDiff` | Deterministic live current-query diff helper: computes added/removed rows and event source ids between delivered snapshots |
 | `attachDurableObjectSqliteLiveQueryWebSocket` | Structural DO helper: attaches upgraded WebSocket requests to an existing live current-query fanout |
 | `MetaCrdtSqliteLiveQueryDurableObject` | Structural DO class: assembles DO SQLite runtime, current surface, persisted live-query registry, live current-query fanout, and narrow write routes that publish projection changes |
 | `DurableObjectWebSocketRelay` | version-vector hello/delta sync + event fan-out |
@@ -325,9 +329,11 @@ Cloudflare DO SQLite also now exports
 surface. Clients subscribe to bounded projection-backed current Datalog queries,
 receive an initial `query.subscribed` snapshot, and receive `query.updated`
 refreshes when later current-projection change summaries overlap the query's
-derived static `e` / `a` dependencies. This remains structural snapshot/update
-plumbing only: no query auth, Worker routing, reconnect protocol, result
-diffing, or frontend SDK is included.
+derived static `e` / `a` dependencies. Updates include deterministic
+added/removed row and event-source-id diff metadata computed against the
+subscription's prior delivered snapshot. This remains structural
+snapshot/update/diff plumbing only: no query auth, Worker routing, reconnect
+protocol, or frontend SDK is included.
 
 Cloudflare DO SQLite also now owns persisted live current-query subscription
 metadata. `DurableObjectSqliteLiveQuerySubscriptionStore` stores active/closed
@@ -341,7 +347,8 @@ active persisted subscription rows. `hydrateConnection` and socket
 `query.hydrate` reattach rows filtered by fanout protocol and optional scope,
 rerun current queries, and send fresh `query.subscribed` snapshots. This is a
 structural reconnect hydration seed only: it does not add production DO
-assembly, durable client session tokens, result diffs, or frontend SDK behavior.
+assembly, durable client session tokens, cross-reconnect diff replay, or
+frontend SDK behavior.
 
 Cloudflare now also has the first authenticated live-query Worker route seed.
 `createRelayWorker` forwards `/live-query/<room>` through the same
@@ -349,7 +356,7 @@ Bearer/header/query-token auth boundary used by relay room routes, and
 `attachDurableObjectSqliteLiveQueryWebSocket` attaches upgraded DO requests to an
 already-created `DurableObjectSqliteLiveCurrentQueryFanout`. This is route and
 attachment plumbing only: it does not add frontend SDK behavior, durable session
-tokens, result diffs, or a full reconnect protocol.
+tokens, cross-reconnect diff replay, or a full reconnect protocol.
 
 Cloudflare now also has a SQLite live-query Durable Object assembly seed.
 `MetaCrdtSqliteLiveQueryDurableObject` constructs the DO SQLite runtime, current
@@ -365,7 +372,8 @@ assert, append lifecycle, and collection submit, routes them through the
 existing current surface, and publishes deduped returned `(e, a)` projection
 change summaries through the live current-query fanout. This is write publish
 orchestration only: it does not add frontend SDK behavior, durable session
-tokens, result diffs, reconnect retry policy, or a full client protocol.
+tokens, cross-reconnect diff replay, reconnect retry policy, or a full client
+protocol.
 
 Cloudflare now also has a structural live-query client reconnect seed.
 `createDurableObjectSqliteLiveQueryClient` is a dependency-free WebSocket helper
@@ -373,11 +381,20 @@ for frontend or SDK callers: it sends `query.subscribe`, `query.unsubscribe`,
 and `query.hydrate` messages, filters server messages by protocol, tracks local
 subscription declarations, can request stable connection-id hydration, and can
 opt into bounded reconnect attempts. This is a client primitive only: it does
-not add React bindings, durable session token issuance, result diffing,
-application auth storage, or a full frontend SDK package.
+not add React bindings, durable session token issuance, application auth
+storage, or a full frontend SDK package.
+
+Cloudflare now also has a live-query result-diff seed.
+`DurableObjectSqliteLiveCurrentQueryFanout` stores the last delivered result for
+each active in-memory current-query subscription and includes additive `diff`
+metadata on `query.updated` messages. The exported
+`durableObjectSqliteLiveQueryResultDiff` helper compares two
+`DatalogQueryResult` snapshots by deterministic row keys and event source ids.
+This is update payload metadata only: it does not add durable client sessions,
+cross-reconnect diff replay, React bindings, or a full frontend SDK package.
 
 **Still ahead for Phase D parity:** full flow interpreter/action execution and
-frontend SDK live-query session/result-diff integration.
+frontend SDK live-query session integration.
 
 ### Phase E — Sharding + real multi-replica sync
 
@@ -466,7 +483,7 @@ Cloudflare-specific work is comparable to the existing Convex component: the
 runtime-service SQLite seed and first log/current/query facade are now present;
 the remaining work is broader SQL-indexed query-provider parity/performance
 hardening, full flow interpreter/action execution, and frontend SDK live-query
-session/result-diff integration over the persisted snapshot/update helper.
+session integration over the persisted snapshot/update/diff helper.
 Roughly 2–4 focused sessions remain, gated on shared fold/reconcile reuse. The
 live-query stretch goal is a separate later increment on top.
 

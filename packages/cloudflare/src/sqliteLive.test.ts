@@ -5,6 +5,7 @@ import {
   createDurableObjectSqliteRuntime,
   createDurableObjectSqliteLiveQueryClient,
   durableObjectSqliteLiveQueryDependencies,
+  durableObjectSqliteLiveQueryResultDiff,
   publishDurableObjectSqliteLiveCurrentQueryChanges,
   publishDurableObjectSqliteLiveInvalidations,
   type DurableObjectSqliteLiveQueryClientSocket,
@@ -208,6 +209,38 @@ function queryResult(status: string): DatalogQueryResult {
 }
 
 describe("@metacrdt/cloudflare SQLite live invalidation fanout", () => {
+  test("computes deterministic current-query result diffs", () => {
+    expect(
+      durableObjectSqliteLiveQueryResultDiff(
+        {
+          states: [],
+          rows: [
+            { status: "open", task: "task:1" },
+            { status: "done", task: "task:2" },
+          ],
+          eventSourceIds: ["event:open", "event:shared"],
+        },
+        {
+          states: [],
+          rows: [
+            { task: "task:1", status: "open" },
+            { task: "task:3", status: "blocked" },
+          ],
+          eventSourceIds: ["event:blocked", "event:shared"],
+        },
+      ),
+    ).toEqual({
+      rows: {
+        added: [{ task: "task:3", status: "blocked" }],
+        removed: [{ status: "done", task: "task:2" }],
+      },
+      eventSourceIds: {
+        added: ["event:blocked"],
+        removed: ["event:open"],
+      },
+    });
+  });
+
   test("publishes projection changes only to matching coordinate subscriptions", async () => {
     const fanout = new DurableObjectSqliteLiveInvalidationFanout({ from: "do:room" });
     const statusSocket = new FakeSocket();
@@ -426,6 +459,16 @@ describe("@metacrdt/cloudflare SQLite live invalidation fanout", () => {
       id: "query:status",
       changed: [statusChange],
       result: queryResult("run-2"),
+      diff: {
+        rows: {
+          added: [{ status: "run-2" }],
+          removed: [{ status: "run-1" }],
+        },
+        eventSourceIds: {
+          added: ["event:run-2"],
+          removed: ["event:run-1"],
+        },
+      },
     });
   });
 
@@ -471,6 +514,16 @@ describe("@metacrdt/cloudflare SQLite live invalidation fanout", () => {
       id: "query:open",
       changed: [statusChange],
       result: queryResult("socket-2"),
+      diff: {
+        rows: {
+          added: [{ status: "socket-2" }],
+          removed: [{ status: "socket-1" }],
+        },
+        eventSourceIds: {
+          added: ["event:socket-2"],
+          removed: ["event:socket-1"],
+        },
+      },
     });
 
     socket.receive(
@@ -617,6 +670,16 @@ describe("@metacrdt/cloudflare SQLite live invalidation fanout", () => {
       id: "query:rehydrate",
       changed: [statusChange],
       result: queryResult("hydrate-2"),
+      diff: {
+        rows: {
+          added: [{ status: "hydrate-2" }],
+          removed: [{ status: "hydrate-1" }],
+        },
+        eventSourceIds: {
+          added: ["event:hydrate-2"],
+          removed: ["event:hydrate-1"],
+        },
+      },
     });
   });
 

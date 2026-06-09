@@ -8,12 +8,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ### Current pulse
 
-- [x] Goal 139 shipped: Cloudflare live-query client reconnect seed.
+- [x] Goal 140 shipped: Cloudflare live-query result-diff seed.
 - [ ] Choose the next active slice from remaining Cloudflare parity (full flow
-  interpreter/action execution, frontend SDK live-query session/result-diff
-  integration, or broader historical SQL query-provider parity/performance
-  hardening), Node production hardening, provider-specific auth/UI wrapping, or
-  a scoped Confect/domain wrapper.
+  interpreter/action execution, frontend SDK live-query session integration, or
+  broader historical SQL query-provider parity/performance hardening), Node
+  production hardening, provider-specific auth/UI wrapping, or a scoped
+  Confect/domain wrapper.
 
 ### Handoff: continue MetaCRDT on `main` from commit `c6c4379`
 
@@ -225,10 +225,14 @@ After implementation:
   structural WebSocket client for current-query subscribe/unsubscribe,
   protocol-filtered server messages, stable connection-id hydration, and
   opt-in bounded reconnect attempts.
+- [x] **Goal 140 shipped: live-query result-diff seed** —
+  `query.updated` messages from `DurableObjectSqliteLiveCurrentQueryFanout` now
+  include deterministic added/removed row and event-source-id diff metadata
+  computed against the previous delivered snapshot.
 - [ ] **Remaining Cloudflare Phase D parity** — full flow interpreter/action
-  execution, frontend SDK live-query session/result-diff integration, and
-  broader historical SQL query-provider parity/performance hardening remain
-  open; do not claim full parity until those are implemented.
+  execution, frontend SDK live-query session integration, and broader historical
+  SQL query-provider parity/performance hardening remain open; do not claim full
+  parity until those are implemented.
 
 **Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
 - [x] Commutative supersession — centralized Convex writes now stamp
@@ -346,6 +350,9 @@ After implementation:
   `createDurableObjectSqliteLiveQueryClient` is a structural frontend WebSocket
   helper for current-query subscribe/unsubscribe, protocol-filtered messages,
   stable connection-id hydration, and opt-in bounded reconnect attempts.
+- [x] Cloudflare Durable Object SQLite live-query result-diff seed —
+  live current-query update messages carry deterministic added/removed rows and
+  event source ids relative to the subscription's last delivered snapshot.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -356,9 +363,9 @@ After implementation:
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — full
   SQL-indexed query-provider parity/performance hardening, full flow
-  interpreter/action execution, frontend SDK live-query session/result-diff
-  integration, and broader production hardening on top of the persisted registry
-  (see [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
+  interpreter/action execution, frontend SDK live-query session integration, and
+  broader production hardening on top of the persisted registry (see
+  [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
 
@@ -887,6 +894,19 @@ After implementation:
 ---
 
 ## Log
+
+### 2026-06-09 — Cloudflare live-query result-diff seed
+- [x] **Result diffs on updates.**
+  `DurableObjectSqliteLiveCurrentQueryFanout` now stores the last delivered
+  current-query snapshot per active subscription and includes deterministic
+  added/removed row plus event-source-id diffs on `query.updated`.
+- [x] **Package helper exported.**
+  `durableObjectSqliteLiveQueryResultDiff` and
+  `DurableObjectSqliteLiveQueryResultDiff` give future SDK code the same
+  deterministic row comparison surface used by the fanout.
+- [x] **Still scoped.** Durable session tokens, React hooks, cross-reconnect diff
+  replay, full frontend SDK integration, full flow execution, and broader SQL
+  query-provider hardening remain open.
 
 ### 2026-06-09 — Cloudflare live-query client reconnect seed
 - [x] **Structural client helper.**

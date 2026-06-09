@@ -290,14 +290,17 @@ live current-query fanout. Goal 139 adds a first structural frontend
 live-query client helper: `createDurableObjectSqliteLiveQueryClient` can open a
 WebSocket, subscribe/unsubscribe bounded current queries, filter server
 messages by protocol, use a stable connection id to request `query.hydrate`, and
-optionally reconnect. This still does not provide React bindings, durable
-session-token protocol, result diffs, or full flow execution. The next active
-goal should be chosen from the remaining TODO candidates:
+optionally reconnect. Goal 140 adds result-diff metadata for live current-query
+updates: `query.updated` messages now include deterministic added/removed row
+and event-source-id sets computed from the previous delivered snapshot. This
+still does not provide React bindings, durable session-token protocol, full SDK
+session integration, or full flow execution. The next active goal should be
+chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (broader SQL query-provider
 parity/performance hardening, full flow interpreter/action execution,
-frontend SDK/live-query session/result-diff integration),
+frontend SDK/live-query session integration),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9512,6 +9515,43 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 140 — Cloudflare Live Query Result Diff Seed
+
+**Status:** shipped.
+
+**Objective:** add a narrow result-diff metadata surface to Cloudflare SQLite
+live current-query updates, so frontend/SDK callers can reconcile from the prior
+snapshot without waiting for the full session-token or React SDK layer.
+
+### What Shipped
+
+- Added `DurableObjectSqliteLiveQueryResultDiff` and
+  `durableObjectSqliteLiveQueryResultDiff` to `@metacrdt/cloudflare`.
+  The helper computes deterministic added/removed query rows and event source
+  ids between two `DatalogQueryResult` snapshots.
+- `DurableObjectSqliteLiveCurrentQueryFanout` now keeps the last delivered
+  current-query result for each in-memory subscription. On `query.updated`, it
+  sends the fresh full result plus additive `diff` metadata and advances the
+  baseline.
+- Subscribe and hydrate paths treat their delivered `query.subscribed` snapshot
+  as the baseline for later update diffs.
+- Focused Cloudflare tests prove deterministic row diffing, fanout update diffs,
+  hydrated-subscription update diffs, and Worker write-route published diffs.
+
+### Non-Goals
+
+- Do not claim durable client session tokens, React hooks, a full frontend SDK
+  package, auth storage, or cross-reconnect diff replay.
+- Do not implement Cloudflare flow interpreter/action execution or broader
+  historical SQL query-provider parity/performance hardening.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 60 Cloudflare tests.
 
 ---
 

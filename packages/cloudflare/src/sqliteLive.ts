@@ -139,6 +139,7 @@ export type DurableObjectSqliteLiveQueryServerMessage =
       readonly id: string;
       readonly changed: readonly DurableObjectSqliteProjectionChange[];
       readonly result: DatalogQueryResult;
+      readonly diff?: DurableObjectSqliteLiveQueryResultDiff;
     }
   | {
       readonly protocol: string;
@@ -171,6 +172,17 @@ export type DurableObjectSqliteLiveQuerySubscription = {
   readonly dependencies: readonly DurableObjectSqliteLiveSubscriptionFilter[];
 };
 
+export type DurableObjectSqliteLiveQueryResultDiff = {
+  readonly rows: {
+    readonly added: readonly Record<string, unknown>[];
+    readonly removed: readonly Record<string, unknown>[];
+  };
+  readonly eventSourceIds: {
+    readonly added: readonly string[];
+    readonly removed: readonly string[];
+  };
+};
+
 export type DurableObjectSqliteLiveQueryPublishResult = {
   readonly changed: readonly DurableObjectSqliteProjectionChange[];
   readonly delivered: number;
@@ -193,6 +205,11 @@ export type DurableObjectSqliteLiveQueryOptions = {
   readonly now?: () => number;
   readonly scope?: string;
 };
+
+type ActiveDurableObjectSqliteLiveQuerySubscription =
+  DurableObjectSqliteLiveQuerySubscription & {
+    readonly lastResult: DatalogQueryResult;
+  };
 
 export type DurableObjectSqliteLiveQueryClientSocket = {
   readonly readyState?: number;
@@ -330,6 +347,69 @@ function sortedChanges(
   return [...changed].sort((a, b) =>
     a.e === b.e ? a.a.localeCompare(b.a) : a.e.localeCompare(b.e)
   );
+}
+
+function stableJsonKey(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJsonKey).join(",")}]`;
+  }
+  if (typeof value === "object" && value !== null) {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => `${JSON.stringify(key)}:${stableJsonKey(nested)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? String(value);
+}
+
+function liveQueryRowKey(row: Record<string, unknown>): string {
+  return stableJsonKey(row);
+}
+
+function keyedRows(
+  rows: readonly Record<string, unknown>[],
+): Map<string, Record<string, unknown>> {
+  return new Map(
+    [...rows]
+      .sort((left, right) =>
+        liveQueryRowKey(left).localeCompare(liveQueryRowKey(right))
+      )
+      .map((row) => [liveQueryRowKey(row), row]),
+  );
+}
+
+function sortedUnique(values: Iterable<string>): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+export function durableObjectSqliteLiveQueryResultDiff(
+  previous: DatalogQueryResult,
+  current: DatalogQueryResult,
+): DurableObjectSqliteLiveQueryResultDiff {
+  const previousRows = keyedRows(previous.rows);
+  const currentRows = keyedRows(current.rows);
+  const addedRows = [...currentRows]
+    .filter(([key]) => !previousRows.has(key))
+    .map(([, row]) => row);
+  const removedRows = [...previousRows]
+    .filter(([key]) => !currentRows.has(key))
+    .map(([, row]) => row);
+  const previousEvents = new Set(previous.eventSourceIds);
+  const currentEvents = new Set(current.eventSourceIds);
+  return {
+    rows: {
+      added: addedRows,
+      removed: removedRows,
+    },
+    eventSourceIds: {
+      added: sortedUnique(
+        current.eventSourceIds.filter((id) => !previousEvents.has(id)),
+      ),
+      removed: sortedUnique(
+        previous.eventSourceIds.filter((id) => !currentEvents.has(id)),
+      ),
+    },
+  };
 }
 
 function dedupeFilters(
@@ -705,7 +785,10 @@ export class DurableObjectSqliteLiveCurrentQueryFanout {
       onClose: (event: CloseEventLike) => void;
     }
   >();
-  #subscriptions = new Map<string, DurableObjectSqliteLiveQuerySubscription>();
+  #subscriptions = new Map<
+    string,
+    ActiveDurableObjectSqliteLiveQuerySubscription
+  >();
   #queryCurrent: (args: DatalogQueryArgsType) => Promise<DatalogQueryResult>;
   #persistedSubscriptions?: DurableObjectSqliteLiveQuerySubscriptionStore;
   #now: () => number;
@@ -803,7 +886,13 @@ export class DurableObjectSqliteLiveCurrentQueryFanout {
         );
       }
       const result = yield* self.#runQuery(decoded);
-      const subscription = { id, connectionId, query: decoded, dependencies };
+      const subscription = {
+        id,
+        connectionId,
+        query: decoded,
+        dependencies,
+        lastResult: result,
+      };
       self.#subscriptions.set(id, subscription);
       if (self.#persistedSubscriptions !== undefined) {
         const now = self.#now();
@@ -942,6 +1031,7 @@ export class DurableObjectSqliteLiveCurrentQueryFanout {
           connectionId,
           query,
           dependencies,
+          lastResult: result,
         });
         yield* Effect.try({
           try: () =>
@@ -991,6 +1081,14 @@ export class DurableObjectSqliteLiveCurrentQueryFanout {
         const connection = self.#connections.get(subscription.connectionId);
         if (connection === undefined) continue;
         const result = yield* self.#runQuery(subscription.query);
+        const diff = durableObjectSqliteLiveQueryResultDiff(
+          subscription.lastResult,
+          result,
+        );
+        self.#subscriptions.set(subscription.id, {
+          ...subscription,
+          lastResult: result,
+        });
         yield* Effect.try({
           try: () =>
             connection.socket.send(
@@ -1001,6 +1099,7 @@ export class DurableObjectSqliteLiveCurrentQueryFanout {
                 id: subscription.id,
                 changed: matched,
                 result,
+                diff,
               }),
             ),
           catch: (cause) => liveError("publishLiveCurrentQuery", cause),

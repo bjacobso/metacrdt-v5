@@ -60,7 +60,10 @@ implements them on Cloudflare.
   `DurableObjectSqliteLiveQuerySubscriptionStore`, which stores
   `live_query_subscriptions` and indexed `live_query_dependencies` rows over DO
   SQLite, and it can hydrate connected sockets from active persisted rows with
-  fresh `query.subscribed` snapshots.
+  fresh `query.subscribed` snapshots. Update messages include deterministic
+  added/removed row and event-source-id diff metadata relative to the prior
+  delivered snapshot; `durableObjectSqliteLiveQueryResultDiff` exposes the same
+  comparison helper for callers.
 - **Durable Object SQLite live-query route plumbing** —
   `createRelayWorker` forwards `/live-query/<room>` through the same token auth
   boundary as relay room routes, and
@@ -80,14 +83,14 @@ implements them on Cloudflare.
   append lifecycle, and collection submit routes that publish returned
   projection-change summaries through the live current-query fanout. This is
   write publish orchestration, not a frontend SDK, durable client session
-  protocol, result diffing, or reconnect retry policy.
+  protocol, cross-reconnect diff replay, or reconnect retry policy.
 - **Durable Object SQLite live-query client seed** —
   `createDurableObjectSqliteLiveQueryClient` is a dependency-free structural
   WebSocket client helper for frontend or SDK callers. It sends current-query
   subscribe/unsubscribe/hydrate messages, filters server messages by protocol,
   supports stable connection-id hydration, and can opt into bounded reconnect
   attempts. This is a client primitive, not React hooks, durable session token
-  issuance, result diffs, or application auth storage.
+  issuance, or application auth storage.
 - **WebSocket relay** — `DurableObjectWebSocketRelay` / `attachDurableObjectRelay`
   (`RelayConnection`, `RelayOptions`, `WebSocketLike`): accepts server sockets,
   answers version-vector hellos with deltas, merges client events through the
@@ -130,6 +133,7 @@ import {
   createDurableObjectSqliteCurrentSurface,
   attachDurableObjectSqliteLiveQueryWebSocket,
   createDurableObjectSqliteLiveQueryClient,
+  durableObjectSqliteLiveQueryResultDiff,
   DurableObjectSqliteLiveCurrentQueryFanout,
   DurableObjectSqliteLiveInvalidationFanout,
   MetaCrdtSqliteLiveQueryDurableObject,
@@ -196,8 +200,8 @@ historical provider has conformance-style coverage for joins, disjunction,
 negation, compare/compute, pagination, aggregation, derived rows, lifecycle
 visibility, and bounded SQLite scan counters. The remaining parity plan —
 broader historical SQL-indexed query optimization, full flow interpreter/action
-execution, and frontend SDK live-query session/result-diff integration over DO
-WebSockets — is
+execution, and frontend SDK live-query session integration over DO WebSockets —
+is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth
