@@ -2346,4 +2346,263 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       surface.collectionByToken({ token: "collection:registered-action:i9" }),
     ).resolves.toEqual(executed.execution.collection);
   });
+
+  test("current surface executes a caller-described flow through assert branch notify done", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:flow-runner",
+      wall: () => 1_020,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.appendAssert({
+      e: "worker:flow-runner",
+      a: "type",
+      v: "Worker",
+      actor: "user:1",
+    });
+
+    const executed = await surface.executeFlow({
+      runId: "dag:flow-runner:happy",
+      flowDefName: "onboarding",
+      subject: "worker:flow-runner",
+      subjectType: "Worker",
+      eventIdPrefix: "dag:event:flow-runner:happy",
+      actor: "system:flow",
+      actorType: "system",
+      now: 80_000,
+      steps: [
+        {
+          id: "activate",
+          type: "assert",
+          config: { a: "worker.status", v: "active" },
+          next: "branch",
+        },
+        {
+          id: "branch",
+          type: "branch",
+          config: {
+            where: [["$subject", "worker.status", "active"]],
+            ifTrue: "notify",
+            ifFalse: "unsupported",
+          },
+        },
+        {
+          id: "notify",
+          type: "notify",
+          config: { message: "worker active" },
+          next: "done",
+        },
+        { id: "done", type: "done" },
+      ],
+    });
+
+    expect(executed.run).toMatchObject({
+      runId: "dag:flow-runner:happy",
+      status: "completed",
+      currentStepId: "done",
+      context: {},
+    });
+    expect(executed.steps.map((step) => step.kind)).toEqual([
+      "asserted",
+      "branch",
+      "notify",
+      "completed",
+    ]);
+    expect(executed.assertions).toHaveLength(1);
+    await expect(
+      surface.listCurrent({
+        e: "worker:flow-runner",
+        a: "worker.status",
+      }),
+    ).resolves.toMatchObject([
+      {
+        e: "worker:flow-runner",
+        a: "worker.status",
+        v: "active",
+      },
+    ]);
+    await expect(
+      surface.getDagRun({ runId: "dag:flow-runner:happy" }),
+    ).resolves.toMatchObject({
+      status: "completed",
+      events: [
+        { stepId: "activate", kind: "asserted" },
+        { stepId: "branch", kind: "branch" },
+        { stepId: "notify", kind: "notify" },
+        { stepId: "done", kind: "completed" },
+      ],
+    });
+  });
+
+  test("current surface parks caller-described flows on collect steps", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:flow-collect",
+      wall: () => 1_025,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.appendAssert({
+      e: "worker:flow-collect",
+      a: "type",
+      v: "Worker",
+      actor: "user:1",
+    });
+
+    const executed = await surface.executeFlow({
+      runId: "dag:flow-collect:i9",
+      flowDefName: "onboarding",
+      subject: "worker:flow-collect",
+      subjectType: "Worker",
+      eventIdPrefix: "dag:event:flow-collect:i9",
+      actor: "system:flow",
+      now: 81_000,
+      context: { employer: "employer:acme" },
+      steps: [
+        {
+          id: "i9",
+          type: "collect",
+          config: {
+            form: "i9",
+            token: "collection:flow-collect:i9",
+            scopeFrom: "employer",
+            expiresAt: 100_000,
+          },
+          next: "done",
+        },
+        { id: "done", type: "done" },
+      ],
+    });
+
+    expect(executed.run).toMatchObject({
+      runId: "dag:flow-collect:i9",
+      status: "waiting",
+      currentStepId: "i9",
+      context: { employer: "employer:acme" },
+    });
+    expect(executed.collections).toHaveLength(1);
+    expect(executed.collections[0]).toMatchObject({
+      token: "collection:flow-collect:i9",
+      subject: "worker:flow-collect",
+      form: "i9",
+      status: "issued",
+      issuedAt: 81_000,
+      expiresAt: 100_000,
+      scope: "employer:acme",
+      runId: "dag:flow-collect:i9",
+      stepId: "i9",
+    });
+    await expect(
+      surface.collectionByToken({ token: "collection:flow-collect:i9" }),
+    ).resolves.toEqual(executed.collections[0]);
+  });
+
+  test("current surface executes registered action flow steps and branches on the result", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:flow-action",
+      wall: () => 1_030,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.appendAssert({
+      e: "worker:flow-action",
+      a: "type",
+      v: "Worker",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "action:set_status_for_flow",
+      a: "type",
+      v: "Action",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:set_status_for_flow",
+      a: "appliesTo",
+      v: "Worker",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:set_status_for_flow",
+      a: "fields",
+      v: [{ name: "status", type: "string" }],
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:set_status_for_flow",
+      a: "asserts",
+      v: { "worker.status": "$arg.status" },
+      actor: "config",
+    });
+
+    const executed = await surface.executeFlow({
+      runId: "dag:flow-action:set-status",
+      flowDefName: "status_flow",
+      subject: "worker:flow-action",
+      subjectType: "Worker",
+      eventIdPrefix: "dag:event:flow-action:set-status",
+      actor: "system:flow",
+      now: 82_000,
+      context: { status: "terminated" },
+      steps: [
+        {
+          id: "set-status",
+          type: "action",
+          config: {
+            action: "set_status_for_flow",
+            args: { status: "$ctx.status" },
+          },
+          next: "branch",
+        },
+        {
+          id: "branch",
+          type: "branch",
+          config: {
+            where: [["?s", "worker.status", "terminated"]],
+            ifTrue: "done",
+            ifFalse: "unsupported",
+          },
+        },
+        { id: "done", type: "done" },
+      ],
+    });
+
+    expect(executed.run).toMatchObject({
+      runId: "dag:flow-action:set-status",
+      status: "completed",
+      currentStepId: "done",
+    });
+    expect(executed.actions).toHaveLength(1);
+    expect(executed.steps.map((step) => step.kind)).toEqual([
+      "action",
+      "branch",
+      "completed",
+    ]);
+    await expect(
+      surface.listCurrent({
+        e: "worker:flow-action",
+        a: "worker.status",
+      }),
+    ).resolves.toMatchObject([
+      {
+        e: "worker:flow-action",
+        a: "worker.status",
+        v: "terminated",
+      },
+    ]);
+  });
 });
