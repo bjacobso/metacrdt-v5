@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { describe, expect, test } from "vitest";
+import { assert as assertEvent } from "@metacrdt/core";
 import { internal } from "./_generated/api.js";
 import { initComponentTest } from "./setup.test.js";
 
@@ -7,6 +8,9 @@ const componentInternal = internal as unknown as {
   log: {
     appendAssert: any;
     appendLifecycle: any;
+    appendRaw: any;
+    getRawEvent: any;
+    listRawEvents: any;
     getEvent: any;
     listEvents: any;
     listCurrent: any;
@@ -62,6 +66,64 @@ describe("@metacrdt/convex component-owned protocol log", () => {
       verifiable: true,
       validEventId: true,
     });
+  });
+
+  test("appends and scans exact raw protocol events", async () => {
+    const t = initComponentTest();
+    const event = assertEvent({
+      e: "worker:raw",
+      a: "worker.status",
+      v: "active",
+      validFrom: 9_000,
+      actor: "user:raw",
+      actorType: "human",
+      hlc: { pt: 10_000, l: 1, r: "convex:test" },
+    });
+    const sequenced = { ...event, seq: 7 };
+
+    const first = await t.mutation(componentInternal.log.appendRaw, {
+      event: sequenced,
+    });
+    expect(first).toMatchObject({
+      inserted: true,
+      event: {
+        id: sequenced.id,
+        kind: "assert",
+        e: "worker:raw",
+        a: "worker.status",
+        v: "active",
+        validFrom: 9_000,
+        validTo: null,
+        seq: 7,
+      },
+    });
+    const duplicate = await t.mutation(componentInternal.log.appendRaw, {
+      event: sequenced,
+    });
+    expect(duplicate).toMatchObject({ inserted: false, event: { id: event.id } });
+
+    await expect(
+      t.query(componentInternal.log.getRawEvent, { eventId: event.id }),
+    ).resolves.toMatchObject({ id: event.id, seq: 7, causalRefs: [] });
+    await expect(
+      t.query(componentInternal.log.listRawEvents, {
+        e: "worker:raw",
+        a: "worker.status",
+      }),
+    ).resolves.toMatchObject([{ id: event.id, seq: 7, causalRefs: [] }]);
+    await expect(
+      t.query(componentInternal.log.listCurrent, {
+        e: "worker:raw",
+        a: "worker.status",
+      }),
+    ).resolves.toMatchObject([
+      {
+        e: "worker:raw",
+        a: "worker.status",
+        v: "active",
+        assertEventId: event.id,
+      },
+    ]);
   });
 
   test("appends lifecycle events targeting component-owned assert ids", async () => {

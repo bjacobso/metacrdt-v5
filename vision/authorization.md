@@ -1,5 +1,7 @@
 # Vision — Authorization over a Fact Store
 
+> **MetaCRDT primitive →** _provenance + coordination profiles (SPEC §9)_ — grants are facts; the projection filters by them. See [`metacrdt-alignment.md`](./metacrdt-alignment.md).
+
 > Part of the `vision/` set — see [`README.md`](./README.md). Builds on [`triples.md`](./triples.md)
 > (the query compiler is the enforcement chokepoint), [`workflows.md`](./workflows.md) (the shared
 > `Rule` AST, ownership tiers & role-binding), and [`integrations.md`](./integrations.md) (the

@@ -1,10 +1,15 @@
 import { describe, expect, test } from "vitest";
 import {
+  runRuntimePersistenceConformance,
   runRuntimeConformance,
-  type RuntimeConformanceTarget,
+  type RuntimePersistenceConformanceTarget,
+  type RuntimeLayerConformanceTarget,
   type RuntimeFactoryOptions,
 } from "@metacrdt/testkit";
-import { createAsyncLocalRuntime, type AsyncLocalRuntimeStorage } from "./index.js";
+import {
+  createAsyncLocalRuntimeLayer,
+  type AsyncLocalRuntimeStorage,
+} from "./index.js";
 
 class AsyncMemoryStorage implements AsyncLocalRuntimeStorage {
   readonly data = new Map<string, string>();
@@ -22,16 +27,34 @@ class AsyncMemoryStorage implements AsyncLocalRuntimeStorage {
   }
 }
 
-const localTarget: RuntimeConformanceTarget = {
+const localTarget: RuntimeLayerConformanceTarget = {
   name: "local-async",
-  createRuntime(options: RuntimeFactoryOptions) {
-    return createAsyncLocalRuntime({
+  createLayer(options: RuntimeFactoryOptions) {
+    return createAsyncLocalRuntimeLayer({
       storage: new AsyncMemoryStorage(),
       namespace: "conformance",
       replicaId: options.replicaId,
       wall: options.wall,
     });
   },
+};
+
+const localPersistenceTarget = (): RuntimePersistenceConformanceTarget => {
+  const storage = new AsyncMemoryStorage();
+  return {
+    name: "local-async-persistence",
+    resetPersistence() {
+      storage.data.clear();
+    },
+    createLayer(options: RuntimeFactoryOptions) {
+      return createAsyncLocalRuntimeLayer({
+        storage,
+        namespace: "persistence",
+        replicaId: options.replicaId,
+        wall: options.wall,
+      });
+    },
+  };
 };
 
 describe("@metacrdt/local conformance", () => {
@@ -47,6 +70,32 @@ describe("@metacrdt/local conformance", () => {
         "version-vector-convergence",
         "deterministic-fold-convergence",
         "idempotent-second-sync",
+        "projection-cardinality-one-winner",
+        "projection-cardinality-many-set",
+        "projection-entity-map",
+        "projection-bitemporal-coordinate",
+        "projection-audit-flags",
+        "projection-filtered-source-query",
+        "query-join-or-negation-provenance",
+        "query-compare-compute-project",
+        "query-or-dedupe",
+        "query-pagination-aggregation",
+        "query-derived-rows",
+      ],
+    });
+  });
+
+  test("passes the shared persistence conformance suite", async () => {
+    await expect(
+      runRuntimePersistenceConformance(localPersistenceTarget()),
+    ).resolves.toEqual({
+      target: "local-async-persistence",
+      checks: [
+        "event-log-survives-recreate",
+        "version-vector-survives-recreate",
+        "sequencer-survives-recreate",
+        "hlc-survives-recreate",
+        "post-restart-append-advances-vv",
       ],
     });
   });

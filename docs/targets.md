@@ -16,13 +16,13 @@ Companion docs: [architecture.md](./architecture.md) (the layer/target map),
 
 It is tempting to list "node, bun, postgres, FoundationDB, …" as peer targets.
 That conflates three different axes a target spans, each of which implements a
-different `@metacrdt/runtime` contract:
+different `@metacrdt/runtime` Effect service contract:
 
 | Axis | Contract implemented | Examples |
 | --- | --- | --- |
-| **Execution host** | `Scheduler` + lifecycle | Convex functions, Durable Object + alarms, Node process, browser event loop |
-| **Storage adapter** | `EventStore` (+ projection store) | Convex tables, DO SQLite, IndexedDB, **SQLite**, **Postgres**, memory |
-| **Transport adapter** | `Transport` | Convex reactivity, DO WebSocket relay, BroadcastChannel, WebRTC p2p, HTTP/SSE |
+| **Execution host** | `SchedulerService` + lifecycle | Convex functions, Durable Object + alarms, Node process, browser event loop |
+| **Storage adapter** | `EventStoreService` (+ projection store) | Convex tables, DO SQLite, IndexedDB, **SQLite**, **Postgres**, memory |
+| **Transport adapter** | `TransportService` | Convex reactivity, DO WebSocket relay, BroadcastChannel, WebRTC p2p, HTTP/SSE |
 
 A **target** is an *execution host* that bundles a default choice across the
 other two axes. Consequences:
@@ -32,9 +32,9 @@ other two axes. Consequences:
 - **Node and Bun are execution hosts**, not storage backends. They can mount any
   server-grade storage adapter.
 
-This is the rule that decides where new code lands: ask *which contract does it
-implement* — host scheduler, event store, or transport — not *which technology is
-it named after*.
+This is the rule that decides where new code lands: ask *which Effect service
+contract does it provide* — host scheduler, event store, clock/sequencer, or
+transport — not *which technology is it named after*.
 
 ---
 
@@ -59,26 +59,72 @@ On open hosts the adapter is a selectable dependency.
 ### Have today
 
 - `@metacrdt/convex` — managed, reactive reference target (full triple store).
-- `@metacrdt/cloudflare` — sync-plane shell; growing to a DO + SQLite triple
-  store ([cloudflare-target.md](./cloudflare-target.md)).
-- `@metacrdt/local` — browser/local-first host.
+- `@metacrdt/cloudflare` — sync-plane shell with Durable Object KV and SQLite
+  Effect Layers; Worker/DO WebSocket relay with optional token auth; the SQLite
+  runtime seed persists events, projection rows, HLC, and seq over
+  `ctx.storage.sql.exec(...)`; it now also exposes a first SQLite log/current
+  surface (append helpers with scoped current-coordinate projection reconcile,
+  get/list events, rebuild with changed `(e, a)` summaries, current
+  rows/entities) plus simple collection capability rows (`issueCollection`,
+  `collectionByToken`, `listCollections`, `submitCollection`) with optional
+  submit-time assertion lowering through the same append/reconcile path and
+  operational collection reminder/escalation/expiry timer rows, DAG timelines,
+  flow-wait alarms, a narrow `resumeDagRun` terminal-decision surface, a
+  single-step `executeDagStep` surface for caller-described assert/collect/wait
+  DAG steps, a narrow `executeAction` seed for caller-described assertion or
+  collection-opening action effects, projection-backed registered action lookup
+  through `actionByName` / `listActions` / `actionsForType`, one-effect
+  `executeRegisteredAction` delegation, a SQLite live invalidation fanout seed
+  for changed `(e, a)` coordinates, and a bounded live current-query
+  snapshot/update seed with optional persisted subscription rows plus structural
+  reconnect hydration for connected sockets and an authenticated Worker route
+  seed, SQLite DO assembly, write-route publish orchestration, a structural
+  frontend client reconnect helper, result-diff metadata on live current-query
+  updates, and a structural live-query session helper.
+  Growing to a full DO + SQLite bitemporal triple store remains the active target plan
+  ([cloudflare-target.md](./cloudflare-target.md)).
+- `@metacrdt/local` — browser/local-first host with localStorage / IndexedDB /
+  SQLite-compatible Effect Layers.
 - `@metacrdt/node` — open server-process host with memory and structural
   server-SQLite/Postgres runtime services plus a dependency-free structural
   HTTP/SSE sync handler, native `node:http`-style request listener, and packaged
   in-memory dev-server CLI. It also exposes a shared SQL lifecycle plan for the
-  SQLite/Postgres runtime tables. SDK integration remains a future slice.
-- `@metacrdt/runtime`'s in-memory target — the reference harness.
-- `@metacrdt/testkit` — framework-neutral conformance helpers for EventStore,
-  anti-entropy, and deterministic fold convergence (currently proven against
-  the in-memory runtime, Cloudflare Durable Object runtime services, the async
-  local runtime, and Node memory/SQLite/Postgres runtimes).
+  SQLite/Postgres runtime tables and Effect Layers for memory, SQLite, and
+  Postgres. A dependency-free sync SDK client now talks to the same HTTP/SSE
+  routes through an Effect-native facade plus Promise wrapper. The production
+  assembly helper selects `memory | sqlite | postgres`, returns the runtime
+  Layer + handler/listener, exposes SQL lifecycle metadata for durable stores,
+  and optionally bundles the sync client for a remote base URL without choosing
+  a Node framework or concrete driver.
+- `@metacrdt/runtime`'s in-memory target/Layer — the reference harness.
+- `@metacrdt/testkit` — Effect Layer-backed conformance helpers for EventStore,
+  anti-entropy, deterministic fold convergence, EventStore-backed projection,
+  the runtime `DatalogQueryService` contract, runtime's projection-backed
+  current-query provider, opt-in materialized projection-store semantics, and
+  restart-persistence semantics (log/HLC/seq), plus scheduler
+  service-boundary, transport publish-boundary, and first network
+  delivery/catch-up semantics. Log/sync/projection/query conformance is proven
+  against the in-memory Layer, Convex component Layer, Cloudflare Durable Object
+  Layer, async local Layer, and Node memory/SQLite/Postgres Layers; persistence
+  conformance is wired into runtime localStorage, local async, and Node
+  SQLite/Postgres; scheduler submission and transport publication conformance are
+  wired into testkit memory and Node memory; network delivery/catch-up
+  conformance is proven against BroadcastChannel, p2p DataChannel, and
+  Cloudflare Durable Object WebSocket relay harnesses. The Cloudflare Worker
+  relay also has package tests for optional token auth at the deployment
+  boundary. Projection-store
+  conformance is currently proven against runtime memory/localStorage, Node
+  memory/SQLite/Postgres, local-first localStorage, Cloudflare Durable Object KV
+  and SQLite storage, and the Convex component-owned `projectionRows` read model.
+  Compatibility
+  `RuntimeServices` targets still adapt through `runtimeServicesLayer`.
 
 ### Should exist next
 
-- **`@metacrdt/node` next slices** — add SDK/client integration and production
-  database lifecycle guidance on top of the memory/SQLite/Postgres host,
-  lifecycle DDL plan, HTTP/SSE sync surface, and packaged dev server now in
-  place.
+- **`@metacrdt/node` next slices** — production hardening around the concrete
+  deployment recipes now documented in `packages/node/DEPLOYMENT.md`: auth
+  middleware examples, retry/backoff loops for peer sync, observability hooks,
+  and process-manager templates when real deployments demand them.
 
 ### Defer until a real need justifies them
 
@@ -99,13 +145,13 @@ On open hosts the adapter is a selectable dependency.
 
 | Adapter | Lives in / under | Status |
 | --- | --- | --- |
-| memory | `runtime` | done |
+| memory | `runtime` | done (compatibility target + Effect Layer) |
 | localStorage | `local` (via `runtime`) | done |
 | IndexedDB | `local` | done |
 | SQLite-wasm | `local` | done |
 | SQLite (server) | `node` | done (structural driver API + shared lifecycle plan) |
 | Postgres | `node` | done (structural `query(sql, params)` adapter + shared lifecycle plan) |
-| DO SQLite | `cloudflare` | planned ([cloudflare-target.md](./cloudflare-target.md)) |
+| DO SQLite | `cloudflare` | started (runtime-service substrate + projection/persistence conformance + log/current/query surface, including projection-backed current Datalog reads, collection capability rows with optional assertion lowering, collection timer rows, collection/flow-wait alarm multiplexing, DAG run/timeline rows, terminal DAG resume seed, single-step DAG execution seed, narrow action-effect execution seed, registered action lookup/execution seed, live invalidation fanout seed, live current-query snapshot/update seed, persisted current-query subscription rows, structural reconnect hydration, authenticated live-query Worker route seed, SQLite live-query DO assembly seed, write-route publish seed, structural live-query client reconnect seed, live current-query result-diff metadata, and a structural live-query session helper; full operational flow interpreter/branching/host action invocation parity and full React/frontend SDK integration planned in [cloudflare-target.md](./cloudflare-target.md)) |
 | Convex tables | `convex` | done (managed) |
 | FoundationDB | — | archive unless a real need appears |
 
@@ -166,6 +212,15 @@ So "live queries" is something each *transport adapter* provides over the same
 invalidation key — not new substrate semantics. Postgres is attractive here
 because `LISTEN/NOTIFY` gives reactivity for free.
 
+The Cloudflare DO SQLite facade now reports the first version of this key:
+`rebuildCurrent` and append/lifecycle facade results include deterministic
+`changed` `(e, a)` coordinates with before/after event ids. Append/lifecycle
+helpers also use `ProjectionStoreService.replaceMatching` to replace only the
+touched current coordinate, and the replacement fold is bounded by
+`EventStoreService.scan({ e, a })` plus lifecycle rows discovered through
+`EventStoreService.scan({ target })`. Actual WebSocket subscription fanout
+remains transport work.
+
 ---
 
 ## Eventual dependency graph
@@ -182,7 +237,7 @@ because `LISTEN/NOTIFY` gives reactivity for free.
                             │                            │
                    ┌────────▼─────────┐                  │
    HARNESS         │ @metacrdt/runtime│ ─────────────────┘   → core; defines
-                   │  contracts +     │                       EventStore / Clock /
+                   │  services +      │                       EventStore / Clock /
                    │  memory + sync   │                       Sequencer / Scheduler / Transport
                    └───┬────────┬─────┘
           ┌────────────┘        └────────────┐
@@ -218,12 +273,42 @@ a sibling target.
 1. **`@metacrdt/node`** + `memory` / `sqlite` / `postgres` adapters + shared SQL
    lifecycle plan + HTTP/SSE handler + packaged dev server — unlocks
    SDK/self-hosting work and another host for the testkit to exercise.
-2. **Expand `@metacrdt/testkit` as targets mature** — add persistence,
-   scheduler, transport, and query/projection suites whenever a second target
-   exposes the relevant capability. This is what *proves* the "guaranteed to
-   converge" claim across targets.
-3. **Cloudflare Phase B/C** — extract the shared fold into core, then the DO +
-   SQLite triple store ([cloudflare-target.md](./cloudflare-target.md)).
+2. **Goal 111 expanded conformance** — Convex/Node/local/Cloudflare now expose
+   runtime Layers and `@metacrdt/testkit` runs conformance over those Layers.
+   Persistence conformance has started for durable targets, and scheduler
+   service-boundary / transport publish-boundary conformance has started for
+   observable services. Network delivery/catch-up conformance has started for
+   BroadcastChannel, p2p DataChannel, and Cloudflare relay harnesses. EventStore
+   projection and `DatalogQueryService` conformance are included in the
+   shared runtime suite. Materialized projection-store conformance is an opt-in
+   suite over `ProjectionStoreService`, now wired through runtime memory/local,
+   Node memory/SQLite/Postgres, local-first localStorage, and Cloudflare Durable
+   Object storage, plus the Convex component-owned `projectionRows` read model;
+   runtime now also exposes a projection-backed current-query provider under the
+   same `DatalogQueryService` contract. Add target-specific query-provider
+   conformance whenever a target exposes a fuller query engine beyond the shared
+   EventStore-backed service and current projection provider. This is what
+   *proves* the "guaranteed to converge" claim across targets.
+3. **Cloudflare Phase B/C** — the DO SQLite runtime-service substrate and first
+   log/current/query surface have started, including projection-backed current
+   Datalog reads, current-projection change summaries, and scoped
+   current-coordinate projection replacement. Target-event lookup is now part of
+   the EventStore contract and DO SQLite uses it for bounded coordinate folds;
+   historical queries now have an indexed provider seed, running DAG rows have a
+   terminal resume-decision seed, changed coordinates have a WebSocket
+   invalidation fanout seed, and bounded current Datalog subscriptions can send
+   live snapshots/refreshes; indexed historical queries now have
+   conformance-style clause/visibility/index-scan coverage, and bounded live
+   current-query subscriptions now have persisted metadata rows plus structural
+   hydration, authenticated Worker route plumbing, and SQLite DO assembly
+   plumbing plus write-route publish orchestration, a structural frontend client
+   reconnect helper, result-diff metadata, a structural session helper, and a
+   single-step DAG execution seed, a narrow action-effect execution seed, and
+   a registered action lookup/execution seed;
+   next is broader SQL query provider parity/performance hardening plus full
+   flow interpreter/branching/host action invocation and full
+   React/frontend SDK integration
+   ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal
    enough repeated DDL/query-generation logic beyond the current Node lifecycle
    plan to justify a shared SQL package.

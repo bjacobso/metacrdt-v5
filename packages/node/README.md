@@ -4,16 +4,23 @@ The Node / server-process target for MetaCRDT. It is the open host: unlike
 managed targets such as Convex or Cloudflare Durable Objects, Node can mount
 different storage adapters behind the same runtime contracts.
 
+For concrete production assembly recipes with real Node drivers and process
+hosts, see [DEPLOYMENT.md](./DEPLOYMENT.md).
+
 ## What Node Owns
 
-- **Node memory runtime** — `createNodeMemoryRuntime`, a named wrapper over the
-  runtime memory harness for server/dev/test processes.
+- **Node memory runtime** — `createNodeMemoryRuntime` plus
+  `createNodeMemoryRuntimeLayer`, named wrappers over the runtime memory harness
+  for server/dev/test processes.
 - **Server SQLite runtime** — `createNodeSqliteRuntime`, with
-  `NodeSqliteEventStore`, `NodeSqliteClock`, and `NodeSqliteSequencer` over a
-  structural SQLite driver interface.
+  `NodeSqliteEventStore`, `NodeSqliteProjectionStore`, `NodeSqliteClock`, and
+  `NodeSqliteSequencer` over a structural SQLite driver interface.
+  `createNodeSqliteRuntimeLayer` exposes the same target as an Effect `Layer`.
 - **Server Postgres runtime** — `createNodePostgresRuntime`, with
-  `NodePostgresEventStore`, `NodePostgresClock`, and `NodePostgresSequencer`
-  over a structural `query(sql, params)` client interface.
+  `NodePostgresEventStore`, `NodePostgresProjectionStore`,
+  `NodePostgresClock`, and `NodePostgresSequencer` over a structural
+  `query(sql, params)` client interface.
+  `createNodePostgresRuntimeLayer` exposes the same target as an Effect `Layer`.
 - **Driver-neutral SQLite shape** — `NodeSqliteDatabaseLike` /
   `NodeSqliteStatementLike`, matching the common `prepare().get/all/run` surface
   used by better-sqlite3-style wrappers, Bun SQLite adapters, and tests. The
@@ -22,9 +29,9 @@ different storage adapters behind the same runtime contracts.
   common `pg`/Neon-style `query(sql, params)` surface. The package intentionally
   ships no Postgres driver dependency.
 - **Shared SQL lifecycle plan** — `createNodeSqlLifecyclePlan` validates table
-  prefixes and emits the runtime event/meta table names, indexes, and ordered DDL
-  used by both the SQLite and Postgres adapters. This is intentionally narrower
-  than a full `@metacrdt/sql` package.
+  prefixes and emits the runtime event/projection/meta table names, indexes, and
+  ordered DDL used by both the SQLite and Postgres adapters. This is
+  intentionally narrower than a full `@metacrdt/sql` package.
 - **HTTP/SSE sync handler** — `createNodeSyncHttpHandler`, a dependency-free
   fetch-like handler over any `RuntimeServices`: health/version-vector,
   pull-delta, push-events, and one-shot SSE delta routes. It returns a small
@@ -36,6 +43,17 @@ different storage adapters behind the same runtime contracts.
   objects. It consumes streamed request bodies, calls the structural sync
   handler, and writes status/headers/body back to the response without importing
   Node types.
+- **Sync SDK client** — `createNodeSyncClientEffect` and `createNodeSyncClient`,
+  dependency-free clients over the same HTTP/SSE sync routes. The Effect-native
+  client validates response boundaries with `effect/Schema` and reports
+  `NodeSyncClientError` in the Effect error channel; the Promise facade is for
+  ordinary Node consumers.
+- **Production assembly helper** — `createNodeProductionRuntimeEffect` and
+  `createNodeProductionRuntime` select `memory | sqlite | postgres`, initialize
+  the matching runtime, expose its Effect `Layer`, create the structural
+  HTTP/SSE handler and native-style listener, return SQL lifecycle metadata for
+  durable stores, and optionally bundle the sync SDK client for a configured
+  remote base URL. It is still framework- and driver-neutral.
 - **Packaged dev server CLI** — `metacrdt-node-dev`, an in-memory local sync
   server over native `node:http`. It is a convenience wrapper over
   `createNodeMemoryRuntime` + `createNodeHttpRequestListener`, with configurable
@@ -55,21 +73,35 @@ different storage adapters behind the same runtime contracts.
 
 The memory, SQLite, and Postgres runtime services pass the shared
 `@metacrdt/testkit` EventStore / anti-entropy / deterministic-fold conformance
-suite. The package also verifies SQLite and Postgres persistence of the event
-log, HLC, and per-replica `seq` across runtime recreation, and tests the
-shared SQL lifecycle plan used by both SQL adapters. It also tests the
+suite through their Effect Layer providers. SQLite and Postgres also pass
+`@metacrdt/testkit` restart-persistence conformance for the event log, HLC, and
+per-replica `seq`; memory, SQLite, and Postgres also pass materialized
+projection-store conformance through `ProjectionStoreService`. The memory target
+also runs shared scheduler service-boundary and transport publish-boundary
+conformance. Package-specific tests still cover concrete persistence regressions
+and the shared SQL lifecycle plan used by both SQL adapters. It also tests the
 HTTP/SSE handler's health, delta pull, event push, SSE response paths, and the
 native-style listener adapter's response writing and streamed POST body merge.
-The dev-server CLI is tested by starting a real ephemeral `node:http` server and
-querying its health route.
+The sync SDK client is tested for health/pull/push/bidirectional sync and tagged
+Effect error behavior. The production assembly helper is tested for memory
+runtime/listener/client/Layer wiring, Postgres lifecycle metadata, and tagged
+Effect initialization errors. The dev-server CLI is tested by starting a real
+ephemeral `node:http` server and querying its health route.
 
 ## Usage
 
 ```ts
 import {
+  createNodeMemoryRuntimeLayer,
   createNodeHttpRequestListener,
+  createNodeProductionRuntime,
+  createNodeProductionRuntimeEffect,
+  createNodeSyncClient,
+  createNodeSyncClientEffect,
+  createNodePostgresRuntimeLayer,
   createNodePostgresRuntime,
   createNodeSqlLifecyclePlan,
+  createNodeSqliteRuntimeLayer,
   createNodeSqliteRuntime,
   createNodeSyncHttpHandler,
 } from "@metacrdt/node";
@@ -88,6 +120,37 @@ const response = await handleSync({
 // Native node:http-style adapter:
 const listener = createNodeHttpRequestListener(runtime, { basePath: "/sync" });
 // http.createServer((req, res) => void listener(req, res)).listen(8787)
+```
+
+Client sync against another Node runtime:
+
+```ts
+const client = createNodeSyncClient({
+  baseUrl: "http://127.0.0.1:8787/sync",
+});
+
+const health = await client.health();
+const result = await client.syncFrom(runtime);
+```
+
+Effect-native callers can use the same client without leaving the Effect error
+channel:
+
+```ts
+const client = createNodeSyncClientEffect({
+  baseUrl: "http://127.0.0.1:8787/sync",
+});
+
+const program = client.syncFrom(runtime);
+```
+
+Effect-native hosts can provide the same targets as Layers:
+
+```ts
+const layer = createNodePostgresRuntimeLayer({
+  replicaId: "node:pg",
+  client,
+});
 ```
 
 Postgres uses the common `query(sql, params)` driver shape:
@@ -111,6 +174,45 @@ const plan = createNodeSqlLifecyclePlan({
 for (const sql of plan.initializeStatements) {
   await client.query(sql);
 }
+```
+
+Production assembly without choosing a web framework:
+
+```ts
+const node = await createNodeProductionRuntime({
+  replicaId: "node:prod",
+  storage: {
+    kind: "postgres",
+    client, // pg Pool/Client, Neon wrapper, etc.
+    tablePrefix: "metacrdt",
+  },
+  sync: {
+    basePath: "/sync",
+    clientBaseUrl: "https://peer.example.com/sync", // optional
+    clientHeaders: { authorization: `Bearer ${token}` },
+  },
+});
+
+// Mount however your host wants:
+// http.createServer((req, res) => void node.listener(req, res)).listen(8787)
+
+// Or adapt the structural handler to Express/Fastify/Hono/Bun/etc.
+const response = await node.handleSync({
+  method: "GET",
+  url: "/sync/health",
+});
+
+// Effect-native code can provide the target Layer directly.
+const layer = node.layer;
+```
+
+Effect-native initialization keeps failures in the typed error channel:
+
+```ts
+const program = createNodeProductionRuntimeEffect({
+  replicaId: "node:prod",
+  storage: { kind: "postgres", client },
+});
 ```
 
 Local in-memory dev server:

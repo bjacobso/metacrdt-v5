@@ -1,7 +1,7 @@
 {
   "name": "@metacrdt/node",
   "version": "0.1.0",
-  "description": "MetaCRDT Node target helpers: server-process memory/SQLite/Postgres runtime services, HTTP/SSE sync adapters, and a packaged dev server CLI.",
+  "description": "MetaCRDT Node target helpers: server-process memory/SQLite/Postgres runtime services, HTTP/SSE sync adapters, production assembly, and a packaged dev server CLI.",
   "type": "module",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -20,7 +20,8 @@
     "metacrdt-node-dev": "./dist/dev-server.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "DEPLOYMENT.md"
   ],
   "scripts": {
     "build": "tsdown --config ../../tsdown.config.ts",
@@ -31,7 +32,8 @@
   },
   "dependencies": {
     "@metacrdt/core": "0.1.0",
-    "@metacrdt/runtime": "0.1.0"
+    "@metacrdt/runtime": "0.1.0",
+    "effect": "^3.21.3"
   },
   "devDependencies": {
     "@metacrdt/testkit": "0.1.0",

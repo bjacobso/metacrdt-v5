@@ -23,7 +23,9 @@
     "pack:check": "npm pack --dry-run --json"
   },
   "dependencies": {
-    "@metacrdt/core": "0.1.0"
+    "@metacrdt/core": "0.1.0",
+    "@metacrdt/query": "0.1.0",
+    "effect": "^3.21.3"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

@@ -1,10 +1,22 @@
 import { describe, expect, test } from "vitest";
 import { fromEvents, valueOf } from "@metacrdt/core";
-import { applyOperation, versionVector } from "@metacrdt/runtime";
+import {
+  runRuntimeProjectionStoreConformance,
+  type RuntimeFactoryOptions,
+  type RuntimeProjectionStoreConformanceTarget,
+} from "@metacrdt/testkit";
+import {
+  EventStoreService,
+  applyOperation,
+  applyOperationEffect,
+  versionVector,
+} from "@metacrdt/runtime";
+import { Effect } from "effect";
 import {
   browserBroadcastChannel,
   browserStorage,
   createLocalFirstRuntime,
+  createLocalFirstRuntimeLayer,
   startLocalFirstRuntime,
   type BrowserBroadcastChannelLike,
   type BrowserStorageLike,
@@ -82,7 +94,65 @@ const coord = { txTime: 10_000, validTime: 10_000 };
 const many = () => "many" as const;
 const one = () => "one" as const;
 
+const localLayerProgram = Effect.gen(function* () {
+  const event = yield* applyOperationEffect({
+    op: "assert",
+    e: "local:layer",
+    a: "status",
+    v: "ready",
+    actor: "test",
+    actorType: "system",
+  });
+  const store = yield* EventStoreService;
+  return { event, stored: yield* store.get(event.id), events: yield* store.scan() };
+});
+
+const projectionStoreTarget: RuntimeProjectionStoreConformanceTarget = {
+  name: "local-first-projection-store",
+  createLayer(options: RuntimeFactoryOptions) {
+    return createLocalFirstRuntimeLayer({
+      storage: new FakeStorage(),
+      namespace: "projection-store",
+      replicaId: options.replicaId,
+      wall: options.wall,
+      broadcast: false,
+    });
+  },
+};
+
 describe("@metacrdt/local browser/local-first target", () => {
+  test("local-first runtime provides an Effect Layer", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        localLayerProgram,
+        createLocalFirstRuntimeLayer({
+          storage: new FakeStorage(),
+          namespace: "layer",
+          replicaId: "browser:layer",
+          wall: () => 450,
+          broadcast: false,
+        }),
+      ),
+    );
+    expect(result.stored).toEqual(result.event);
+    expect(result.event.seq).toBe(1);
+    expect(versionVector(result.events)).toEqual({ "browser:layer": 1 });
+  });
+
+  test("local-first runtime passes projection-store conformance", async () => {
+    await expect(
+      runRuntimeProjectionStoreConformance(projectionStoreTarget),
+    ).resolves.toEqual({
+      target: "local-first-projection-store",
+      checks: [
+        "projection-store-replace-from-fold",
+        "projection-store-scan-filters",
+        "projection-store-replace-matching-is-scoped",
+        "projection-store-clear",
+      ],
+    });
+  });
+
   test("composes localStorage persistence with BroadcastChannel convergence", async () => {
     const bus = new BroadcastBus();
     const leftStorage = new FakeStorage();

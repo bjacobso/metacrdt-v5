@@ -1,0 +1,2349 @@
+import { describe, expect, test } from "vitest";
+import { fromEvents, valueOf } from "@metacrdt/core";
+import {
+  EventStoreService,
+  applyOperation,
+  applyOperationEffect,
+  exchangeDeltas,
+  versionVector,
+} from "@metacrdt/runtime";
+import { Effect } from "effect";
+import {
+  createDurableObjectSqliteAlarmMultiplexer,
+  createDurableObjectSqliteCurrentSurface,
+  createDurableObjectSqliteRuntime,
+  createDurableObjectSqliteRuntimeLayer,
+} from "./index.js";
+import { FakeDurableObjectSqlStorage } from "./sqliteFake.test-support.js";
+
+const coord = { txTime: 10_000, validTime: 10_000 };
+const one = () => "one" as const;
+const many = () => "many" as const;
+const cardinalityOf = (a: string) => (a === "worker.tag" ? "many" : "one");
+
+class FakeAlarmStorage {
+  alarmAt: number | null = null;
+  setCalls: number[] = [];
+  deleteCalls = 0;
+
+  setAlarm(scheduledTime: number | Date): void {
+    const value = scheduledTime instanceof Date
+      ? scheduledTime.getTime()
+      : scheduledTime;
+    this.alarmAt = value;
+    this.setCalls.push(value);
+  }
+
+  deleteAlarm(): void {
+    this.alarmAt = null;
+    this.deleteCalls += 1;
+  }
+}
+
+describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
+  test("provides an Effect Layer and stamps seq/version-vector metadata", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const event = yield* applyOperationEffect({
+            op: "assert",
+            e: "do-sqlite:layer",
+            a: "status",
+            v: "ready",
+            actor: "test",
+            actorType: "system",
+          });
+          const store = yield* EventStoreService;
+          return {
+            event,
+            stored: yield* store.get(event.id),
+            events: yield* store.scan(),
+          };
+        }),
+        createDurableObjectSqliteRuntimeLayer({
+          sql: new FakeDurableObjectSqlStorage(),
+          replicaId: "do-sqlite:layer",
+          wall: () => 50,
+        }),
+      ),
+    );
+    expect(result.stored).toEqual(result.event);
+    expect(result.event.seq).toBe(1);
+    expect(versionVector(result.events)).toEqual({ "do-sqlite:layer": 1 });
+  });
+
+  test("persists event log, HLC, and per-replica sequence across runtime recreation", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    let wall = 100;
+    const first = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:room",
+      wall: () => wall,
+    });
+
+    const active = await applyOperation(first, {
+      op: "assert",
+      e: "worker:maria",
+      a: "worker.status",
+      v: "active",
+      actor: "user:1",
+    });
+    expect(active.hlc).toEqual({ pt: 100, l: 0, r: "do-sqlite:room" });
+    expect(active.seq).toBe(1);
+
+    wall = 100;
+    const second = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:room",
+      wall: () => wall,
+    });
+    expect(second.clock.current()).toEqual({
+      pt: 100,
+      l: 0,
+      r: "do-sqlite:room",
+    });
+    expect(second.sequencer.current()).toBe(1);
+
+    const terminated = await applyOperation(second, {
+      op: "assert",
+      e: "worker:maria",
+      a: "worker.status",
+      v: "terminated",
+      actor: "user:1",
+    });
+    expect(terminated.hlc).toEqual({ pt: 100, l: 1, r: "do-sqlite:room" });
+    expect(terminated.seq).toBe(2);
+
+    const third = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:room",
+      wall: () => 100,
+    });
+    const log = fromEvents(await third.store.scan());
+    expect(valueOf("worker:maria", "worker.status", coord, log, one)).toBe(
+      "terminated",
+    );
+    expect(versionVector(await third.store.scan())).toEqual({
+      "do-sqlite:room": 2,
+    });
+  });
+
+  test("persists live current-query subscription metadata across runtime recreation", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const first = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:live-query-store",
+      wall: () => 100,
+    });
+
+    const query = {
+      where: [["worker:live", "worker.status", "?status"]],
+      select: ["?status"],
+      coord: { txTime: 10_000, validTime: 10_000 },
+    };
+    const subscription = await first.liveQueries.upsert({
+      id: "query:worker-live-status",
+      connectionId: "socket:1",
+      protocol: "live-query.test",
+      query,
+      dependencies: [{ e: "worker:live", a: "worker.status" }],
+      createdAt: 20_000,
+      scope: "tenant:1",
+    });
+    expect(subscription).toMatchObject({
+      id: "query:worker-live-status",
+      connectionId: "socket:1",
+      protocol: "live-query.test",
+      status: "active",
+      createdAt: 20_000,
+      updatedAt: 20_000,
+      closedAt: null,
+      query,
+      dependencies: [{ e: "worker:live", a: "worker.status" }],
+      scope: "tenant:1",
+    });
+
+    const restarted = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:live-query-store",
+      wall: () => 101,
+    });
+    await expect(
+      restarted.liveQueries.get("query:worker-live-status"),
+    ).resolves.toEqual(subscription);
+    await expect(
+      restarted.liveQueries.list({
+        status: "active",
+        e: "worker:live",
+        a: "worker.status",
+      }),
+    ).resolves.toEqual([subscription]);
+    await expect(
+      restarted.liveQueries.list({ connectionId: "socket:missing" }),
+    ).resolves.toEqual([]);
+
+    const closed = await restarted.liveQueries.close(
+      "query:worker-live-status",
+      21_000,
+    );
+    expect(closed).toMatchObject({
+      id: "query:worker-live-status",
+      status: "closed",
+      updatedAt: 21_000,
+      closedAt: 21_000,
+    });
+    await expect(
+      restarted.liveQueries.list({ status: "active", a: "worker.status" }),
+    ).resolves.toEqual([]);
+    await expect(
+      restarted.liveQueries.list({ status: "closed", a: "worker.status" }),
+    ).resolves.toEqual([closed]);
+  });
+
+  test("two SQLite runtimes exchange deltas and persist convergence", async () => {
+    const leftSql = new FakeDurableObjectSqlStorage();
+    const rightSql = new FakeDurableObjectSqlStorage();
+    const left = await createDurableObjectSqliteRuntime({
+      sql: leftSql,
+      replicaId: "do-sqlite:left",
+      wall: () => 200,
+    });
+    const right = await createDurableObjectSqliteRuntime({
+      sql: rightSql,
+      replicaId: "do-sqlite:right",
+      wall: () => 200,
+    });
+
+    await applyOperation(left, {
+      op: "assert",
+      e: "task:1",
+      a: "tag",
+      v: "left",
+      actor: "alice",
+    });
+    await applyOperation(right, {
+      op: "assert",
+      e: "task:1",
+      a: "tag",
+      v: "right",
+      actor: "bob",
+    });
+
+    const first = await exchangeDeltas(left, right);
+    expect(first).toMatchObject({
+      sentFromA: 1,
+      sentFromB: 1,
+      insertedIntoA: 1,
+      insertedIntoB: 1,
+      vvA: { "do-sqlite:left": 1, "do-sqlite:right": 1 },
+      vvB: { "do-sqlite:left": 1, "do-sqlite:right": 1 },
+    });
+
+    const restartedLeft = await createDurableObjectSqliteRuntime({
+      sql: leftSql,
+      replicaId: "do-sqlite:left",
+      wall: () => 200,
+    });
+    const restartedRight = await createDurableObjectSqliteRuntime({
+      sql: rightSql,
+      replicaId: "do-sqlite:right",
+      wall: () => 200,
+    });
+    const leftLog = fromEvents(await restartedLeft.store.scan());
+    const rightLog = fromEvents(await restartedRight.store.scan());
+    expect([...leftLog.keys()].sort()).toEqual([...rightLog.keys()].sort());
+    expect(
+      (valueOf("task:1", "tag", coord, leftLog, many) as string[]).sort(),
+    ).toEqual(["left", "right"]);
+    expect(
+      (valueOf("task:1", "tag", coord, rightLog, many) as string[]).sort(),
+    ).toEqual(["left", "right"]);
+
+    const second = await exchangeDeltas(restartedLeft, restartedRight);
+    expect(second).toMatchObject({
+      sentFromA: 0,
+      sentFromB: 0,
+      insertedIntoA: 0,
+      insertedIntoB: 0,
+    });
+  });
+
+  test("rejects invalid stored event ids on scan", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:verify",
+      wall: () => 300,
+    });
+    const event = await applyOperation(runtime, {
+      op: "assert",
+      e: "doc:1",
+      a: "status",
+      v: "ready",
+      actor: "user:1",
+    });
+    sql.putStoredEvent({ ...event, id: "bad" });
+
+    const restarted = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:verify",
+      wall: () => 300,
+    });
+    await expect(restarted.store.scan()).rejects.toThrow(/invalid stored event id/);
+  });
+
+  test("current surface appends, rebuilds, and reads entity state from SQLite projection rows", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:surface",
+      wall: () => 400,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.appendAssert({
+      e: "worker:maria",
+      a: "type",
+      v: "Worker",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:maria",
+      a: "name",
+      v: "Maria",
+      actor: "user:1",
+    });
+    const active = await surface.appendAssert({
+      e: "worker:maria",
+      a: "worker.status",
+      v: "active",
+      actor: "user:1",
+    });
+    const winner = await surface.appendAssert({
+      e: "worker:maria",
+      a: "worker.status",
+      v: "terminated",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:maria",
+      a: "worker.tag",
+      v: "remote",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:maria",
+      a: "worker.tag",
+      v: "urgent",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "task:1",
+      a: "type",
+      v: "Task",
+      actor: "user:1",
+    });
+
+    expect(sql.projectionDeleteAllCount).toBe(0);
+    expect(sql.projectionDeleteMatchingCount).toBeGreaterThan(0);
+
+    expect(winner.projection).toMatchObject({
+      events: 2,
+      rows: 3,
+    });
+    expect(winner.projection.changed).toEqual([
+      {
+        e: "worker:maria",
+        a: "worker.status",
+        beforeEventIds: [active.event.id],
+        afterEventIds: [winner.event.id],
+      },
+    ]);
+
+    const status = await surface.listCurrent({
+      e: "worker:maria",
+      a: "worker.status",
+    });
+    expect(status).toMatchObject([
+      {
+        e: "worker:maria",
+        a: "worker.status",
+        v: "terminated",
+        eventId: winner.event.id,
+      },
+    ]);
+
+    await expect(surface.getEvent({ id: winner.event.id })).resolves.toEqual(
+      winner.event,
+    );
+    await expect(
+      surface.listEvents({ e: "worker:maria" }),
+    ).resolves.toHaveLength(6);
+    await expect(
+      surface.listEvents({ e: "worker:maria", a: "worker.status" }),
+    ).resolves.toHaveLength(2);
+    await expect(
+      surface.listEvents({ ids: [winner.event.id] }),
+    ).resolves.toEqual([winner.event]);
+    await expect(surface.listEvents({ limit: 2 })).resolves.toHaveLength(2);
+
+    await expect(
+      surface.query({
+        where: [
+          ["?w", "type", "Worker"],
+          ["?w", "worker.status", "terminated"],
+        ],
+        select: ["?w"],
+        coord,
+      }),
+    ).resolves.toMatchObject({
+      rows: [{ w: "worker:maria" }],
+    });
+    await expect(
+      surface.queryCurrent({
+        where: [
+          ["?w", "type", "Worker"],
+          ["?w", "worker.status", "terminated"],
+        ],
+        select: ["?w"],
+        coord,
+      }),
+    ).resolves.toMatchObject({
+      rows: [{ w: "worker:maria" }],
+    });
+
+    const firstTag = await surface.page({
+      where: [["worker:maria", "worker.tag", "?tag"]],
+      select: ["?tag"],
+      coord,
+      paginationOpts: { numItems: 1 },
+    });
+    const secondTag = await surface.page({
+      where: [["worker:maria", "worker.tag", "?tag"]],
+      select: ["?tag"],
+      coord,
+      paginationOpts: { numItems: 1, cursor: firstTag.continueCursor },
+    });
+    expect(firstTag).toMatchObject({
+      page: [{ tag: "remote" }],
+      continueCursor: "1",
+      isDone: false,
+    });
+    expect(secondTag).toMatchObject({
+      page: [{ tag: "urgent" }],
+      isDone: true,
+    });
+    const firstCurrentTag = await surface.pageCurrent({
+      where: [["worker:maria", "worker.tag", "?tag"]],
+      select: ["?tag"],
+      coord,
+      paginationOpts: { numItems: 1 },
+    });
+    const secondCurrentTag = await surface.pageCurrent({
+      where: [["worker:maria", "worker.tag", "?tag"]],
+      select: ["?tag"],
+      coord,
+      paginationOpts: {
+        numItems: 1,
+        cursor: firstCurrentTag.continueCursor,
+      },
+    });
+    expect(firstCurrentTag).toMatchObject({
+      page: [{ tag: "remote" }],
+      continueCursor: "1",
+      isDone: false,
+    });
+    expect(secondCurrentTag).toMatchObject({
+      page: [{ tag: "urgent" }],
+      isDone: true,
+    });
+
+    await expect(
+      surface.aggregate({
+        where: [
+          ["?w", "type", "Worker"],
+          ["?w", "worker.tag", "?tag"],
+        ],
+        coord,
+        groupBy: ["?w"],
+        aggregates: [{ op: "count", as: "tags" }],
+      }),
+    ).resolves.toEqual([{ w: "worker:maria", tags: 2 }]);
+    await expect(
+      surface.aggregateCurrent({
+        where: [
+          ["?w", "type", "Worker"],
+          ["?w", "worker.tag", "?tag"],
+        ],
+        coord,
+        groupBy: ["?w"],
+        aggregates: [{ op: "count", as: "tags" }],
+      }),
+    ).resolves.toEqual([{ w: "worker:maria", tags: 2 }]);
+
+    await expect(
+      surface.derivedRows({
+        where: [
+          ["?w", "type", "Worker"],
+          ["?w", "worker.status", "terminated"],
+        ],
+        coord,
+        emit: { e: "?w", a: "worker.offboarded", v: true },
+      }),
+    ).resolves.toEqual([
+      { e: "worker:maria", a: "worker.offboarded", v: true },
+    ]);
+    await expect(
+      surface.derivedRowsCurrent({
+        where: [
+          ["?w", "type", "Worker"],
+          ["?w", "worker.status", "terminated"],
+        ],
+        coord,
+        emit: { e: "?w", a: "worker.offboarded", v: true },
+      }),
+    ).resolves.toEqual([
+      { e: "worker:maria", a: "worker.offboarded", v: true },
+    ]);
+
+    const entity = await surface.getCurrentEntity({ e: "worker:maria" });
+    expect(entity).toMatchObject({
+      e: "worker:maria",
+      attributes: {
+        type: ["Worker"],
+        name: ["Maria"],
+        "worker.status": ["terminated"],
+      },
+    });
+    expect([...(entity?.attributes["worker.tag"] ?? [])].sort()).toEqual([
+      "remote",
+      "urgent",
+    ]);
+
+    await expect(surface.listCurrentEntities({ type: "Worker" })).resolves.toEqual([
+      {
+        e: "worker:maria",
+        type: "Worker",
+        name: "Maria",
+        rows: 5,
+      },
+    ]);
+
+    await expect(surface.rebuildCurrent()).resolves.toMatchObject({
+      events: 7,
+      rows: 6,
+      changed: [],
+    });
+    expect(sql.projectionDeleteAllCount).toBe(1);
+  });
+
+  test("current surface rebuilds lifecycle changes into empty current state", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:lifecycle",
+      wall: () => 500,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const asserted = await surface.appendAssert({
+      e: "worker:closed",
+      a: "worker.status",
+      v: "active",
+      actor: "user:1",
+    });
+    expect(await surface.listCurrent({ e: "worker:closed" })).toHaveLength(1);
+
+    const targetScansBefore = sql.eventTargetScanCount;
+    const fullScansBefore = sql.eventFullScanCount;
+    const retracted = await surface.appendLifecycle({
+      kind: "retract",
+      target: asserted.event.id,
+      actor: "user:1",
+      reason: "closed",
+    });
+
+    expect(retracted.projection).toEqual({
+      events: 2,
+      rows: 0,
+      changed: [
+        {
+          e: "worker:closed",
+          a: "worker.status",
+          beforeEventIds: [asserted.event.id],
+          afterEventIds: [],
+        },
+      ],
+    });
+    expect(sql.eventTargetScanCount).toBeGreaterThan(targetScansBefore);
+    expect(sql.eventFullScanCount).toBe(fullScansBefore);
+    await expect(surface.listEvents({ target: asserted.event.id })).resolves.toEqual([
+      retracted.event,
+    ]);
+    await expect(surface.listCurrent({ e: "worker:closed" })).resolves.toEqual([]);
+    await expect(
+      surface.getCurrentEntity({ e: "worker:closed" }),
+    ).resolves.toBeNull();
+    expect(sql.projectionDeleteAllCount).toBe(0);
+    expect(sql.projectionDeleteMatchingCount).toBeGreaterThan(0);
+  });
+
+  test("historical Datalog queries use indexed SQLite event scans with conformance-style clauses", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:indexed-query",
+      wall: () => 550,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.appendAssert({
+      e: "worker:indexed",
+      a: "type",
+      v: "Worker",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:indexed",
+      a: "worker.score",
+      v: 12,
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:indexed",
+      a: "worker.name",
+      v: "INDEXED",
+      actor: "user:1",
+    });
+    const active = await surface.appendAssert({
+      e: "worker:indexed",
+      a: "worker.status",
+      v: "active",
+      actor: "user:1",
+    });
+    await surface.appendLifecycle({
+      kind: "retract",
+      target: active.event.id,
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:indexed",
+      a: "worker.status",
+      v: "terminated",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:ivan",
+      a: "type",
+      v: "Worker",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:ivan",
+      a: "worker.status",
+      v: "pending",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "worker:ivan",
+      a: "worker.score",
+      v: 8,
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "placement:1",
+      a: "placement.worker",
+      v: "worker:ivan",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "placement:1",
+      a: "placement.status",
+      v: "open",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "placement:2",
+      a: "placement.worker",
+      v: "worker:indexed",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "placement:2",
+      a: "placement.status",
+      v: "open",
+      actor: "user:1",
+    });
+
+    const fullScansBefore = sql.eventFullScanCount;
+    const attributeScansBefore = sql.eventAttributeScanCount;
+    const entityAttributeScansBefore = sql.eventEntityAttributeScanCount;
+    const targetScansBefore = sql.eventTargetScanCount;
+
+    await expect(
+      surface.query({
+        where: [
+          ["?w", "type", "Worker"],
+          {
+            or: [
+              [["?w", "worker.status", "active"]],
+              [["?w", "worker.status", "pending"]],
+            ],
+          },
+          { not: ["?w", "worker.status", "terminated"] },
+          ["?p", "placement.worker", "?w"],
+          ["?p", "placement.status", "open"],
+        ],
+        select: ["?w", "?p"],
+        coord,
+      }),
+    ).resolves.toMatchObject({
+      rows: [{ w: "worker:ivan", p: "placement:1" }],
+    });
+    await expect(
+      surface.query({
+        where: [["?w", "worker.status", "active"]],
+        select: ["?w"],
+        coord,
+      }),
+    ).resolves.toMatchObject({ rows: [] });
+    await expect(
+      surface.query({
+        where: [
+          ["?w", "type", "Worker"],
+          ["?w", "worker.score", "?score"],
+          ["?score", ">=", 10],
+          { compute: ["+", "?score", 1], as: "?next" },
+        ],
+        select: ["?w", "?next"],
+        coord,
+      }),
+    ).resolves.toMatchObject({
+      rows: [{ w: "worker:indexed", next: 13 }],
+    });
+    await expect(
+      surface.query({
+        where: [
+          {
+            or: [
+              [["?w", "worker.status", "pending"]],
+              [["?w", "worker.score", 8]],
+            ],
+          },
+        ],
+        select: ["?w"],
+        coord,
+      }),
+    ).resolves.toMatchObject({
+      rows: [{ w: "worker:ivan" }],
+    });
+
+    const firstOpen = await surface.page({
+      where: [
+        ["?w", "type", "Worker"],
+        {
+          or: [
+            [["?w", "worker.status", "active"]],
+            [["?w", "worker.status", "pending"]],
+          ],
+        },
+        { not: ["?w", "worker.status", "terminated"] },
+        ["?p", "placement.worker", "?w"],
+        ["?p", "placement.status", "open"],
+      ],
+      select: ["?w", "?p"],
+      coord,
+      paginationOpts: { numItems: 1 },
+    });
+    expect(firstOpen).toMatchObject({
+      page: [{ w: "worker:ivan", p: "placement:1" }],
+      isDone: true,
+    });
+    await expect(
+      surface.aggregate({
+        where: [
+          ["?w", "type", "Worker"],
+          {
+            or: [
+              [["?w", "worker.status", "active"]],
+              [["?w", "worker.status", "pending"]],
+            ],
+          },
+          { not: ["?w", "worker.status", "terminated"] },
+          ["?p", "placement.worker", "?w"],
+          ["?p", "placement.status", "open"],
+        ],
+        coord,
+        groupBy: [],
+        aggregates: [
+          { op: "count", as: "openAssignments" },
+          { op: "countDistinct", var: "?w", as: "workers" },
+        ],
+      }),
+    ).resolves.toEqual([{ openAssignments: 1, workers: 1 }]);
+    await expect(
+      surface.derivedRows({
+        where: [
+          ["?w", "type", "Worker"],
+          {
+            or: [
+              [["?w", "worker.status", "active"]],
+              [["?w", "worker.status", "pending"]],
+            ],
+          },
+          { not: ["?w", "worker.status", "terminated"] },
+          ["?p", "placement.worker", "?w"],
+          ["?p", "placement.status", "open"],
+        ],
+        coord,
+        emit: { e: "?w", a: "worker.hasOpenPlacement", v: true },
+      }),
+    ).resolves.toEqual([
+      { e: "worker:ivan", a: "worker.hasOpenPlacement", v: true },
+    ]);
+
+    expect(sql.eventFullScanCount).toBe(fullScansBefore);
+    expect(sql.eventAttributeScanCount).toBeGreaterThan(attributeScansBefore);
+    expect(sql.eventEntityAttributeScanCount).toBeGreaterThan(
+      entityAttributeScansBefore,
+    );
+    expect(sql.eventTargetScanCount).toBeGreaterThan(targetScansBefore);
+  });
+
+  test("current surface persists collection capabilities over SQLite rows", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:collections",
+      wall: () => 600,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const issued = await surface.issueCollection({
+      token: "collection:worker:maria:onboard",
+      subject: "worker:maria",
+      form: "forms:onboarding",
+      expiresAt: 12_000,
+      runId: "run:1",
+      stepId: "step:collect",
+      scope: "tenant:demo",
+    });
+    expect(issued).toEqual({
+      token: "collection:worker:maria:onboard",
+      subject: "worker:maria",
+      form: "forms:onboarding",
+      status: "issued",
+      issuedAt: coord.txTime,
+      expiresAt: 12_000,
+      submittedAt: null,
+      data: undefined,
+      runId: "run:1",
+      stepId: "step:collect",
+      scope: "tenant:demo",
+    });
+
+    await expect(
+      surface.collectionByToken({ token: "collection:worker:maria:onboard" }),
+    ).resolves.toEqual(issued);
+    await expect(
+      surface.listCollections({
+        subject: "worker:maria",
+        status: "issued",
+      }),
+    ).resolves.toEqual([issued]);
+
+    await surface.issueCollection({
+      token: "collection:worker:ada:onboard",
+      subject: "worker:ada",
+      form: "forms:onboarding",
+      issuedAt: 10_500,
+    });
+    await expect(
+      surface.listCollections({ status: "issued" }),
+    ).resolves.toHaveLength(2);
+
+    const submitted = await surface.submitCollection({
+      token: "collection:worker:maria:onboard",
+      submittedAt: 11_000,
+      data: { name: "Maria", acceptedPolicy: true },
+    });
+    expect(submitted).toEqual({
+      collection: {
+        token: "collection:worker:maria:onboard",
+        subject: "worker:maria",
+        form: "forms:onboarding",
+        status: "submitted",
+        issuedAt: coord.txTime,
+        expiresAt: 12_000,
+        submittedAt: 11_000,
+        data: { name: "Maria", acceptedPolicy: true },
+        runId: "run:1",
+        stepId: "step:collect",
+        scope: "tenant:demo",
+      },
+      assertions: [],
+    });
+    await expect(
+      surface.listCollections({ status: "submitted" }),
+    ).resolves.toEqual([submitted.collection]);
+    await expect(
+      surface.submitCollection({
+        token: "collection:worker:maria:onboard",
+        submittedAt: 11_500,
+        data: { duplicate: true },
+      }),
+    ).rejects.toThrow(/already submitted/);
+
+    const lowered = await surface.submitCollection({
+      token: "collection:worker:ada:onboard",
+      submittedAt: 11_100,
+      data: { name: "Ada", status: "active" },
+      assertions: [
+        {
+          a: "name",
+          v: "Ada",
+          actor: "user:collection",
+          reason: "collection submission",
+        },
+        {
+          a: "worker.status",
+          v: "active",
+          actor: "user:collection",
+          reason: "collection submission",
+        },
+      ],
+    });
+    expect(lowered.collection).toMatchObject({
+      token: "collection:worker:ada:onboard",
+      subject: "worker:ada",
+      status: "submitted",
+      submittedAt: 11_100,
+      data: { name: "Ada", status: "active" },
+    });
+    expect(lowered.assertions).toHaveLength(2);
+    expect(lowered.assertions.map((result) => result.event)).toMatchObject([
+      {
+        kind: "assert",
+        e: "worker:ada",
+        a: "name",
+        v: "Ada",
+        actor: "user:collection",
+      },
+      {
+        kind: "assert",
+        e: "worker:ada",
+        a: "worker.status",
+        v: "active",
+        actor: "user:collection",
+      },
+    ]);
+    expect(lowered.assertions.map((result) => result.projection.changed)).toEqual([
+      [
+        {
+          e: "worker:ada",
+          a: "name",
+          beforeEventIds: [],
+          afterEventIds: [lowered.assertions[0]!.event.id],
+        },
+      ],
+      [
+        {
+          e: "worker:ada",
+          a: "worker.status",
+          beforeEventIds: [],
+          afterEventIds: [lowered.assertions[1]!.event.id],
+        },
+      ],
+    ]);
+    await expect(surface.getCurrentEntity({ e: "worker:ada" })).resolves.toMatchObject({
+      e: "worker:ada",
+      attributes: {
+        name: ["Ada"],
+        "worker.status": ["active"],
+      },
+    });
+    await expect(
+      surface.listEvents({ e: "worker:ada" }),
+    ).resolves.toHaveLength(2);
+
+    await expect(
+      surface.collectionByToken({ token: "collection:worker:maria:onboard" }),
+    ).resolves.toEqual({
+      token: "collection:worker:maria:onboard",
+      subject: "worker:maria",
+      form: "forms:onboarding",
+      status: "submitted",
+      issuedAt: coord.txTime,
+      expiresAt: 12_000,
+      submittedAt: 11_000,
+      data: { name: "Maria", acceptedPolicy: true },
+      runId: "run:1",
+      stepId: "step:collect",
+      scope: "tenant:demo",
+    });
+
+    const expired = await surface.issueCollection({
+      token: "collection:worker:expired:onboard",
+      subject: "worker:expired",
+      form: "forms:onboarding",
+      expiresAt: 9_999,
+    });
+    expect(expired.status).toBe("issued");
+    await expect(
+      surface.submitCollection({
+        token: "collection:worker:expired:onboard",
+        submittedAt: 10_000,
+        data: { late: true },
+      }),
+    ).rejects.toThrow(/expired/);
+    await expect(
+      surface.collectionByToken({ token: "collection:worker:expired:onboard" }),
+    ).resolves.toMatchObject({
+      token: "collection:worker:expired:onboard",
+      status: "expired",
+      expiredAt: 10_000,
+      submittedAt: null,
+      data: undefined,
+    });
+  });
+
+  test("current surface records collection reminder and expiry ticks over SQLite rows", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:collection-ticks",
+      wall: () => 700,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.issueCollection({
+      token: "collection:worker:timer:onboard",
+      subject: "worker:timer",
+      form: "forms:onboarding",
+      issuedAt: 10_000,
+      expiresAt: 20_000,
+    });
+
+    const reminder = await surface.scheduleCollectionTick({
+      id: "tick:worker:timer:reminder",
+      token: "collection:worker:timer:onboard",
+      phase: "reminder",
+      fireAt: 12_000,
+      scheduledAt: 10_000,
+    });
+    const escalation = await surface.scheduleCollectionTick({
+      id: "tick:worker:timer:escalation",
+      token: "collection:worker:timer:onboard",
+      phase: "escalation",
+      fireAt: 14_000,
+      scheduledAt: 10_000,
+    });
+    await surface.scheduleCollectionTick({
+      id: "tick:worker:timer:expire",
+      token: "collection:worker:timer:onboard",
+      phase: "expire",
+      fireAt: 20_000,
+      scheduledAt: 10_000,
+    });
+
+    expect(reminder).toEqual({
+      id: "tick:worker:timer:reminder",
+      token: "collection:worker:timer:onboard",
+      phase: "reminder",
+      fireAt: 12_000,
+      status: "pending",
+      scheduledAt: 10_000,
+      firedAt: null,
+    });
+    await expect(
+      surface.collectionTickById({ id: "tick:worker:timer:escalation" }),
+    ).resolves.toEqual(escalation);
+    await expect(
+      surface.listCollectionTicks({ status: "pending", dueAt: 13_000 }),
+    ).resolves.toEqual([reminder]);
+
+    const reminded = await surface.fireCollectionTick({
+      id: "tick:worker:timer:reminder",
+      firedAt: 12_500,
+    });
+    expect(reminded.tick).toMatchObject({
+      id: "tick:worker:timer:reminder",
+      status: "fired",
+      firedAt: 12_500,
+    });
+    expect(reminded.collection).toMatchObject({
+      token: "collection:worker:timer:onboard",
+      status: "issued",
+      remindedAt: 12_500,
+    });
+
+    const escalated = await surface.fireCollectionTick({
+      id: "tick:worker:timer:escalation",
+      firedAt: 14_500,
+    });
+    expect(escalated.tick.status).toBe("fired");
+    expect(escalated.collection).toMatchObject({
+      token: "collection:worker:timer:onboard",
+      status: "issued",
+      remindedAt: 12_500,
+      escalatedAt: 14_500,
+    });
+
+    const expired = await surface.fireCollectionTick({
+      id: "tick:worker:timer:expire",
+      firedAt: 20_000,
+    });
+    expect(expired.tick.status).toBe("fired");
+    expect(expired.collection).toMatchObject({
+      token: "collection:worker:timer:onboard",
+      status: "expired",
+      expiredAt: 20_000,
+    });
+
+    await expect(
+      surface.submitCollection({
+        token: "collection:worker:timer:onboard",
+        submittedAt: 20_100,
+        data: { late: true },
+      }),
+    ).rejects.toThrow(/expired/);
+    await expect(
+      surface.listCollectionTicks({ status: "fired" }),
+    ).resolves.toHaveLength(3);
+  });
+
+  test("collection ticks no-op after submission", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:collection-tick-noop",
+      wall: () => 800,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.issueCollection({
+      token: "collection:worker:done:onboard",
+      subject: "worker:done",
+      form: "forms:onboarding",
+      issuedAt: 10_000,
+    });
+    await surface.scheduleCollectionTick({
+      id: "tick:worker:done:reminder",
+      token: "collection:worker:done:onboard",
+      phase: "reminder",
+      fireAt: 12_000,
+    });
+    await surface.submitCollection({
+      token: "collection:worker:done:onboard",
+      submittedAt: 11_000,
+      data: { done: true },
+    });
+
+    const skipped = await surface.fireCollectionTick({
+      id: "tick:worker:done:reminder",
+      firedAt: 12_000,
+    });
+    expect(skipped.tick).toMatchObject({
+      id: "tick:worker:done:reminder",
+      status: "skipped",
+      firedAt: 12_000,
+      reason: "collection submitted",
+    });
+    expect(skipped.collection).toMatchObject({
+      token: "collection:worker:done:onboard",
+      status: "submitted",
+    });
+    await expect(
+      surface.collectionByToken({ token: "collection:worker:done:onboard" }),
+    ).resolves.not.toHaveProperty("remindedAt");
+  });
+
+  test("alarm multiplexer drains due collection ticks and re-arms the next alarm", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:alarm-mux",
+      wall: () => 850,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+    const alarms = new FakeAlarmStorage();
+    const mux = createDurableObjectSqliteAlarmMultiplexer(alarms, surface, {
+      now: () => 12_000,
+    });
+
+    await surface.issueCollection({
+      token: "collection:worker:alarm:onboard",
+      subject: "worker:alarm",
+      form: "forms:onboarding",
+      issuedAt: 10_000,
+      expiresAt: 20_000,
+    });
+    await surface.scheduleCollectionTick({
+      id: "tick:worker:alarm:expire",
+      token: "collection:worker:alarm:onboard",
+      phase: "expire",
+      fireAt: 20_000,
+      scheduledAt: 10_000,
+    });
+    await surface.scheduleCollectionTick({
+      id: "tick:worker:alarm:reminder",
+      token: "collection:worker:alarm:onboard",
+      phase: "reminder",
+      fireAt: 12_000,
+      scheduledAt: 10_000,
+    });
+    await surface.scheduleCollectionTick({
+      id: "tick:worker:alarm:escalation",
+      token: "collection:worker:alarm:onboard",
+      phase: "escalation",
+      fireAt: 14_000,
+      scheduledAt: 10_000,
+    });
+
+    await expect(mux.arm()).resolves.toMatchObject({
+      nextAlarmAt: 12_000,
+      nextTick: { id: "tick:worker:alarm:reminder" },
+    });
+    expect(alarms.alarmAt).toBe(12_000);
+
+    const drained = await mux.drain();
+    expect(drained).toMatchObject({
+      dueAt: 12_000,
+      fired: [
+        {
+          tick: {
+            id: "tick:worker:alarm:reminder",
+            status: "fired",
+            firedAt: 12_000,
+          },
+        },
+      ],
+      rearm: {
+        nextAlarmAt: 14_000,
+        nextTick: { id: "tick:worker:alarm:escalation" },
+      },
+    });
+    expect(alarms.setCalls).toEqual([12_000, 14_000]);
+    await expect(
+      surface.collectionByToken({ token: "collection:worker:alarm:onboard" }),
+    ).resolves.toMatchObject({
+      status: "issued",
+      remindedAt: 12_000,
+    });
+
+    const laterMux = createDurableObjectSqliteAlarmMultiplexer(alarms, surface, {
+      now: () => 25_000,
+    });
+    const later = await laterMux.drain();
+    expect(later.fired.map((result) => result.tick.id)).toEqual([
+      "tick:worker:alarm:escalation",
+      "tick:worker:alarm:expire",
+    ]);
+    expect(later.rearm).toEqual({ nextAlarmAt: null });
+    expect(alarms.alarmAt).toBe(null);
+    expect(alarms.deleteCalls).toBe(1);
+    await expect(
+      surface.collectionByToken({ token: "collection:worker:alarm:onboard" }),
+    ).resolves.toMatchObject({
+      status: "expired",
+      remindedAt: 12_000,
+      escalatedAt: 25_000,
+      expiredAt: 25_000,
+    });
+  });
+
+  test("current surface persists and fires flow-wait ticks over SQLite rows", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:flow-wait",
+      wall: () => 875,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.recordDagRun({
+      runId: "dag:worker:wait:1",
+      flowDefName: "owned_flow",
+      subject: "worker:wait",
+      status: "waiting",
+      currentStepId: "sleep",
+      context: { waited: false },
+      now: 30_000,
+      events: [
+        {
+          eventId: "dag:event:worker:wait:1:entered",
+          stepId: "sleep",
+          type: "timer",
+          kind: "wait-entered",
+        },
+      ],
+    });
+
+    const scheduled = await surface.scheduleFlowWaitTick({
+      id: "flow-wait:worker:wait:1:sleep",
+      runId: "dag:worker:wait:1",
+      stepId: "sleep",
+      eventId: "dag:event:worker:wait:1:woke",
+      fireAt: 35_000,
+      scheduledAt: 30_000,
+    });
+    expect(scheduled).toEqual({
+      id: "flow-wait:worker:wait:1:sleep",
+      runId: "dag:worker:wait:1",
+      stepId: "sleep",
+      eventId: "dag:event:worker:wait:1:woke",
+      fireAt: 35_000,
+      status: "pending",
+      scheduledAt: 30_000,
+      firedAt: null,
+    });
+    await expect(
+      surface.listFlowWaitTicks({ status: "pending", dueAt: 35_000 }),
+    ).resolves.toEqual([scheduled]);
+
+    const fired = await surface.fireFlowWaitTick({
+      id: "flow-wait:worker:wait:1:sleep",
+      firedAt: 35_000,
+    });
+    expect(fired.tick).toMatchObject({
+      id: "flow-wait:worker:wait:1:sleep",
+      status: "fired",
+      firedAt: 35_000,
+    });
+    expect(fired.run).toMatchObject({
+      runId: "dag:worker:wait:1",
+      status: "running",
+      currentStepId: "sleep",
+      updatedAt: 35_000,
+    });
+    expect(fired.run?.events.map((event) => event.kind)).toEqual([
+      "wait-entered",
+      "flow-wait",
+    ]);
+
+    await surface.scheduleFlowWaitTick({
+      id: "flow-wait:worker:wait:1:already-running",
+      runId: "dag:worker:wait:1",
+      stepId: "sleep",
+      eventId: "dag:event:worker:wait:1:already-running",
+      fireAt: 36_000,
+      scheduledAt: 35_000,
+    });
+    await expect(
+      surface.fireFlowWaitTick({
+        id: "flow-wait:worker:wait:1:already-running",
+        firedAt: 36_000,
+      }),
+    ).resolves.toMatchObject({
+      tick: {
+        id: "flow-wait:worker:wait:1:already-running",
+        status: "skipped",
+        firedAt: 36_000,
+        reason: "DAG run running",
+      },
+      run: { status: "running" },
+    });
+  });
+
+  test("alarm multiplexer drains flow-wait ticks before later collection ticks", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:flow-wait-alarm",
+      wall: () => 890,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+    const alarms = new FakeAlarmStorage();
+
+    await surface.recordDagRun({
+      runId: "dag:worker:flow-alarm:1",
+      flowDefName: "owned_flow",
+      subject: "worker:flow-alarm",
+      status: "waiting",
+      currentStepId: "pause",
+      now: 40_000,
+      events: [],
+    });
+    await surface.scheduleFlowWaitTick({
+      id: "flow-wait:worker:flow-alarm:pause",
+      runId: "dag:worker:flow-alarm:1",
+      stepId: "pause",
+      eventId: "dag:event:worker:flow-alarm:woke",
+      fireAt: 42_000,
+      scheduledAt: 40_000,
+    });
+    await surface.issueCollection({
+      token: "collection:worker:flow-alarm:onboard",
+      subject: "worker:flow-alarm",
+      form: "forms:onboarding",
+      issuedAt: 40_000,
+      expiresAt: 45_000,
+    });
+    await surface.scheduleCollectionTick({
+      id: "tick:worker:flow-alarm:expire",
+      token: "collection:worker:flow-alarm:onboard",
+      phase: "expire",
+      fireAt: 45_000,
+      scheduledAt: 40_000,
+    });
+
+    const mux = createDurableObjectSqliteAlarmMultiplexer(alarms, surface, {
+      now: () => 42_000,
+    });
+    await expect(mux.arm()).resolves.toMatchObject({
+      nextAlarmAt: 42_000,
+      nextTickKind: "flow-wait",
+      nextTick: { id: "flow-wait:worker:flow-alarm:pause" },
+    });
+
+    const drained = await mux.drain();
+    expect(drained.fired).toHaveLength(1);
+    expect(drained.fired[0]).toMatchObject({
+      kind: "flow-wait",
+      tick: {
+        id: "flow-wait:worker:flow-alarm:pause",
+        status: "fired",
+        firedAt: 42_000,
+      },
+      run: { status: "running" },
+    });
+    expect(drained.rearm).toMatchObject({
+      nextAlarmAt: 45_000,
+      nextTickKind: "collection",
+      nextTick: { id: "tick:worker:flow-alarm:expire" },
+    });
+    expect(alarms.setCalls).toEqual([42_000, 45_000]);
+  });
+
+  test("current surface persists DAG run timelines over SQLite rows", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:dag",
+      wall: () => 900,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const first = await surface.recordDagRun({
+      runId: "dag:worker:flow:1",
+      flowDefName: "owned_flow",
+      subject: "worker:dag",
+      status: "waiting",
+      currentStepId: "collect",
+      context: { employer: "employer:acme" },
+      now: 50_000,
+      events: [
+        {
+          eventId: "dag:event:worker:flow:1:collect-issued",
+          stepId: "collect",
+          type: "collect",
+          kind: "collect-issued",
+          message: "owned_i9 for employer:acme",
+        },
+      ],
+    });
+    expect(first).toEqual({
+      runId: "dag:worker:flow:1",
+      flowDefName: "owned_flow",
+      subject: "worker:dag",
+      status: "waiting",
+      currentStepId: "collect",
+      startedAt: 50_000,
+      updatedAt: 50_000,
+      context: { employer: "employer:acme" },
+      events: [
+        {
+          eventId: "dag:event:worker:flow:1:collect-issued",
+          runId: "dag:worker:flow:1",
+          ts: 50_000,
+          stepId: "collect",
+          type: "collect",
+          kind: "collect-issued",
+          message: "owned_i9 for employer:acme",
+        },
+      ],
+    });
+
+    const second = await surface.recordDagRun({
+      flowDefName: "owned_flow",
+      subject: "worker:dag",
+      status: "completed",
+      currentStepId: "done",
+      context: { employer: "employer:acme", accepted: true },
+      now: 51_000,
+      events: [
+        {
+          eventId: "dag:event:worker:flow:1:collect-satisfied",
+          stepId: "collect",
+          type: "collect",
+          kind: "collect-satisfied",
+        },
+        {
+          eventId: "dag:event:worker:flow:1:completed",
+          stepId: "done",
+          type: "done",
+          kind: "completed",
+        },
+      ],
+    });
+    expect(second).toMatchObject({
+      runId: "dag:worker:flow:1",
+      status: "completed",
+      currentStepId: "done",
+      updatedAt: 51_000,
+      completedAt: 51_000,
+      context: { employer: "employer:acme", accepted: true },
+    });
+    expect(second.events.map((event) => event.kind)).toEqual([
+      "collect-issued",
+      "collect-satisfied",
+      "completed",
+    ]);
+
+    await expect(surface.getDagRun({ runId: "dag:worker:flow:1" })).resolves.toEqual(
+      second,
+    );
+    await expect(
+      surface.listDagRuns({ subject: "worker:dag", status: "completed" }),
+    ).resolves.toEqual([second]);
+  });
+
+  test("current surface resumes running DAG rows with caller timeline events", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:dag-resume",
+      wall: () => 925,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const running = await surface.recordDagRun({
+      runId: "dag:worker:resume:1",
+      flowDefName: "owned_flow",
+      subject: "worker:resume",
+      status: "running",
+      currentStepId: "review",
+      context: { attempt: 1 },
+      now: 60_000,
+      events: [
+        {
+          eventId: "dag:event:worker:resume:1:started",
+          stepId: "start",
+          type: "start",
+          kind: "started",
+        },
+      ],
+    });
+    await surface.recordDagRun({
+      runId: "dag:worker:resume:2",
+      flowDefName: "other_flow",
+      subject: "worker:resume",
+      status: "running",
+      currentStepId: "start",
+      now: 60_100,
+      events: [
+        {
+          eventId: "dag:event:worker:resume:2:started",
+          stepId: "start",
+          type: "start",
+          kind: "started",
+        },
+      ],
+    });
+
+    await expect(
+      surface.listDagRuns({
+        subject: "worker:resume",
+        flowDefName: "owned_flow",
+        status: "running",
+      }),
+    ).resolves.toEqual([running]);
+
+    const completed = await surface.resumeDagRun({
+      runId: "dag:worker:resume:1",
+      status: "completed",
+      currentStepId: "done",
+      context: { attempt: 1, accepted: true },
+      now: 61_000,
+      events: [
+        {
+          eventId: "dag:event:worker:resume:1:completed",
+          stepId: "done",
+          type: "resume",
+          kind: "completed",
+          message: "host completed the running DAG slice",
+        },
+      ],
+    });
+    expect(completed).toMatchObject({
+      runId: "dag:worker:resume:1",
+      flowDefName: "owned_flow",
+      subject: "worker:resume",
+      status: "completed",
+      currentStepId: "done",
+      updatedAt: 61_000,
+      completedAt: 61_000,
+      context: { attempt: 1, accepted: true },
+    });
+    expect(completed.events.map((event) => event.kind)).toEqual([
+      "started",
+      "completed",
+    ]);
+    await expect(
+      surface.resumeDagRun({
+        runId: "dag:worker:resume:1",
+        status: "completed",
+        now: 61_500,
+        events: [
+          {
+            eventId: "dag:event:worker:resume:1:duplicate",
+            stepId: "done",
+            type: "resume",
+            kind: "duplicate",
+          },
+        ],
+      }),
+    ).rejects.toThrow(/not running/);
+
+    const unsupported = await surface.resumeDagRun({
+      runId: "dag:worker:resume:2",
+      status: "unsupported",
+      now: 62_000,
+      events: [
+        {
+          eventId: "dag:event:worker:resume:2:unsupported",
+          stepId: "start",
+          type: "resume",
+          kind: "unsupported",
+        },
+      ],
+    });
+    expect(unsupported).toMatchObject({
+      runId: "dag:worker:resume:2",
+      status: "unsupported",
+      currentStepId: "start",
+      completedAt: 62_000,
+    });
+    await expect(
+      surface.listDagRuns({
+        subject: "worker:resume",
+        flowDefName: "owned_flow",
+        status: "running",
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      surface.resumeDagRun({
+        runId: "dag:worker:resume:missing",
+        status: "completed",
+        now: 63_000,
+        events: [],
+      }),
+    ).rejects.toThrow(/unknown DAG run/);
+  });
+
+  test("DAG run creation requires caller-provided run ids", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:dag-id",
+      wall: () => 950,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await expect(
+      surface.recordDagRun({
+        flowDefName: "owned_flow",
+        subject: "worker:new-dag",
+        status: "running",
+        now: 52_000,
+        events: [],
+      }),
+    ).rejects.toThrow(/runId required/);
+  });
+
+  test("current surface executes an assert DAG step through protocol append and current reconcile", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:dag-step-assert",
+      wall: () => 975,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const executed = await surface.executeDagStep({
+      runId: "dag:worker:step:assert",
+      flowDefName: "owned_flow",
+      subject: "worker:step-assert",
+      stepId: "activate",
+      kind: "assert",
+      eventId: "dag:event:worker:step:assert:activate",
+      now: 70_000,
+      context: { source: "dag-step" },
+      message: "activate worker",
+      assertions: [
+        {
+          a: "worker.status",
+          v: "active",
+          validFrom: 9_000,
+          actor: "system:flow",
+          actorType: "system",
+          reason: "flow assert step",
+        },
+      ],
+    });
+
+    expect(executed.run).toMatchObject({
+      runId: "dag:worker:step:assert",
+      flowDefName: "owned_flow",
+      subject: "worker:step-assert",
+      status: "completed",
+      currentStepId: "activate",
+      completedAt: 70_000,
+      context: { source: "dag-step" },
+    });
+    expect(executed.run.events).toEqual([
+      {
+        eventId: "dag:event:worker:step:assert:activate",
+        runId: "dag:worker:step:assert",
+        ts: 70_000,
+        stepId: "activate",
+        type: "action",
+        kind: "asserted",
+        message: "activate worker",
+      },
+    ]);
+    expect(executed.assertions).toHaveLength(1);
+    expect(executed.assertions[0]?.event).toMatchObject({
+      kind: "assert",
+      e: "worker:step-assert",
+      a: "worker.status",
+      v: "active",
+      seq: 1,
+    });
+    await expect(
+      surface.listCurrent({ e: "worker:step-assert", a: "worker.status" }),
+    ).resolves.toMatchObject([
+      {
+        e: "worker:step-assert",
+        a: "worker.status",
+        v: "active",
+      },
+    ]);
+  });
+
+  test("current surface executes a collect DAG step by issuing a collection token and parking the run", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:dag-step-collect",
+      wall: () => 980,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const executed = await surface.executeDagStep({
+      runId: "dag:worker:step:collect",
+      flowDefName: "owned_flow",
+      subject: "worker:step-collect",
+      stepId: "collect-i9",
+      kind: "collect",
+      eventId: "dag:event:worker:step:collect:issued",
+      now: 71_000,
+      context: { requirement: "i9" },
+      collection: {
+        token: "collection:worker:step-collect:i9",
+        form: "owned_i9",
+        expiresAt: 80_000,
+        scope: "worker:i9",
+      },
+    });
+
+    expect(executed.collection).toMatchObject({
+      token: "collection:worker:step-collect:i9",
+      subject: "worker:step-collect",
+      form: "owned_i9",
+      status: "issued",
+      issuedAt: 71_000,
+      expiresAt: 80_000,
+      runId: "dag:worker:step:collect",
+      stepId: "collect-i9",
+      scope: "worker:i9",
+    });
+    expect(executed.run).toMatchObject({
+      runId: "dag:worker:step:collect",
+      status: "waiting",
+      currentStepId: "collect-i9",
+      context: { requirement: "i9" },
+    });
+    expect(executed.run.events.map((event) => event.kind)).toEqual([
+      "collect-issued",
+    ]);
+    await expect(
+      surface.collectionByToken({ token: "collection:worker:step-collect:i9" }),
+    ).resolves.toEqual(executed.collection);
+    await expect(
+      surface.executeDagStep({
+        runId: "dag:worker:step:collect:missing",
+        flowDefName: "owned_flow",
+        subject: "worker:step-collect",
+        stepId: "collect-i9",
+        kind: "collect",
+        eventId: "dag:event:worker:step:collect:missing",
+        now: 71_500,
+      }),
+    ).rejects.toThrow(/requires collection input/);
+  });
+
+  test("current surface executes a wait DAG step by scheduling a caller-identified wake tick", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:dag-step-wait",
+      wall: () => 985,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const executed = await surface.executeDagStep({
+      runId: "dag:worker:step:wait",
+      flowDefName: "owned_flow",
+      subject: "worker:step-wait",
+      stepId: "sleep",
+      kind: "wait",
+      eventId: "dag:event:worker:step:wait:scheduled",
+      now: 72_000,
+      context: { delay: "short" },
+      wait: {
+        id: "flow-wait:worker:step-wait:sleep",
+        eventId: "dag:event:worker:step:wait:woke",
+        fireAt: 75_000,
+      },
+    });
+
+    expect(executed.run).toMatchObject({
+      runId: "dag:worker:step:wait",
+      status: "waiting",
+      currentStepId: "sleep",
+      context: { delay: "short" },
+    });
+    expect(executed.waitTick).toEqual({
+      id: "flow-wait:worker:step-wait:sleep",
+      runId: "dag:worker:step:wait",
+      stepId: "sleep",
+      eventId: "dag:event:worker:step:wait:woke",
+      fireAt: 75_000,
+      status: "pending",
+      scheduledAt: 72_000,
+      firedAt: null,
+    });
+    await expect(
+      surface.listFlowWaitTicks({ runId: "dag:worker:step:wait" }),
+    ).resolves.toEqual([executed.waitTick]);
+
+    const fired = await surface.fireFlowWaitTick({
+      id: "flow-wait:worker:step-wait:sleep",
+      firedAt: 75_000,
+    });
+    expect(fired.run).toMatchObject({
+      runId: "dag:worker:step:wait",
+      status: "running",
+      currentStepId: "sleep",
+    });
+    expect(fired.run?.events.map((event) => event.kind)).toEqual([
+      "flow-wait-scheduled",
+      "flow-wait",
+    ]);
+  });
+
+  test("current surface executes an assertion action through DAG step semantics", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:action-assert",
+      wall: () => 990,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const executed = await surface.executeAction({
+      runId: "dag:worker:action:terminate",
+      flowDefName: "owned_action_flow",
+      subject: "worker:action-assert",
+      actionName: "terminate_worker",
+      eventId: "dag:event:worker:action:terminate",
+      now: 73_000,
+      message: "terminate worker",
+      assertions: [
+        {
+          a: "worker.status",
+          v: "terminated",
+          validFrom: 9_500,
+          actor: "system:action",
+          actorType: "system",
+          reason: "configured action",
+        },
+      ],
+    });
+
+    expect(executed.actionName).toBe("terminate_worker");
+    expect(executed.run).toMatchObject({
+      runId: "dag:worker:action:terminate",
+      flowDefName: "owned_action_flow",
+      subject: "worker:action-assert",
+      status: "completed",
+      currentStepId: "terminate_worker",
+    });
+    expect(executed.run.events).toEqual([
+      {
+        eventId: "dag:event:worker:action:terminate",
+        runId: "dag:worker:action:terminate",
+        ts: 73_000,
+        stepId: "terminate_worker",
+        type: "action",
+        kind: "asserted",
+        message: "terminate worker",
+      },
+    ]);
+    expect(executed.assertions[0]?.event).toMatchObject({
+      e: "worker:action-assert",
+      a: "worker.status",
+      v: "terminated",
+      seq: 1,
+    });
+    await expect(
+      surface.listCurrent({ e: "worker:action-assert", a: "worker.status" }),
+    ).resolves.toMatchObject([
+      {
+        e: "worker:action-assert",
+        a: "worker.status",
+        v: "terminated",
+      },
+    ]);
+  });
+
+  test("current surface executes a collection-opening action and parks the run", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:action-collect",
+      wall: () => 995,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const executed = await surface.executeAction({
+      runId: "dag:worker:action:collect-i9",
+      flowDefName: "owned_action_flow",
+      subject: "worker:action-collect",
+      actionName: "open_i9_collection",
+      stepId: "collect-i9",
+      eventId: "dag:event:worker:action:collect-i9",
+      now: 74_000,
+      context: { action: "open_i9_collection" },
+      collection: {
+        token: "collection:worker:action-collect:i9",
+        form: "owned_i9",
+        expiresAt: 82_000,
+        scope: "worker:i9",
+      },
+    });
+
+    expect(executed.actionName).toBe("open_i9_collection");
+    expect(executed.collection).toMatchObject({
+      token: "collection:worker:action-collect:i9",
+      subject: "worker:action-collect",
+      form: "owned_i9",
+      status: "issued",
+      issuedAt: 74_000,
+      runId: "dag:worker:action:collect-i9",
+      stepId: "collect-i9",
+    });
+    expect(executed.run).toMatchObject({
+      runId: "dag:worker:action:collect-i9",
+      status: "waiting",
+      currentStepId: "collect-i9",
+      context: { action: "open_i9_collection" },
+    });
+    expect(executed.run.events.map((event) => event.kind)).toEqual([
+      "collect-issued",
+    ]);
+    await expect(
+      surface.collectionByToken({
+        token: "collection:worker:action-collect:i9",
+      }),
+    ).resolves.toEqual(executed.collection);
+  });
+
+  test("current surface rejects action definitions without exactly one supported effect", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:action-invalid",
+      wall: () => 1_000,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await expect(
+      surface.executeAction({
+        runId: "dag:worker:action:none",
+        flowDefName: "owned_action_flow",
+        subject: "worker:action-invalid",
+        actionName: "noop",
+        eventId: "dag:event:worker:action:none",
+      }),
+    ).rejects.toThrow(/requires exactly one supported action effect/);
+
+    await expect(
+      surface.executeAction({
+        runId: "dag:worker:action:both",
+        flowDefName: "owned_action_flow",
+        subject: "worker:action-invalid",
+        actionName: "ambiguous",
+        eventId: "dag:event:worker:action:both",
+        assertions: [
+          {
+            a: "worker.status",
+            v: "active",
+            actor: "system:action",
+          },
+        ],
+        collection: {
+          token: "collection:worker:action-invalid:ambiguous",
+          form: "owned_i9",
+        },
+      }),
+    ).rejects.toThrow(/requires exactly one supported action effect/);
+  });
+
+  test("current surface reads registered action definitions from current projection rows", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:action-registry",
+      wall: () => 1_005,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.appendAssert({
+      e: "action:terminate",
+      a: "type",
+      v: "Action",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:terminate",
+      a: "label",
+      v: "Terminate worker",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:terminate",
+      a: "appliesTo",
+      v: "Worker",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:terminate",
+      a: "asserts",
+      v: { "worker.status": "terminated" },
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:archive_client",
+      a: "type",
+      v: "Action",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:archive_client",
+      a: "appliesTo",
+      v: "Client",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:archive_client",
+      a: "asserts",
+      v: { "client.status": "archived" },
+      actor: "config",
+    });
+
+    await expect(surface.actionByName({ name: "terminate" })).resolves.toEqual({
+      name: "terminate",
+      label: "Terminate worker",
+      appliesTo: "Worker",
+      asserts: { "worker.status": "terminated" },
+      fields: [],
+    });
+    await expect(surface.actionByName({ name: "missing" })).resolves.toBeUndefined();
+    await expect(surface.listActions()).resolves.toMatchObject([
+      { name: "archive_client" },
+      { name: "terminate" },
+    ]);
+    await expect(surface.actionsForType({ type: "Worker" })).resolves.toEqual([
+      {
+        name: "terminate",
+        label: "Terminate worker",
+        appliesTo: "Worker",
+        asserts: { "worker.status": "terminated" },
+        fields: [],
+      },
+    ]);
+  });
+
+  test("current surface executes registered assertion actions with arg resolution", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:registered-action-assert",
+      wall: () => 1_010,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.appendAssert({
+      e: "worker:registered-action",
+      a: "type",
+      v: "Worker",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "client:registered-action",
+      a: "type",
+      v: "Client",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "action:set_status",
+      a: "type",
+      v: "Action",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:set_status",
+      a: "appliesTo",
+      v: "Worker",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:set_status",
+      a: "fields",
+      v: [
+        {
+          name: "status",
+          label: "Status",
+          type: "select",
+          options: ["active", "terminated"],
+        },
+      ],
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:set_status",
+      a: "asserts",
+      v: { "worker.status": "$arg.status" },
+      actor: "config",
+    });
+
+    const executed = await surface.executeRegisteredAction({
+      action: "set_status",
+      entity: "worker:registered-action",
+      runId: "dag:registered-action:set-status",
+      eventId: "dag:event:registered-action:set-status",
+      actor: "system:registry",
+      actorType: "system",
+      now: 76_000,
+      args: { status: "terminated" },
+    });
+
+    expect(executed.action).toMatchObject({
+      name: "set_status",
+      appliesTo: "Worker",
+      asserts: { "worker.status": "$arg.status" },
+    });
+    expect(executed.execution.actionName).toBe("set_status");
+    expect(executed.execution.assertions[0]?.event).toMatchObject({
+      e: "worker:registered-action",
+      a: "worker.status",
+      v: "terminated",
+    });
+    await expect(
+      surface.listCurrent({
+        e: "worker:registered-action",
+        a: "worker.status",
+      }),
+    ).resolves.toMatchObject([
+      {
+        e: "worker:registered-action",
+        a: "worker.status",
+        v: "terminated",
+      },
+    ]);
+
+    await expect(
+      surface.executeRegisteredAction({
+        action: "set_status",
+        entity: "worker:registered-action",
+        runId: "dag:registered-action:missing-arg",
+        eventId: "dag:event:registered-action:missing-arg",
+        actor: "system:registry",
+        args: {},
+      }),
+    ).rejects.toThrow(/missing action arg: status/);
+    await expect(
+      surface.executeRegisteredAction({
+        action: "set_status",
+        entity: "client:registered-action",
+        runId: "dag:registered-action:wrong-type",
+        eventId: "dag:event:registered-action:wrong-type",
+        actor: "system:registry",
+        args: { status: "active" },
+      }),
+    ).rejects.toThrow(/applies to Worker, not Client/);
+  });
+
+  test("current surface executes registered collection-opening actions with caller tokens", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:registered-action-collect",
+      wall: () => 1_015,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await surface.appendAssert({
+      e: "worker:registered-collect",
+      a: "type",
+      v: "Worker",
+      actor: "user:1",
+    });
+    await surface.appendAssert({
+      e: "action:collect_i9",
+      a: "type",
+      v: "Action",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:collect_i9",
+      a: "appliesTo",
+      v: "Worker",
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:collect_i9",
+      a: "fields",
+      v: [{ name: "scope", label: "Employer", type: "string" }],
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:collect_i9",
+      a: "asserts",
+      v: {},
+      actor: "config",
+    });
+    await surface.appendAssert({
+      e: "action:collect_i9",
+      a: "opensForm",
+      v: { form: "i9", scope: "$arg.scope" },
+      actor: "config",
+    });
+
+    await expect(
+      surface.executeRegisteredAction({
+        action: "collect_i9",
+        entity: "worker:registered-collect",
+        runId: "dag:registered-action:collect-missing-token",
+        eventId: "dag:event:registered-action:collect-missing-token",
+        actor: "system:registry",
+        args: { scope: "employer:acme" },
+      }),
+    ).rejects.toThrow(/requires collectionToken/);
+
+    const executed = await surface.executeRegisteredAction({
+      action: "collect_i9",
+      entity: "worker:registered-collect",
+      runId: "dag:registered-action:collect-i9",
+      eventId: "dag:event:registered-action:collect-i9",
+      actor: "system:registry",
+      now: 77_000,
+      args: { scope: "employer:acme" },
+      collectionToken: "collection:registered-action:i9",
+      collectionExpiresAt: 90_000,
+    });
+
+    expect(executed.execution.collection).toMatchObject({
+      token: "collection:registered-action:i9",
+      subject: "worker:registered-collect",
+      form: "i9",
+      status: "issued",
+      issuedAt: 77_000,
+      expiresAt: 90_000,
+      scope: "employer:acme",
+    });
+    expect(executed.execution.run).toMatchObject({
+      runId: "dag:registered-action:collect-i9",
+      status: "waiting",
+      currentStepId: "collect_i9",
+    });
+    await expect(
+      surface.collectionByToken({ token: "collection:registered-action:i9" }),
+    ).resolves.toEqual(executed.execution.collection);
+  });
+});

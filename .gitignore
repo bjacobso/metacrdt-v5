@@ -6,6 +6,12 @@ dist/
 .env.local
 .env
 
+# Local branch planning notes
+PLAN
+PLAN.md
+TODO
+TODO.md
+
 # Logs
 *.log
 npm-debug.log*

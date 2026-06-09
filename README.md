@@ -90,9 +90,11 @@ It defines:
 
 The current Convex runtime implements the centralized reference path. The
 multi-replica pieces are emerging as reusable target packages: browser/local
-persistence, Durable Object storage/relay shells, and structural peer-to-peer
-DataChannel anti-entropy exist; live deployment, auth, signaling, and production
-coordination remain the frontier tracked in [TODO.md](./TODO.md).
+persistence, Durable Object KV/SQLite storage and relay shells, and structural
+peer-to-peer DataChannel anti-entropy exist. The Cloudflare relay now has an
+optional token-auth boundary for live Workers; actual live deployment,
+signaling, retry policy, and production coordination remain the frontier tracked in
+[TODO.md](./TODO.md).
 
 ---
 
@@ -144,21 +146,44 @@ Current packages:
   component-owned state as a bounded starter/resumer with persisted
   component-owned DAG run/timeline rows, scheduled wait-step wakeups, and
   component-owned collection reminder/escalation/expiry timer state.
+  The component also exposes raw protocol EventStore functions plus
+  `createConvexComponentRuntimeLayer`, so its component-owned log passes the
+  shared Layer-backed `@metacrdt/testkit` conformance suite. It also owns a
+  neutral `projectionRows` read model that provides `ProjectionStoreService`
+  and passes the shared materialized projection-store suite.
   Includes Confect sidecar guidance.
 - **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
   authoring language extracted from Open Ontology: reader, formatter, evaluator,
   VM, type inference, and language-owned elaboration utilities.
-- **`@metacrdt/runtime`** (`packages/runtime`) — target-neutral service contracts
-  and memory harness: injected HLC clock, optional per-replica sequencer,
-  operation helpers, version-vector delta calculation, BroadcastChannel
-  anti-entropy, and p2p DataChannel anti-entropy.
+- **`@metacrdt/runtime`** (`packages/runtime`) — target-neutral Effect service
+  contracts and memory harness: `Context.Tag` + `Layer` runtime services,
+  injected HLC clock, per-replica sequencer, materialized current
+  `ProjectionStoreService`, Effect-native operation helpers, compatibility
+  Promise facades, version-vector delta calculation, BroadcastChannel
+  anti-entropy, and p2p DataChannel anti-entropy. The runtime package also owns
+  the shared `ProjectionRow` contract, `projectionRowsFromLog` builder, default
+  EventStore-backed Datalog query Layer, and projection-backed current-query
+  Layer.
 - **`@metacrdt/cloudflare`** (`packages/cloudflare`) — Durable Object / Worker
-  target helpers: storage-backed event log, HLC, per-replica sequencer,
+  target helpers: KV-backed and SQLite-backed event log/projection/HLC/seq
+  services, Effect Layer providers, the first SQLite-backed current-state surface
+  (append with scoped current-coordinate projection reconcile through
+  `ProjectionStoreService.replaceMatching` and target-indexed lifecycle lookup,
+  protocol event reads,
+  EventStore-backed bitemporal Datalog reads, projection-backed current Datalog
+  reads, full-recovery rebuild, current rows/entities, projection invalidation
+  summaries as `changed` `(e, a)` before/after event ids), collection rows and
+  timers, DAG run/timeline rows, single-step DAG execution, flow-wait alarm
+  plumbing, live invalidation and current-query fanout with result-diff metadata,
+  persisted live-query
+  subscription rows, authenticated live-query and write routes, a SQLite
+  live-query DO assembly, structural live-query client/session helpers,
   WebSocket relay shell, Worker router, and example Wrangler config.
 - **`@metacrdt/local`** (`packages/local`) — browser/local-first target package:
   localStorage-backed event/HLC/seq services composed with BroadcastChannel
   anti-entropy, IndexedDB-compatible async persistence, SQLite-compatible local
-  persistence, plus browser defaults and lifecycle helpers.
+  persistence, Effect Layer providers, plus browser defaults and lifecycle
+  helpers.
 - **`@metacrdt/node`** (`packages/node`) — open server-process target:
   `createNodeMemoryRuntime`, structural server-SQLite runtime services, and
   structural Postgres runtime services (`query(sql, params)` client shape)
@@ -167,13 +192,32 @@ Current packages:
   `createNodeSyncHttpHandler` exposing health, delta pull, event push, and
   one-shot SSE sync over any `RuntimeServices`, and a
   `createNodeHttpRequestListener` adapter for native `node:http`-style
-  request/response objects. It also ships `metacrdt-node-dev`, an in-memory
-  local sync server CLI over native `node:http`. Memory, SQLite, and Postgres
-  runtimes pass `@metacrdt/testkit`.
+  request/response objects, plus `createNodeSyncClientEffect` /
+  `createNodeSyncClient` for consuming those same routes from Effect or ordinary
+  Promise-based Node code. `createNodeProductionRuntimeEffect` /
+  `createNodeProductionRuntime` assemble the runtime, Layer, sync handler,
+  native-style listener, SQL lifecycle metadata, and optional sync client for
+  production hosts without choosing a framework or driver. It also ships
+  `metacrdt-node-dev`, an in-memory local sync server CLI over native
+  `node:http`. Memory, SQLite, and Postgres runtimes expose Effect Layer
+  providers and pass `@metacrdt/testkit`.
 - **`@metacrdt/testkit`** (`packages/testkit`) — target conformance helpers:
-  framework-neutral async checks for EventStore idempotency/filtering/content-id
-  verification, version-vector anti-entropy, and deterministic fold convergence.
-  The package proves itself against `@metacrdt/runtime`'s in-memory target.
+  Effect Layer-backed checks for EventStore idempotency/filtering (including
+  lifecycle `target` lookup)/content-id
+  verification, version-vector anti-entropy, deterministic fold convergence, and
+  EventStore-backed projection plus the production `DatalogQueryService`
+  contract. It also includes
+  opt-in materialized projection-store conformance for targets that provide
+  `ProjectionStoreService` (runtime memory/localStorage, Node
+  memory/SQLite/Postgres, local-first localStorage, Cloudflare Durable Object,
+  Convex component `projectionRows`),
+  restart-persistence conformance for durable targets, checking
+  event-log/HLC/seq continuity across runtime re-creation, plus scheduler
+  service-boundary, transport publish-boundary, and peer network
+  delivery/catch-up conformance for observable services/harnesses. The package
+  proves itself against runtime Layers (including BroadcastChannel, p2p, and
+  Cloudflare relay network harnesses) and is consumed by Convex/Node/local/
+  Cloudflare target Layer tests.
 
 Package build policy:
 
@@ -200,13 +244,16 @@ Planned package graph:
 @metacrdt/forms       forms, collection, prompt-response
 @metacrdt/views       ViewSpec / generated response surfaces
 @metacrdt/agent       agent actors, proposals, skills
-@metacrdt/runtime     IR + service interfaces
+@metacrdt/runtime     IR + Effect service interfaces/Layers
 @metacrdt/convex      Convex target / component / bindings
-@metacrdt/cloudflare  Durable Object / Worker target
+@metacrdt/cloudflare  Durable Object / Worker target (KV relay shell + SQLite current/query/DAG seed)
 @metacrdt/local       browser/local-first target
 @metacrdt/testkit     target conformance checks
-@metacrdt/node        Node target (memory + structural SQLite/Postgres + SQL lifecycle plan + HTTP/SSE + listener + dev-server CLI shipped)
+@metacrdt/node        Node target (memory + structural SQLite/Postgres + SQL lifecycle plan + HTTP/SSE + listener + sync client + production assembly + dev-server CLI shipped)
 ```
+
+The Node target's concrete production assembly recipes live in
+[packages/node/DEPLOYMENT.md](./packages/node/DEPLOYMENT.md).
 
 Open Ontology is vendored as a context submodule at
 [.context/open-ontology](./.context/open-ontology). The fold plan is documented
@@ -344,8 +391,10 @@ Built today:
 - single-use, expiring collection tokens for the public `/collect` page
 - Tailwind + React Router research-preview UI
 - `@metacrdt/core` wired into the Convex read path for bitemporal visibility
-- `@metacrdt/runtime` harness groundwork: target-neutral services plus an
-  in-memory convergence test target
+- `@metacrdt/runtime` harness groundwork: target-neutral Effect services plus
+  in-memory/localStorage convergence test targets and Layers; Convex, Node,
+  local, and Cloudflare target packages also expose runtime Layers and pass
+  Layer-backed `@metacrdt/testkit` conformance
 - Confect/Effect sidecars for typed read/planning/protocol inspection:
   `metacrdt.verifyEvents`, `metacrdt.explainDerived`, and a read-only compliance
   dry-run planner. The dry-run planner is now event-log-backed and
@@ -673,7 +722,9 @@ Frontier:
 - HLC + version-vector sync across replicas
 - Durable Object + SQLite triple-store parity
 - production database lifecycle/migrations beyond the current Node SQL DDL plan
-- expanded conformance suites for persistence, scheduler, transport, and queries
+  and structural production assembly helper
+- full historical SQL-indexed Datalog/query providers beyond the shared
+  EventStore-backed service and current projection-backed query provider
 
 See [TODO.md](./TODO.md) for the running pulse.
 

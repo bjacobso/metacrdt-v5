@@ -1,22 +1,45 @@
 import { describe, expect, test } from "vitest";
 import { fromEvents, valueOf } from "@metacrdt/core";
-import { applyOperation, versionVector } from "@metacrdt/runtime";
 import {
+  EventStoreService,
+  applyOperation,
+  applyOperationEffect,
+  runtimeServicesLayer,
+  versionVector,
+} from "@metacrdt/runtime";
+import { Effect } from "effect";
+import {
+  runRuntimePersistenceConformance,
+  runRuntimeProjectionStoreConformance,
+  runRuntimeSchedulerConformance,
+  runRuntimeTransportConformance,
   runRuntimeConformance,
-  type RuntimeConformanceTarget,
+  type RuntimePersistenceConformanceTarget,
+  type RuntimeProjectionStoreConformanceTarget,
+  type RuntimeSchedulerConformanceTarget,
+  type RuntimeTransportConformanceTarget,
+  type RuntimeLayerConformanceTarget,
   type RuntimeFactoryOptions,
 } from "@metacrdt/testkit";
 import {
   createNodeHttpRequestListener,
+  createNodeMemoryRuntimeLayer,
+  createNodeProductionRuntime,
+  createNodeProductionRuntimeEffect,
+  createNodePostgresRuntimeLayer,
   createNodeMemoryRuntime,
   createNodePostgresRuntime,
   createNodeSqlLifecyclePlan,
+  createNodeSqliteRuntimeLayer,
+  createNodeSyncClient,
+  createNodeSyncClientEffect,
   createNodeSyncHttpHandler,
   createNodeSqliteRuntime,
   type NodeHttpIncomingMessageLike,
   type NodeHttpServerResponseLike,
   type NodePostgresClientLike,
   type NodePostgresQueryResultLike,
+  type NodeSyncClientFetch,
   type NodeSqliteDatabaseLike,
   type NodeSqliteStatementLike,
 } from "./index.js";
@@ -25,12 +48,22 @@ type EventRow = {
   id: string;
   e: string | null;
   a: string | null;
+  target: string | null;
   event_json: string;
+};
+
+type ProjectionRowRecord = {
+  id: string;
+  e: string;
+  a: string;
+  event_id: string;
+  row_json: string;
 };
 
 class FakeSqliteDatabase implements NodeSqliteDatabaseLike {
   readonly events = new Map<string, EventRow>();
   readonly meta = new Map<string, string>();
+  readonly projection = new Map<string, ProjectionRowRecord>();
 
   exec(_sql: string): void {}
 
@@ -38,8 +71,32 @@ class FakeSqliteDatabase implements NodeSqliteDatabaseLike {
     const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
     return {
       run: (...params: readonly unknown[]) => {
+        if (normalized.startsWith("delete from") && normalized.includes("projection")) {
+          this.projection.clear();
+          return;
+        }
+        if (normalized.startsWith("insert into") && normalized.includes("row_json")) {
+          const [id, e, a, eventId, rowJson] = params;
+          if (
+            typeof id !== "string" ||
+            typeof e !== "string" ||
+            typeof a !== "string" ||
+            typeof eventId !== "string" ||
+            typeof rowJson !== "string"
+          ) {
+            throw new Error("bad projection insert params");
+          }
+          this.projection.set(id, {
+            id,
+            e,
+            a,
+            event_id: eventId,
+            row_json: rowJson,
+          });
+          return;
+        }
         if (normalized.startsWith("insert into") && normalized.includes("event_json")) {
-          const [id, e, a, eventJson] = params;
+          const [id, e, a, target, eventJson] = params;
           if (typeof id !== "string" || typeof eventJson !== "string") {
             throw new Error("bad event insert params");
           }
@@ -48,6 +105,7 @@ class FakeSqliteDatabase implements NodeSqliteDatabaseLike {
               id,
               e: typeof e === "string" ? e : null,
               a: typeof a === "string" ? a : null,
+              target: typeof target === "string" ? target : null,
               event_json: eventJson,
             });
           }
@@ -71,6 +129,10 @@ class FakeSqliteDatabase implements NodeSqliteDatabaseLike {
         }
       },
       get: (...params: readonly unknown[]) => {
+        if (normalized.startsWith("select row_json")) {
+          const [id] = params;
+          return typeof id === "string" ? this.projection.get(id) : undefined;
+        }
         if (normalized.startsWith("select event_json")) {
           const [id] = params;
           return typeof id === "string" ? this.events.get(id) : undefined;
@@ -83,16 +145,44 @@ class FakeSqliteDatabase implements NodeSqliteDatabaseLike {
         return undefined;
       },
       all: (...params: readonly unknown[]) => {
+        if (normalized.startsWith("select row_json")) {
+          let rows = [...this.projection.values()];
+          if (normalized.includes("where e = ? and a = ?")) {
+            const [e, a] = params;
+            rows = rows.filter((row) => row.e === e && row.a === a);
+          } else if (normalized.includes("where e = ?")) {
+            const [e] = params;
+            rows = rows.filter((row) => row.e === e);
+          } else if (normalized.includes("where a = ?")) {
+            const [a] = params;
+            rows = rows.filter((row) => row.a === a);
+          }
+          return rows.sort((a, b) => a.id.localeCompare(b.id));
+        }
         let rows = [...this.events.values()];
-        if (normalized.includes("where e = ? and a = ?")) {
+        if (normalized.includes("where e = ? and a = ? and target = ?")) {
+          const [e, a, target] = params;
+          rows = rows.filter(
+            (row) => row.e === e && row.a === a && row.target === target,
+          );
+        } else if (normalized.includes("where e = ? and a = ?")) {
           const [e, a] = params;
           rows = rows.filter((row) => row.e === e && row.a === a);
+        } else if (normalized.includes("where e = ? and target = ?")) {
+          const [e, target] = params;
+          rows = rows.filter((row) => row.e === e && row.target === target);
+        } else if (normalized.includes("where a = ? and target = ?")) {
+          const [a, target] = params;
+          rows = rows.filter((row) => row.a === a && row.target === target);
         } else if (normalized.includes("where e = ?")) {
           const [e] = params;
           rows = rows.filter((row) => row.e === e);
         } else if (normalized.includes("where a = ?")) {
           const [a] = params;
           rows = rows.filter((row) => row.a === a);
+        } else if (normalized.includes("where target = ?")) {
+          const [target] = params;
+          rows = rows.filter((row) => row.target === target);
         }
         return rows.sort((a, b) => a.id.localeCompare(b.id));
       },
@@ -103,6 +193,7 @@ class FakeSqliteDatabase implements NodeSqliteDatabaseLike {
 class FakePostgresClient implements NodePostgresClientLike {
   readonly events = new Map<string, EventRow>();
   readonly meta = new Map<string, string>();
+  readonly projection = new Map<string, ProjectionRowRecord>();
 
   query(sql: string, params: readonly unknown[] = []): NodePostgresQueryResultLike {
     const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
@@ -110,8 +201,35 @@ class FakePostgresClient implements NodePostgresClientLike {
       return { rows: [], rowCount: null };
     }
 
+    if (normalized.startsWith("delete from") && normalized.includes("projection")) {
+      const rowCount = this.projection.size;
+      this.projection.clear();
+      return { rows: [], rowCount };
+    }
+
+    if (normalized.startsWith("insert into") && normalized.includes("row_json")) {
+      const [id, e, a, eventId, rowJson] = params;
+      if (
+        typeof id !== "string" ||
+        typeof e !== "string" ||
+        typeof a !== "string" ||
+        typeof eventId !== "string" ||
+        typeof rowJson !== "string"
+      ) {
+        throw new Error("bad projection insert params");
+      }
+      this.projection.set(id, {
+        id,
+        e,
+        a,
+        event_id: eventId,
+        row_json: rowJson,
+      });
+      return { rows: [], rowCount: 1 };
+    }
+
     if (normalized.startsWith("insert into") && normalized.includes("event_json")) {
-      const [id, e, a, eventJson] = params;
+      const [id, e, a, target, eventJson] = params;
       if (typeof id !== "string" || typeof eventJson !== "string") {
         throw new Error("bad event insert params");
       }
@@ -121,6 +239,7 @@ class FakePostgresClient implements NodePostgresClientLike {
           id,
           e: typeof e === "string" ? e : null,
           a: typeof a === "string" ? a : null,
+          target: typeof target === "string" ? target : null,
           event_json: eventJson,
         });
       }
@@ -141,6 +260,41 @@ class FakePostgresClient implements NodePostgresClientLike {
 
     if (normalized.startsWith("select event_json")) {
       let rows = [...this.events.values()];
+      if (normalized.includes("where id = $1")) {
+        const [id] = params;
+        rows = typeof id === "string" ? rows.filter((row) => row.id === id) : [];
+      } else if (normalized.includes("where e = $1 and a = $2 and target = $3")) {
+        const [e, a, target] = params;
+        rows = rows.filter(
+          (row) => row.e === e && row.a === a && row.target === target,
+        );
+      } else if (normalized.includes("where e = $1 and a = $2")) {
+        const [e, a] = params;
+        rows = rows.filter((row) => row.e === e && row.a === a);
+      } else if (normalized.includes("where e = $1 and target = $2")) {
+        const [e, target] = params;
+        rows = rows.filter((row) => row.e === e && row.target === target);
+      } else if (normalized.includes("where a = $1 and target = $2")) {
+        const [a, target] = params;
+        rows = rows.filter((row) => row.a === a && row.target === target);
+      } else if (normalized.includes("where e = $1")) {
+        const [e] = params;
+        rows = rows.filter((row) => row.e === e);
+      } else if (normalized.includes("where a = $1")) {
+        const [a] = params;
+        rows = rows.filter((row) => row.a === a);
+      } else if (normalized.includes("where target = $1")) {
+        const [target] = params;
+        rows = rows.filter((row) => row.target === target);
+      }
+      return {
+        rows: rows.sort((a, b) => a.id.localeCompare(b.id)),
+        rowCount: rows.length,
+      };
+    }
+
+    if (normalized.startsWith("select row_json")) {
+      let rows = [...this.projection.values()];
       if (normalized.includes("where id = $1")) {
         const [id] = params;
         rows = typeof id === "string" ? rows.filter((row) => row.id === id) : [];
@@ -212,20 +366,86 @@ function ascii(s: string): Uint8Array {
   return new Uint8Array([...s].map((ch) => ch.charCodeAt(0)));
 }
 
-const memoryTarget: RuntimeConformanceTarget = {
+function fetchFromHandler(
+  handler: ReturnType<typeof createNodeSyncHttpHandler>,
+): NodeSyncClientFetch {
+  return async (url, init = {}) => {
+    const response = await handler({
+      method: init.method,
+      url,
+      body: init.body,
+    });
+    return {
+      status: response.status,
+      text: async () => response.body,
+    };
+  };
+}
+
+const memoryTarget: RuntimeLayerConformanceTarget = {
   name: "node-memory",
-  createRuntime(options: RuntimeFactoryOptions) {
-    return createNodeMemoryRuntime({
+  createLayer(options: RuntimeFactoryOptions) {
+    return createNodeMemoryRuntimeLayer({
       replicaId: options.replicaId,
       wall: options.wall,
     });
   },
 };
 
-const sqliteTarget: RuntimeConformanceTarget = {
+const memoryProjectionStoreTarget: RuntimeProjectionStoreConformanceTarget = {
+  name: "node-memory-projection-store",
+  createLayer(options: RuntimeFactoryOptions) {
+    return createNodeMemoryRuntimeLayer({
+      replicaId: options.replicaId,
+      wall: options.wall,
+    });
+  },
+};
+
+const memorySchedulerTarget = (): RuntimeSchedulerConformanceTarget => {
+  let runtime: ReturnType<typeof createNodeMemoryRuntime> | undefined;
+  return {
+    name: "node-memory-scheduler",
+    resetScheduler() {
+      runtime = undefined;
+    },
+    createLayer(options: RuntimeFactoryOptions) {
+      runtime = createNodeMemoryRuntime({
+        replicaId: options.replicaId,
+        wall: options.wall,
+      });
+      return runtimeServicesLayer(runtime);
+    },
+    readScheduled() {
+      return runtime?.scheduler.scheduled ?? [];
+    },
+  };
+};
+
+const memoryTransportTarget = (): RuntimeTransportConformanceTarget => {
+  let runtime: ReturnType<typeof createNodeMemoryRuntime> | undefined;
+  return {
+    name: "node-memory-transport",
+    resetTransport() {
+      runtime = undefined;
+    },
+    createLayer(options: RuntimeFactoryOptions) {
+      runtime = createNodeMemoryRuntime({
+        replicaId: options.replicaId,
+        wall: options.wall,
+      });
+      return runtimeServicesLayer(runtime);
+    },
+    readPublished() {
+      return runtime?.transport.published ?? [];
+    },
+  };
+};
+
+const sqliteTarget: RuntimeLayerConformanceTarget = {
   name: "node-sqlite",
-  createRuntime(options: RuntimeFactoryOptions) {
-    return createNodeSqliteRuntime({
+  createLayer(options: RuntimeFactoryOptions) {
+    return createNodeSqliteRuntimeLayer({
       db: new FakeSqliteDatabase(),
       replicaId: options.replicaId,
       wall: options.wall,
@@ -233,10 +453,21 @@ const sqliteTarget: RuntimeConformanceTarget = {
   },
 };
 
-const postgresTarget: RuntimeConformanceTarget = {
+const sqliteProjectionStoreTarget: RuntimeProjectionStoreConformanceTarget = {
+  name: "node-sqlite-projection-store",
+  createLayer(options: RuntimeFactoryOptions) {
+    return createNodeSqliteRuntimeLayer({
+      db: new FakeSqliteDatabase(),
+      replicaId: options.replicaId,
+      wall: options.wall,
+    });
+  },
+};
+
+const postgresTarget: RuntimeLayerConformanceTarget = {
   name: "node-postgres",
-  createRuntime(options: RuntimeFactoryOptions) {
-    return createNodePostgresRuntime({
+  createLayer(options: RuntimeFactoryOptions) {
+    return createNodePostgresRuntimeLayer({
       client: new FakePostgresClient(),
       replicaId: options.replicaId,
       wall: options.wall,
@@ -244,8 +475,70 @@ const postgresTarget: RuntimeConformanceTarget = {
   },
 };
 
+const postgresProjectionStoreTarget: RuntimeProjectionStoreConformanceTarget = {
+  name: "node-postgres-projection-store",
+  createLayer(options: RuntimeFactoryOptions) {
+    return createNodePostgresRuntimeLayer({
+      client: new FakePostgresClient(),
+      replicaId: options.replicaId,
+      wall: options.wall,
+    });
+  },
+};
+
+const sqlitePersistenceTarget = (): RuntimePersistenceConformanceTarget => {
+  const db = new FakeSqliteDatabase();
+  return {
+    name: "node-sqlite-persistence",
+    resetPersistence() {
+      db.events.clear();
+      db.meta.clear();
+    },
+    createLayer(options: RuntimeFactoryOptions) {
+      return createNodeSqliteRuntimeLayer({
+        db,
+        replicaId: options.replicaId,
+        wall: options.wall,
+      });
+    },
+  };
+};
+
+const postgresPersistenceTarget = (): RuntimePersistenceConformanceTarget => {
+  const client = new FakePostgresClient();
+  return {
+    name: "node-postgres-persistence",
+    resetPersistence() {
+      client.events.clear();
+      client.meta.clear();
+    },
+    createLayer(options: RuntimeFactoryOptions) {
+      return createNodePostgresRuntimeLayer({
+        client,
+        replicaId: options.replicaId,
+        wall: options.wall,
+      });
+    },
+  };
+};
+
 const coord = { txTime: 10_000, validTime: 10_000 };
 const one = () => "one" as const;
+
+function layerWriteProgram(e: string) {
+  return Effect.gen(function* () {
+    const event = yield* applyOperationEffect({
+      op: "assert",
+      e,
+      a: "status",
+      v: "ready",
+      actor: "test",
+      actorType: "system",
+    });
+    const store = yield* EventStoreService;
+    return { event, stored: yield* store.get(event.id), events: yield* store.scan() };
+  });
+}
 
 describe("@metacrdt/node target", () => {
   test("SQL lifecycle plan validates names and emits shared table/index DDL", () => {
@@ -261,16 +554,26 @@ describe("@metacrdt/node target", () => {
     expect(sqlite.tables).toEqual({
       events: '"tenant_a_events"',
       meta: '"tenant_a_meta"',
+      projection: '"tenant_a_projection"',
     });
     expect(sqlite.indexes).toEqual({
       eventsByEntity: '"tenant_a_events_by_e"',
       eventsByAttribute: '"tenant_a_events_by_a"',
+      eventsByTarget: '"tenant_a_events_by_target"',
+      projectionByEntity: '"tenant_a_projection_by_e"',
+      projectionByAttribute: '"tenant_a_projection_by_a"',
+      projectionByEventId: '"tenant_a_projection_by_event_id"',
     });
     expect(sqlite.initializeStatements).toEqual(postgres.initializeStatements);
     expect(sqlite.initializeStatements).toEqual([
-      'CREATE TABLE IF NOT EXISTS "tenant_a_events" (id TEXT PRIMARY KEY NOT NULL, e TEXT, a TEXT, event_json TEXT NOT NULL)',
+      'CREATE TABLE IF NOT EXISTS "tenant_a_events" (id TEXT PRIMARY KEY NOT NULL, e TEXT, a TEXT, target TEXT, event_json TEXT NOT NULL)',
       'CREATE INDEX IF NOT EXISTS "tenant_a_events_by_e" ON "tenant_a_events" (e)',
       'CREATE INDEX IF NOT EXISTS "tenant_a_events_by_a" ON "tenant_a_events" (a)',
+      'CREATE INDEX IF NOT EXISTS "tenant_a_events_by_target" ON "tenant_a_events" (target)',
+      'CREATE TABLE IF NOT EXISTS "tenant_a_projection" (id TEXT PRIMARY KEY NOT NULL, e TEXT NOT NULL, a TEXT NOT NULL, event_id TEXT NOT NULL, row_json TEXT NOT NULL)',
+      'CREATE INDEX IF NOT EXISTS "tenant_a_projection_by_e" ON "tenant_a_projection" (e)',
+      'CREATE INDEX IF NOT EXISTS "tenant_a_projection_by_a" ON "tenant_a_projection" (a)',
+      'CREATE INDEX IF NOT EXISTS "tenant_a_projection_by_event_id" ON "tenant_a_projection" (event_id)',
       'CREATE TABLE IF NOT EXISTS "tenant_a_meta" (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)',
     ]);
 
@@ -290,6 +593,61 @@ describe("@metacrdt/node target", () => {
     });
   });
 
+  test("node memory runtime provides an Effect Layer", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        layerWriteProgram("node:memory-layer"),
+        createNodeMemoryRuntimeLayer({
+          replicaId: "node:memory-layer",
+          wall: () => 1_000,
+        }),
+      ),
+    );
+    expect(result.stored).toEqual(result.event);
+    expect(result.event.seq).toBe(1);
+    expect(versionVector(result.events)).toEqual({ "node:memory-layer": 1 });
+  });
+
+  test("node memory runtime passes projection-store conformance", async () => {
+    await expect(
+      runRuntimeProjectionStoreConformance(memoryProjectionStoreTarget),
+    ).resolves.toEqual({
+      target: "node-memory-projection-store",
+      checks: [
+        "projection-store-replace-from-fold",
+        "projection-store-scan-filters",
+        "projection-store-replace-matching-is-scoped",
+        "projection-store-clear",
+      ],
+    });
+  });
+
+  test("node memory scheduler passes shared scheduler conformance", async () => {
+    await expect(
+      runRuntimeSchedulerConformance(memorySchedulerTarget()),
+    ).resolves.toEqual({
+      target: "node-memory-scheduler",
+      checks: [
+        "scheduler-accepts-operations",
+        "scheduler-preserves-delay-order",
+        "scheduler-preserves-payloads",
+      ],
+    });
+  });
+
+  test("node memory transport passes shared transport conformance", async () => {
+    await expect(
+      runRuntimeTransportConformance(memoryTransportTarget()),
+    ).resolves.toEqual({
+      target: "node-memory-transport",
+      checks: [
+        "transport-accepts-batches",
+        "transport-preserves-batches",
+        "transport-preserves-event-order",
+      ],
+    });
+  });
+
   test("node SQLite runtime passes shared conformance", async () => {
     await expect(runRuntimeConformance(sqliteTarget)).resolves.toMatchObject({
       target: "node-sqlite",
@@ -301,6 +659,20 @@ describe("@metacrdt/node target", () => {
     });
   });
 
+  test("node SQLite runtime passes projection-store conformance", async () => {
+    await expect(
+      runRuntimeProjectionStoreConformance(sqliteProjectionStoreTarget),
+    ).resolves.toEqual({
+      target: "node-sqlite-projection-store",
+      checks: [
+        "projection-store-replace-from-fold",
+        "projection-store-scan-filters",
+        "projection-store-replace-matching-is-scoped",
+        "projection-store-clear",
+      ],
+    });
+  });
+
   test("node Postgres runtime passes shared conformance", async () => {
     await expect(runRuntimeConformance(postgresTarget)).resolves.toMatchObject({
       target: "node-postgres",
@@ -308,6 +680,46 @@ describe("@metacrdt/node target", () => {
         "append-idempotent",
         "deterministic-fold-convergence",
         "idempotent-second-sync",
+      ]),
+    });
+  });
+
+  test("node Postgres runtime passes projection-store conformance", async () => {
+    await expect(
+      runRuntimeProjectionStoreConformance(postgresProjectionStoreTarget),
+    ).resolves.toEqual({
+      target: "node-postgres-projection-store",
+      checks: [
+        "projection-store-replace-from-fold",
+        "projection-store-scan-filters",
+        "projection-store-replace-matching-is-scoped",
+        "projection-store-clear",
+      ],
+    });
+  });
+
+  test("node SQLite runtime passes shared persistence conformance", async () => {
+    await expect(
+      runRuntimePersistenceConformance(sqlitePersistenceTarget()),
+    ).resolves.toMatchObject({
+      target: "node-sqlite-persistence",
+      checks: expect.arrayContaining([
+        "event-log-survives-recreate",
+        "sequencer-survives-recreate",
+        "hlc-survives-recreate",
+      ]),
+    });
+  });
+
+  test("node Postgres runtime passes shared persistence conformance", async () => {
+    await expect(
+      runRuntimePersistenceConformance(postgresPersistenceTarget()),
+    ).resolves.toMatchObject({
+      target: "node-postgres-persistence",
+      checks: expect.arrayContaining([
+        "event-log-survives-recreate",
+        "sequencer-survives-recreate",
+        "hlc-survives-recreate",
       ]),
     });
   });
@@ -380,6 +792,22 @@ describe("@metacrdt/node target", () => {
     );
   });
 
+  test("node SQLite runtime provides an Effect Layer", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        layerWriteProgram("node:sqlite-layer"),
+        createNodeSqliteRuntimeLayer({
+          db: new FakeSqliteDatabase(),
+          replicaId: "node:sqlite-layer",
+          wall: () => 1_100,
+        }),
+      ),
+    );
+    expect(result.stored).toEqual(result.event);
+    expect(result.event.seq).toBe(1);
+    expect(versionVector(result.events)).toEqual({ "node:sqlite-layer": 1 });
+  });
+
   test("Postgres runtime persists event log, HLC, and seq across recreation", async () => {
     const client = new FakePostgresClient();
     const first = await createNodePostgresRuntime({
@@ -448,6 +876,22 @@ describe("@metacrdt/node target", () => {
         tablePrefix: "tenant_b",
       }).initializeStatements,
     );
+  });
+
+  test("node Postgres runtime provides an Effect Layer", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        layerWriteProgram("node:postgres-layer"),
+        createNodePostgresRuntimeLayer({
+          client: new FakePostgresClient(),
+          replicaId: "node:postgres-layer",
+          wall: () => 1_200,
+        }),
+      ),
+    );
+    expect(result.stored).toEqual(result.event);
+    expect(result.event.seq).toBe(1);
+    expect(versionVector(result.events)).toEqual({ "node:postgres-layer": 1 });
   });
 
   test("HTTP sync handler exposes health, delta pull, and event push", async () => {
@@ -522,6 +966,209 @@ describe("@metacrdt/node target", () => {
     expect(response.body).toContain("event: delta\n");
     expect(response.body).toContain('"from":"node:sse"');
     expect(response.body).toContain('"events":[');
+  });
+
+  test("Node sync client pulls, pushes, and performs bidirectional sync", async () => {
+    const remote = createNodeMemoryRuntime({
+      replicaId: "node:remote",
+      wall: () => 7_000,
+    });
+    const local = createNodeMemoryRuntime({
+      replicaId: "node:local",
+      wall: () => 8_000,
+    });
+    const remoteEvent = await applyOperation(remote, {
+      op: "assert",
+      e: "case:remote",
+      a: "case.status",
+      v: "open",
+      actor: "user:1",
+    });
+    const localEvent = await applyOperation(local, {
+      op: "assert",
+      e: "case:local",
+      a: "case.status",
+      v: "draft",
+      actor: "user:2",
+    });
+    const client = createNodeSyncClient({
+      baseUrl: "https://node.test/sync",
+      fetch: fetchFromHandler(createNodeSyncHttpHandler(remote, { basePath: "/sync" })),
+    });
+
+    await expect(client.health()).resolves.toMatchObject({
+      ok: true,
+      protocol: "metacrdt.node.http.v1",
+      profile: { replicaId: "node:remote" },
+      vv: { "node:remote": 1 },
+    });
+
+    const pulled = await client.pull({});
+    expect(pulled.from).toBe("node:remote");
+    expect(pulled.events.map((event) => event.id)).toEqual([remoteEvent.id]);
+
+    const sync = await client.syncFrom(local);
+    expect(sync).toMatchObject({
+      pulled: 1,
+      pushed: 1,
+      insertedLocal: 1,
+      insertedRemote: 1,
+      localVv: { "node:local": 1, "node:remote": 1 },
+      remoteVv: { "node:local": 1, "node:remote": 1 },
+    });
+    expect(await local.store.get(remoteEvent.id)).toEqual(remoteEvent);
+    expect(await remote.store.get(localEvent.id)).toEqual(localEvent);
+  });
+
+  test("Node sync client Effect facade returns tagged errors", async () => {
+    const client = createNodeSyncClientEffect({
+      baseUrl: "https://node.test/sync",
+      fetch: async () => ({
+        status: 500,
+        text: async () => JSON.stringify({ error: "boom" }),
+      }),
+    });
+
+    const result = await Effect.runPromise(Effect.either(client.health()));
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left).toMatchObject({
+        _tag: "NodeSyncClientError",
+        operation: "health",
+        status: 500,
+        message: "boom",
+      });
+    }
+
+    const malformed = createNodeSyncClientEffect({
+      baseUrl: "https://node.test/sync",
+      fetch: async () => ({
+        status: 200,
+        text: async () => JSON.stringify({ ok: true, protocol: "wrong" }),
+      }),
+    });
+
+    const malformedResult = await Effect.runPromise(
+      Effect.either(malformed.health()),
+    );
+    expect(malformedResult._tag).toBe("Left");
+    if (malformedResult._tag === "Left") {
+      expect(malformedResult.left).toMatchObject({
+        _tag: "NodeSyncClientError",
+        operation: "health",
+      });
+    }
+  });
+
+  test("production runtime helper assembles runtime, Layer, listener, and optional client", async () => {
+    const remote = createNodeMemoryRuntime({
+      replicaId: "node:remote-prod",
+      wall: () => 9_000,
+    });
+    const remoteEvent = await applyOperation(remote, {
+      op: "assert",
+      e: "case:remote-prod",
+      a: "case.status",
+      v: "open",
+      actor: "user:1",
+    });
+    const production = await createNodeProductionRuntime({
+      replicaId: "node:prod",
+      storage: { kind: "memory" },
+      wall: () => 10_000,
+      sync: {
+        basePath: "sync",
+        clientBaseUrl: "https://node.test/sync",
+        clientFetch: fetchFromHandler(
+          createNodeSyncHttpHandler(remote, { basePath: "/sync" }),
+        ),
+      },
+    });
+
+    expect(production.storage).toBe("memory");
+    expect(production.basePath).toBe("/sync");
+    expect(production.lifecycle).toBeUndefined();
+    expect(production.client).toBeDefined();
+
+    const localEvent = await applyOperation(production.runtime, {
+      op: "assert",
+      e: "case:prod",
+      a: "case.status",
+      v: "draft",
+      actor: "user:2",
+    });
+    const response = await production.handleSync({
+      method: "GET",
+      url: "/sync/health",
+    });
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      ok: true,
+      profile: { replicaId: "node:prod" },
+      vv: { "node:prod": 1 },
+    });
+
+    const serviceEventIds = await Effect.runPromise(
+      Effect.gen(function* () {
+        const store = yield* EventStoreService;
+        return (yield* store.scan()).map((event) => event.id);
+      }).pipe(Effect.provide(production.layer)),
+    );
+    expect(serviceEventIds).toEqual([localEvent.id]);
+
+    const sync = await production.client!.syncFrom(production.runtime);
+    expect(sync).toMatchObject({
+      pulled: 1,
+      pushed: 1,
+      insertedLocal: 1,
+      insertedRemote: 1,
+    });
+    expect(await production.runtime.store.get(remoteEvent.id)).toEqual(remoteEvent);
+    expect(await remote.store.get(localEvent.id)).toEqual(localEvent);
+  });
+
+  test("production runtime helper exposes SQL lifecycle metadata and typed init errors", async () => {
+    const pg = new FakePostgresClient();
+    const production = await createNodeProductionRuntime({
+      replicaId: "node:pg-prod",
+      storage: {
+        kind: "postgres",
+        client: pg,
+        tablePrefix: "tenant_prod",
+      },
+    });
+
+    expect(production.storage).toBe("postgres");
+    expect(production.lifecycle).toMatchObject({
+      dialect: "postgres",
+      tablePrefix: "tenant_prod",
+    });
+    expect(production.lifecycle?.tables.events).toBe('"tenant_prod_events"');
+
+    const failed = await Effect.runPromise(
+      Effect.either(
+        createNodeProductionRuntimeEffect({
+          replicaId: "node:bad",
+          storage: {
+            kind: "sqlite",
+            db: {
+              prepare() {
+                throw new Error("cannot open database");
+              },
+            },
+          },
+        }),
+      ),
+    );
+    expect(failed._tag).toBe("Left");
+    if (failed._tag === "Left") {
+      expect(failed.left).toMatchObject({
+        _tag: "NodeProductionRuntimeError",
+        operation: "createNodeProductionRuntime",
+        storage: "sqlite",
+        message: "cannot open database",
+      });
+    }
   });
 
   test("node:http-style listener writes status, headers, and body", async () => {

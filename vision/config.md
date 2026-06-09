@@ -1,5 +1,7 @@
 # Vision — Config as Code: An Account as a Declarative, Agent-Authorable Artifact
 
+> **MetaCRDT primitive →** _facts + reaction_ — desired-state is facts not yet asserted; `plan` is a diff-fold, `apply` is agent participation. See [`metacrdt-alignment.md`](./metacrdt-alignment.md).
+
 > Part of the `vision/` set — see [`README.md`](./README.md). The **capstone**: an authoring layer over
 > everything the other docs turned into facts. Builds on [`triples.md`](./triples.md) (facts + the tx
 > log as state), [`library.md`](./library.md) (versioning, overlays, the 3-way merge),

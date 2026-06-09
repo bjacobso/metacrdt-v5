@@ -1,5 +1,7 @@
 # Vision — Notifications, Reminders & Escalations
 
+> **MetaCRDT primitive →** _reaction + time_ — an event-sourced state machine; delivery results are inbound facts. See [`metacrdt-alignment.md`](./metacrdt-alignment.md).
+
 > Part of the `vision/` set — see [`README.md`](./README.md). Builds on [`workflows.md`](./workflows.md)
 > (the `notify`/`wait` steps, timing), [`compliance.md`](./compliance.md) (the obligation state that
 > drives nudges), [`integrations.md`](./integrations.md) (delivery providers as modules),

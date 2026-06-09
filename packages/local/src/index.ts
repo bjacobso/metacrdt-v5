@@ -2,6 +2,7 @@ import {
   BroadcastChannelTransport,
   attachBroadcastTransport,
   createLocalRuntime,
+  runtimeServicesLayer,
   type BroadcastChannelLike,
   type BroadcastTransportOptions,
   type LocalRuntimeOptions,
@@ -118,6 +119,10 @@ export function createLocalFirstRuntime(
   });
 }
 
+export function createLocalFirstRuntimeLayer(options: LocalFirstRuntimeOptions) {
+  return runtimeServicesLayer(createLocalFirstRuntime(options));
+}
+
 /** Create a local-first runtime and immediately start its transport, if enabled. */
 export async function startLocalFirstRuntime(
   options: LocalFirstRuntimeOptions,
@@ -131,6 +136,7 @@ export {
   LocalClock,
   LocalEventStore,
   LocalSequencer,
+  createLocalRuntimeLayer,
   decodeLocalEvent,
   decodeLocalValue,
   encodeLocalEvent,
@@ -155,8 +161,11 @@ export {
   AsyncLocalEventStore,
   AsyncLocalSequencer,
   createAsyncLocalRuntime,
+  createAsyncLocalRuntimeLayer,
   createIndexedDbLocalFirstRuntime,
+  createIndexedDbLocalFirstRuntimeLayer,
   createSqliteLocalFirstRuntime,
+  createSqliteLocalFirstRuntimeLayer,
   startIndexedDbLocalFirstRuntime,
   startSqliteLocalFirstRuntime,
   type AsyncLocalRuntime,

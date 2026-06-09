@@ -1,9 +1,17 @@
 import { describe, expect, test } from "vitest";
 import { fromEvents, valueOf } from "@metacrdt/core";
-import { applyOperation, versionVector } from "@metacrdt/runtime";
+import {
+  EventStoreService,
+  applyOperation,
+  applyOperationEffect,
+  versionVector,
+} from "@metacrdt/runtime";
+import { Effect } from "effect";
 import {
   createAsyncLocalRuntime,
+  createAsyncLocalRuntimeLayer,
   createIndexedDbLocalFirstRuntime,
+  createIndexedDbLocalFirstRuntimeLayer,
   indexedDbStorage,
   startIndexedDbLocalFirstRuntime,
   type AsyncLocalRuntimeStorage,
@@ -81,7 +89,55 @@ async function flush(): Promise<void> {
 const coord = { txTime: 10_000, validTime: 10_000 };
 const one = () => "one" as const;
 
+const asyncLayerProgram = Effect.gen(function* () {
+  const event = yield* applyOperationEffect({
+    op: "assert",
+    e: "async:layer",
+    a: "status",
+    v: "ready",
+    actor: "test",
+    actorType: "system",
+  });
+  const store = yield* EventStoreService;
+  return { event, stored: yield* store.get(event.id), events: yield* store.scan() };
+});
+
 describe("@metacrdt/local async local runtime", () => {
+  test("async local runtime provides an Effect Layer", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        asyncLayerProgram,
+        createAsyncLocalRuntimeLayer({
+          storage: new AsyncMemoryStorage(),
+          namespace: "async-layer",
+          replicaId: "browser:async-layer",
+          wall: () => 850,
+        }),
+      ),
+    );
+    expect(result.stored).toEqual(result.event);
+    expect(result.event.seq).toBe(1);
+    expect(versionVector(result.events)).toEqual({ "browser:async-layer": 1 });
+  });
+
+  test("IndexedDB local-first runtime provides an Effect Layer", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        asyncLayerProgram,
+        createIndexedDbLocalFirstRuntimeLayer({
+          storage: new AsyncMemoryStorage(),
+          namespace: "idb-layer",
+          replicaId: "browser:idb-layer",
+          wall: () => 875,
+          broadcast: false,
+        }),
+      ),
+    );
+    expect(result.stored).toEqual(result.event);
+    expect(result.event.seq).toBe(1);
+    expect(versionVector(result.events)).toEqual({ "browser:idb-layer": 1 });
+  });
+
   test("persists event log, HLC, and seq over async storage", async () => {
     const storage = new AsyncMemoryStorage();
     const first = await createAsyncLocalRuntime({

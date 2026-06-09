@@ -14,8 +14,12 @@ import {
   reconcileCardinalityOneCandidates,
   summarizeProtocolEvent,
 } from "../index.js";
-import type { Event } from "@metacrdt/core";
-import type { ConvexTransactionRow, ProtocolFactEventRow } from "../types.js";
+import { verifyId, type ActorType, type Event } from "@metacrdt/core";
+import type {
+  ConvexActorType,
+  ConvexTransactionRow,
+  ProtocolFactEventRow,
+} from "../types.js";
 
 declare const crypto: { randomUUID(): string };
 
@@ -206,6 +210,54 @@ const rebuildResultValidator = v.object({
   currentFacts: v.number(),
 });
 
+const coreActorType = v.union(
+  v.literal("human"),
+  v.literal("system"),
+  v.literal("agent"),
+  v.literal("migration"),
+);
+
+const coreEventValidator = v.object({
+  id: v.string(),
+  kind: protocolKind,
+  actor: v.string(),
+  actorType: coreActorType,
+  hlc: hlcValidator,
+  seq: v.optional(v.number()),
+  sig: v.optional(v.string()),
+  e: v.optional(v.string()),
+  a: v.optional(v.string()),
+  v: v.optional(v.any()),
+  validFrom: v.optional(v.number()),
+  validTo: v.optional(v.union(v.number(), v.null())),
+  target: v.optional(v.string()),
+  causalRefs: v.optional(v.array(v.string())),
+  reason: v.optional(v.string()),
+});
+
+const rawAppendResultValidator = v.object({
+  event: coreEventValidator,
+  inserted: v.boolean(),
+});
+
+const projectionRowValidator = v.object({
+  id: v.string(),
+  e: v.string(),
+  a: v.string(),
+  v: v.any(),
+  eventId: v.string(),
+  validFrom: v.optional(v.number()),
+  validTo: v.optional(v.union(v.number(), v.null())),
+  sourceEventIds: v.array(v.string()),
+});
+
+const projectionReplaceResultValidator = v.object({
+  rows: v.number(),
+});
+
+type CoreEventValue = typeof coreEventValidator.type;
+type ProjectionRowValue = typeof projectionRowValidator.type;
+
 const txArgs = {
   actorId: v.string(),
   actorType,
@@ -235,6 +287,10 @@ function txForCore(tx: Doc<"transactions">): ConvexTransactionRow {
     txTime: tx.txTime,
     reason: tx.reason,
   };
+}
+
+function txActorTypeFromCore(actorType: ActorType): ConvexActorType {
+  return actorType === "human" ? "user" : actorType;
 }
 
 function rowForSummary(row: Doc<"factEvents">): ProtocolFactEventRow {
@@ -281,6 +337,85 @@ function summarizeOwned(row: Doc<"factEvents">, tx: Doc<"transactions">) {
       : { targetEventId: summary.targetEventId }),
     ...(summary.reason === undefined ? {} : { reason: summary.reason }),
   };
+}
+
+function eventForReturn(event: Event): CoreEventValue {
+  return withoutUndefined({
+    ...event,
+    causalRefs:
+      event.causalRefs === undefined ? undefined : [...event.causalRefs],
+  }) as CoreEventValue;
+}
+
+function rawEventFromRows(
+  row: Doc<"factEvents">,
+  tx: Doc<"transactions">,
+): CoreEventValue {
+  const ev = protocolEventFromRows(rowForSummary(row), txForCore(tx));
+  if (ev === null) throw new Error(`fact event ${row.eventId} is not verifiable`);
+  return eventForReturn({ ...ev, seq: row.seq });
+}
+
+async function rawEventByEventId(
+  ctx: Pick<QueryCtx, "db">,
+  eventId: string,
+): Promise<CoreEventValue | null> {
+  const row = await ctx.db
+    .query("factEvents")
+    .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
+    .unique();
+  if (row === null) return null;
+  const tx = await ctx.db.get(row.txId);
+  if (tx === null) return null;
+  return rawEventFromRows(row, tx);
+}
+
+function rawRowFromEvent<TxId extends string, FactId extends string>(
+  event: Event,
+  txId: TxId,
+  factId?: FactId,
+) {
+  return withoutUndefined({
+    txId,
+    txTime: event.hlc.pt,
+    eventId: event.id,
+    hlc: event.hlc,
+    replicaId: event.hlc.r,
+    seq: event.seq,
+    targetEventId: event.target,
+    causalRefs: event.causalRefs === undefined ? undefined : [...event.causalRefs],
+    kind: event.kind,
+    factId,
+    e: event.e ?? (event.target === undefined ? "" : `target:${event.target}`),
+    a: event.a ?? event.kind,
+    v: event.v ?? null,
+    validFrom: event.validFrom,
+    validTo:
+      event.validTo === undefined || event.validTo === null
+        ? undefined
+        : event.validTo,
+    reason: event.reason,
+  });
+}
+
+async function createTransactionForRawEvent(
+  ctx: MutationCtx,
+  event: Event,
+): Promise<Doc<"transactions">> {
+  const txId = await ctx.db.insert(
+    "transactions",
+    withoutUndefined({
+      actorId: event.actor,
+      actorType: txActorTypeFromCore(event.actorType),
+      txTime: event.hlc.pt,
+      reason: event.reason,
+      source: "component.raw",
+      metadata: { eventId: event.id },
+    }),
+  );
+  const tx = await ctx.db.get(txId);
+  if (tx === null) throw new Error(`inserted transaction ${txId} not found`);
+  return tx;
 }
 
 async function deleteCurrentForFact(ctx: MutationCtx, factId: Id<"facts">) {
@@ -431,6 +566,21 @@ function currentFactSummary(
     updatedAt: row.updatedAt,
     assertEventId: fact.assertEventId,
     ...(fact.validTo === undefined ? {} : { validTo: fact.validTo }),
+  };
+}
+
+function projectionRowFromDoc(
+  row: Doc<"projectionRows">,
+): ProjectionRowValue {
+  return {
+    id: row.id,
+    e: row.e,
+    a: row.a,
+    v: row.v,
+    eventId: row.eventId,
+    validFrom: row.validFrom,
+    validTo: row.validTo,
+    sourceEventIds: row.sourceEventIds,
   };
 }
 
@@ -590,7 +740,9 @@ async function createTransaction(
   return tx;
 }
 
-async function boundedRows<TableName extends "factEvents" | "facts" | "currentFacts">(
+async function boundedRows<
+  TableName extends "factEvents" | "facts" | "currentFacts" | "projectionRows",
+>(
   ctx: MutationCtx,
   tableName: TableName,
 ) {
@@ -608,6 +760,11 @@ async function clearProjectionTables(ctx: MutationCtx) {
   const factRows = await boundedRows(ctx, "facts");
   for (const row of currentRows) await ctx.db.delete(row._id);
   for (const row of factRows) await ctx.db.delete(row._id);
+}
+
+async function clearProjectionRows(ctx: MutationCtx) {
+  const rows = await boundedRows(ctx, "projectionRows");
+  for (const row of rows) await ctx.db.delete(row._id);
 }
 
 async function replayAssert(
@@ -824,6 +981,226 @@ export const appendLifecycle = mutation({
       if (patched !== null) await insertCurrentIfNowVisible(ctx, patched, tx.txTime);
     }
     return { txId: tx._id, rowId, eventId: built.event.id, factId: fact._id };
+  },
+});
+
+export const appendRaw = mutation({
+  args: {
+    event: coreEventValidator,
+  },
+  returns: rawAppendResultValidator,
+  handler: async (ctx, args) => {
+    const event = args.event as Event;
+    if (!verifyId(event)) throw new Error(`invalid core event id ${event.id}`);
+
+    const existing = await rawEventByEventId(ctx, event.id);
+    if (existing !== null) return { event: existing, inserted: false };
+
+    const tx = await createTransactionForRawEvent(ctx, event);
+    let factId: Id<"facts"> | undefined;
+    if (event.kind === "assert") {
+      if (
+        event.e === undefined ||
+        event.a === undefined ||
+        event.v === undefined ||
+        event.validFrom === undefined
+      ) {
+        throw new Error(`invalid assert event ${event.id}`);
+      }
+      factId = await ctx.db.insert(
+        "facts",
+        withoutUndefined({
+          e: event.e,
+          a: event.a,
+          v: event.v,
+          firstTxId: tx._id,
+          assertedAt: tx.txTime,
+          validFrom: event.validFrom,
+          validTo:
+            event.validTo === undefined || event.validTo === null
+              ? undefined
+              : event.validTo,
+          assertEventId: event.id,
+        }),
+      );
+    }
+
+    await ctx.db.insert(
+      "factEvents",
+      withoutUndefined(rawRowFromEvent(event, tx._id, factId)),
+    );
+
+    if (factId !== undefined) {
+      const fact = await ctx.db.get(factId);
+      if (fact === null) throw new Error(`inserted fact ${factId} not found`);
+      await insertCurrentIfNowVisible(ctx, fact, tx.txTime);
+    }
+
+    return { event: eventForReturn(event), inserted: true };
+  },
+});
+
+export const getRawEvent = query({
+  args: {
+    eventId: v.string(),
+  },
+  returns: v.union(coreEventValidator, v.null()),
+  handler: async (ctx, args) => {
+    return await rawEventByEventId(ctx, args.eventId);
+  },
+});
+
+export const listRawEvents = query({
+  args: {
+    e: v.optional(v.string()),
+    a: v.optional(v.string()),
+    ids: v.optional(v.array(v.string())),
+    target: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(coreEventValidator),
+  handler: async (ctx, args) => {
+    const take = Math.max(1, Math.min(args.limit ?? 200, 1000));
+    if (args.ids !== undefined) {
+      const out: CoreEventValue[] = [];
+      for (const id of args.ids.slice(0, take)) {
+        const ev = await rawEventByEventId(ctx, id);
+        if (ev === null) continue;
+        if (args.e !== undefined && ev.e !== args.e) continue;
+        if (args.a !== undefined && ev.a !== args.a) continue;
+        if (args.target !== undefined && ev.target !== args.target) continue;
+        out.push(ev);
+      }
+      return out;
+    }
+
+    const rows =
+      args.e === undefined
+        ? await ctx.db.query("factEvents").order("desc").take(take)
+        : args.a === undefined
+          ? await ctx.db
+              .query("factEvents")
+              .withIndex("by_e", (q) => q.eq("e", args.e!))
+              .order("desc")
+              .take(take)
+          : await ctx.db
+              .query("factEvents")
+              .withIndex("by_e_and_a_and_txTime", (q) =>
+                q.eq("e", args.e!).eq("a", args.a!),
+              )
+              .order("desc")
+              .take(take);
+
+    const out: CoreEventValue[] = [];
+    for (const row of rows) {
+      const tx = await ctx.db.get(row.txId);
+      if (tx === null) continue;
+      const ev = rawEventFromRows(row, tx);
+      if (args.target !== undefined && ev.target !== args.target) continue;
+      out.push(ev);
+    }
+    return out;
+  },
+});
+
+export const replaceProjectionRows = mutation({
+  args: {
+    rows: v.array(projectionRowValidator),
+  },
+  returns: projectionReplaceResultValidator,
+  handler: async (ctx, args) => {
+    if (args.rows.length > REBUILD_LIMIT) {
+      throw new Error(
+        `projection replace is limited to ${REBUILD_LIMIT} rows`,
+      );
+    }
+
+    await clearProjectionRows(ctx);
+    const byId = new Map<string, ProjectionRowValue>();
+    for (const row of args.rows) byId.set(row.id, row);
+
+    for (const row of [...byId.values()].sort((a, b) => a.id.localeCompare(b.id))) {
+      await ctx.db.insert(
+        "projectionRows",
+        withoutUndefined({
+          id: row.id,
+          e: row.e,
+          a: row.a,
+          v: row.v,
+          eventId: row.eventId,
+          validFrom: row.validFrom,
+          validTo: row.validTo,
+          sourceEventIds: row.sourceEventIds,
+        }),
+      );
+    }
+    return { rows: byId.size };
+  },
+});
+
+export const clearMaterializedProjection = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    await clearProjectionRows(ctx);
+    return null;
+  },
+});
+
+export const scanProjectionRows = query({
+  args: {
+    e: v.optional(v.string()),
+    a: v.optional(v.string()),
+    ids: v.optional(v.array(v.string())),
+    eventIds: v.optional(v.array(v.string())),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(projectionRowValidator),
+  handler: async (ctx, args) => {
+    const take = Math.max(1, Math.min(args.limit ?? 1000, 1000));
+    const eventIds =
+      args.eventIds === undefined ? null : new Set(args.eventIds);
+
+    let rows: ProjectionRowValue[];
+    if (args.ids !== undefined) {
+      rows = [];
+      for (const id of [...new Set(args.ids)].slice(0, take)) {
+        const found = await ctx.db
+          .query("projectionRows")
+          .withIndex("by_rowId", (q) => q.eq("id", id))
+          .unique();
+        if (found !== null) rows.push(projectionRowFromDoc(found));
+      }
+    } else if (args.eventIds !== undefined && args.e === undefined && args.a === undefined) {
+      rows = [];
+      for (const eventId of [...new Set(args.eventIds)].slice(0, take)) {
+        const found = await ctx.db
+          .query("projectionRows")
+          .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
+          .take(take);
+        rows.push(...found.map(projectionRowFromDoc));
+        if (rows.length >= take) break;
+      }
+    } else {
+      const docs =
+        args.e === undefined
+          ? await ctx.db.query("projectionRows").take(take)
+          : args.a === undefined
+            ? await ctx.db
+                .query("projectionRows")
+                .withIndex("by_e", (q) => q.eq("e", args.e!))
+                .take(take)
+            : await ctx.db
+                .query("projectionRows")
+                .withIndex("by_e_and_a", (q) => q.eq("e", args.e!).eq("a", args.a!))
+                .take(take);
+      rows = docs.map(projectionRowFromDoc);
+    }
+
+    return rows
+      .filter((row) => eventIds === null || eventIds.has(row.eventId))
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .slice(0, take);
   },
 });
 

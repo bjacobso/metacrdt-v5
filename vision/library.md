@@ -1,5 +1,7 @@
 # Vision — The Compliance Library: Versioning, Distribution & Upgrades on the Triple Store
 
+> **MetaCRDT primitive →** _facts + merge_ — definitions are facts, versions are bitemporal tags, upgrade is a 3-way merge. See [`metacrdt-alignment.md`](./metacrdt-alignment.md).
+
 > Part of the `vision/` set — see [`README.md`](./README.md). Builds on the substrate in
 > [`triples.md`](./triples.md) (bitemporality, transactions, definitions-as-facts) and on
 > [`workflows.md`](./workflows.md) (the `Flow` primitive, the reconciler). Grounded in `../PLAN.md`.

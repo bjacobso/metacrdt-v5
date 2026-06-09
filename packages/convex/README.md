@@ -29,9 +29,16 @@ semantics live in `@metacrdt/core`; this package makes Convex speak them.
 - **Component surface** — `@metacrdt/convex/convex.config.js` exports a registered
   component that owns `transactions` + append-only protocol `factEvents` and the
   `facts` / `currentFacts` projections, exposing `log.appendAssert`,
-  `log.appendLifecycle`, `log.listCurrent`, `log.rebuildProjections`,
+  `log.appendLifecycle`, `log.appendRaw`, `log.getRawEvent`,
+  `log.listRawEvents`, `log.listCurrent`, `log.rebuildProjections`,
   `log.getCurrentEntity`, and the compliance/flow/collection functions the
   reference app mounts as `components.metacrdt`.
+- **Runtime Layer binding** — `createConvexComponentRuntimeLayer` adapts a host's
+  Convex query/mutation runner plus component function refs into the
+  `@metacrdt/runtime` Effect service tags. The component-owned raw log and
+  component-owned `projectionRows` read model pass `@metacrdt/testkit`
+  EventStore / anti-entropy / deterministic-fold / projection-store conformance
+  through that Layer.
 - **Confect integration** — `confectSidecarWarning` / `ManualConfectMountDecision`
   for the optional typed Effect sidecar.
 
@@ -46,7 +53,9 @@ semantics live in `@metacrdt/core`; this package makes Convex speak them.
 ## Dependencies
 
 - `@metacrdt/core`
+- `@metacrdt/runtime`
 - `convex`
+- `effect` v3 (`^3.21.3`) for Layer providers.
 
 ## Relation to SPEC
 
@@ -73,6 +82,25 @@ import metacrdt from "@metacrdt/convex/convex.config.js";
 const app = defineApp();
 app.use(metacrdt);
 export default app;
+```
+
+As an Effect runtime Layer over mounted component functions:
+
+```ts
+import { createConvexComponentRuntimeLayer } from "@metacrdt/convex";
+
+const layer = createConvexComponentRuntimeLayer({
+  replicaId: "convex:app",
+  refs: {
+    appendRaw: components.metacrdt.log.appendRaw,
+    getRawEvent: components.metacrdt.log.getRawEvent,
+    listRawEvents: components.metacrdt.log.listRawEvents,
+  },
+  runner: {
+    mutation: (ref, args) => ctx.runMutation(ref, args),
+    query: (ref, args) => ctx.runQuery(ref, args),
+  },
+});
 ```
 
 ## Extraction Boundary

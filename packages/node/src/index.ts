@@ -9,6 +9,7 @@ import {
 } from "@metacrdt/core";
 import {
   createMemoryRuntime,
+  runtimeServicesLayer,
   type AppendResult,
   deltaSince,
   type EventFilter,
@@ -16,14 +17,22 @@ import {
   mergeFrom,
   type MergeResult,
   type MemoryRuntimeOptions,
+  type ProjectionFilter,
+  type ProjectionReplaceResult,
+  type ProjectionRow,
+  type ProjectionStore,
+  type ProjectionRuntimeServices,
   type RuntimeCapability,
   type RuntimeClock,
   type RuntimeProfile,
   type RuntimeSequencer,
+  RuntimeServiceError,
   type RuntimeServices,
   type VersionVector,
   versionVector,
 } from "@metacrdt/runtime";
+import { Data, Effect, Layer } from "effect";
+import * as Schema from "effect/Schema";
 
 export type NodeSqliteStatementLike = {
   get?(...params: readonly unknown[]): unknown | Promise<unknown>;
@@ -81,26 +90,38 @@ export type NodeSqlLifecyclePlan = {
   tables: {
     events: string;
     meta: string;
+    projection: string;
   };
   indexes: {
     eventsByEntity: string;
     eventsByAttribute: string;
+    eventsByTarget: string;
+    projectionByEntity: string;
+    projectionByAttribute: string;
+    projectionByEventId: string;
   };
   createEventsTable: string;
   createEventsByEntityIndex: string;
   createEventsByAttributeIndex: string;
+  createEventsByTargetIndex: string;
   createMetaTable: string;
+  createProjectionTable: string;
+  createProjectionByEntityIndex: string;
+  createProjectionByAttributeIndex: string;
+  createProjectionByEventIdIndex: string;
   initializeStatements: readonly string[];
 };
 
 export type NodeSqliteRuntime = RuntimeServices & {
   store: NodeSqliteEventStore;
+  projection: NodeSqliteProjectionStore;
   clock: NodeSqliteClock;
   sequencer: NodeSqliteSequencer;
 };
 
 export type NodePostgresRuntime = RuntimeServices & {
   store: NodePostgresEventStore;
+  projection: NodePostgresProjectionStore;
   clock: NodePostgresClock;
   sequencer: NodePostgresSequencer;
 };
@@ -138,7 +159,187 @@ export type NodeHttpRequestListener = (
   res: NodeHttpServerResponseLike,
 ) => Promise<NodeSyncHttpResponse>;
 
+export type NodeSyncClientFetchRequest = {
+  method?: string;
+  headers?: Readonly<Record<string, string>>;
+  body?: string;
+};
+
+export type NodeSyncClientFetchResponse = {
+  status: number;
+  text(): Promise<string>;
+};
+
+export type NodeSyncClientFetch = (
+  url: string,
+  init?: NodeSyncClientFetchRequest,
+) => Promise<NodeSyncClientFetchResponse>;
+
+export type NodeSyncClientOptions = {
+  /** Full sync base URL, e.g. http://127.0.0.1:8787/sync. */
+  baseUrl: string;
+  fetch?: NodeSyncClientFetch;
+  headers?: Readonly<Record<string, string>>;
+  protocol?: string;
+};
+
+export type NodeSyncHealthResponse = {
+  ok: true;
+  protocol: string;
+  profile: {
+    name: string;
+    replicaId: string;
+    capabilities: readonly string[];
+  };
+  vv: VersionVector;
+};
+
+export type NodeSyncDeltaResponse = {
+  protocol: string;
+  from: string;
+  vv: VersionVector;
+  since: VersionVector;
+  events: readonly Event[];
+};
+
+export type NodeSyncPushResponse = {
+  protocol: string;
+  inserted: number;
+  seen: number;
+  vv: VersionVector;
+};
+
+export type NodeSyncClientSyncResult = {
+  pulled: number;
+  pushed: number;
+  insertedLocal: number;
+  insertedRemote: number;
+  localVv: VersionVector;
+  remoteVv: VersionVector;
+};
+
+export class NodeSyncClientError extends Data.TaggedError("NodeSyncClientError")<{
+  readonly operation: string;
+  readonly message: string;
+  readonly status?: number;
+  readonly cause?: unknown;
+}> {}
+
+export type NodeSyncClientEffect = {
+  health(): Effect.Effect<NodeSyncHealthResponse, NodeSyncClientError>;
+  pull(
+    vv?: VersionVector,
+  ): Effect.Effect<NodeSyncDeltaResponse, NodeSyncClientError>;
+  push(
+    events: readonly Event[],
+  ): Effect.Effect<NodeSyncPushResponse, NodeSyncClientError>;
+  syncFrom(
+    runtime: RuntimeServices,
+  ): Effect.Effect<NodeSyncClientSyncResult, NodeSyncClientError>;
+};
+
+export type NodeSyncClient = {
+  health(): Promise<NodeSyncHealthResponse>;
+  pull(vv?: VersionVector): Promise<NodeSyncDeltaResponse>;
+  push(events: readonly Event[]): Promise<NodeSyncPushResponse>;
+  syncFrom(runtime: RuntimeServices): Promise<NodeSyncClientSyncResult>;
+  effect: NodeSyncClientEffect;
+};
+
+export type NodeProductionStorageOptions =
+  | {
+      kind: "memory";
+    }
+  | {
+      kind: "sqlite";
+      db: NodeSqliteDatabaseLike;
+      tablePrefix?: string;
+      initialize?: boolean;
+    }
+  | {
+      kind: "postgres";
+      client: NodePostgresClientLike;
+      tablePrefix?: string;
+      initialize?: boolean;
+    };
+
+export type NodeProductionSyncOptions = {
+  basePath?: string;
+  protocol?: string;
+  /** Optional remote URL for the bundled SDK client, e.g. https://host/sync. */
+  clientBaseUrl?: string;
+  clientFetch?: NodeSyncClientFetch;
+  clientHeaders?: Readonly<Record<string, string>>;
+};
+
+export type NodeProductionRuntimeOptions = {
+  replicaId: string;
+  name?: string;
+  storage: NodeProductionStorageOptions;
+  sync?: NodeProductionSyncOptions;
+  wall?: () => number;
+  capabilities?: Iterable<RuntimeCapability>;
+};
+
+type NodeProductionRuntimeServices = RuntimeServices & {
+  projection: ProjectionStore;
+  sequencer: RuntimeSequencer;
+};
+
+export type NodeProductionRuntime = {
+  storage: NodeProductionStorageOptions["kind"];
+  runtime: NodeProductionRuntimeServices;
+  layer: Layer.Layer<ProjectionRuntimeServices>;
+  handleSync: ReturnType<typeof createNodeSyncHttpHandler>;
+  listener: NodeHttpRequestListener;
+  basePath: string;
+  protocol: string;
+  lifecycle?: NodeSqlLifecyclePlan;
+  client?: NodeSyncClient;
+  effectClient?: NodeSyncClientEffect;
+};
+
+export class NodeProductionRuntimeError extends Data.TaggedError(
+  "NodeProductionRuntimeError",
+)<{
+  readonly operation: string;
+  readonly message: string;
+  readonly storage?: NodeProductionStorageOptions["kind"];
+  readonly cause?: unknown;
+}> {}
+
 const DEFAULT_SYNC_PROTOCOL = "metacrdt.node.http.v1";
+
+const VersionVectorSchema = Schema.Record({
+  key: Schema.String,
+  value: Schema.Number,
+});
+
+const NodeSyncHealthResponseSchema = Schema.Struct({
+  ok: Schema.Literal(true),
+  protocol: Schema.String,
+  profile: Schema.Struct({
+    name: Schema.String,
+    replicaId: Schema.String,
+    capabilities: Schema.Array(Schema.String),
+  }),
+  vv: VersionVectorSchema,
+});
+
+const NodeSyncDeltaResponseSchema = Schema.Struct({
+  protocol: Schema.String,
+  from: Schema.String,
+  vv: VersionVectorSchema,
+  since: VersionVectorSchema,
+  events: Schema.Array(Schema.Any),
+});
+
+const NodeSyncPushResponseSchema = Schema.Struct({
+  protocol: Schema.String,
+  inserted: Schema.Number,
+  seen: Schema.Number,
+  vv: VersionVectorSchema,
+});
 
 function identifier(name: string): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
@@ -147,10 +348,15 @@ function identifier(name: string): string {
   return `"${name}"`;
 }
 
-function tableNames(prefix: string): { events: string; meta: string } {
+function tableNames(prefix: string): {
+  events: string;
+  meta: string;
+  projection: string;
+} {
   return {
     events: identifier(`${prefix}_events`),
     meta: identifier(`${prefix}_meta`),
+    projection: identifier(`${prefix}_projection`),
   };
 }
 
@@ -171,12 +377,17 @@ export function createNodeSqlLifecyclePlan(
   const indexes = {
     eventsByEntity: identifier(`${tablePrefix}_events_by_e`),
     eventsByAttribute: identifier(`${tablePrefix}_events_by_a`),
+    eventsByTarget: identifier(`${tablePrefix}_events_by_target`),
+    projectionByEntity: identifier(`${tablePrefix}_projection_by_e`),
+    projectionByAttribute: identifier(`${tablePrefix}_projection_by_a`),
+    projectionByEventId: identifier(`${tablePrefix}_projection_by_event_id`),
   };
   const createEventsTable =
     `CREATE TABLE IF NOT EXISTS ${tables.events} (` +
     "id TEXT PRIMARY KEY NOT NULL, " +
     "e TEXT, " +
     "a TEXT, " +
+    "target TEXT, " +
     "event_json TEXT NOT NULL" +
     ")";
   const createEventsByEntityIndex =
@@ -185,11 +396,31 @@ export function createNodeSqlLifecyclePlan(
   const createEventsByAttributeIndex =
     `CREATE INDEX IF NOT EXISTS ${indexes.eventsByAttribute} ` +
     `ON ${tables.events} (a)`;
+  const createEventsByTargetIndex =
+    `CREATE INDEX IF NOT EXISTS ${indexes.eventsByTarget} ` +
+    `ON ${tables.events} (target)`;
   const createMetaTable =
     `CREATE TABLE IF NOT EXISTS ${tables.meta} (` +
     "key TEXT PRIMARY KEY NOT NULL, " +
     "value TEXT NOT NULL" +
     ")";
+  const createProjectionTable =
+    `CREATE TABLE IF NOT EXISTS ${tables.projection} (` +
+    "id TEXT PRIMARY KEY NOT NULL, " +
+    "e TEXT NOT NULL, " +
+    "a TEXT NOT NULL, " +
+    "event_id TEXT NOT NULL, " +
+    "row_json TEXT NOT NULL" +
+    ")";
+  const createProjectionByEntityIndex =
+    `CREATE INDEX IF NOT EXISTS ${indexes.projectionByEntity} ` +
+    `ON ${tables.projection} (e)`;
+  const createProjectionByAttributeIndex =
+    `CREATE INDEX IF NOT EXISTS ${indexes.projectionByAttribute} ` +
+    `ON ${tables.projection} (a)`;
+  const createProjectionByEventIdIndex =
+    `CREATE INDEX IF NOT EXISTS ${indexes.projectionByEventId} ` +
+    `ON ${tables.projection} (event_id)`;
   return {
     dialect,
     tablePrefix,
@@ -198,11 +429,21 @@ export function createNodeSqlLifecyclePlan(
     createEventsTable,
     createEventsByEntityIndex,
     createEventsByAttributeIndex,
+    createEventsByTargetIndex,
     createMetaTable,
+    createProjectionTable,
+    createProjectionByEntityIndex,
+    createProjectionByAttributeIndex,
+    createProjectionByEventIdIndex,
     initializeStatements: [
       createEventsTable,
       createEventsByEntityIndex,
       createEventsByAttributeIndex,
+      createEventsByTargetIndex,
+      createProjectionTable,
+      createProjectionByEntityIndex,
+      createProjectionByAttributeIndex,
+      createProjectionByEventIdIndex,
       createMetaTable,
     ],
   };
@@ -235,6 +476,17 @@ function valueColumn(row: unknown): string | undefined {
   return undefined;
 }
 
+function rowJsonColumn(row: unknown): string | undefined {
+  if (row === undefined || row === null) return undefined;
+  if (typeof row === "string") return row;
+  if (Array.isArray(row)) return typeof row[0] === "string" ? row[0] : undefined;
+  if (typeof row === "object") {
+    const value = (row as { row_json?: unknown }).row_json;
+    return typeof value === "string" ? value : undefined;
+  }
+  return undefined;
+}
+
 function decodeEvent(row: unknown): Event | undefined {
   const raw = valueColumn(row);
   if (raw === undefined) return undefined;
@@ -245,6 +497,15 @@ function decodeEvent(row: unknown): Event | undefined {
 
 function eventJson(event: Event): string {
   return JSON.stringify(event);
+}
+
+function decodeProjectionRow(row: unknown): ProjectionRow | undefined {
+  const raw = rowJsonColumn(row);
+  return raw === undefined ? undefined : (JSON.parse(raw) as ProjectionRow);
+}
+
+function projectionRowJson(row: ProjectionRow): string {
+  return JSON.stringify(row);
 }
 
 function jsonResponse(value: unknown, status = 200): NodeSyncHttpResponse {
@@ -317,6 +578,16 @@ function parseVersionVector(raw: string | undefined): VersionVector {
   return vv;
 }
 
+function eventArrayFromUnknown(value: unknown, message: string): Event[] {
+  if (!Array.isArray(value)) throw new Error(message);
+  for (const event of value) {
+    if (!verifyId(event as Event)) {
+      throw new Error("body contains invalid event id");
+    }
+  }
+  return value as Event[];
+}
+
 async function requestBody(request: NodeSyncHttpRequestLike): Promise<unknown> {
   const raw = typeof request.body === "function" ? await request.body() : request.body;
   return typeof raw === "string" ? (JSON.parse(raw) as unknown) : raw;
@@ -328,13 +599,7 @@ function eventsFromBody(body: unknown): Event[] {
     : typeof body === "object" && body !== null
       ? (body as { events?: unknown }).events
       : undefined;
-  if (!Array.isArray(events)) throw new Error("expected body { events: Event[] }");
-  for (const event of events) {
-    if (!verifyId(event as Event)) {
-      throw new Error("body contains invalid event id");
-    }
-  }
-  return events as Event[];
+  return eventArrayFromUnknown(events, "expected body { events: Event[] }");
 }
 
 function sseFrame(event: string, data: unknown): string {
@@ -523,6 +788,343 @@ export function createNodeHttpRequestListener(
   };
 }
 
+function globalFetch(): NodeSyncClientFetch | undefined {
+  return (globalThis as { fetch?: NodeSyncClientFetch }).fetch;
+}
+
+function normalizeClientBaseUrl(baseUrl: string): string {
+  return baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+}
+
+function clientUrl(baseUrl: string, path: string, params?: Readonly<Record<string, string>>): string {
+  const query = params
+    ? Object.entries(params)
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join("&")
+    : "";
+  return `${baseUrl}${path}${query === "" ? "" : `?${query}`}`;
+}
+
+function clientError(
+  operation: string,
+  cause: unknown,
+  status?: number,
+): NodeSyncClientError {
+  if (cause instanceof NodeSyncClientError) return cause;
+  return new NodeSyncClientError({
+    operation,
+    status,
+    message: cause instanceof Error ? cause.message : String(cause),
+    cause,
+  });
+}
+
+function decodeClient<A, I>(
+  operation: string,
+  schema: Schema.Schema<A, I>,
+  input: unknown,
+): Effect.Effect<A, NodeSyncClientError> {
+  return Effect.try({
+    try: () => Schema.decodeUnknownSync(schema)(input),
+    catch: (cause) => clientError(operation, cause),
+  });
+}
+
+function jsonClientRequest(
+  operation: string,
+  fetch: NodeSyncClientFetch,
+  baseUrl: string,
+  path: string,
+  init: NodeSyncClientFetchRequest = {},
+  params?: Readonly<Record<string, string>>,
+): Effect.Effect<unknown, NodeSyncClientError> {
+  return Effect.tryPromise({
+    try: async () => {
+      const response = await fetch(clientUrl(baseUrl, path, params), init);
+      const raw = await response.text();
+      const parsed = raw === "" ? null : (JSON.parse(raw) as unknown);
+      if (response.status < 200 || response.status >= 300) {
+        const message =
+          typeof parsed === "object" &&
+          parsed !== null &&
+          typeof (parsed as { error?: unknown }).error === "string"
+            ? (parsed as { error: string }).error
+            : `HTTP ${response.status}`;
+        throw new NodeSyncClientError({ operation, status: response.status, message });
+      }
+      return parsed;
+    },
+    catch: (cause) => clientError(operation, cause),
+  });
+}
+
+function assertProtocol(
+  operation: string,
+  expected: string,
+  actual: string,
+): Effect.Effect<void, NodeSyncClientError> {
+  return actual === expected
+    ? Effect.void
+    : Effect.fail(
+        new NodeSyncClientError({
+          operation,
+          message: `unexpected protocol ${actual}; expected ${expected}`,
+        }),
+      );
+}
+
+function decodeDeltaEvents(
+  operation: string,
+  response: typeof NodeSyncDeltaResponseSchema.Type,
+): Effect.Effect<NodeSyncDeltaResponse, NodeSyncClientError> {
+  return Effect.try({
+    try: () => ({
+      ...response,
+      events: eventArrayFromUnknown(response.events, "expected response events"),
+    }),
+    catch: (cause) => clientError(operation, cause),
+  });
+}
+
+export function createNodeSyncClientEffect(
+  options: NodeSyncClientOptions,
+): NodeSyncClientEffect {
+  const fetch = options.fetch ?? globalFetch();
+  const baseUrl = normalizeClientBaseUrl(options.baseUrl);
+  const protocol = options.protocol ?? DEFAULT_SYNC_PROTOCOL;
+  const headers = {
+    "content-type": "application/json",
+    ...(options.headers ?? {}),
+  };
+
+  if (!fetch) {
+    const missingFetch = (operation: string) =>
+      Effect.fail(
+        new NodeSyncClientError({
+          operation,
+          message: "no fetch implementation supplied",
+        }),
+      );
+    return {
+      health: () => missingFetch("health"),
+      pull: () => missingFetch("pull"),
+      push: () => missingFetch("push"),
+      syncFrom: () => missingFetch("syncFrom"),
+    };
+  }
+
+  const health = () =>
+    jsonClientRequest("health", fetch, baseUrl, "/health", { method: "GET", headers }).pipe(
+      Effect.flatMap((json) =>
+        decodeClient("health", NodeSyncHealthResponseSchema, json),
+      ),
+      Effect.tap((response) => assertProtocol("health", protocol, response.protocol)),
+    );
+
+  const pull = (vv: VersionVector = {}) =>
+    jsonClientRequest(
+      "pull",
+      fetch,
+      baseUrl,
+      "/events",
+      { method: "GET", headers },
+      { vv: JSON.stringify(vv) },
+    ).pipe(
+      Effect.flatMap((json) =>
+        decodeClient("pull", NodeSyncDeltaResponseSchema, json),
+      ),
+      Effect.flatMap((response) =>
+        decodeDeltaEvents("pull", response),
+      ),
+      Effect.tap((response) => assertProtocol("pull", protocol, response.protocol)),
+    );
+
+  const push = (events: readonly Event[]) =>
+    jsonClientRequest("push", fetch, baseUrl, "/events", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ events }),
+    }).pipe(
+      Effect.flatMap((json) =>
+        decodeClient("push", NodeSyncPushResponseSchema, json),
+      ),
+      Effect.tap((response) => assertProtocol("push", protocol, response.protocol)),
+    );
+
+  const syncFrom = (runtime: RuntimeServices) =>
+    Effect.tryPromise({
+      try: async () => {
+        const localBefore = await runtime.store.scan();
+        return {
+          localBefore,
+          localVvBefore: versionVector(localBefore),
+        };
+      },
+      catch: (cause) => clientError("syncFrom", cause),
+    }).pipe(
+      Effect.flatMap(({ localVvBefore }) =>
+        pull(localVvBefore).pipe(
+          Effect.map((remoteDelta) => ({ localVvBefore, remoteDelta })),
+        ),
+      ),
+      Effect.flatMap(({ remoteDelta }) =>
+        Effect.tryPromise({
+          try: async () => {
+            const insertedLocal = await mergeFrom(runtime, remoteDelta.events);
+            const localAfterMerge = await runtime.store.scan();
+            const outbound = deltaSince(localAfterMerge, remoteDelta.vv).events;
+            return { remoteDelta, insertedLocal, localAfterMerge, outbound };
+          },
+          catch: (cause) => clientError("syncFrom", cause),
+        }),
+      ),
+      Effect.flatMap(({ remoteDelta, insertedLocal, localAfterMerge, outbound }) =>
+        push(outbound).pipe(
+          Effect.map((pushed) => ({
+            pulled: remoteDelta.events.length,
+            pushed: outbound.length,
+            insertedLocal,
+            insertedRemote: pushed.inserted,
+            localVv: versionVector(localAfterMerge),
+            remoteVv: pushed.vv,
+          })),
+        ),
+      ),
+    );
+
+  return { health, pull, push, syncFrom };
+}
+
+export function createNodeSyncClient(options: NodeSyncClientOptions): NodeSyncClient {
+  const effect = createNodeSyncClientEffect(options);
+  return {
+    effect,
+    health: () => Effect.runPromise(effect.health()),
+    pull: (vv) => Effect.runPromise(effect.pull(vv)),
+    push: (events) => Effect.runPromise(effect.push(events)),
+    syncFrom: (runtime) => Effect.runPromise(effect.syncFrom(runtime)),
+  };
+}
+
+function productionRuntimeError(
+  operation: string,
+  storage: NodeProductionStorageOptions["kind"] | undefined,
+  cause: unknown,
+): NodeProductionRuntimeError {
+  if (cause instanceof NodeProductionRuntimeError) return cause;
+  return new NodeProductionRuntimeError({
+    operation,
+    storage,
+    message: cause instanceof Error ? cause.message : String(cause),
+    cause,
+  });
+}
+
+function sqlLifecycleForStorage(
+  storage: NodeProductionStorageOptions,
+): NodeSqlLifecyclePlan | undefined {
+  if (storage.kind === "memory") return undefined;
+  return createNodeSqlLifecyclePlan({
+    dialect: storage.kind,
+    tablePrefix: storage.tablePrefix,
+  });
+}
+
+async function createRuntimeForStorage(
+  options: NodeProductionRuntimeOptions,
+): Promise<NodeProductionRuntimeServices> {
+  const common = {
+    replicaId: options.replicaId,
+    name: options.name,
+    wall: options.wall,
+    capabilities: options.capabilities,
+  };
+  switch (options.storage.kind) {
+    case "memory":
+      return createNodeMemoryRuntime(common);
+    case "sqlite":
+      return await createNodeSqliteRuntime({
+        ...common,
+        db: options.storage.db,
+        tablePrefix: options.storage.tablePrefix,
+        initialize: options.storage.initialize,
+      });
+    case "postgres":
+      return await createNodePostgresRuntime({
+        ...common,
+        client: options.storage.client,
+        tablePrefix: options.storage.tablePrefix,
+        initialize: options.storage.initialize,
+      });
+  }
+}
+
+/**
+ * Effect-native production assembly for the Node target.
+ *
+ * This is still deliberately framework- and driver-neutral: callers bring the
+ * concrete SQLite/Postgres driver and the HTTP server. The helper returns the
+ * selected runtime, its Layer, the structural HTTP/SSE sync handler, a native
+ * `node:http`-style listener, lifecycle metadata for SQL stores, and an optional
+ * SDK client for a configured remote sync base URL.
+ */
+export function createNodeProductionRuntimeEffect(
+  options: NodeProductionRuntimeOptions,
+): Effect.Effect<NodeProductionRuntime, NodeProductionRuntimeError> {
+  return Effect.tryPromise({
+    try: async () => {
+      const runtime = await createRuntimeForStorage(options);
+      const basePath = normalizeBasePath(options.sync?.basePath ?? "/sync");
+      const protocol = options.sync?.protocol ?? DEFAULT_SYNC_PROTOCOL;
+      const syncOptions = { basePath, protocol };
+      const handleSync = createNodeSyncHttpHandler(runtime, syncOptions);
+      const listener = createNodeHttpRequestListener(runtime, syncOptions);
+      const lifecycle = sqlLifecycleForStorage(options.storage);
+      const base = {
+        storage: options.storage.kind,
+        runtime,
+        layer: runtimeServicesLayer(runtime),
+        handleSync,
+        listener,
+        basePath,
+        protocol,
+        ...(lifecycle ? { lifecycle } : {}),
+      };
+      if (options.sync?.clientBaseUrl) {
+        const effectClient = createNodeSyncClientEffect({
+          baseUrl: options.sync.clientBaseUrl,
+          fetch: options.sync.clientFetch,
+          headers: options.sync.clientHeaders,
+          protocol,
+        });
+        return {
+          ...base,
+          effectClient,
+          client: createNodeSyncClient({
+            baseUrl: options.sync.clientBaseUrl,
+            fetch: options.sync.clientFetch,
+            headers: options.sync.clientHeaders,
+            protocol,
+          }),
+        };
+      }
+      return base;
+    },
+    catch: (cause) =>
+      productionRuntimeError(
+        "createNodeProductionRuntime",
+        options.storage.kind,
+        cause,
+      ),
+  });
+}
+
+export function createNodeProductionRuntime(
+  options: NodeProductionRuntimeOptions,
+): Promise<NodeProductionRuntime> {
+  return Effect.runPromise(createNodeProductionRuntimeEffect(options));
+}
+
 export class NodeSqliteEventStore implements EventStore {
   private readonly plan: NodeSqlLifecyclePlan;
 
@@ -537,6 +1139,7 @@ export class NodeSqliteEventStore implements EventStore {
     await this.exec(this.plan.createEventsTable);
     await this.exec(this.plan.createEventsByEntityIndex);
     await this.exec(this.plan.createEventsByAttributeIndex);
+    await this.exec(this.plan.createEventsByTargetIndex);
   }
 
   private async exec(sql: string): Promise<void> {
@@ -556,10 +1159,16 @@ export class NodeSqliteEventStore implements EventStore {
     if (inserted) {
       const stmt = await prepare(
         this.db,
-        `INSERT INTO ${this.plan.tables.events} (id, e, a, event_json) VALUES (?, ?, ?, ?)`,
+        `INSERT INTO ${this.plan.tables.events} (id, e, a, target, event_json) VALUES (?, ?, ?, ?, ?)`,
       );
       if (!stmt.run) throw new Error("SQLite statement does not support run()");
-      await stmt.run(event.id, event.e ?? null, event.a ?? null, eventJson(event));
+      await stmt.run(
+        event.id,
+        event.e ?? null,
+        event.a ?? null,
+        event.target ?? null,
+        eventJson(event),
+      );
     } else if (existing.seq === undefined && event.seq !== undefined) {
       const stmt = await prepare(
         this.db,
@@ -588,6 +1197,7 @@ export class NodeSqliteEventStore implements EventStore {
         if (!event) continue;
         if (filter.e !== undefined && event.e !== filter.e) continue;
         if (filter.a !== undefined && event.a !== filter.a) continue;
+        if (filter.target !== undefined && event.target !== filter.target) continue;
         out.push(event);
       }
       return out.sort((a, b) => a.id.localeCompare(b.id));
@@ -602,6 +1212,10 @@ export class NodeSqliteEventStore implements EventStore {
     if (filter.a !== undefined) {
       clauses.push("a = ?");
       params.push(filter.a);
+    }
+    if (filter.target !== undefined) {
+      clauses.push("target = ?");
+      params.push(filter.target);
     }
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
     const stmt = await prepare(
@@ -622,6 +1236,104 @@ export class NodeSqliteEventStore implements EventStore {
       if ((await this.append(event)).inserted) inserted++;
     }
     return { inserted, seen };
+  }
+}
+
+export class NodeSqliteProjectionStore implements ProjectionStore {
+  private readonly plan: NodeSqlLifecyclePlan;
+
+  constructor(
+    private readonly db: NodeSqliteDatabaseLike,
+    tablePrefix = "metacrdt",
+  ) {
+    this.plan = createNodeSqlLifecyclePlan({ dialect: "sqlite", tablePrefix });
+  }
+
+  async initialize(): Promise<void> {
+    await this.exec(this.plan.createProjectionTable);
+    await this.exec(this.plan.createProjectionByEntityIndex);
+    await this.exec(this.plan.createProjectionByAttributeIndex);
+    await this.exec(this.plan.createProjectionByEventIdIndex);
+  }
+
+  private async exec(sql: string): Promise<void> {
+    if (this.db.exec) {
+      await this.db.exec(sql);
+      return;
+    }
+    const stmt = await prepare(this.db, sql);
+    if (!stmt.run) throw new Error("SQLite statement does not support run()");
+    await stmt.run();
+  }
+
+  async replace(rows: Iterable<ProjectionRow>): Promise<ProjectionReplaceResult> {
+    await this.clear();
+    const stmt = await prepare(
+      this.db,
+      `INSERT INTO ${this.plan.tables.projection} (id, e, a, event_id, row_json) VALUES (?, ?, ?, ?, ?)`,
+    );
+    if (!stmt.run) throw new Error("SQLite statement does not support run()");
+    let count = 0;
+    for (const row of rows) {
+      await stmt.run(row.id, row.e, row.a, row.eventId, projectionRowJson(row));
+      count += 1;
+    }
+    return { rows: count };
+  }
+
+  async clear(): Promise<void> {
+    const stmt = await prepare(
+      this.db,
+      `DELETE FROM ${this.plan.tables.projection}`,
+    );
+    if (!stmt.run) throw new Error("SQLite statement does not support run()");
+    await stmt.run();
+  }
+
+  async scan(filter: ProjectionFilter = {}): Promise<ProjectionRow[]> {
+    if (filter.ids) {
+      const out: ProjectionRow[] = [];
+      for (const id of new Set(filter.ids)) {
+        const stmt = await prepare(
+          this.db,
+          `SELECT row_json FROM ${this.plan.tables.projection} WHERE id = ?`,
+        );
+        if (!stmt.get) throw new Error("SQLite statement does not support get()");
+        const row = decodeProjectionRow(await stmt.get(id));
+        if (!row) continue;
+        if (filter.e !== undefined && row.e !== filter.e) continue;
+        if (filter.a !== undefined && row.a !== filter.a) continue;
+        if (filter.eventIds !== undefined && !filter.eventIds.includes(row.eventId)) {
+          continue;
+        }
+        out.push(row);
+      }
+      return out.sort((a, b) => a.id.localeCompare(b.id));
+    }
+
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filter.e !== undefined) {
+      clauses.push("e = ?");
+      params.push(filter.e);
+    }
+    if (filter.a !== undefined) {
+      clauses.push("a = ?");
+      params.push(filter.a);
+    }
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const stmt = await prepare(
+      this.db,
+      `SELECT row_json FROM ${this.plan.tables.projection}${where} ORDER BY id`,
+    );
+    if (!stmt.all) throw new Error("SQLite statement does not support all()");
+    const eventIds = filter.eventIds ? new Set(filter.eventIds) : null;
+    return (await stmt.all(...params))
+      .map(decodeProjectionRow)
+      .filter(
+        (row): row is ProjectionRow =>
+          row !== undefined && (eventIds === null || eventIds.has(row.eventId)),
+      );
   }
 }
 
@@ -767,6 +1479,7 @@ export class NodePostgresEventStore implements EventStore {
     await queryPostgres(this.client, this.plan.createEventsTable);
     await queryPostgres(this.client, this.plan.createEventsByEntityIndex);
     await queryPostgres(this.client, this.plan.createEventsByAttributeIndex);
+    await queryPostgres(this.client, this.plan.createEventsByTargetIndex);
   }
 
   async append(event: Event): Promise<AppendResult> {
@@ -776,9 +1489,15 @@ export class NodePostgresEventStore implements EventStore {
     if (existing === undefined) {
       const result = await queryPostgres(
         this.client,
-        `INSERT INTO ${this.plan.tables.events} (id, e, a, event_json) VALUES ($1, $2, $3, $4) ` +
+        `INSERT INTO ${this.plan.tables.events} (id, e, a, target, event_json) VALUES ($1, $2, $3, $4, $5) ` +
           "ON CONFLICT (id) DO NOTHING",
-        [event.id, event.e ?? null, event.a ?? null, eventJson(event)],
+        [
+          event.id,
+          event.e ?? null,
+          event.a ?? null,
+          event.target ?? null,
+          eventJson(event),
+        ],
       );
       inserted = result.rowCount === undefined || result.rowCount === null
         ? true
@@ -810,6 +1529,7 @@ export class NodePostgresEventStore implements EventStore {
         if (!event) continue;
         if (filter.e !== undefined && event.e !== filter.e) continue;
         if (filter.a !== undefined && event.a !== filter.a) continue;
+        if (filter.target !== undefined && event.target !== filter.target) continue;
         out.push(event);
       }
       return out.sort((a, b) => a.id.localeCompare(b.id));
@@ -824,6 +1544,10 @@ export class NodePostgresEventStore implements EventStore {
     if (filter.a !== undefined) {
       params.push(filter.a);
       clauses.push(`a = $${params.length}`);
+    }
+    if (filter.target !== undefined) {
+      params.push(filter.target);
+      clauses.push(`target = $${params.length}`);
     }
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
     const result = await queryPostgres(
@@ -844,6 +1568,88 @@ export class NodePostgresEventStore implements EventStore {
       if ((await this.append(event)).inserted) inserted++;
     }
     return { inserted, seen };
+  }
+}
+
+export class NodePostgresProjectionStore implements ProjectionStore {
+  private readonly plan: NodeSqlLifecyclePlan;
+
+  constructor(
+    private readonly client: NodePostgresClientLike,
+    tablePrefix = "metacrdt",
+  ) {
+    this.plan = createNodeSqlLifecyclePlan({ dialect: "postgres", tablePrefix });
+  }
+
+  async initialize(): Promise<void> {
+    await queryPostgres(this.client, this.plan.createProjectionTable);
+    await queryPostgres(this.client, this.plan.createProjectionByEntityIndex);
+    await queryPostgres(this.client, this.plan.createProjectionByAttributeIndex);
+    await queryPostgres(this.client, this.plan.createProjectionByEventIdIndex);
+  }
+
+  async replace(rows: Iterable<ProjectionRow>): Promise<ProjectionReplaceResult> {
+    await this.clear();
+    let count = 0;
+    for (const row of rows) {
+      await queryPostgres(
+        this.client,
+        `INSERT INTO ${this.plan.tables.projection} (id, e, a, event_id, row_json) VALUES ($1, $2, $3, $4, $5)`,
+        [row.id, row.e, row.a, row.eventId, projectionRowJson(row)],
+      );
+      count += 1;
+    }
+    return { rows: count };
+  }
+
+  async clear(): Promise<void> {
+    await queryPostgres(this.client, `DELETE FROM ${this.plan.tables.projection}`);
+  }
+
+  async scan(filter: ProjectionFilter = {}): Promise<ProjectionRow[]> {
+    if (filter.ids) {
+      const out: ProjectionRow[] = [];
+      for (const id of new Set(filter.ids)) {
+        const result = await queryPostgres(
+          this.client,
+          `SELECT row_json FROM ${this.plan.tables.projection} WHERE id = $1`,
+          [id],
+        );
+        const row = decodeProjectionRow(result.rows?.[0]);
+        if (!row) continue;
+        if (filter.e !== undefined && row.e !== filter.e) continue;
+        if (filter.a !== undefined && row.a !== filter.a) continue;
+        if (filter.eventIds !== undefined && !filter.eventIds.includes(row.eventId)) {
+          continue;
+        }
+        out.push(row);
+      }
+      return out.sort((a, b) => a.id.localeCompare(b.id));
+    }
+
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filter.e !== undefined) {
+      params.push(filter.e);
+      clauses.push(`e = $${params.length}`);
+    }
+    if (filter.a !== undefined) {
+      params.push(filter.a);
+      clauses.push(`a = $${params.length}`);
+    }
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const result = await queryPostgres(
+      this.client,
+      `SELECT row_json FROM ${this.plan.tables.projection}${where} ORDER BY id`,
+      params,
+    );
+    const eventIds = filter.eventIds ? new Set(filter.eventIds) : null;
+    return (result.rows ?? [])
+      .map(decodeProjectionRow)
+      .filter(
+        (row): row is ProjectionRow =>
+          row !== undefined && (eventIds === null || eventIds.has(row.eventId)),
+      );
   }
 }
 
@@ -951,7 +1757,9 @@ export class NodePostgresSequencer implements RuntimeSequencer {
   }
 }
 
-export function createNodeMemoryRuntime(options: MemoryRuntimeOptions): RuntimeServices {
+export function createNodeMemoryRuntime(
+  options: MemoryRuntimeOptions,
+): ReturnType<typeof createMemoryRuntime> {
   return createMemoryRuntime({
     ...options,
     name: options.name ?? "node-memory",
@@ -959,18 +1767,63 @@ export function createNodeMemoryRuntime(options: MemoryRuntimeOptions): RuntimeS
   });
 }
 
+function nodeRuntimeInitError(
+  operation: string,
+  cause: unknown,
+): RuntimeServiceError {
+  return new RuntimeServiceError({
+    service: "NodeRuntime",
+    operation,
+    message: cause instanceof Error ? cause.message : String(cause),
+    cause,
+  });
+}
+
+export function createNodeMemoryRuntimeLayer(options: MemoryRuntimeOptions) {
+  return runtimeServicesLayer(createNodeMemoryRuntime(options));
+}
+
+function nodeAsyncRuntimeLayer(
+  operation: string,
+  init: () => Promise<NodeSqliteRuntime>,
+): Layer.Layer<ProjectionRuntimeServices, RuntimeServiceError>;
+function nodeAsyncRuntimeLayer(
+  operation: string,
+  init: () => Promise<NodePostgresRuntime>,
+): Layer.Layer<ProjectionRuntimeServices, RuntimeServiceError>;
+function nodeAsyncRuntimeLayer<T extends RuntimeServices & { sequencer: RuntimeSequencer }>(
+  operation: string,
+  init: () => Promise<T>,
+) {
+  return Layer.unwrapEffect(
+    Effect.map(
+      Effect.tryPromise({
+        try: init,
+        catch: (cause) => nodeRuntimeInitError(operation, cause),
+      }),
+      runtimeServicesLayer,
+    ),
+  );
+}
+
 export async function createNodeSqliteRuntime(
   options: NodeSqliteRuntimeOptions,
 ): Promise<NodeSqliteRuntime> {
   const prefix = options.tablePrefix ?? "metacrdt";
   const store = new NodeSqliteEventStore(options.db, prefix);
+  const projection = new NodeSqliteProjectionStore(options.db, prefix);
   const meta = new NodeSqliteMetaStore(options.db, prefix);
   if (options.initialize ?? true) {
     await store.initialize();
+    await projection.initialize();
     await meta.initialize();
   }
   const capabilities = new Set<RuntimeCapability>(
-    options.capabilities ?? ["convergent-log", "coordinated-writes"],
+    options.capabilities ?? [
+      "convergent-log",
+      "coordinated-writes",
+      "projection-store",
+    ],
   );
   const profile: RuntimeProfile = {
     name: options.name ?? "node-sqlite",
@@ -980,9 +1833,18 @@ export async function createNodeSqliteRuntime(
   return {
     profile,
     store,
+    projection,
     clock: await NodeSqliteClock.create(meta, options.replicaId, options.wall),
     sequencer: await NodeSqliteSequencer.create(meta, options.replicaId),
   };
+}
+
+export function createNodeSqliteRuntimeLayer(
+  options: NodeSqliteRuntimeOptions,
+) {
+  return nodeAsyncRuntimeLayer("createNodeSqliteRuntime", () =>
+    createNodeSqliteRuntime(options),
+  );
 }
 
 export async function createNodePostgresRuntime(
@@ -990,13 +1852,19 @@ export async function createNodePostgresRuntime(
 ): Promise<NodePostgresRuntime> {
   const prefix = options.tablePrefix ?? "metacrdt";
   const store = new NodePostgresEventStore(options.client, prefix);
+  const projection = new NodePostgresProjectionStore(options.client, prefix);
   const meta = new NodePostgresMetaStore(options.client, prefix);
   if (options.initialize ?? true) {
     await store.initialize();
+    await projection.initialize();
     await meta.initialize();
   }
   const capabilities = new Set<RuntimeCapability>(
-    options.capabilities ?? ["convergent-log", "coordinated-writes"],
+    options.capabilities ?? [
+      "convergent-log",
+      "coordinated-writes",
+      "projection-store",
+    ],
   );
   const profile: RuntimeProfile = {
     name: options.name ?? "node-postgres",
@@ -1006,7 +1874,16 @@ export async function createNodePostgresRuntime(
   return {
     profile,
     store,
+    projection,
     clock: await NodePostgresClock.create(meta, options.replicaId, options.wall),
     sequencer: await NodePostgresSequencer.create(meta, options.replicaId),
   };
+}
+
+export function createNodePostgresRuntimeLayer(
+  options: NodePostgresRuntimeOptions,
+) {
+  return nodeAsyncRuntimeLayer("createNodePostgresRuntime", () =>
+    createNodePostgresRuntime(options),
+  );
 }

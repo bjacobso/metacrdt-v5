@@ -140,7 +140,8 @@ requires _no storage change at all_, because the convergence is already latent i
 
 | Doc                                      | Question it explores                                                                                                                      | Depth         |
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| [`convex.md`](./convex.md)               | How does the whole vision rebase onto Convex? (decided: reframes, cuts, what's already shipped) — **read first**                          | decisions     |
+| [`metacrdt-alignment.md`](./metacrdt-alignment.md) | The lens for the whole set: every doc is a fact, a fold, or a reaction over the convergent log — **read first**                  | lens          |
+| [`convex.md`](./convex.md)               | How does the whole vision rebase onto Convex? (decided: reframes, cuts, what's already shipped — now: one target among many)              | decisions     |
 | [`triples.md`](./triples.md)             | What is the substrate, and why is it the foundation?                                                                                      | vision        |
 | [`workflows.md`](./workflows.md)         | Can policies + automations + forms become one `Flow`?                                                                                     | design + spec |
 | [`compliance.md`](./compliance.md)       | What is the compliance engine, end to end? (obligations-as-facts + reconciler + reuse-query)                                              | synthesis     |
@@ -156,6 +157,7 @@ requires _no storage change at all_, because the convergence is already latent i
 | [`ai.md`](./ai.md)                       | Why is this an unusually good — and safe — AI substrate?                                                                                  | stretch       |
 | [`config.md`](./config.md)               | Config-as-code for a whole account (Terraform-style `plan`/`apply`); account/form/workflow building as an agentic coding loop             | capstone      |
 | [`dsl.md`](./dsl.md)                     | End-to-end demo: a staffing company (I-9/handbook/forklift-quiz/venue-disclosure) defined with the Effect DSLs — the spec for an e2e test | demo / e2e    |
+| [`forma.md`](./forma.md)                 | A Lisp authoring surface that elaborates to one shared MetaCRDT DSL/IR, compiles to a Confect-shaped typed runtime, and lowers to Convex/Cloudflare/Node targets | authoring     |
 | [`assessment.md`](./assessment.md)       | Holistic review against the current product: value, gaps, steelman/strawman, recommendation, and alternatives                             | assessment    |
 
 **Reading order:** [`triples.md`](./triples.md) → [`workflows.md`](./workflows.md) →

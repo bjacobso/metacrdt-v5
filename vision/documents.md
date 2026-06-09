@@ -1,5 +1,7 @@
 # Vision — Documents, Generated PDFs & E-Signature
 
+> **MetaCRDT primitive →** _fact-carrier + fold_ — metadata/provenance are facts; generated docs are folds; bytes stay content-addressed. See [`metacrdt-alignment.md`](./metacrdt-alignment.md).
+
 > Part of the `vision/` set — see [`README.md`](./README.md). Builds on [`triples.md`](./triples.md)
 > (facts + provenance), [`workflows.md`](./workflows.md) (forms/Flows), [`library.md`](./library.md)
 > (templates as versioned definitions), [`authorization.md`](./authorization.md) (who may read a

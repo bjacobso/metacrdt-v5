@@ -1,3 +1,6 @@
 [submodule ".context/open-ontology"]
 	path = .context/open-ontology
 	url = https://github.com/bjacobso/open-ontology
+[submodule ".context/effect-v4"]
+	path = .context/effect-v4
+	url = https://github.com/effect-TS/effect-smol

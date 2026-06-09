@@ -1,5 +1,7 @@
 # Vision — Unifying Forms, Policies & Automations on the Triple Store
 
+> **MetaCRDT primitive →** _reaction_ — a Flow is a fold over the log that emits facts; policies/automations/forms are one engine. See [`metacrdt-alignment.md`](./metacrdt-alignment.md).
+
 > Part of the `vision/` set — see [`README.md`](./README.md) for the map. Builds on the substrate in
 > [`triples.md`](./triples.md); companion: [`integrations.md`](./integrations.md). Grounded in
 > `../PLAN.md` (the triple-store PoC).

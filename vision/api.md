@@ -1,5 +1,7 @@
 # Vision — Type-Safe Contracts over a Dynamic Schema
 
+> **MetaCRDT primitive →** _convergence-as-projection_ — the API is a projection of schema-as-facts, invalidated by a schema-change tx. **Reversed cut:** the JIT `HttpApi` is re-viable as a target-neutral IR → runtime-shape consumer ([`forma.md`](./forma.md)), not bolted to a backend. See [`metacrdt-alignment.md`](./metacrdt-alignment.md) §3.
+
 > Part of the `vision/` set — see [`README.md`](./README.md). Builds on [`triples.md`](./triples.md)
 > (the registry + AST), [`authorization.md`](./authorization.md) (scoped access), [`library.md`](./library.md)
 > (schema/contract versioning), and [`performance.md`](./performance.md) (the compiled API is a

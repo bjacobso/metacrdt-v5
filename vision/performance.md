@@ -1,5 +1,7 @@
 # Vision — The Hybrid Read Path: Projections & Promotion
 
+> **MetaCRDT primitive →** _derived coherence_ — projections are bounded folds; the compiler chooses which to materialize. See [`metacrdt-alignment.md`](./metacrdt-alignment.md).
+
 > Part of the `vision/` set — see [`README.md`](./README.md). The concrete answer to the loudest
 > objection raised in [`triples.md`](./triples.md) §6. Builds on `../PLAN.md` §1 (indexes) and §8
 > (promotion), and connects to [`workflows.md`](./workflows.md) (the reuse `@>` index) and
