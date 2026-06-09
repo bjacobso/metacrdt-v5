@@ -5,6 +5,39 @@ the view contract **generated from in-package Forma preludes** and the output
 **vendored**. This is the first production exercise of `@metacrdt/forma`'s
 descriptor codegen.
 
+## Status at a glance
+
+| Phase | What | Status |
+|---|---|---|
+| 1 | `@metacrdt/views` — ViewSpec contract + runtime, generated from Forma preludes (self-hosting) | ✅ shipped |
+| 2 | Raw-JSON Entities model proof (headless; proves views never executes queries) | ✅ shipped |
+| 3 | Inline ViewSpec→React renderer; Entities list renders from a ViewSpec | ✅ shipped |
+| — | Effect-free `@metacrdt/views/runtime` entry (fixed a bundle regression) | ✅ shipped |
+| 4 | Extract `@metacrdt/views-react` (deps: `@metacrdt/views/runtime` + react) | ⏳ later |
+| 5 | Edge binding layer: ViewSpec `queries` → `@metacrdt/query` → Convex execution | ⏳ later |
+| 6 | Ontology → ViewSpec authoring (Forma lens/view defs lower to ViewSpec) | ⏳ later |
+
+Detail for each phase is in **Phases** below. Phases 1–3 + the runtime entry are
+on PR #1. Phases 4–6 are independent follow-ons.
+
+### Remaining work — entry points for the next sessions
+
+- **Phase 4 (small, mechanical now):** move `src/views/ViewRenderer.tsx` into a new
+  `packages/views-react` package depending on `@metacrdt/views/runtime` + react;
+  re-point the app import. The runtime-only entry (its prerequisite) is already
+  done. Grow the node coverage beyond the Entities subset as needed.
+- **Phase 5 (touches the backend):** replace the hand-rolled `flattenEntityRows`
+  edge in `src/pages/Entities.tsx` with a real binding resolver that reads a
+  ViewSpec `queries` descriptor, builds a `@metacrdt/query` clause, runs it via
+  Convex, and feeds the result into the runtime scope. Views stays query-agnostic.
+- **Phase 6 (Forma authoring):** lower Forma view/board/nav/lens defs to ViewSpec
+  — the ontology-aware *producer* of specs. Likely starts as Forma preludes / app
+  code; a package only when proven.
+- **Cleanup (optional):** split the generated Schema consts out of the
+  catalog/normalizer module so `normalizeViewSpec`/`validateViewSpecStructure` can
+  also move to `@metacrdt/views/runtime` (effect-free), letting hosts normalize
+  untrusted specs without bundling the Schema IR.
+
 ## North Star
 
 A view is **derived coherence** — a deterministic projection of facts — and
