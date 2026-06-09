@@ -2,7 +2,7 @@
  * AUTO-GENERATED FILE - DO NOT EDIT
  *
  * Generated from the hosted ViewSpec protocol descriptors in preludes/viewspec-protocol.lisp.
- * Run: npm run generate --workspace @metacrdt/views
+ * Run: pnpm --filter @metacrdt/views generate
  */
 
 import { Schema } from "effect";

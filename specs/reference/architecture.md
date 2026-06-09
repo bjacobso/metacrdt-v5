@@ -1,0 +1,169 @@
+# Architecture & naming — the MetaCRDT umbrella
+
+**MetaCRDT** is the umbrella: the primitive, the thesis, and the org
+(`metacrdt.com`, `@metacrdt`, the GitHub/X handles). Everything in this project —
+triples, Datalog, workflows, forms, constraints, tasks, permissions, views,
+agents, documents, applications — is a **consequence** of one primitive:
+
+> a convergent graph of facts, constraints, intentions, and effects.
+
+The ontology isn't the primitive. The workflow isn't the primitive. The schema
+isn't the primitive. *The primitive is the convergent fact graph* — and that's
+what "MetaCRDT" names. This doc is the map: where every layer, package, and prior
+idea lives. (Companion: [manifesto.md](./positioning.md) for the *why*,
+[SPEC.md](./protocol.md) for the protocol, [metacrdt.md](./positioning.md) for the
+positioning, [VISION.md](../vision/overview.md) for the pillars, and
+[package-consolidation.md](../archive/package-consolidation.md) for folding the Open
+Ontology monorepo into this `@metacrdt/*` package graph.)
+
+---
+
+## The layer stack
+
+```
+MetaCRDT — the umbrella: the primitive, the thesis, the org
+│
+├─ PROTOCOL          SPEC.md  ·  "Open Ontology" = the open spec / community effort
+│
+├─ FEATURE PACKAGES  (what the substrate does — pure, runtime-agnostic)
+│   @metacrdt/core ....... events, content hash, ≺ order, fold, visibility   (SPEC §4–5)
+│   @metacrdt/schema ..... schema-as-facts (types, attributes, cardinality)
+│   @metacrdt/query ...... the Datalog engine / derivation evaluator         (SPEC §6)
+│   @metacrdt/workflow ... durable flows & steps
+│   @metacrdt/forms ...... form defs + collection
+│   @metacrdt/agent ...... agent participation
+│
+├─ THE HARNESS       @metacrdt/runtime  ·  the IR + service interfaces (multi-runtime)
+│
+├─ TARGETS           (compile bindings — SPEC §8.3)
+│   @metacrdt/convex ......... Convex relay / system-of-record  (reference impl)
+│   @metacrdt/cloudflare ..... Durable-Object edge replica + WS sync
+│   @metacrdt/local .......... browser/local-first target (the foldkit client)
+│
+├─ TOOLING           @metacrdt/forma = Lisp authoring language → IR
+│                    Schematics = the IDE/authoring surface
+│
+├─ ONTOLOGY          "Alpha Ontology" = the default shipped blueprint
+│                     (the standard library: staffing/compliance types+rules, generalized)
+│
+└─ APPLICATIONS      Onboarded = the first app (the datarooms vertical), buyer-facing
+```
+
+The detailed package fold from the Open Ontology submodule is specified in
+[package-consolidation.md](../archive/package-consolidation.md): `@metacrdt/forma` for
+the Lisp language, `@metacrdt/views` for ViewSpec, feature packages for schema /
+query / workflow / forms / agent, and target packages for Convex / Cloudflare /
+local / node.
+
+## Three axes, kept separate
+
+The common mistake is to flatten these into one list (e.g. putting `cloudflare`
+next to `workflow`). They are **different axes**, and keeping them apart is the
+whole point of the harness:
+
+- **Features** (`core` / `schema` / `query` / `workflow` / `forms` / `agent`) —
+  *what the substrate does*. Pure; depend only on `@metacrdt/core` + service
+  interfaces. They MUST NOT know about any runtime.
+- **The IR / harness** (`@metacrdt/runtime`) — *the portable program* + the
+  service interfaces (`Store`, `HLC`, `Sched`, `Transport`) that features are
+  written against.
+- **Targets** (`convex` / `cloudflare` / `local`) — *where it runs*. Each provides
+  the service Layers; each is a SPEC §8.3 transport binding.
+
+> One feature set → many targets, guaranteed to converge, because every target
+> embeds the *same* deterministic `@metacrdt/core` (SPEC §5). The shared core is
+> the convergence guarantee; the targets only swap I/O.
+
+## Where prior names land
+
+| Prior name | Becomes |
+| --- | --- |
+| **Open Ontology** | the open spec / community effort (SPEC.md) |
+| **Alpha Ontology** | the default ontology shipped with MetaCRDT (the standard blueprint library) |
+| **Onlang / Forma** | `@metacrdt/forma`, the Lisp authoring language / compiler frontend (authoring → IR) |
+| **Schematics** | the IDE / tooling |
+| **Onboarded** | the first application built on MetaCRDT (datarooms / compliance) |
+| **Meta-Effects** | absorbed: the runtime is `@metacrdt/runtime` + Effect Layers |
+
+## How *this repo* factors in
+
+Every module already maps cleanly — which is the evidence the taxonomy is real,
+not invented:
+
+| This repo (`convex-triples`) | Package |
+| --- | --- |
+| `packages/core` (`@metacrdt/core`) | pure protocol kernel: events, order, G-Set merge, fold |
+| `packages/schema` (`@metacrdt/schema`) | pure schema-as-facts conventions: carrier ids, bootstrap cardinalities, value/cardinality guards, meta-attributes, definition fact lowering, attribute-shape reconstruction |
+| `packages/query` (`@metacrdt/query`) | pure Datalog/query semantics: clause parsing, operator helpers, projection, pagination, aggregation, descriptions, rule-locality analysis, rule emit shaping, clause-pick planning, provenanced binding dedupe, pattern-input construction, provenanced pattern extension/candidate expansion with accumulated row-limit checking, negation candidate checking, compare/compute state transitions, intermediate-row limit guard, bound-variable advancement, solver-frame initialization, solver work-list clause selection/removal |
+| `packages/convex` (`@metacrdt/convex`) | Convex/core adapters, validators, Confect sidecar warning, component-owned protocol log, current projections, and cardinality-one reconciliation |
+| `packages/forma` (`@metacrdt/forma`) | Lisp authoring language: reader, formatter, evaluator, VM, type inference |
+| `packages/runtime` (`@metacrdt/runtime`) | runtime service contracts + memory harness + localStorage target seed + BroadcastChannel and p2p DataChannel transports proving target-neutral convergence, restart durability, same-origin anti-entropy, and peer-to-peer gossip |
+| `packages/cloudflare` (`@metacrdt/cloudflare`) | Durable Object storage-backed runtime services, structural WebSocket relay shell, and Worker/DO example shell. Parity build-out to a DO + SQLite triple store (and live queries over DO WebSockets as a stretch goal) is planned in [cloudflare-target.md](../plans/cloudflare-target.md) |
+| `packages/local` (`@metacrdt/local`) | browser/local-first target package composing runtime localStorage services + BroadcastChannel transport, plus async local runtime services, IndexedDB-compatible persistence, and SQLite-compatible persistence |
+| `packages/node` (`@metacrdt/node`) | open server-process target package with memory runtime wrapper, structural server-SQLite event/HLC/seq services, dependency-free HTTP/SSE sync handler, and native-style request listener passing package tests |
+| `convex/attributes.ts`, `convex/lib/meta.ts` | Convex schema runtime over `@metacrdt/schema` constants/lowering/read-model helpers |
+| `convex/datalog.ts`, `convex/lib/engine.ts` | Convex Datalog runtime over `@metacrdt/query` helpers |
+| `convex/flows.ts` | `@metacrdt/workflow` |
+| `convex/forms.ts` | `@metacrdt/forms` |
+| `convex/facts.ts` mutations + Convex bindings | `@metacrdt/convex` (target) |
+| `convex/appconfig.ts` blueprint + the Effect-Schema DSL | Schematics / Onlang |
+| the staffing blueprint | first entry in **Alpha Ontology** |
+| `src/` (the React app) | **Onboarded** (datarooms) |
+| `SPEC.md` | **Open Ontology** |
+
+## Build policy
+
+- Packages are built as packages. Turbo orchestrates workspace
+  `build`/`typecheck`/`test` tasks, and tsdown (powered by Rolldown) emits ESM
+  JavaScript plus declarations into package-local `dist/` directories.
+- The root [`tsdown.config.ts`](../tsdown.config.ts) is the package build
+  contract: most packages use the neutral ES2020 `src/index.ts` entry, while
+  outliers such as `@metacrdt/forma` and `@metacrdt/convex` declare their entry
+  surfaces there instead of copy-pasting long CLI flags in every package.
+- Package public surfaces resolve through `dist` exports, not raw TypeScript
+  source. This keeps the package graph honest for downstream consumers while
+  preserving `src/` as the authored implementation.
+- Package payloads are intentionally `dist`-only, plus package metadata and
+  target-specific examples such as `@metacrdt/cloudflare`'s
+  `wrangler.example.toml`; `pnpm pack:packages` dry-runs those payloads
+  through Turbo.
+- The product/reference app remains a Vite application. Vite is not the package
+  builder; root `pnpm build` composes package builds first, then the app.
+
+## Three disciplines
+
+1. **A map, not a migration.** This repo stays one reference implementation until
+   the boundaries are *proven*. Factoring into nine packages now is the
+   premature-coupling trap. **`@metacrdt/core` is published first** — it exists now
+   at `packages/core`: pure, dependency-free, and tested (SPEC §4–5; the events,
+   `≺` order, G-Set merge, and deterministic bitemporal fold). It's the determinism
+   guarantee and the most reusable. **`@metacrdt/schema`, `@metacrdt/query`,
+   `@metacrdt/convex`, `@metacrdt/forma`, `@metacrdt/runtime`,
+   `@metacrdt/cloudflare`, `@metacrdt/local`, and
+   `@metacrdt/testkit` now exist too**: schema owns the pure carrier-id,
+   bootstrap-cardinality, meta-attribute, definition-lowering, and
+   attribute-shaping conventions; query owns pure Datalog syntax/row operations
+   while Convex still owns triple fetching and join execution; Convex has
+   adapters plus the first
+   component-owned protocol log, current projections, and opt-in cardinality-one
+   reconciliation; Forma is the runtime-neutral language
+   package; runtime is harness-first (service contracts, memory target,
+   localStorage target seed, BroadcastChannel transport seed, and p2p DataChannel
+   transport);
+   Cloudflare is a storage-service target plus WebSocket relay and Worker/DO
+   example shell, not a live deployed service yet; local is the browser-facing
+   composition over localStorage + BroadcastChannel plus IndexedDB-compatible and
+   SQLite-compatible async persistence.
+   Everything else extracts as it stabilizes. (Tracked in [TODO.md](../../TODO.md).)
+2. **The name is the thesis — so protect what makes it true.** *Databases store
+   facts; CRDTs synchronize facts; MetaCRDT synchronizes facts, logic, workflows,
+   permissions, agents, and interfaces.* That sentence is only true because the log
+   is a G-Set CRDT (SPEC §4) and derivation **converges because it is a
+   deterministic fold** (SPEC §6). Guard the determinism discipline (shared core,
+   no `Date.now()`/`Math.random()` in the fold) or the claim deflates into
+   marketing.
+3. **Brand by audience, not one global name.** `metacrdt.com` is the substrate's
+   developer/research home (the labs); a compliance buyer is sold **Onboarded**
+   ("built on MetaCRDT"). Nobody buys a CRDT; they buy onboarding. The live demo on
+   `chatty-hare-94` is a *research preview of the substrate*, so MetaCRDT/datarooms
+   branding is correct **there** — just don't let it become the buyer-facing name.

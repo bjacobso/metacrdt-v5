@@ -28,7 +28,7 @@ await mkdir(tempTarget, { recursive: true });
 await writeFile(tempConfig, JSON.stringify({ functions: tempTarget }, null, 2));
 
 try {
-  await run("npx", ["confect", "codegen"]);
+  await run("pnpm", ["exec", "confect", "codegen"]);
 } finally {
   await rm(tempConfig, { force: true });
   await rm(tempTarget, { recursive: true, force: true });

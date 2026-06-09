@@ -27,13 +27,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "pack:check": "npm pack --dry-run --json"
+    "pack:check": "node ../../scripts/pnpm-pack-check.mjs"
   },
   "dependencies": {
     "effect": "^3.21.3"
   },
   "devDependencies": {
-    "@forma/ts": "0.1.0",
+    "@forma/ts": "workspace:*",
     "@types/node": "^24.10.1",
     "tsx": "^4.19.2",
     "typescript": "^6.0.3",

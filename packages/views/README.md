@@ -46,9 +46,9 @@ describes everything else.
 ## Regenerating the IR
 
 ```sh
-npm run generate --workspace @metacrdt/views          # regenerate src/generated/*
-npm run snapshot:protocol-ir --workspace @metacrdt/views
-npm run snapshot:viewspec-ir --workspace @metacrdt/views
+pnpm --filter @metacrdt/views generate          # regenerate src/generated/*
+pnpm --filter @metacrdt/views snapshot:protocol-ir
+pnpm --filter @metacrdt/views snapshot:viewspec-ir
 ```
 
 The committed output can't silently rot: `test/generated-sources.test.ts`

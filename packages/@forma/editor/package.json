@@ -42,7 +42,7 @@
     "@codemirror/lint": "^6.8.5",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.36.8",
-    "@forma/host": "0.1.0",
+    "@forma/host": "workspace:*",
     "@lezer/highlight": "^1.2.1",
     "@lezer/lr": "^1.4.2",
     "effect": "^3.21.3"

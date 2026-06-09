@@ -2,7 +2,7 @@
 //
 // No I/O, no ambient clocks, no randomness: every function is a pure fold or
 // transform, identical on every V8 target. This is the module every runtime
-// embeds so that all replicas agree (SPEC §5; docs/architecture.md).
+// embeds so that all replicas agree (SPEC §5; specs/reference/architecture.md).
 
 export { sha256 } from "./sha256.js";
 export { base32 } from "./base32.js";

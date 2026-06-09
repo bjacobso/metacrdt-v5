@@ -33,8 +33,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@forma/host": "0.1.0",
-    "@forma/ocaml": "0.1.0",
+    "@forma/host": "workspace:*",
+    "@forma/ocaml": "workspace:*",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12"
   },
