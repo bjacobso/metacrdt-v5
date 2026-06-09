@@ -9,9 +9,9 @@ Smaller implementation specs now live in [specs/](./specs/README.md).
 
 ### Current pulse
 
-- [x] Goal 145 shipped: Cloudflare caller-provided flow interpreter seed.
+- [x] Goal 146 shipped: Cloudflare persisted flow definition registry seed.
 - [ ] Choose the next active slice from remaining Cloudflare parity (full flow
-  registry/resume orchestration/host action invocation parity, full React/frontend SDK
+  resume orchestration/host action invocation parity, full React/frontend SDK
   live-query package, or broader historical SQL query-provider
   parity/performance hardening), Node production hardening, provider-specific
   auth/UI wrapping, or a scoped Confect/domain wrapper.
@@ -264,12 +264,18 @@ After implementation:
   SQLite current facade. It executes inline assert/notify/action steps, evaluates
   simple current-state branch patterns, and parks on collect/wait steps through
   existing collection and flow-wait timer rows.
-- [ ] **Remaining Cloudflare Phase D parity** — persisted flow definition
-  registry lookup, automatic resume orchestration after collection submission or
-  timer wake, multi-effect configured action execution, host action invocation,
-  full React/frontend SDK live-query package/auth integration, and broader
-  historical SQL query-provider parity/performance hardening remain open; do not
-  claim full parity until those are implemented.
+- [x] **Goal 146 shipped: persisted flow definition registry seed** —
+  `@metacrdt/cloudflare` now has `flow_definitions` rows and a
+  `DurableObjectSqliteFlowDefinitionStore`. The current facade exposes
+  `upsertFlowDefinition`, `flowDefinitionByName`, `listFlowDefinitions`, and
+  `executeRegisteredFlow`, which loads an active persisted definition and
+  delegates execution to the existing bounded `executeFlow` interpreter.
+- [ ] **Remaining Cloudflare Phase D parity** — automatic flow resume
+  orchestration after collection submission or timer wake, multi-effect
+  configured action execution, host action invocation, full React/frontend SDK
+  live-query package/auth integration, and broader historical SQL query-provider
+  parity/performance hardening remain open; do not claim full parity until those
+  are implemented.
 
 **Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
 - [x] Commutative supersession — centralized Convex writes now stamp
@@ -410,8 +416,13 @@ After implementation:
 - [x] Cloudflare Durable Object SQLite caller-provided flow interpreter seed —
   `executeFlow` runs bounded caller-provided flow definitions with assert,
   notify, branch, action, collect, wait, done, and unsupported steps over the
-  current facade, without claiming persisted flow registry, automatic resume, or
-  host action parity.
+  current facade, without claiming automatic resume orchestration or host action
+  parity.
+- [x] Cloudflare Durable Object SQLite persisted flow definition registry seed —
+  `flow_definitions` rows persist active/disabled flow definitions with
+  subject-type metadata and step JSON; the current facade can upsert/read/list
+  definitions and execute an active registered flow through the existing bounded
+  interpreter.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -422,7 +433,7 @@ After implementation:
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — full
   SQL-indexed query-provider parity/performance hardening,
-  persisted/resumable flow registry parity, host action invocation, full
+  automatic flow resume orchestration, host action invocation, full
   React/frontend SDK live-query package/auth integration, and broader production
   hardening on top of the persisted registry (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
@@ -954,6 +965,21 @@ After implementation:
 ---
 
 ## Log
+
+### 2026-06-09 — Cloudflare persisted flow definition registry seed
+- [x] **Registry rows.**
+  `DurableObjectSqliteFlowDefinitionStore` now owns `flow_definitions` rows with
+  active/disabled status, optional subject type, persisted step JSON, and
+  created/updated timestamps.
+- [x] **Registered flow execution.**
+  The DO SQLite current facade exposes `upsertFlowDefinition`,
+  `flowDefinitionByName`, `listFlowDefinitions`, and `executeRegisteredFlow`;
+  registered execution loads an active persisted definition and delegates to the
+  existing bounded `executeFlow` interpreter.
+- [x] **Still scoped.** Automatic resume orchestration after collection
+  submission or timer wake, multi-effect configured action execution, host action
+  invocation, React/frontend SDK integration, and broader SQL query-provider
+  hardening remain open.
 
 ### 2026-06-09 — Cloudflare caller-provided flow interpreter seed
 - [x] **Bounded flow runner.**

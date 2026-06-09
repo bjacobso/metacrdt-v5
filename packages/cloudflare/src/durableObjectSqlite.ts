@@ -61,6 +61,7 @@ export type DurableObjectSqliteRuntime = RuntimeServices & {
   timers: DurableObjectSqliteTimerStore;
   flowWaitTimers: DurableObjectSqliteFlowWaitTimerStore;
   dag: DurableObjectSqliteDagStore;
+  flowDefinitions: DurableObjectSqliteFlowDefinitionStore;
   liveQueries: DurableObjectSqliteLiveQuerySubscriptionStore;
   clock: DurableObjectSqliteClock;
   sequencer: DurableObjectSqliteSequencer;
@@ -232,6 +233,43 @@ export type DurableObjectSqliteDagRunFilter = {
   readonly limit?: number;
 };
 
+export type DurableObjectSqliteFlowDefinitionStatus =
+  | "active"
+  | "disabled";
+
+export type DurableObjectSqliteFlowDefinitionStep = {
+  readonly id: string;
+  readonly type: string;
+  readonly next?: string;
+  readonly config?: unknown;
+};
+
+export type DurableObjectSqliteFlowDefinition = {
+  readonly name: string;
+  readonly status: DurableObjectSqliteFlowDefinitionStatus;
+  readonly subjectType?: string;
+  readonly steps: readonly DurableObjectSqliteFlowDefinitionStep[];
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly description?: string;
+};
+
+export type DurableObjectSqliteUpsertFlowDefinitionInput = {
+  readonly name: string;
+  readonly status?: DurableObjectSqliteFlowDefinitionStatus;
+  readonly subjectType?: string;
+  readonly steps: readonly DurableObjectSqliteFlowDefinitionStep[];
+  readonly createdAt: number;
+  readonly updatedAt?: number;
+  readonly description?: string;
+};
+
+export type DurableObjectSqliteFlowDefinitionFilter = {
+  readonly subjectType?: string;
+  readonly status?: DurableObjectSqliteFlowDefinitionStatus;
+  readonly limit?: number;
+};
+
 export type DurableObjectSqliteLiveQuerySubscriptionStatus =
   | "active"
   | "closed";
@@ -284,6 +322,7 @@ type SqlPlan = {
     flowWaitTimers: string;
     flowDagRuns: string;
     flowDagEvents: string;
+    flowDefinitions: string;
     liveQuerySubscriptions: string;
     liveQueryDependencies: string;
   };
@@ -308,6 +347,8 @@ type SqlPlan = {
     dagRunsByStatus: string;
     dagRunsByUpdatedAt: string;
     dagEventsByRun: string;
+    flowDefinitionsBySubjectTypeStatus: string;
+    flowDefinitionsByStatus: string;
     liveQueriesByConnection: string;
     liveQueriesByStatusUpdatedAt: string;
     liveQueryDependenciesBySubscription: string;
@@ -335,6 +376,7 @@ function plan(prefix = "metacrdt"): SqlPlan {
       flowWaitTimers: identifier(`${prefix}_flow_wait_timers`),
       flowDagRuns: identifier(`${prefix}_flow_dag_runs`),
       flowDagEvents: identifier(`${prefix}_flow_dag_events`),
+      flowDefinitions: identifier(`${prefix}_flow_definitions`),
       liveQuerySubscriptions: identifier(`${prefix}_live_query_subscriptions`),
       liveQueryDependencies: identifier(`${prefix}_live_query_dependencies`),
     },
@@ -363,6 +405,10 @@ function plan(prefix = "metacrdt"): SqlPlan {
       dagRunsByStatus: identifier(`${prefix}_flow_dag_runs_by_status`),
       dagRunsByUpdatedAt: identifier(`${prefix}_flow_dag_runs_by_updated_at`),
       dagEventsByRun: identifier(`${prefix}_flow_dag_events_by_run`),
+      flowDefinitionsBySubjectTypeStatus: identifier(
+        `${prefix}_flow_definitions_by_subject_type_status`,
+      ),
+      flowDefinitionsByStatus: identifier(`${prefix}_flow_definitions_by_status`),
       liveQueriesByConnection: identifier(
         `${prefix}_live_query_subscriptions_by_connection`,
       ),
@@ -482,6 +528,12 @@ function dagRunStatus(
     value === "unsupported"
     ? value
     : undefined;
+}
+
+function flowDefinitionStatus(
+  value: string | undefined,
+): DurableObjectSqliteFlowDefinitionStatus | undefined {
+  return value === "active" || value === "disabled" ? value : undefined;
 }
 
 function liveQuerySubscriptionStatus(
@@ -683,6 +735,39 @@ function decodeDagEvent(row: unknown): DurableObjectSqliteDagEvent | undefined {
   };
 }
 
+function decodeFlowDefinition(
+  row: unknown,
+): DurableObjectSqliteFlowDefinition | undefined {
+  const name = textColumn(row, "name");
+  const status = flowDefinitionStatus(textColumn(row, "status"));
+  const subjectType = textColumn(row, "subject_type");
+  const stepsJson = textColumn(row, "steps_json");
+  const createdAt = numberColumn(row, "created_at");
+  const updatedAt = numberColumn(row, "updated_at");
+  const description = textColumn(row, "description");
+  if (
+    name === undefined ||
+    status === undefined ||
+    stepsJson === undefined ||
+    createdAt === undefined ||
+    createdAt === null ||
+    updatedAt === undefined ||
+    updatedAt === null
+  ) {
+    return undefined;
+  }
+  const steps = JSON.parse(stepsJson) as DurableObjectSqliteFlowDefinitionStep[];
+  return {
+    name,
+    status,
+    ...(subjectType === undefined ? {} : { subjectType }),
+    steps,
+    createdAt,
+    updatedAt,
+    ...(description === undefined ? {} : { description }),
+  };
+}
+
 function decodeLiveQuerySubscription(
   row: unknown,
 ): DurableObjectSqliteLiveQuerySubscriptionRow | undefined {
@@ -740,6 +825,12 @@ function collectionDataJson(data: unknown): string | null {
 
 function dagContextJson(context: unknown): string | null {
   return context === undefined ? null : JSON.stringify(context);
+}
+
+function flowDefinitionStepsJson(
+  steps: readonly DurableObjectSqliteFlowDefinitionStep[],
+): string {
+  return JSON.stringify(steps);
 }
 
 function liveQueryJson(query: DatalogQueryArgsType): string {
@@ -1720,6 +1811,105 @@ export class DurableObjectSqliteDagStore {
   }
 }
 
+export class DurableObjectSqliteFlowDefinitionStore {
+  private readonly plan: SqlPlan;
+
+  constructor(
+    private readonly sql: DurableObjectSqlStorageLike,
+    tablePrefix = "metacrdt",
+  ) {
+    this.plan = plan(tablePrefix);
+  }
+
+  async initialize(): Promise<void> {
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS ${this.plan.tables.flowDefinitions} (` +
+        "name TEXT PRIMARY KEY NOT NULL, " +
+        "status TEXT NOT NULL CHECK (status IN ('active', 'disabled')), " +
+        "subject_type TEXT NULL, " +
+        "steps_json TEXT NOT NULL, " +
+        "created_at REAL NOT NULL, " +
+        "updated_at REAL NOT NULL, " +
+        "description TEXT NULL" +
+        ")",
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.flowDefinitionsBySubjectTypeStatus} ` +
+        `ON ${this.plan.tables.flowDefinitions} (subject_type, status)`,
+    );
+    this.sql.exec(
+      `CREATE INDEX IF NOT EXISTS ${this.plan.indexes.flowDefinitionsByStatus} ` +
+        `ON ${this.plan.tables.flowDefinitions} (status)`,
+    );
+  }
+
+  async upsert(
+    input: DurableObjectSqliteUpsertFlowDefinitionInput,
+  ): Promise<DurableObjectSqliteFlowDefinition> {
+    this.sql.exec(
+      `INSERT INTO ${this.plan.tables.flowDefinitions} (` +
+        "name, status, subject_type, steps_json, created_at, updated_at, description" +
+        ") VALUES (?, ?, ?, ?, ?, ?, ?) " +
+        "ON CONFLICT (name) DO UPDATE SET " +
+        "status = excluded.status, " +
+        "subject_type = excluded.subject_type, " +
+        "steps_json = excluded.steps_json, " +
+        "updated_at = excluded.updated_at, " +
+        "description = excluded.description",
+      input.name,
+      input.status ?? "active",
+      input.subjectType ?? null,
+      flowDefinitionStepsJson(input.steps),
+      input.createdAt,
+      input.updatedAt ?? input.createdAt,
+      input.description ?? null,
+    );
+    const row = await this.get(input.name);
+    if (row === undefined) {
+      throw new Error(`failed to upsert flow definition: ${input.name}`);
+    }
+    return row;
+  }
+
+  async get(name: string): Promise<DurableObjectSqliteFlowDefinition | undefined> {
+    return decodeFlowDefinition(
+      rows(
+        this.sql.exec(
+          `SELECT name, status, subject_type, steps_json, created_at, updated_at, description ` +
+            `FROM ${this.plan.tables.flowDefinitions} WHERE name = ?`,
+          name,
+        ),
+      )[0],
+    );
+  }
+
+  async list(
+    filter: DurableObjectSqliteFlowDefinitionFilter = {},
+  ): Promise<DurableObjectSqliteFlowDefinition[]> {
+    const clauses: string[] = [];
+    const bindings: unknown[] = [];
+    if (filter.subjectType !== undefined) {
+      clauses.push("subject_type = ?");
+      bindings.push(filter.subjectType);
+    }
+    if (filter.status !== undefined) {
+      clauses.push("status = ?");
+      bindings.push(filter.status);
+    }
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const rowsOut = rows(
+      this.sql.exec(
+        `SELECT name, status, subject_type, steps_json, created_at, updated_at, description ` +
+          `FROM ${this.plan.tables.flowDefinitions}${where} ORDER BY updated_at DESC, name DESC`,
+        ...bindings,
+      ),
+    )
+      .map(decodeFlowDefinition)
+      .filter((row): row is DurableObjectSqliteFlowDefinition => row !== undefined);
+    return rowsOut.slice(0, Math.max(1, Math.min(filter.limit ?? 100, 500)));
+  }
+}
+
 export class DurableObjectSqliteLiveQuerySubscriptionStore {
   private readonly plan: SqlPlan;
 
@@ -2064,6 +2254,10 @@ export async function createDurableObjectSqliteRuntime(
     tablePrefix,
   );
   const dag = new DurableObjectSqliteDagStore(options.sql, tablePrefix);
+  const flowDefinitions = new DurableObjectSqliteFlowDefinitionStore(
+    options.sql,
+    tablePrefix,
+  );
   const liveQueries = new DurableObjectSqliteLiveQuerySubscriptionStore(
     options.sql,
     tablePrefix,
@@ -2076,6 +2270,7 @@ export async function createDurableObjectSqliteRuntime(
     await timers.initialize();
     await flowWaitTimers.initialize();
     await dag.initialize();
+    await flowDefinitions.initialize();
     await liveQueries.initialize();
     await meta.initialize();
   }
@@ -2099,6 +2294,7 @@ export async function createDurableObjectSqliteRuntime(
     timers,
     flowWaitTimers,
     dag,
+    flowDefinitions,
     liveQueries,
     clock: await DurableObjectSqliteClock.create(
       meta,

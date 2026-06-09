@@ -42,6 +42,9 @@ import type {
   DurableObjectSqliteDagRun,
   DurableObjectSqliteDagRunStatus,
   DurableObjectSqliteDagStore,
+  DurableObjectSqliteFlowDefinition,
+  DurableObjectSqliteFlowDefinitionStatus,
+  DurableObjectSqliteFlowDefinitionStore,
   DurableObjectSqliteFlowWaitTick,
   DurableObjectSqliteFlowWaitTickStatus,
   DurableObjectSqliteFlowWaitTimerStore,
@@ -419,6 +422,35 @@ export const DurableObjectSqliteFlowStepSchema = Schema.Struct({
   config: Schema.optionalWith(Schema.Any, { exact: true }),
 });
 
+export const DurableObjectSqliteFlowDefinitionStatusSchema = Schema.Literal(
+  "active",
+  "disabled",
+);
+
+export const DurableObjectSqliteUpsertFlowDefinitionArgsSchema = Schema.Struct({
+  name: Schema.String,
+  status: Schema.optionalWith(DurableObjectSqliteFlowDefinitionStatusSchema, {
+    exact: true,
+  }),
+  subjectType: Schema.optionalWith(Schema.String, { exact: true }),
+  steps: Schema.Array(DurableObjectSqliteFlowStepSchema),
+  createdAt: Schema.optionalWith(Schema.Number, { exact: true }),
+  updatedAt: Schema.optionalWith(Schema.Number, { exact: true }),
+  description: Schema.optionalWith(Schema.String, { exact: true }),
+});
+
+export const DurableObjectSqliteFlowDefinitionByNameArgsSchema = Schema.Struct({
+  name: Schema.String,
+});
+
+export const DurableObjectSqliteListFlowDefinitionsArgsSchema = Schema.Struct({
+  subjectType: Schema.optionalWith(Schema.String, { exact: true }),
+  status: Schema.optionalWith(DurableObjectSqliteFlowDefinitionStatusSchema, {
+    exact: true,
+  }),
+  limit: Schema.optionalWith(Schema.Number, { exact: true }),
+});
+
 export const DurableObjectSqliteExecuteFlowArgsSchema = Schema.Struct({
   runId: Schema.String,
   flowDefName: Schema.String,
@@ -427,6 +459,22 @@ export const DurableObjectSqliteExecuteFlowArgsSchema = Schema.Struct({
   startStepId: Schema.optionalWith(Schema.String, { exact: true }),
   subjectType: Schema.optionalWith(Schema.String, { exact: true }),
   eventIdPrefix: Schema.String,
+  actor: Schema.String,
+  actorType: Schema.optionalWith(
+    Schema.Literal("human", "agent", "system", "migration"),
+    { exact: true },
+  ),
+  now: Schema.optionalWith(Schema.Number, { exact: true }),
+  context: Schema.optionalWith(Schema.Any, { exact: true }),
+  maxSteps: Schema.optionalWith(Schema.Number, { exact: true }),
+});
+
+export const DurableObjectSqliteExecuteRegisteredFlowArgsSchema = Schema.Struct({
+  name: Schema.String,
+  subject: Schema.String,
+  runId: Schema.String,
+  eventIdPrefix: Schema.String,
+  startStepId: Schema.optionalWith(Schema.String, { exact: true }),
   actor: Schema.String,
   actorType: Schema.optionalWith(
     Schema.Literal("human", "agent", "system", "migration"),
@@ -553,8 +601,16 @@ export type DurableObjectSqliteExecuteActionArgs =
   typeof DurableObjectSqliteExecuteActionArgsSchema.Type;
 export type DurableObjectSqliteFlowStep =
   typeof DurableObjectSqliteFlowStepSchema.Type;
+export type DurableObjectSqliteUpsertFlowDefinitionArgs =
+  typeof DurableObjectSqliteUpsertFlowDefinitionArgsSchema.Type;
+export type DurableObjectSqliteFlowDefinitionByNameArgs =
+  typeof DurableObjectSqliteFlowDefinitionByNameArgsSchema.Type;
+export type DurableObjectSqliteListFlowDefinitionsArgs =
+  typeof DurableObjectSqliteListFlowDefinitionsArgsSchema.Type;
 export type DurableObjectSqliteExecuteFlowArgs =
   typeof DurableObjectSqliteExecuteFlowArgsSchema.Type;
+export type DurableObjectSqliteExecuteRegisteredFlowArgs =
+  typeof DurableObjectSqliteExecuteRegisteredFlowArgsSchema.Type;
 export type DurableObjectSqliteRecordDagRunArgs =
   typeof DurableObjectSqliteRecordDagRunArgsSchema.Type;
 export type DurableObjectSqliteDagRunByIdArgs =
@@ -699,6 +755,15 @@ export type DurableObjectSqliteCurrentSurface = {
   actionsForType(
     args: DurableObjectSqliteActionsForTypeArgs,
   ): Promise<DurableObjectSqliteRegisteredAction[]>;
+  upsertFlowDefinition(
+    args: DurableObjectSqliteUpsertFlowDefinitionArgs,
+  ): Promise<DurableObjectSqliteFlowDefinition>;
+  flowDefinitionByName(
+    args: DurableObjectSqliteFlowDefinitionByNameArgs,
+  ): Promise<DurableObjectSqliteFlowDefinition | undefined>;
+  listFlowDefinitions(
+    args?: DurableObjectSqliteListFlowDefinitionsArgs,
+  ): Promise<DurableObjectSqliteFlowDefinition[]>;
   scheduleCollectionTick(
     args: DurableObjectSqliteScheduleCollectionTickArgs,
   ): Promise<DurableObjectSqliteCollectionTick>;
@@ -731,6 +796,9 @@ export type DurableObjectSqliteCurrentSurface = {
   ): Promise<DurableObjectSqliteExecuteActionResult>;
   executeFlow(
     args: DurableObjectSqliteExecuteFlowArgs,
+  ): Promise<DurableObjectSqliteExecuteFlowResult>;
+  executeRegisteredFlow(
+    args: DurableObjectSqliteExecuteRegisteredFlowArgs,
   ): Promise<DurableObjectSqliteExecuteFlowResult>;
   executeRegisteredAction(
     args: DurableObjectSqliteExecuteRegisteredActionArgs,
@@ -1480,6 +1548,97 @@ export function listDurableObjectSqliteActionsForTypeEffect(
   });
 }
 
+export function upsertDurableObjectSqliteFlowDefinitionEffect(
+  flowDefinitions: DurableObjectSqliteFlowDefinitionStore,
+  args: DurableObjectSqliteUpsertFlowDefinitionArgs,
+  defaultNow: number,
+): Effect.Effect<
+  DurableObjectSqliteFlowDefinition,
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "upsertFlowDefinition",
+      DurableObjectSqliteUpsertFlowDefinitionArgsSchema,
+      args,
+    );
+    const createdAt = decoded.createdAt ?? defaultNow;
+    const updatedAt = decoded.updatedAt ?? createdAt;
+    return yield* Effect.tryPromise({
+      try: () =>
+        flowDefinitions.upsert({
+          name: decoded.name,
+          ...(decoded.status === undefined
+            ? {}
+            : {
+              status: decoded.status as DurableObjectSqliteFlowDefinitionStatus,
+            }),
+          ...(decoded.subjectType === undefined
+            ? {}
+            : { subjectType: decoded.subjectType }),
+          steps: decoded.steps,
+          createdAt,
+          updatedAt,
+          ...(decoded.description === undefined
+            ? {}
+            : { description: decoded.description }),
+        }),
+      catch: (cause) => surfaceError("upsertFlowDefinition", cause),
+    });
+  });
+}
+
+export function getDurableObjectSqliteFlowDefinitionByNameEffect(
+  flowDefinitions: DurableObjectSqliteFlowDefinitionStore,
+  args: DurableObjectSqliteFlowDefinitionByNameArgs,
+): Effect.Effect<
+  DurableObjectSqliteFlowDefinition | undefined,
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "flowDefinitionByName",
+      DurableObjectSqliteFlowDefinitionByNameArgsSchema,
+      args,
+    );
+    return yield* Effect.tryPromise({
+      try: () => flowDefinitions.get(decoded.name),
+      catch: (cause) => surfaceError("flowDefinitionByName", cause),
+    });
+  });
+}
+
+export function listDurableObjectSqliteFlowDefinitionsEffect(
+  flowDefinitions: DurableObjectSqliteFlowDefinitionStore,
+  args: DurableObjectSqliteListFlowDefinitionsArgs = {},
+): Effect.Effect<
+  DurableObjectSqliteFlowDefinition[],
+  DurableObjectSqliteCurrentSurfaceError
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "listFlowDefinitions",
+      DurableObjectSqliteListFlowDefinitionsArgsSchema,
+      args,
+    );
+    return yield* Effect.tryPromise({
+      try: () =>
+        flowDefinitions.list({
+          ...(decoded.subjectType === undefined
+            ? {}
+            : { subjectType: decoded.subjectType }),
+          ...(decoded.status === undefined
+            ? {}
+            : {
+              status: decoded.status as DurableObjectSqliteFlowDefinitionStatus,
+            }),
+          limit: limit(decoded.limit, 100, 500),
+        }),
+      catch: (cause) => surfaceError("listFlowDefinitions", cause),
+    });
+  });
+}
+
 export function executeDurableObjectSqliteRegisteredActionEffect(
   dag: DurableObjectSqliteDagStore,
   collections: DurableObjectSqliteCollectionStore,
@@ -2117,6 +2276,87 @@ export function executeDurableObjectSqliteFlowEffect(
       message,
     );
     return { run, steps: summaries, assertions, collections: collectionsOut, waitTicks, actions };
+  });
+}
+
+export function executeDurableObjectSqliteRegisteredFlowEffect(
+  flowDefinitions: DurableObjectSqliteFlowDefinitionStore,
+  dag: DurableObjectSqliteDagStore,
+  collections: DurableObjectSqliteCollectionStore,
+  flowWaitTimers: DurableObjectSqliteFlowWaitTimerStore,
+  args: DurableObjectSqliteExecuteRegisteredFlowArgs,
+  defaultNow: number,
+  cardinalityOf: CardinalityOf,
+  coord: Coord,
+): Effect.Effect<
+  DurableObjectSqliteExecuteFlowResult,
+  RuntimeError | DurableObjectSqliteCurrentSurfaceError,
+  | EventStoreService
+  | ProjectionStoreService
+  | RuntimeClockService
+  | RuntimeSequencerService
+  | RuntimeProfileService
+  | TransportService
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "executeRegisteredFlow",
+      DurableObjectSqliteExecuteRegisteredFlowArgsSchema,
+      args,
+    );
+    const flow = yield* getDurableObjectSqliteFlowDefinitionByNameEffect(
+      flowDefinitions,
+      { name: decoded.name },
+    );
+    if (flow === undefined) {
+      return yield* Effect.fail(
+        surfaceError(
+          "executeRegisteredFlow",
+          new Error(`unknown flow definition: ${decoded.name}`),
+        ),
+      );
+    }
+    if (flow.status !== "active") {
+      return yield* Effect.fail(
+        surfaceError(
+          "executeRegisteredFlow",
+          new Error(`flow definition is ${flow.status}: ${decoded.name}`),
+        ),
+      );
+    }
+    return yield* executeDurableObjectSqliteFlowEffect(
+      dag,
+      collections,
+      flowWaitTimers,
+      {
+        runId: decoded.runId,
+        flowDefName: flow.name,
+        subject: decoded.subject,
+        steps: flow.steps.map((step) => ({
+          id: step.id,
+          type: step.type as DurableObjectSqliteFlowStep["type"],
+          ...(step.next === undefined ? {} : { next: step.next }),
+          ...(step.config === undefined ? {} : { config: step.config }),
+        })),
+        ...(decoded.startStepId === undefined
+          ? {}
+          : { startStepId: decoded.startStepId }),
+        ...(flow.subjectType === undefined
+          ? {}
+          : { subjectType: flow.subjectType }),
+        eventIdPrefix: decoded.eventIdPrefix,
+        actor: decoded.actor,
+        ...(decoded.actorType === undefined
+          ? {}
+          : { actorType: decoded.actorType as ActorType }),
+        ...(decoded.now === undefined ? {} : { now: decoded.now }),
+        ...(decoded.context === undefined ? {} : { context: decoded.context }),
+        ...(decoded.maxSteps === undefined ? {} : { maxSteps: decoded.maxSteps }),
+      },
+      defaultNow,
+      cardinalityOf,
+      coord,
+    );
   });
 }
 
@@ -3212,6 +3452,28 @@ export function createDurableObjectSqliteCurrentSurface(
       run(listDurableObjectSqliteActionsEffect(args)),
     actionsForType: (args) =>
       run(listDurableObjectSqliteActionsForTypeEffect(args)),
+    upsertFlowDefinition: (args) =>
+      runCollection(
+        upsertDurableObjectSqliteFlowDefinitionEffect(
+          runtime.flowDefinitions,
+          args,
+          coord().txTime,
+        ),
+      ),
+    flowDefinitionByName: (args) =>
+      runCollection(
+        getDurableObjectSqliteFlowDefinitionByNameEffect(
+          runtime.flowDefinitions,
+          args,
+        ),
+      ),
+    listFlowDefinitions: (args = {}) =>
+      runCollection(
+        listDurableObjectSqliteFlowDefinitionsEffect(
+          runtime.flowDefinitions,
+          args,
+        ),
+      ),
     scheduleCollectionTick: (args) =>
       runCollection(
         scheduleDurableObjectSqliteCollectionTickEffect(
@@ -3297,6 +3559,19 @@ export function createDurableObjectSqliteCurrentSurface(
     executeFlow: (args) =>
       run(
         executeDurableObjectSqliteFlowEffect(
+          runtime.dag,
+          runtime.collections,
+          runtime.flowWaitTimers,
+          args,
+          coord().txTime,
+          options.cardinalityOf,
+          coord(),
+        ),
+      ),
+    executeRegisteredFlow: (args) =>
+      run(
+        executeDurableObjectSqliteRegisteredFlowEffect(
+          runtime.flowDefinitions,
           runtime.dag,
           runtime.collections,
           runtime.flowWaitTimers,

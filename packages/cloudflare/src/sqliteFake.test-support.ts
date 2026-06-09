@@ -83,6 +83,16 @@ type StoredDagEvent = {
   message: string | null;
 };
 
+type StoredFlowDefinition = {
+  name: string;
+  status: "active" | "disabled";
+  subject_type: string | null;
+  steps_json: string;
+  created_at: number;
+  updated_at: number;
+  description: string | null;
+};
+
 type StoredLiveQuerySubscription = {
   id: string;
   connection_id: string;
@@ -193,6 +203,14 @@ function dagRunStatusBinding(value: unknown, name: string): StoredDagRun["status
   throw new Error(`expected DAG run status binding for ${name}`);
 }
 
+function flowDefinitionStatusBinding(
+  value: unknown,
+  name: string,
+): StoredFlowDefinition["status"] {
+  if (value === "active" || value === "disabled") return value;
+  throw new Error(`expected flow definition status binding for ${name}`);
+}
+
 function liveQuerySubscriptionStatusBinding(
   value: unknown,
   name: string,
@@ -214,6 +232,7 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
   readonly flowWaitTicks = new Map<string, StoredFlowWaitTick>();
   readonly dagRuns = new Map<string, StoredDagRun>();
   readonly dagEvents = new Map<string, StoredDagEvent>();
+  readonly flowDefinitions = new Map<string, StoredFlowDefinition>();
   readonly liveQuerySubscriptions = new Map<string, StoredLiveQuerySubscription>();
   readonly liveQueryDependencies = new Map<string, StoredLiveQueryDependency>();
   readonly meta = new Map<string, string>();
@@ -244,6 +263,9 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
     }
     if (sql.includes("_flow_dag_runs")) {
       return this.execDagRuns(sql, bindings);
+    }
+    if (sql.includes("_flow_definitions")) {
+      return this.execFlowDefinitions(sql, bindings);
     }
     if (sql.includes("_live_query_subscriptions")) {
       return this.execLiveQuerySubscriptions(sql, bindings);
@@ -900,6 +922,75 @@ export class FakeDurableObjectSqlStorage implements DurableObjectSqlStorageLike 
       rows.sort((a, b) => {
         const ts = a.ts - b.ts;
         return ts !== 0 ? ts : a.event_id.localeCompare(b.event_id);
+      }),
+    );
+  }
+
+  private execFlowDefinitions(
+    sql: string,
+    bindings: readonly unknown[],
+  ): DurableObjectSqlCursorLike {
+    if (sql.startsWith("insert into")) {
+      const [
+        nameRaw,
+        statusRaw,
+        subjectTypeRaw,
+        stepsJsonRaw,
+        createdAtRaw,
+        updatedAtRaw,
+        descriptionRaw,
+      ] = bindings;
+      const name = stringBinding(nameRaw, "flow definition name");
+      const existing = this.flowDefinitions.get(name);
+      this.flowDefinitions.set(name, {
+        name,
+        status: flowDefinitionStatusBinding(
+          statusRaw,
+          "flow definition status",
+        ),
+        subject_type: nullableStringBinding(
+          subjectTypeRaw,
+          "flow definition subject_type",
+        ),
+        steps_json: stringBinding(stepsJsonRaw, "flow definition steps_json"),
+        created_at: existing?.created_at ??
+          numberBinding(createdAtRaw, "flow definition created_at"),
+        updated_at: numberBinding(updatedAtRaw, "flow definition updated_at"),
+        description: nullableStringBinding(
+          descriptionRaw,
+          "flow definition description",
+        ),
+      });
+      return cursor();
+    }
+
+    let rows = [...this.flowDefinitions.values()];
+    if (sql.includes("where name = ?")) {
+      rows = rows.filter(
+        (row) => row.name === stringBinding(bindings[0], "flow definition name"),
+      );
+    } else {
+      let bindingIndex = 0;
+      if (sql.includes("subject_type = ?")) {
+        const subjectType = stringBinding(
+          bindings[bindingIndex++],
+          "flow definition subject_type",
+        );
+        rows = rows.filter((row) => row.subject_type === subjectType);
+      }
+      if (sql.includes("status = ?")) {
+        const status = flowDefinitionStatusBinding(
+          bindings[bindingIndex++],
+          "flow definition status",
+        );
+        rows = rows.filter((row) => row.status === status);
+      }
+    }
+
+    return cursor(
+      rows.sort((a, b) => {
+        const updated = b.updated_at - a.updated_at;
+        return updated !== 0 ? updated : b.name.localeCompare(a.name);
       }),
     );
   }

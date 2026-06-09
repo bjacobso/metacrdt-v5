@@ -324,13 +324,20 @@ assert/notify/action steps, and parks on collect/wait steps with
 caller-provided operational ids. This still does not provide persisted flow
 definition registry lookup, automatic resume orchestration after collection or
 timer wakeups, multi-effect configured action execution, host action invocation,
+or a full frontend SDK. Goal 146 adds the first persisted Cloudflare flow
+definition registry seed: `flow_definitions` rows store active/disabled flow
+definitions with optional subject type and step JSON, the current facade can
+upsert/read/list definitions, and `executeRegisteredFlow` loads an active
+definition before delegating to the existing bounded `executeFlow` interpreter.
+This still does not provide automatic resume orchestration after collection or
+timer wakeups, multi-effect configured action execution, host action invocation,
 or a full frontend SDK. The next active goal should be chosen from
 the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (broader SQL query-provider
-parity/performance hardening, persisted/resumable flow registry parity, host
-action invocation, or a full React/frontend SDK live-query package),
+parity/performance hardening, automatic flow resume orchestration, host action
+invocation, or a full React/frontend SDK live-query package),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9547,6 +9554,44 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 146 — Cloudflare Persisted Flow Definition Registry Seed
+
+**Status:** shipped.
+
+**Objective:** add the first persisted Cloudflare flow definition registry over
+DO SQLite, then execute registered definitions through the already-shipped
+bounded flow interpreter without claiming automatic resume orchestration.
+
+### What Shipped
+
+- Added `DurableObjectSqliteFlowDefinitionStore` and `flow_definitions` rows
+  with active/disabled status, optional subject type, step JSON, created/updated
+  timestamps, and subject/status indexes.
+- Added flow-definition schemas/types and current-surface methods
+  `upsertFlowDefinition`, `flowDefinitionByName`, and `listFlowDefinitions`.
+- Added `executeRegisteredFlow` /
+  `executeDurableObjectSqliteRegisteredFlowEffect`, which loads an active
+  persisted definition and delegates to `executeFlow` with the stored steps and
+  subject-type guard.
+- Added fake-DO-SQLite support and focused Cloudflare tests for persistence
+  across runtime recreation, filtered listing, registered execution, and
+  disabled/missing definition rejection.
+
+### Non-Goals
+
+- Do not claim automatic resume orchestration after collection submission or
+  timer wake, multi-effect configured action execution, host action invocation,
+  or complete flow parity.
+- Do not implement React hooks, frontend SDK auth storage, or broader historical
+  SQL query-provider parity/performance hardening.
+
+### Verification
+
+- `npm run typecheck -- --pretty false` passes.
+- `npm run test:cloudflare` passes with 77 Cloudflare tests.
 
 ---
 

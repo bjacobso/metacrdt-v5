@@ -77,6 +77,15 @@ implements them on Cloudflare.
   step definitions, not persisted flow definition registry lookup, automatic
   resume orchestration, multi-effect configured action execution, or host action
   invocation.
+- **Durable Object SQLite persisted flow definition registry seed** —
+  `DurableObjectSqliteFlowDefinitionStore` persists active/disabled
+  `flow_definitions` rows with optional subject-type metadata and step JSON.
+  `upsertFlowDefinition`, `flowDefinitionByName`, `listFlowDefinitions`, and
+  `executeRegisteredFlow` on `createDurableObjectSqliteCurrentSurface` let
+  callers register deterministic definitions and execute an active registered
+  flow through the existing bounded interpreter. This is registry lookup and
+  interpreter delegation only, not automatic resume orchestration,
+  multi-effect configured action execution, or host action invocation.
 - **Durable Object SQLite live invalidation fanout** —
   `DurableObjectSqliteLiveInvalidationFanout` plus Effect/Promise publish
   helpers accept bounded `e` / `a` subscriptions over structural WebSocket
@@ -241,9 +250,9 @@ deterministic `changed` summaries for current-projection rebuilds. The indexed
 historical provider has conformance-style coverage for joins, disjunction,
 negation, compare/compute, pagination, aggregation, derived rows, lifecycle
 visibility, and bounded SQLite scan counters. The remaining parity plan —
-broader historical SQL-indexed query optimization, persisted flow registry /
-resume orchestration / host action invocation parity, and full React/frontend
-SDK live-query package/auth integration over DO WebSockets — is
+broader historical SQL-indexed query optimization, automatic flow resume
+orchestration / host action invocation parity, and full React/frontend SDK
+live-query package/auth integration over DO WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth
