@@ -8,8 +8,10 @@
   "scripts": {
     "dev": "pnpm build:packages && convex dev",
     "dev:web": "vite",
+    "dev:website": "pnpm --filter @metacrdt/website dev",
     "build": "pnpm build:packages && pnpm build:app",
     "build:app": "vite build",
+    "build:website": "pnpm --filter @metacrdt/website build",
     "build:packages": "turbo run build --filter='./packages/*' --filter='./packages/@forma/*'",
     "preview": "vite preview",
     "deploy": "convex deploy",
