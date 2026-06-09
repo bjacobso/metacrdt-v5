@@ -12,6 +12,9 @@ intact. This is the **actionable** altitude — for the durable model see
 
 | Spec | Purpose | Current next slice |
 | --- | --- | --- |
+| [Open Ontology Unification](./open-ontology-unification.md) | Umbrella org/repo layout and the phased merge of this repo with Open Ontology | Phase 0: decisions on record + `@forma` npm org ownership check |
+| [Datalog Monotonicity Classification](./datalog-monotonicity-classification.md) | Rule-engine metadata that separates CALM-backed monotone rules from `prec`-order-dependent rules | Implement classifier helper and persist reports on `rules` |
+| [Anti-Entropy TLA+ Spec](./anti-entropy-tla.md) | Small formal model for version-vector delta sync safety/liveness | Add TLC config and check the small finite models |
 | [Cloudflare Phase D](./cloudflare-phase-d.md) | Durable Object SQLite operational parity after Goal 145 | Persisted flow definition registry lookup |
 | [Cloudflare Live Query SDK](./cloudflare-live-query-sdk.md) | Frontend/SDK layer over the shipped structural live-query helpers | React-free browser session storage/auth boundary |
 | [Cloudflare SQL Query Hardening](./cloudflare-sql-query-hardening.md) | Broader historical SQL-indexed query-provider parity and performance | Add targeted scan coverage for the next missing query shape |

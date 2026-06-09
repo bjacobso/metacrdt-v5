@@ -35,11 +35,13 @@ describe("@metacrdt/convex projection visibility", () => {
     ).toBe(true);
   });
 
-  test("hides tombstoned facts regardless of txTime unless requested", () => {
+  test("tombstone visibility is time-indexed (SPEC §5.3)", () => {
     const tombstoned = { ...fact, tombstonedAt: 150 };
-    expect(isFactVisible(tombstoned, { txTime: 120, validTime: 100 })).toBe(false);
+    // Before the tombstone landed, the assert was visible: "what was known then".
+    expect(isFactVisible(tombstoned, { txTime: 120, validTime: 100 })).toBe(true);
+    expect(isFactVisible(tombstoned, { txTime: 150, validTime: 100 })).toBe(false);
     expect(
-      isFactVisible(tombstoned, { txTime: 120, validTime: 100 }, {
+      isFactVisible(tombstoned, { txTime: 150, validTime: 100 }, {
         includeTombstoned: true,
       }),
     ).toBe(true);

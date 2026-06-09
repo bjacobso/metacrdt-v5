@@ -111,6 +111,82 @@ describe("compliance engine", () => {
     }
   });
 
+  test("removing a fulfilled obligation records invalidation as a fact", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await bootstrap(t);
+
+      await t.mutation(api.compliance.submitForm, {
+        worker: "worker:maria",
+        form: "i9",
+        scope: "employer:acme",
+      });
+      await flush(t);
+
+      const p1Employer = await t.run(async (ctx) => {
+        const row = await ctx.db
+          .query("currentFacts")
+          .withIndex("by_e_a", (q) =>
+            q.eq("e", "placement:p1").eq("a", "employer"),
+          )
+          .unique();
+        return row!.factId;
+      });
+      await t.mutation(api.facts.retractFact, {
+        factId: p1Employer,
+        reason: "placement p1 ended",
+      });
+      await flush(t);
+
+      let c = await t.query(api.compliance.workerCompliance, {
+        worker: "worker:maria",
+      });
+      expect(keys(c.required)).toContain("i9@employer:acme");
+      expect(keys(c.invalidated)).toEqual([]);
+
+      const p2Employer = await t.run(async (ctx) => {
+        const row = await ctx.db
+          .query("currentFacts")
+          .withIndex("by_e_a", (q) =>
+            q.eq("e", "placement:p2").eq("a", "employer"),
+          )
+          .unique();
+        return row!.factId;
+      });
+      await t.mutation(api.facts.retractFact, {
+        factId: p2Employer,
+        reason: "placement p2 ended",
+      });
+      await flush(t);
+
+      c = await t.query(api.compliance.workerCompliance, {
+        worker: "worker:maria",
+      });
+      expect(keys(c.required)).not.toContain("i9@employer:acme");
+      expect(keys(c.open)).not.toContain("i9@employer:acme");
+      expect(keys(c.invalidated)).toEqual(["i9@employer:acme"]);
+      expect(c.invalidated[0]?.reason).toBe(
+        "requirement_disappeared_after_submission",
+      );
+
+      const eventRows = await t.run(async (ctx) => {
+        return await ctx.db
+          .query("factEvents")
+          .withIndex("by_e_a_tx", (q) =>
+            q
+              .eq("e", "worker:maria")
+              .eq("a", "obligation.invalidated.i9"),
+          )
+          .collect();
+      });
+      expect(eventRows).toHaveLength(1);
+      expect(eventRows[0]?.kind).toBe("assert");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("open tasks carry provenance (the placement facts that justify them)", async () => {
     vi.useFakeTimers();
     try {

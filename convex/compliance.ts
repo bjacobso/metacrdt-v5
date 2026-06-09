@@ -180,8 +180,12 @@ export const recomputeNow = mutation({
 export const workerCompliance = query({
   args: { worker: v.string() },
   handler: async (ctx, args) => {
-    const required = [];
-    const open = [];
+    const required: { form: string; scope: string }[] = [];
+    const open: {
+      form: string;
+      scope: string;
+      because: { e: string; a: string; v: unknown }[];
+    }[] = [];
     for (const obligation of await obligationsFromEventLog(ctx, {
       worker: args.worker,
       limit: 500,
@@ -201,8 +205,40 @@ export const workerCompliance = query({
         });
       }
     }
+    const invalidated = [];
+    const invalidationRows = await ctx.db
+      .query("currentFacts")
+      .withIndex("by_e", (q) => q.eq("e", args.worker))
+      .collect();
+    for (const row of invalidationRows) {
+      if (!row.a.startsWith("obligation.invalidated.")) continue;
+      const form = row.a.slice("obligation.invalidated.".length);
+      const value = row.v;
+      if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        continue;
+      }
+      const payload = value as {
+        scope?: unknown;
+        reason?: unknown;
+        invalidatedAt?: unknown;
+      };
+      if (typeof payload.scope !== "string") continue;
+      invalidated.push({
+        form,
+        scope: payload.scope,
+        reason:
+          typeof payload.reason === "string" ? payload.reason : "unknown",
+        invalidatedAt:
+          typeof payload.invalidatedAt === "number"
+            ? payload.invalidatedAt
+            : null,
+      });
+    }
     required.sort((a, b) => (a.form + a.scope).localeCompare(b.form + b.scope));
     open.sort((a, b) => (a.form + a.scope).localeCompare(b.form + b.scope));
-    return { worker: args.worker, required, open };
+    invalidated.sort((a, b) =>
+      (a.form + a.scope).localeCompare(b.form + b.scope),
+    );
+    return { worker: args.worker, required, open, invalidated };
   },
 });

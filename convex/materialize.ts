@@ -11,6 +11,7 @@ import {
   eventLogTripleSource,
 } from "./lib/eventLogTripleSource";
 import { waitKeyFromSubmission } from "./lib/workflow";
+import { assertInTx, createTransaction } from "./facts";
 
 type ClosureSupport = {
   from: string;
@@ -173,14 +174,17 @@ export const recomputeRule = internalMutation({
       source: eventLogBaseWithDerivedTripleSource,
     });
 
+    const merged = mergeSolved(rule, solved);
+
     // Clear all prior output for this rule, then re-emit.
     const prior = await ctx.db
       .query("derivedFacts")
       .withIndex("by_rule", (q) => q.eq("ruleId", args.ruleId))
       .collect();
+    await recordObligationInvalidations(ctx, rule, prior, merged, now);
     for (const d of prior) await ctx.db.delete("derivedFacts", d._id);
 
-    await emitSolved(ctx, rule, solved, now);
+    await emitMerged(ctx, rule, merged, now);
 
     await clearInvalidations(ctx, args.ruleId, now);
   },
@@ -242,14 +246,17 @@ async function recomputeRuleForEntityList(
       { source: eventLogBaseWithDerivedTripleSource },
     );
 
+    const merged = mergeSolved(rule, solved);
+
     // Replace just this entity's derived output for this rule.
     const prior = await ctx.db
       .query("derivedFacts")
       .withIndex("by_rule_e", (q) => q.eq("ruleId", ruleId).eq("e", e))
       .collect();
+    await recordObligationInvalidations(ctx, rule, prior, merged, now);
     for (const d of prior) await ctx.db.delete("derivedFacts", d._id);
 
-    await emitSolved(ctx, rule, solved, now);
+    await emitMerged(ctx, rule, merged, now);
   }
 
   await clearInvalidations(ctx, ruleId, now, invalidationEntity);
@@ -694,10 +701,23 @@ async function emitSolved(
   now: number,
 ): Promise<void> {
   if (rule.emit === undefined) return;
+  await emitMerged(ctx, rule, mergeSolved(rule, solved), now);
+}
+
+type MergedSolved = Map<
+  string,
+  { e: string; v: unknown; sources: Set<string>; eventSources: Set<string> }
+>;
+
+function mergeSolved(
+  rule: Doc<"rules">,
+  solved: SolvedBinding[],
+): MergedSolved {
   const merged = new Map<
     string,
     { e: string; v: unknown; sources: Set<string>; eventSources: Set<string> }
   >();
+  if (rule.emit === undefined) return merged;
   for (const s of solved) {
     const e = resolveTerm(rule.emit.e, s.binding);
     const value = resolveTerm(rule.emit.v, s.binding);
@@ -716,6 +736,16 @@ async function emitSolved(
     for (const src of s.sources) m.sources.add(src as unknown as string);
     for (const src of s.eventSources ?? []) m.eventSources.add(src);
   }
+  return merged;
+}
+
+async function emitMerged(
+  ctx: MutationCtx,
+  rule: Doc<"rules">,
+  merged: MergedSolved,
+  now: number,
+): Promise<void> {
+  if (rule.emit === undefined) return;
   for (const m of merged.values()) {
     await ctx.db.insert("derivedFacts", {
       ruleId: rule._id,
@@ -728,6 +758,67 @@ async function emitSolved(
       validFrom: now,
       txWatermark: now,
       stale: false,
+    });
+  }
+}
+
+async function recordObligationInvalidations(
+  ctx: MutationCtx,
+  rule: Doc<"rules">,
+  prior: Doc<"derivedFacts">[],
+  next: MergedSolved,
+  now: number,
+): Promise<void> {
+  if (rule.emit === undefined || !rule.emit.a.startsWith("requires.")) return;
+  const form = rule.emit.a.slice("requires.".length);
+  const invalidationAttr = `obligation.invalidated.${form}`;
+  let txId: Id<"transactions"> | undefined;
+
+  for (const row of prior) {
+    if (row.a !== rule.emit.a) continue;
+    const key = `${row.e}\u0000${valueKey(row.v)}`;
+    if (next.has(key)) continue;
+    const scope = String(row.v);
+    const submission = await ctx.db
+      .query("currentFacts")
+      .withIndex("by_e_a_v", (q) =>
+        q.eq("e", row.e).eq("a", `submitted.${form}`).eq("v", scope),
+      )
+      .first();
+    if (submission === null) continue;
+    const existing = await ctx.db
+      .query("currentFacts")
+      .withIndex("by_e_a", (q) => q.eq("e", row.e).eq("a", invalidationAttr))
+      .collect();
+    if (
+      existing.some(
+        (fact) =>
+          fact.v &&
+          typeof fact.v === "object" &&
+          !Array.isArray(fact.v) &&
+          (fact.v as { scope?: unknown }).scope === scope,
+      )
+    ) {
+      continue;
+    }
+    txId ??= await createTransaction(ctx, {
+      reason: `record invalidated ${form} obligation`,
+      source: "materialize.recordObligationInvalidations",
+      now,
+    });
+    await assertInTx(ctx, txId, now, {
+      e: row.e,
+      a: invalidationAttr,
+      value: {
+        scope,
+        reason: "requirement_disappeared_after_submission",
+        invalidatedAt: now,
+        ruleId: rule._id,
+        submittedFactId: submission.factId,
+        priorSourceEventIds: row.sourceEventIds ?? [],
+      },
+      reason: "obligation invalidated by recompute",
+      source: "materialize.recordObligationInvalidations",
     });
   }
 }
