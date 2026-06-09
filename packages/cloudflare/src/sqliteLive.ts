@@ -18,6 +18,7 @@ import type { DurableObjectSqliteProjectionChange } from "./sqliteCurrent.js";
 
 const DEFAULT_PROTOCOL = "metacrdt.cloudflare.sqlite.live.v1";
 const DEFAULT_QUERY_PROTOCOL = "metacrdt.cloudflare.sqlite.live-query.v1";
+const DEFAULT_QUERY_SESSION_PARAM = "client";
 
 type MessageEventLike = { data: unknown };
 type CloseEventLike = { code?: number; reason?: string };
@@ -256,6 +257,52 @@ export type DurableObjectSqliteLiveQueryClientOptions = {
 export type DurableObjectSqliteLiveQueryClientSubscribeOptions = {
   readonly id: string;
   readonly query: DatalogQueryArgsType;
+};
+
+export type DurableObjectSqliteLiveQuerySessionSnapshot = {
+  readonly id: string;
+  readonly result: DatalogQueryResult;
+  readonly dependencies?: readonly DurableObjectSqliteLiveSubscriptionFilter[];
+  readonly changed?: readonly DurableObjectSqliteProjectionChange[];
+  readonly diff?: DurableObjectSqliteLiveQueryResultDiff;
+  readonly message: DurableObjectSqliteLiveQueryServerMessage;
+};
+
+export type DurableObjectSqliteLiveQuerySessionOptions = Omit<
+  DurableObjectSqliteLiveQueryClientOptions,
+  "connectionId" | "onMessage"
+> & {
+  readonly connectionId: string;
+  readonly connectionIdParam?: string | false;
+  readonly onMessage?: (
+    message: DurableObjectSqliteLiveQueryServerMessage,
+  ) => void;
+  readonly onSnapshot?: (
+    snapshot: DurableObjectSqliteLiveQuerySessionSnapshot,
+  ) => void;
+};
+
+export type DurableObjectSqliteLiveQuerySession = {
+  readonly protocol: string;
+  readonly connectionId: string;
+  readonly url: string;
+  readonly client: DurableObjectSqliteLiveQueryClient;
+  readonly subscriptions: ReadonlyMap<
+    string,
+    DurableObjectSqliteLiveQueryClientSubscribeOptions
+  >;
+  readonly snapshots: ReadonlyMap<
+    string,
+    DurableObjectSqliteLiveQuerySessionSnapshot
+  >;
+  connect(): DurableObjectSqliteLiveQueryClientSocket;
+  close(code?: number, reason?: string): void;
+  hydrate(): void;
+  subscribe(options: DurableObjectSqliteLiveQueryClientSubscribeOptions): void;
+  unsubscribe(id: string): void;
+  snapshot(
+    id: string,
+  ): DurableObjectSqliteLiveQuerySessionSnapshot | undefined;
 };
 
 export type DurableObjectSqliteLiveQueryClient = {
@@ -1225,6 +1272,22 @@ function parseLiveQueryServerMessage(
   return parsed as DurableObjectSqliteLiveQueryServerMessage;
 }
 
+function hasAbsoluteScheme(url: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:/i.test(url);
+}
+
+export function durableObjectSqliteLiveQuerySessionUrl(
+  url: string,
+  connectionId: string,
+  connectionIdParam: string | false = DEFAULT_QUERY_SESSION_PARAM,
+): string {
+  if (connectionIdParam === false) return url;
+  const parsed = new URL(url, "https://metacrdt.local");
+  parsed.searchParams.set(connectionIdParam, connectionId);
+  if (hasAbsoluteScheme(url)) return parsed.toString();
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+}
+
 export function createDurableObjectSqliteLiveQueryClient(
   options: DurableObjectSqliteLiveQueryClientOptions,
 ): DurableObjectSqliteLiveQueryClient {
@@ -1377,6 +1440,76 @@ export function createDurableObjectSqliteLiveQueryClient(
   };
 
   return client;
+}
+
+export function createDurableObjectSqliteLiveQuerySession(
+  options: DurableObjectSqliteLiveQuerySessionOptions,
+): DurableObjectSqliteLiveQuerySession {
+  const protocol = options.protocol ?? DEFAULT_QUERY_PROTOCOL;
+  const snapshots = new Map<
+    string,
+    DurableObjectSqliteLiveQuerySessionSnapshot
+  >();
+  const url = durableObjectSqliteLiveQuerySessionUrl(
+    options.url,
+    options.connectionId,
+    options.connectionIdParam,
+  );
+
+  const handleMessage = (
+    message: DurableObjectSqliteLiveQueryServerMessage,
+  ) => {
+    let snapshot: DurableObjectSqliteLiveQuerySessionSnapshot | undefined;
+    if (message.type === "query.subscribed") {
+      snapshot = {
+        id: message.id,
+        result: message.result,
+        dependencies: message.dependencies,
+        message,
+      };
+      snapshots.set(message.id, snapshot);
+    } else if (message.type === "query.updated") {
+      snapshot = {
+        id: message.id,
+        result: message.result,
+        dependencies: snapshots.get(message.id)?.dependencies,
+        changed: message.changed,
+        diff: message.diff,
+        message,
+      };
+      snapshots.set(message.id, snapshot);
+    } else {
+      snapshots.delete(message.id);
+    }
+    options.onMessage?.(message);
+    if (snapshot !== undefined) options.onSnapshot?.(snapshot);
+  };
+
+  const client = createDurableObjectSqliteLiveQueryClient({
+    ...options,
+    url,
+    protocol,
+    connectionId: options.connectionId,
+    onMessage: handleMessage,
+  });
+
+  return {
+    protocol,
+    connectionId: options.connectionId,
+    url,
+    client,
+    subscriptions: client.subscriptions,
+    snapshots,
+    connect: () => client.connect(),
+    close: (code?: number, reason?: string) => client.close(code, reason),
+    hydrate: () => client.hydrate(options.connectionId),
+    subscribe: (subscription) => client.subscribe(subscription),
+    unsubscribe: (id) => {
+      snapshots.delete(id);
+      client.unsubscribe(id);
+    },
+    snapshot: (id) => snapshots.get(id),
+  };
 }
 
 export function publishDurableObjectSqliteLiveInvalidationsEffect(

@@ -4,11 +4,14 @@ import {
   DurableObjectSqliteLiveInvalidationFanout,
   createDurableObjectSqliteRuntime,
   createDurableObjectSqliteLiveQueryClient,
+  createDurableObjectSqliteLiveQuerySession,
   durableObjectSqliteLiveQueryDependencies,
   durableObjectSqliteLiveQueryResultDiff,
+  durableObjectSqliteLiveQuerySessionUrl,
   publishDurableObjectSqliteLiveCurrentQueryChanges,
   publishDurableObjectSqliteLiveInvalidations,
   type DurableObjectSqliteLiveQueryClientSocket,
+  type DurableObjectSqliteLiveQuerySessionSnapshot,
   type DurableObjectSqliteProjectionChange,
   type DurableObjectSqliteLiveQueryServerMessage,
   type DurableObjectSqliteLiveServerMessage,
@@ -936,5 +939,142 @@ describe("@metacrdt/cloudflare SQLite live invalidation fanout", () => {
     second.close(1006, "after-client-close");
     await flushTimers();
     expect(FakeClientWebSocket.instances).toHaveLength(2);
+  });
+
+  test("builds live-query session URLs with caller-provided stable connection ids", () => {
+    expect(
+      durableObjectSqliteLiveQuerySessionUrl(
+        "wss://relay.example/live-query/room?token=secret",
+        "client:session",
+      ),
+    ).toBe(
+      "wss://relay.example/live-query/room?token=secret&client=client%3Asession",
+    );
+    expect(
+      durableObjectSqliteLiveQuerySessionUrl(
+        "/live-query/room",
+        "client:session",
+        "session",
+      ),
+    ).toBe("/live-query/room?session=client%3Asession");
+    expect(
+      durableObjectSqliteLiveQuerySessionUrl(
+        "wss://relay.example/live-query/room",
+        "client:session",
+        false,
+      ),
+    ).toBe("wss://relay.example/live-query/room");
+  });
+
+  test("live-query session tracks snapshots and delegates stable hydration", async () => {
+    FakeClientWebSocket.instances = [];
+    const received: DurableObjectSqliteLiveQueryServerMessage[] = [];
+    const snapshots: DurableObjectSqliteLiveQuerySessionSnapshot[] = [];
+    const session = createDurableObjectSqliteLiveQuerySession({
+      url: "wss://relay.example/live-query/room?token=secret",
+      protocol: "live-query.session",
+      connectionId: "client:session",
+      WebSocket: FakeClientWebSocket,
+      onMessage: (message) => received.push(message),
+      onSnapshot: (snapshot) => snapshots.push(snapshot),
+    });
+
+    expect(session.url).toBe(
+      "wss://relay.example/live-query/room?token=secret&client=client%3Asession",
+    );
+    const socket = session.connect() as FakeClientWebSocket;
+    expect(socket.url).toBe(session.url);
+    socket.open();
+    session.subscribe({ id: "query:status", query: liveQueryArgs });
+
+    expect(socket.messages()).toEqual([
+      {
+        protocol: "live-query.session",
+        type: "query.hydrate",
+        connectionId: "client:session",
+      },
+      {
+        protocol: "live-query.session",
+        type: "query.subscribe",
+        id: "query:status",
+        query: liveQueryArgs,
+      },
+    ]);
+
+    socket.receive(
+      JSON.stringify({
+        protocol: "live-query.session",
+        type: "query.subscribed",
+        from: "do:room",
+        id: "query:status",
+        dependencies: [{ e: "task:1", a: "status" }],
+        result: queryResult("open"),
+      }),
+    );
+    expect(session.snapshot("query:status")).toMatchObject({
+      id: "query:status",
+      result: queryResult("open"),
+      dependencies: [{ e: "task:1", a: "status" }],
+    });
+
+    socket.receive(
+      JSON.stringify({
+        protocol: "live-query.session",
+        type: "query.updated",
+        from: "do:room",
+        id: "query:status",
+        changed: [statusChange],
+        result: queryResult("closed"),
+        diff: {
+          rows: {
+            added: [{ status: "closed" }],
+            removed: [{ status: "open" }],
+          },
+          eventSourceIds: {
+            added: ["event:closed"],
+            removed: ["event:open"],
+          },
+        },
+      }),
+    );
+    expect(session.snapshot("query:status")).toMatchObject({
+      id: "query:status",
+      result: queryResult("closed"),
+      dependencies: [{ e: "task:1", a: "status" }],
+      changed: [statusChange],
+      diff: {
+        rows: {
+          added: [{ status: "closed" }],
+          removed: [{ status: "open" }],
+        },
+        eventSourceIds: {
+          added: ["event:closed"],
+          removed: ["event:open"],
+        },
+      },
+    });
+    expect(snapshots).toHaveLength(2);
+    expect(received.map((message) => message.type)).toEqual([
+      "query.subscribed",
+      "query.updated",
+    ]);
+
+    session.unsubscribe("query:status");
+    expect(session.snapshot("query:status")).toBeUndefined();
+    expect(socket.messages()[2]).toEqual({
+      protocol: "live-query.session",
+      type: "query.unsubscribe",
+      id: "query:status",
+    });
+
+    socket.receive(
+      JSON.stringify({
+        protocol: "live-query.session",
+        type: "query.unsubscribed",
+        from: "do:room",
+        id: "query:status",
+      }),
+    );
+    expect(session.snapshots.size).toBe(0);
   });
 });

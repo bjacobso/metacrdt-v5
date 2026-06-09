@@ -292,15 +292,19 @@ WebSocket, subscribe/unsubscribe bounded current queries, filter server
 messages by protocol, use a stable connection id to request `query.hydrate`, and
 optionally reconnect. Goal 140 adds result-diff metadata for live current-query
 updates: `query.updated` messages now include deterministic added/removed row
-and event-source-id sets computed from the previous delivered snapshot. This
-still does not provide React bindings, durable session-token protocol, full SDK
-session integration, or full flow execution. The next active goal should be
-chosen from the remaining TODO candidates:
+and event-source-id sets computed from the previous delivered snapshot. Goal
+141 adds a structural live-query session helper for frontend/SDK callers:
+callers provide a stable `connectionId`, the helper derives a matching
+WebSocket URL, delegates hydration/reconnect to the existing client, and tracks
+latest per-subscription result snapshots. This still does not provide React
+bindings, application auth storage, server-issued durable session tokens, a full
+SDK package, or full flow execution. The next active goal should be chosen from
+the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (broader SQL query-provider
-parity/performance hardening, full flow interpreter/action execution,
-frontend SDK/live-query session integration),
+parity/performance hardening, full flow interpreter/action execution, or a full
+React/frontend SDK live-query package),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9515,6 +9519,47 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 141 — Cloudflare Live Query Session Helper Seed
+
+**Status:** shipped.
+
+**Objective:** add a narrow frontend/SDK-facing live-query session helper on top
+of the existing Cloudflare structural client, so callers can use a stable
+connection id, route URL, hydration, reconnect policy, and latest-result cache
+without adopting a React-specific SDK.
+
+### What Shipped
+
+- Added `durableObjectSqliteLiveQuerySessionUrl` to derive a live-query
+  WebSocket URL with a caller-provided stable connection id query parameter.
+  The helper supports absolute and relative URLs plus an explicit opt-out when
+  callers provide the id through another channel.
+- Added `createDurableObjectSqliteLiveQuerySession`, a dependency-free wrapper
+  around `createDurableObjectSqliteLiveQueryClient`. The session keeps the
+  existing subscribe/unsubscribe/hydrate/reconnect wire behavior, requires the
+  caller-provided `connectionId`, and exposes a read-only latest snapshot map by
+  subscription id.
+- Session snapshots update on `query.subscribed` and `query.updated`, retain the
+  known static dependencies, surface update `changed` coordinates and `diff`
+  metadata, and clear local state on unsubscribe.
+- Focused Cloudflare tests prove deterministic session URL construction,
+  stable hydration delegation, snapshot updates, diff propagation, and
+  unsubscribe cleanup.
+
+### Non-Goals
+
+- Do not claim React hooks, browser storage, provider auth integration,
+  server-issued durable session tokens, or a full frontend SDK package.
+- Do not implement Cloudflare flow interpreter/action execution or broader
+  historical SQL query-provider parity/performance hardening.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 62 Cloudflare tests.
 
 ---
 

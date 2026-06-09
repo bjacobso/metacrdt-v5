@@ -8,12 +8,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ### Current pulse
 
-- [x] Goal 140 shipped: Cloudflare live-query result-diff seed.
+- [x] Goal 141 shipped: Cloudflare live-query session helper seed.
 - [ ] Choose the next active slice from remaining Cloudflare parity (full flow
-  interpreter/action execution, frontend SDK live-query session integration, or
+  interpreter/action execution, full React/frontend SDK live-query package, or
   broader historical SQL query-provider parity/performance hardening), Node
-  production hardening, provider-specific auth/UI wrapping, or a scoped
-  Confect/domain wrapper.
+  production hardening, provider-specific auth/UI wrapping, or a scoped Confect/
+  domain wrapper.
 
 ### Handoff: continue MetaCRDT on `main` from commit `c6c4379`
 
@@ -229,10 +229,15 @@ After implementation:
   `query.updated` messages from `DurableObjectSqliteLiveCurrentQueryFanout` now
   include deterministic added/removed row and event-source-id diff metadata
   computed against the previous delivered snapshot.
+- [x] **Goal 141 shipped: live-query session helper seed** —
+  `createDurableObjectSqliteLiveQuerySession` wraps the structural live-query
+  client with a caller-provided stable connection id, URL query-param helper,
+  hydration/reconnect delegation, and latest result snapshots keyed by
+  subscription id.
 - [ ] **Remaining Cloudflare Phase D parity** — full flow interpreter/action
-  execution, frontend SDK live-query session integration, and broader historical
-  SQL query-provider parity/performance hardening remain open; do not claim full
-  parity until those are implemented.
+  execution, full React/frontend SDK live-query package/auth integration, and
+  broader historical SQL query-provider parity/performance hardening remain
+  open; do not claim full parity until those are implemented.
 
 **Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
 - [x] Commutative supersession — centralized Convex writes now stamp
@@ -353,6 +358,10 @@ After implementation:
 - [x] Cloudflare Durable Object SQLite live-query result-diff seed —
   live current-query update messages carry deterministic added/removed rows and
   event source ids relative to the subscription's last delivered snapshot.
+- [x] Cloudflare Durable Object SQLite live-query session helper seed —
+  frontend/SDK callers can create a stable-connection live-query session that
+  derives the WebSocket URL, delegates hydration/reconnect, and caches latest
+  current-query snapshots without React or auth storage assumptions.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -363,8 +372,8 @@ After implementation:
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — full
   SQL-indexed query-provider parity/performance hardening, full flow
-  interpreter/action execution, frontend SDK live-query session integration, and
-  broader production hardening on top of the persisted registry (see
+  interpreter/action execution, full React/frontend SDK live-query package/auth
+  integration, and broader production hardening on top of the persisted registry (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
@@ -894,6 +903,19 @@ After implementation:
 ---
 
 ## Log
+
+### 2026-06-09 — Cloudflare live-query session helper seed
+- [x] **Stable session helper.**
+  `createDurableObjectSqliteLiveQuerySession` wraps the existing structural
+  WebSocket client with a caller-provided `connectionId`, stable URL query-param
+  construction, hydration/reconnect delegation, and latest-result snapshots.
+- [x] **Snapshot cache.**
+  Session snapshots update on `query.subscribed` / `query.updated`, retain
+  dependencies, surface `changed` coordinates and result `diff` metadata, and
+  clear on unsubscribe.
+- [x] **Still scoped.** React hooks, browser auth/session storage, server-issued
+  durable session tokens, a full frontend SDK package, full flow execution, and
+  broader SQL query-provider hardening remain open.
 
 ### 2026-06-09 — Cloudflare live-query result-diff seed
 - [x] **Result diffs on updates.**
