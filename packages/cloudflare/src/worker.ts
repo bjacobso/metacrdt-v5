@@ -5,15 +5,34 @@ import {
   type DurableObjectStorageLike,
 } from "./durableObject.js";
 import {
+  createDurableObjectSqliteRuntime,
+  type DurableObjectSqliteRuntime,
+  type DurableObjectSqliteRuntimeOptions,
+  type DurableObjectSqlStorageLike,
+} from "./durableObjectSqlite.js";
+import {
   attachDurableObjectRelay,
   type DurableObjectWebSocketRelay,
   type RelayOptions,
   type WebSocketLike,
 } from "./relay.js";
-import type { DurableObjectSqliteLiveCurrentQueryFanout } from "./sqliteLive.js";
+import {
+  DurableObjectSqliteLiveCurrentQueryFanout,
+} from "./sqliteLive.js";
+import {
+  createDurableObjectSqliteCurrentSurface,
+  type DurableObjectSqliteCurrentSurface,
+  type DurableObjectSqliteCurrentSurfaceOptions,
+} from "./sqliteCurrent.js";
 
 export interface DurableObjectStateLike {
   storage: DurableObjectStorageLike;
+}
+
+export interface DurableObjectSqliteStateLike {
+  storage: DurableObjectStorageLike & {
+    sql: DurableObjectSqlStorageLike;
+  };
 }
 
 export interface DurableObjectStubLike {
@@ -78,6 +97,29 @@ export type RelayWorkerOptions = {
    * present (useful behind another private boundary).
    */
   auth?: RelayAuthOptions | false;
+};
+
+export type DurableObjectSqliteLiveQueryDurableObjectOptions =
+  DurableObjectSqliteCurrentSurfaceOptions &
+  Pick<
+    DurableObjectSqliteRuntimeOptions,
+    "capabilities" | "initialize" | "name" | "tablePrefix" | "wall"
+  > & {
+    namespace?: string;
+    replicaId?: string;
+    protocol?: string;
+    from?: string;
+    scope?: string;
+    webSocketPair?: WebSocketPairFactory;
+    webSocketResponse?: WebSocketResponseFactory;
+    connectionIdParam?: string;
+    connectionIdHeader?: string;
+  };
+
+export type DurableObjectSqliteLiveQueryDurableObjectRuntime = {
+  runtime: DurableObjectSqliteRuntime;
+  surface: DurableObjectSqliteCurrentSurface;
+  fanout: DurableObjectSqliteLiveCurrentQueryFanout;
 };
 
 type ResolvedRelayAuthOptions = Required<RelayAuthOptions>;
@@ -290,6 +332,101 @@ export class MetaCrdtRelayDurableObject {
         replicaId: runtime.profile.replicaId,
         connections: runtime.transport.size,
         vv: versionVector(await runtime.store.scan()),
+      });
+    }
+
+    return json(
+      {
+        error: "websocket upgrade required",
+      },
+      { status: 426 },
+    );
+  }
+}
+
+/**
+ * Durable Object class shell for projection-backed live current queries over
+ * DO SQLite. It assembles the SQLite runtime, current query surface, persisted
+ * subscription registry, and in-memory fanout, but leaves application write
+ * routes and frontend reconnect/session policy to callers.
+ */
+export class MetaCrdtSqliteLiveQueryDurableObject {
+  readonly namespace: string;
+  readonly replicaId: string;
+  readonly webSocketPair: WebSocketPairFactory;
+  readonly webSocketResponse: WebSocketResponseFactory;
+  readonly connectionIdParam?: string;
+  readonly connectionIdHeader?: string;
+  #runtime: DurableObjectSqliteLiveQueryDurableObjectRuntime | undefined;
+
+  constructor(
+    private readonly state: DurableObjectSqliteStateLike,
+    private readonly options: DurableObjectSqliteLiveQueryDurableObjectOptions,
+  ) {
+    this.namespace = options.namespace ?? "metacrdt";
+    this.replicaId = options.replicaId ?? `cloudflare-sqlite:${this.namespace}`;
+    this.webSocketPair = options.webSocketPair ?? defaultWebSocketPair;
+    this.webSocketResponse =
+      options.webSocketResponse ??
+      ((client) =>
+        new Response(null, {
+          status: 101,
+          webSocket: client,
+        } as ResponseInitWithWebSocket));
+    this.connectionIdParam = options.connectionIdParam;
+    this.connectionIdHeader = options.connectionIdHeader;
+  }
+
+  async liveQueryRuntime(): Promise<DurableObjectSqliteLiveQueryDurableObjectRuntime> {
+    if (!this.#runtime) {
+      const runtime = await createDurableObjectSqliteRuntime({
+        sql: this.state.storage.sql,
+        replicaId: this.replicaId,
+        name: this.options.name,
+        tablePrefix: this.options.tablePrefix,
+        initialize: this.options.initialize,
+        wall: this.options.wall,
+        capabilities: this.options.capabilities,
+      });
+      const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+        cardinalityOf: this.options.cardinalityOf,
+        currentCoord: this.options.currentCoord,
+      });
+      const fanout = new DurableObjectSqliteLiveCurrentQueryFanout({
+        protocol: this.options.protocol,
+        from: this.options.from ?? this.replicaId,
+        queryCurrent: (args) => surface.queryCurrent(args),
+        subscriptions: runtime.liveQueries,
+        now: this.options.wall,
+        scope: this.options.scope,
+      });
+      this.#runtime = { runtime, surface, fanout };
+    }
+    return this.#runtime;
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const live = await this.liveQueryRuntime();
+    if (isUpgrade(request)) {
+      return attachDurableObjectSqliteLiveQueryWebSocket(
+        request,
+        live.fanout,
+        {
+          webSocketPair: this.webSocketPair,
+          webSocketResponse: this.webSocketResponse,
+          connectionIdParam: this.connectionIdParam,
+          connectionIdHeader: this.connectionIdHeader,
+        },
+      );
+    }
+
+    if (new URL(request.url).pathname === "/health") {
+      return json({
+        ok: true,
+        replicaId: live.runtime.profile.replicaId,
+        liveQueryConnections: live.fanout.size,
+        liveQuerySubscriptions: live.fanout.subscriptionCount,
+        vv: versionVector(await live.runtime.store.scan()),
       });
     }
 

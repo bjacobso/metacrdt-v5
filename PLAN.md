@@ -276,15 +276,19 @@ seed for live-query sockets: `createRelayWorker` now routes `/live-query/<room>`
 through the same token-protected Durable Object binding, and
 `attachDurableObjectSqliteLiveQueryWebSocket` attaches upgraded DO requests to an
 existing structural live current-query fanout. This still does not provide a
-production SQLite DO assembly, frontend SDK, durable client session protocol,
-or result diffs. The next active goal should be chosen from the remaining TODO
-candidates:
+SQLite runtime/current-surface assembly, frontend SDK, durable client session
+protocol, or result diffs. Goal 137 adds a SQLite live-query Durable Object
+assembly seed:
+`MetaCrdtSqliteLiveQueryDurableObject` constructs the DO SQLite runtime,
+current-query surface, persisted live-query registry, and structural fanout for
+upgraded WebSocket requests. This still does not provide application write-route
+orchestration, frontend SDK behavior, durable client session protocol, or result
+diffs. The next active goal should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (broader SQL query-provider
 parity/performance hardening, full flow interpreter/action execution,
-production live-query DO assembly/frontend SDK and full frontend reconnect
-protocol),
+frontend SDK/live-query reconnect protocol integration),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9499,6 +9503,47 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 137 — Cloudflare SQLite Live Query Durable Object Assembly Seed
+
+**Status:** shipped.
+
+**Objective:** assemble the existing Cloudflare DO SQLite runtime, current-query
+surface, persisted live-query registry, and live current-query fanout behind a
+single Durable Object class.
+
+### What Shipped
+
+- Added `MetaCrdtSqliteLiveQueryDurableObject`, a structural DO class that
+  constructs `createDurableObjectSqliteRuntime`,
+  `createDurableObjectSqliteCurrentSurface`, and
+  `DurableObjectSqliteLiveCurrentQueryFanout` over `ctx.storage.sql`.
+- The class attaches upgraded requests through
+  `attachDurableObjectSqliteLiveQueryWebSocket`, persists live-query
+  subscriptions through `runtime.liveQueries`, and exposes a small health
+  response with replica id, in-memory connection/subscription counts, and
+  version vector.
+- Exported the class plus its option/runtime/state types from
+  `@metacrdt/cloudflare`.
+- Added a focused Cloudflare Worker test that seeds the assembled current
+  surface, upgrades a socket through the class, subscribes to a bounded current
+  query, receives the expected snapshot, and verifies persisted subscription
+  metadata.
+
+### Non-Goals
+
+- Do not claim application write-route orchestration, projection-change publish
+  wiring for arbitrary external writes, frontend SDK/client behavior, durable
+  session tokens, result diffing, or a full reconnect/session protocol.
+- Do not implement full Cloudflare flow interpreter/action execution or broader
+  historical SQL query-provider parity/performance hardening.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 54 Cloudflare tests.
 
 ---
 

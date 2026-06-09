@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   DurableObjectSqliteLiveCurrentQueryFanout,
   MetaCrdtRelayDurableObject,
+  MetaCrdtSqliteLiveQueryDurableObject,
   attachDurableObjectSqliteLiveQueryWebSocket,
   createRelayWorker,
   type DurableObjectNamespaceLike,
@@ -14,6 +15,7 @@ import type {
   DatalogQueryArgsType,
   DatalogQueryResult,
 } from "@metacrdt/runtime";
+import { FakeDurableObjectSqlStorage } from "./sqliteFake.test-support.js";
 
 class FakeStorage implements DurableObjectStorageLike {
   readonly data = new Map<string, unknown>();
@@ -29,6 +31,10 @@ class FakeStorage implements DurableObjectStorageLike {
   async delete(key: string): Promise<boolean> {
     return this.data.delete(key);
   }
+}
+
+class FakeSqliteStorage extends FakeStorage {
+  readonly sql = new FakeDurableObjectSqlStorage();
 }
 
 class FakeSocket implements WebSocketLike {
@@ -424,5 +430,86 @@ describe("@metacrdt/cloudflare Worker shell", () => {
         result: queryResult("open"),
       },
     ]);
+  });
+
+  test("SQLite live-query Durable Object assembles runtime, surface, and fanout", async () => {
+    const server = new FakeSocket();
+    const storage = new FakeSqliteStorage();
+    const live = new MetaCrdtSqliteLiveQueryDurableObject(
+      { storage },
+      {
+        replicaId: "do:sqlite-live",
+        wall: () => 100,
+        cardinalityOf: () => "one",
+        currentCoord: () => ({ txTime: 10_000, validTime: 10_000 }),
+        webSocketPair: () => ({ 0: { client: true }, 1: server }),
+        webSocketResponse: () =>
+          new Response(null, {
+            status: 200,
+            headers: { "x-test-upgrade": "sqlite-live-query" },
+          } as ResponseInit & { webSocket?: unknown }),
+      },
+    );
+
+    const assembled = await live.liveQueryRuntime();
+    await assembled.surface.appendAssert({
+      e: "task:1",
+      a: "status",
+      v: "open",
+      actor: "user:1",
+      actorType: "human",
+    });
+
+    const res = await live.fetch(
+      new Request("https://relay.example/live-query/room?client=alice", {
+        headers: { Upgrade: "websocket" },
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-test-upgrade")).toBe("sqlite-live-query");
+    expect(server.accepted).toBe(true);
+    expect(assembled.fanout.size).toBe(1);
+
+    server.receive(
+      JSON.stringify({
+        protocol: assembled.fanout.protocol,
+        type: "query.subscribe",
+        id: "query:status",
+        query: {
+          where: [["task:1", "status", "?status"]],
+          select: ["?status"],
+          coord: { txTime: 10_000, validTime: 10_000 },
+        },
+      }),
+    );
+    await flush();
+    expect(server.sent.map((message) => JSON.parse(message))).toEqual([
+      {
+        protocol: assembled.fanout.protocol,
+        type: "query.subscribed",
+        from: "do:sqlite-live",
+        id: "query:status",
+        dependencies: [{ e: "task:1", a: "status" }],
+        result: {
+          states: [
+            {
+              binding: { status: "open" },
+              sources: [expect.stringMatching(/^e_/)],
+              eventSources: [expect.stringMatching(/^e_/)],
+            },
+          ],
+          rows: [{ status: "open" }],
+          eventSourceIds: [expect.stringMatching(/^e_/)],
+        },
+      },
+    ]);
+    await expect(
+      assembled.runtime.liveQueries.get("query:status"),
+    ).resolves.toMatchObject({
+      id: "query:status",
+      connectionId: "alice",
+      status: "active",
+      dependencies: [{ e: "task:1", a: "status" }],
+    });
   });
 });

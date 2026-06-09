@@ -67,8 +67,14 @@ implements them on Cloudflare.
   `attachDurableObjectSqliteLiveQueryWebSocket` attaches upgraded DO requests to
   an existing `DurableObjectSqliteLiveCurrentQueryFanout`. This is
   snapshot/update, metadata persistence, structural hydration, and route attach
-  plumbing, not a production SQLite DO assembly, frontend SDK, durable client
-  sessions, or result diffs.
+  plumbing, not a frontend SDK, durable client session protocol, write-route
+  publish orchestration, or result diffs.
+- **Durable Object SQLite live-query DO assembly** —
+  `MetaCrdtSqliteLiveQueryDurableObject` constructs the DO SQLite runtime,
+  current query surface, persisted live-query registry, and structural fanout for
+  upgraded current-query sockets over `ctx.storage.sql`. This is assembly
+  plumbing, not a frontend SDK, durable client session protocol, write-route
+  publish orchestration, or result diffs.
 - **WebSocket relay** — `DurableObjectWebSocketRelay` / `attachDurableObjectRelay`
   (`RelayConnection`, `RelayOptions`, `WebSocketLike`): accepts server sockets,
   answers version-vector hellos with deltas, merges client events through the
@@ -112,6 +118,7 @@ import {
   attachDurableObjectSqliteLiveQueryWebSocket,
   DurableObjectSqliteLiveCurrentQueryFanout,
   DurableObjectSqliteLiveInvalidationFanout,
+  MetaCrdtSqliteLiveQueryDurableObject,
   createDurableObjectRuntimeLayer,
   createDurableObjectSqliteRuntimeLayer,
   relayWorker,
@@ -175,8 +182,8 @@ historical provider has conformance-style coverage for joins, disjunction,
 negation, compare/compute, pagination, aggregation, derived rows, lifecycle
 visibility, and bounded SQLite scan counters. The remaining parity plan —
 broader historical SQL-indexed query optimization, full flow interpreter/action
-execution, production live-query DO assembly/frontend SDK behavior, and full
-frontend reconnect/session protocol over DO WebSockets — is
+execution, frontend SDK/live-query reconnect protocol integration, and
+write-route publish orchestration over DO WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth
