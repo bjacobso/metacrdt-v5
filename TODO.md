@@ -3,6 +3,7 @@
 Running worklog for **MetaCRDT** (this repo). Open items up top; dated log below,
 newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 [docs/metacrdt.md](./docs/metacrdt.md) for what's *built* vs *frontier*.
+Smaller implementation specs now live in [specs/](./specs/README.md).
 
 ## Now / up next
 
@@ -14,6 +15,8 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
   live-query package, or broader historical SQL query-provider
   parity/performance hardening), Node production hardening, provider-specific
   auth/UI wrapping, or a scoped Confect/domain wrapper.
+  Use the relevant spec in [specs/](./specs/README.md) as the working checklist
+  before editing code.
 
 ### Archived handoff: continue MetaCRDT on `main` from commit `c6c4379`
 

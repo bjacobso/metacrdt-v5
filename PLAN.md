@@ -338,6 +338,8 @@ This plan is the operational goal file. Read it with:
 
 - [README.md](./README.md) — first-principles project overview
 - [SPEC.md](./SPEC.md) — normative protocol
+- [specs/README.md](./specs/README.md) — smaller implementation specs for the
+  active backlog
 - [TODO.md](./TODO.md) — running worklog and open-item pulse
 - [docs/architecture.md](./docs/architecture.md) — package/layer map
 - [docs/package-consolidation.md](./docs/package-consolidation.md) — Open
