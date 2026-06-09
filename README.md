@@ -228,9 +228,9 @@ Package build policy:
   targets centralized there.
 - Package `main`, `types`, and `exports` point at `dist`, not raw `src/*.ts`.
 - Package payloads are `dist`-only (plus package metadata and the Cloudflare
-  Wrangler example); `npm run pack:packages` dry-runs every package through
+  Wrangler example); `pnpm pack:packages` dry-runs every package through
   Turbo to verify no source or test files ship.
-- The React app remains a **Vite** application build. Root `npm run build`
+- The React app remains a **Vite** application build. Root `pnpm build`
   builds packages first, then runs Vite.
 
 Planned package graph:
@@ -618,13 +618,13 @@ rebuildable from that history.
 Install dependencies:
 
 ```bash
-npm install
+pnpm install
 ```
 
 Run the Convex backend:
 
 ```bash
-npx convex dev
+pnpm exec convex dev
 ```
 
 Configure backend JWT auth when a provider is chosen:
@@ -645,8 +645,8 @@ For deployments where the issuer/audience should come from Convex environment
 values, use this shape after setting the values:
 
 ```bash
-npx convex env set CONVEX_AUTH_ISSUER https://your-issuer.example.com
-npx convex env set CONVEX_AUTH_APPLICATION_ID convex
+pnpm exec convex env set CONVEX_AUTH_ISSUER https://your-issuer.example.com
+pnpm exec convex env set CONVEX_AUTH_APPLICATION_ID convex
 ```
 
 ```ts
@@ -669,34 +669,34 @@ uses an explicit no-provider hook until that provider-specific wrapper is added.
 Run the Vite frontend:
 
 ```bash
-npm run dev:web
+pnpm dev:web
 ```
 
 Run tests:
 
 ```bash
-npm test              # build packages, then run the Convex backend suite
-npm run test:packages # all @metacrdt/* package tests through Turbo
-npm run test:all      # package tests, then root backend tests
+pnpm test          # build packages, then run the Convex backend suite
+pnpm test:packages # all @metacrdt/* package tests through Turbo
+pnpm test:all      # package tests, then root backend tests
 ```
 
 Build:
 
 ```bash
-npm run build          # package builds, then Vite app build
-npm run build:packages # package builds only
-npm run build:app      # Vite app build only
-npm run pack:packages  # package dry-run pack checks through Turbo
+pnpm build          # package builds, then Vite app build
+pnpm build:packages # package builds only
+pnpm build:app      # Vite app build only
+pnpm pack:packages  # package dry-run pack checks through Turbo
 ```
 
 Typecheck:
 
 ```bash
-npm run typecheck
+pnpm typecheck
 ```
 
-Deploy notes are tracked in [TODO.md](./TODO.md). In short: `npx convex dev
---once` pushes functions to the dev deployment, and `npx @convex-dev/static-hosting
+Deploy notes are tracked in [TODO.md](./TODO.md). In short: `pnpm exec convex dev
+--once` pushes functions to the dev deployment, and `pnpm exec static-hosting
 upload` uploads static assets to the dev `.convex.site` host.
 
 ---

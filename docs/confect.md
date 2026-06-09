@@ -102,20 +102,20 @@ What bit:
 Verification:
 
 ```bash
-npm run confect:codegen
-npm run test:core
-npm run test:confect
-npm test
-npx tsc --noEmit -p convex/tsconfig.json
-npx tsc --noEmit -p tsconfig.json
-npx convex dev --once
+pnpm confect:codegen
+pnpm test:core
+pnpm test:confect
+pnpm test
+pnpm exec tsc --noEmit -p convex/tsconfig.json
+pnpm exec tsc --noEmit -p tsconfig.json
+pnpm exec convex dev --once
 ```
 
 Live check:
 
 ```bash
-npx convex run facts:assertFact '{"e":"worker:confect-live","a":"worker.status","value":"active","reason":"confect live verification"}'
-npx convex run metacrdtConfect:verifyEvents '{"e":"worker:confect-live","a":"worker.status","requireValid":true}'
+pnpm exec convex run facts:assertFact '{"e":"worker:confect-live","a":"worker.status","value":"active","reason":"confect live verification"}'
+pnpm exec convex run metacrdtConfect:verifyEvents '{"e":"worker:confect-live","a":"worker.status","requireValid":true}'
 ```
 
 The live sidecar returned a protocol event with `hasProtocolMetadata: true`,
@@ -225,7 +225,7 @@ Implemented:
   unused `confect/tables/CurrentFacts.ts` file is removed.
 - `convex/complianceConfect.test.ts` now wipes all host `currentFacts` before a
   dry-run and still proves the expected reuse/collect plan.
-- `npm run test:confect` now runs both sidecar test files:
+- `pnpm test:confect` now runs both sidecar test files:
   `convex/confect.test.ts` and `convex/complianceConfect.test.ts`.
 
 Decision:
