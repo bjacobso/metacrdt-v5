@@ -1,27 +1,73 @@
-# MetaCRDT Specs
+# MetaCRDT — documentation
 
-This directory breaks the large operational backlog in `PLAN.md` and `TODO.md`
-into smaller implementation specs. Each spec is meant to be independently
-actionable: a Codex window should be able to pick one slice, implement it,
-update the same spec, and leave the broader objective intact.
+This is the single entry point for every design, spec, and reference document in
+the project. The repository root [`README.md`](../README.md) is the landing page
+and dev guide; everything deeper lives here.
 
-## Active Specs
+## What MetaCRDT is, in one screen
 
-| Spec | Purpose | Current next slice |
-| --- | --- | --- |
-| [Cloudflare Phase D](./cloudflare-phase-d.md) | Durable Object SQLite operational parity after Goal 145 | Persisted flow definition registry lookup |
-| [Cloudflare Live Query SDK](./cloudflare-live-query-sdk.md) | Frontend/SDK layer over the shipped structural live-query helpers | React-free browser session storage/auth boundary |
-| [Cloudflare SQL Query Hardening](./cloudflare-sql-query-hardening.md) | Broader historical SQL-indexed query-provider parity and performance | Add targeted scan coverage for the next missing query shape |
-| [Node Production Hardening](./node-production-hardening.md) | Production deployment support around the shipped Node runtime assembly | Auth middleware example |
-| [Provider Auth UI](./provider-auth-ui.md) | Provider-specific React/JWT wrapper over the fail-closed auth config | Choose provider and wire `ConvexProviderWithAuth` |
-| [Confect Domain Wrapper](./confect-domain-wrapper.md) | Scoped Confect/Effect sidecar expansion without converting Convex wholesale | Pick one read/planning domain with stable semantics |
+> Databases store facts. CRDTs synchronize facts. **MetaCRDT synchronizes facts,
+> logic, workflows, permissions, agents, and interfaces.**
 
-## Working Rules
+An append-only, bitemporal fact log whose projections — current state, derived
+rules, obligations, workflows, generated UI — are all deterministic *folds* of
+the same events. Because derivation is also a fold, the things that are normally
+bespoke (audit, time-travel, reuse, obligations) become emergent properties of
+the substrate. The reference runtime is [Convex](https://convex.dev); the demo
+elaboration is compliance datarooms.
 
-- Keep each spec focused on one target or product seam.
-- Record shipped slices as checkboxes with goal numbers.
-- Put non-goals in the spec before implementation starts.
-- Do not mark full parity unless every remaining item in that spec is complete
-  and verified.
-- `PLAN.md` remains the historical narrative; `TODO.md` remains the current
-  pulse. These specs are the working breakdown.
+## Organized by altitude
+
+Docs are grouped by **what question they answer** and **how often they change** —
+not by topic. Topic is expressed by filename and cross-links.
+
+| Altitude | Directory | Question | Stability |
+| --- | --- | --- | --- |
+| **Reference** | [`reference/`](./reference/README.md) | *What is true now?* — the model, protocol, architecture, positioning | changes when the design changes |
+| **Vision** | [`vision/`](./vision/README.md) | *Why does it exist, where is it going?* — ambitious end-state, brainstorm | slow-changing, aspirational |
+| **Plans** | [`plans/`](./plans/README.md) | *What are we building next, and how?* — actionable, slice-sized | fast-changing, retired when shipped |
+| **Explorations** | [`explorations/`](./explorations/README.md) | *What if the stack were different?* — speculative tech sketches | non-committal |
+| **Archive** | [`archive/`](./archive/) | superseded docs, kept for provenance | frozen |
+
+Above all of these sits an **ephemeral coordination layer**: the gitignored
+`PLAN.md` / `TODO.md` scratchpads that agents use to coordinate in-flight work on
+a branch. They are deliberately not committed and not part of this tree; committed
+docs may link to them as "current pulse" pointers, but their content is throwaway.
+
+## Status legend
+
+Used consistently across every doc, so you always know reality vs. aspiration:
+
+`✅ shipped` · `🚧 in progress` · `📐 designed, not built` · `💭 vision/brainstorm` · `🗄 archived`
+
+## Where to start
+
+- **New to the project?** → [`reference/positioning.md`](./reference/positioning.md)
+  (what & why), then [`reference/engine.md`](./reference/engine.md) (how it works).
+- **Implementing the protocol?** → [`reference/protocol.md`](./reference/protocol.md).
+- **Want the product thesis & the full vision?** →
+  [`vision/overview.md`](./vision/overview.md), then the
+  [vision reading order](./vision/README.md).
+- **Picking up build work?** → [`plans/README.md`](./plans/README.md).
+- **Understanding the naming / package map?** →
+  [`reference/architecture.md`](./reference/architecture.md).
+
+## Full index
+
+### Reference — *what is true now*
+- [`engine.md`](./reference/engine.md) — how the engine works (model, packages, Convex runtime, query/write surface) `✅`
+- [`protocol.md`](./reference/protocol.md) — the normative MetaCRDT protocol spec (RFC 2119)
+- [`architecture.md`](./reference/architecture.md) — the MetaCRDT umbrella, naming, and layer map
+- [`positioning.md`](./reference/positioning.md) — manifesto, positioning, and the honest technical spine
+- [`physics.md`](./reference/physics.md) — three coordination worlds over one substrate
+- [`targets.md`](./reference/targets.md) — target / storage-adapter / transport model
+
+### Vision — *why & where it's going* (`💭`)
+- [`overview.md`](./vision/overview.md) — the thesis, the layers, and the pillars
+- [`README.md`](./vision/README.md) — the curated reading order over 18 explorations (start: `triples → workflows → compliance → …`)
+
+### Plans — *what's next* (`🚧` / `📐`)
+- [`plans/README.md`](./plans/README.md) — active specs and working rules
+
+### Explorations — *speculative* (`💭`)
+- [`explorations/README.md`](./explorations/README.md) — Confect, Foldkit, Alchemy
