@@ -7,7 +7,7 @@ import {
   type DescriptorTreeCompileSpec,
   type DescriptorTreeSlotCompileSpec,
   type FormDescriptor as DescriptorFormDescriptor,
-} from "@metacrdt/forma/descriptor";
+} from "@forma/ts/descriptor";
 
 const PACKAGE_DIR = resolve(import.meta.dirname, "..");
 // Preludes live inside this package (packages/views/preludes).

@@ -1,0 +1,11 @@
+(lang dune 3.17)
+
+(name language_ocaml)
+
+(package
+ (name language_ocaml)
+ (synopsis "OCaml spike for the Open Ontology language compiler/interpreter engine")
+ (description "Runtime-loadable Open Ontology Lisp compiler/interpreter engine spike.")
+ (depends
+  (ocaml (>= 5.1))
+  (dune (>= 3.17))))

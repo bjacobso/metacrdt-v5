@@ -1,0 +1,73 @@
+@top Program { expression* }
+
+@skip { whitespace | LineComment }
+
+expression {
+  List |
+  Vector |
+  Map |
+  Quasiquote |
+  Unquote |
+  UnquoteSplicing |
+  atom
+}
+
+List { "(" expression* ")" }
+Vector { "[" expression* "]" }
+Map { "{" expression* "}" }
+
+Quasiquote { Backtick expression }
+Unquote { Tilde expression }
+UnquoteSplicing { TildeAt expression }
+
+atom {
+  Number |
+  String |
+  MultilineString |
+  Boolean |
+  Keyword |
+  specialForm |
+  Symbol
+}
+
+specialForm {
+  @specialize<Symbol,
+    "define" | "define-type" | "define-macro" | "define-effect" | "define-typeclass" |
+    "fn" | "let" | "if" | "do" | "when" | "cond" | "match" | "quote" |
+    "entity" | "relation" | "record" | "link" | "query" | "rule" |
+    "action" | "process" | "form" | "view" | "nav" | "lens" |
+    "require" | "import" | "export" |
+    "try" | "catch" | "throw" |
+    "loop" | "recur" | "set!" |
+    "and" | "or" | "not">
+}
+
+@tokens {
+  whitespace { $[ \t\n\r]+ }
+
+  LineComment { ";" ![\n]* }
+
+  @precedence { MultilineString, String }
+
+  MultilineString { '"""' (![\"] | '"' ![\"] | '""' ![\"])* '"""' }
+  String { '"' (![\\\"] | "\\" _)* '"' }
+
+  Number { "-"? $[0-9]+ ("." $[0-9]+)? ($[eE] $[+\-]? $[0-9]+)? }
+
+  Boolean { "true" | "false" }
+
+  Keyword { ":" $[a-zA-Z0-9\-_/?!*+<>=$.&]+ }
+
+  Symbol { $[a-zA-Z\-_?!*+/<>=$.&] $[a-zA-Z0-9\-_:?!*+/<>=$.&]* }
+
+  Backtick { "`" }
+  TildeAt { "~@" }
+  Tilde { "~" }
+
+  "(" ")" "[" "]" "{" "}"
+
+  @precedence { TildeAt, Tilde }
+  @precedence { Boolean, Symbol }
+  @precedence { Number, Symbol }
+  @precedence { Keyword, Symbol }
+}

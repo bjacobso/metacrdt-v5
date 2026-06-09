@@ -1,0 +1,47 @@
+{
+  "name": "@forma/ocaml-lsp",
+  "version": "0.1.0",
+  "description": "Language Server Protocol wrapper for the Forma OCaml language engine (@forma/ocaml via @forma/host).",
+  "license": "MIT",
+  "bin": {
+    "oo-language-ocaml-lsp": "./bin/oo-language-ocaml-lsp.mjs"
+  },
+  "type": "module",
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./server": {
+      "import": "./dist/server.js",
+      "types": "./dist/server.d.ts",
+      "default": "./src/server.ts"
+    }
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest --run",
+    "test:parity": "vitest --run test/parity.test.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@forma/host": "0.1.0",
+    "@forma/ocaml": "0.1.0",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.19.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}

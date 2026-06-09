@@ -6,14 +6,15 @@
   "private": true,
   "packageManager": "npm@11.6.2",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "packages/@forma/*"
   ],
   "scripts": {
     "dev": "npm run build:packages && convex dev",
     "dev:web": "vite",
     "build": "npm run build:packages && npm run build:app",
     "build:app": "vite build",
-    "build:packages": "turbo run build --filter='./packages/*'",
+    "build:packages": "turbo run build --filter='./packages/*' --filter='./packages/@forma/*'",
     "preview": "vite preview",
     "deploy": "convex deploy",
     "deploy:static": "static-hosting deploy",
@@ -23,17 +24,18 @@
     "test:cloudflare": "npm test --workspace @metacrdt/cloudflare",
     "test:core": "npm test --workspace @metacrdt/core",
     "test:convex-package": "npm test --workspace @metacrdt/convex",
-    "test:forma": "npm test --workspace @metacrdt/forma",
+    "test:forma": "npm test --workspace @forma/ts",
+    "test:forma-host": "npm test --workspace @forma/host",
     "test:local": "npm test --workspace @metacrdt/local",
     "test:query": "npm test --workspace @metacrdt/query",
     "test:runtime": "npm test --workspace @metacrdt/runtime",
     "test:schema": "npm test --workspace @metacrdt/schema",
     "test:confect": "vitest run convex/confect.test.ts convex/complianceConfect.test.ts",
-    "test:packages": "turbo run test --filter='./packages/*'",
+    "test:packages": "turbo run test --filter='./packages/*' --filter='./packages/@forma/*'",
     "test:all": "npm run test:packages && npm test",
-    "pack:packages": "turbo run pack:check --filter='./packages/*'",
+    "pack:packages": "turbo run pack:check --filter='./packages/*' --filter='./packages/@forma/*'",
     "typecheck": "npm run build:packages && npm run typecheck:packages && tsc --noEmit -p tsconfig.json",
-    "typecheck:packages": "turbo run typecheck --filter='./packages/*'"
+    "typecheck:packages": "turbo run typecheck --filter='./packages/*' --filter='./packages/@forma/*'"
   },
   "license": "MIT",
   "dependencies": {

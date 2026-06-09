@@ -9,7 +9,7 @@ import type {
   FormDescriptor as DescriptorFormDescriptor,
   SlotSpec as DescriptorSlotSpec,
   ValidationCheck as DescriptorValidationCheck,
-} from "@metacrdt/forma/descriptor";
+} from "@forma/ts/descriptor";
 import {
   buildProtocolEnumDescriptors,
   buildProtocolModuleDescriptors,
@@ -35,7 +35,7 @@ import {
   schemaProtocolType,
   tsProtocolType,
   type ProtocolTypeDescriptor,
-} from "@metacrdt/forma/descriptor";
+} from "@forma/ts/descriptor";
 
 const PACKAGE_DIR = resolve(import.meta.dirname, "..");
 // Preludes live inside this package (packages/views/preludes), so the prelude

@@ -24,6 +24,60 @@ proven.
 
 ---
 
+## Update (2026-06-09): the Forma language layer moved to `@forma/*`
+
+The language layer is no longer a proposal — it has been extracted into a
+dedicated scope, `packages/@forma/*`, segregated from the rest of `@metacrdt/*`.
+This supersedes the `@metacrdt/forma` / `@metacrdt/forma-ocaml` / `@metacrdt/forma-lsp`
+naming used in the tables below.
+
+| Old (Open Ontology) | Now in this repo | Notes |
+| --- | --- | --- |
+| `@open-ontology/language-ts` | **`@forma/ts`** | The TypeScript Forma engine (reader, evaluator, VM, HM types, descriptor/codegen). Pure; depends only on `effect`. |
+| `@open-ontology/language-ocaml` | **`@forma/ocaml`** | OCaml engine built from source via dune (native + js_of_ocaml + wasm). `private`; consumed by `@forma/host` over a filesystem path, not as a module. Toolchain pinned by `mise.toml`. |
+| `@open-ontology/language-host` | **`@forma/host`** | The shared ABI facade bridging the TS and OCaml engines. Its conformance suite runs TS, native-OCaml, and JS-OCaml against the same operations. |
+| `@open-ontology/language-ocaml-lsp` | **`@forma/ocaml-lsp`** | LSP server over `@forma/host`. |
+| `@open-ontology/language-editor` | **`@forma/editor`** | CodeMirror + React editor integration. Generates its Lezer parser at build time. |
+| `@open-ontology/language-e2e` | *(dissolved into tests)* | See below — its engine-parity job is already covered by `@forma/host`'s conformance suite. |
+
+**The boundary that makes this clean:** Forma terminates at a typed descriptor /
+Effect Schema. Everything past that — CanonicalIR, lowering to facts, execution —
+is a MetaCRDT concern. That is what keeps `@forma/*` runtime-neutral.
+
+### Where the left-behind middle layer fits
+
+`language-e2e` and the `ontology-compiler` / IR closure were intentionally **not**
+moved (they would drag in ~10 more packages). They are the *bridge* between
+authoring (`@forma/*`) and facts/execution (`@metacrdt/*`):
+
+```text
+@forma/ts ── elaborate ──► typed descriptor ──► CanonicalIR ──► facts ──► query/runtime
+@forma/ocaml               (Forma ends here)     └──────── MetaCRDT owns this ───────┘
+```
+
+| Left-behind package | Future home | Rationale |
+| --- | --- | --- |
+| `ontology-ir` (CanonicalIR) | `@metacrdt/runtime` first → maybe `@metacrdt/ir` later | The harness contract / load-bearing boundary. Don't make it standalone until a 2nd target or compiler needs it. |
+| `ontology-compiler` | **splits** — front half already in `@forma/ts`; back half (lower→IR, datalog type-check) → `@metacrdt/runtime` | It does not move as a unit; it is cut at the IR boundary. |
+| `ontology-project` (workspace/source-graph loading, markdown extraction) | `@metacrdt/cli`/`sdk`, or `@forma/project` | Depends only on `@forma/host`; authoring-workspace tooling, not substrate. |
+| `logic-ast` (TypeExpr/Datalog/LogicExpr grammars) | `@metacrdt/query` | Query already owns clause syntax + planning; this is the typed front of derivation. |
+| `view-protocol` | `@metacrdt/views` | Views already consumes `@forma/ts/descriptor`. |
+| `compiler-descriptor-protocol` / `compiler-protocol-codegen` | fold into IR/runtime contracts; codegen → `@metacrdt/cli` | Thin protocol/tooling layers. |
+| `language-e2e` | `@forma/host` conformance + `@metacrdt/testkit` | Not a public package. Its engine-parity half is **already** covered by `@forma/host`'s conformance suite (it runs all three engines side by side); only its compiler-level fixtures wait for the compiler pieces to land. |
+
+### The one decision still open
+
+Reframed now that `@forma/*` is real: **is CanonicalIR a Forma output (`@forma/ir`)
+or a MetaCRDT input (`@metacrdt/ir`)?**
+
+Recommendation: **MetaCRDT input.** Forma already terminates at an Effect Schema;
+keeping lowering-to-facts out of Forma is exactly what preserves its
+runtime-neutrality. Concretely: fold IR + the compiler back-half into
+`@metacrdt/runtime` now, and only carve out `@metacrdt/ir` when a second target or
+a second compiler (e.g. the OCaml engine emitting IR directly) proves the boundary.
+
+---
+
 ## Decision summary
 
 1. **This repository becomes the canonical MetaCRDT monorepo.**

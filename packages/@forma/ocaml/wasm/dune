@@ -1,0 +1,6 @@
+(executable
+ (name wasm_entry)
+ (modes wasm)
+ (libraries language_ocaml)
+ (wasm_of_ocaml
+  (flags --effects=cps)))

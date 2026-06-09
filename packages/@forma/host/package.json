@@ -1,0 +1,59 @@
+{
+  "name": "@forma/host",
+  "version": "0.1.0",
+  "description": "Forma host: the shared ABI facade bridging the TypeScript (@forma/ts) and OCaml (@forma/ocaml) language engines.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./default-host": {
+      "types": "./dist/default-host.d.mts",
+      "import": "./dist/default-host.mjs"
+    },
+    "./editor": {
+      "types": "./dist/editor.d.mts",
+      "import": "./dist/editor.mjs"
+    },
+    "./js-ocaml-host": {
+      "types": "./dist/js-ocaml-host.d.mts",
+      "import": "./dist/js-ocaml-host.mjs"
+    },
+    "./ocaml-host": {
+      "types": "./dist/ocaml-host.d.mts",
+      "import": "./dist/ocaml-host.mjs"
+    },
+    "./ts-host": {
+      "types": "./dist/ts-host.d.mts",
+      "import": "./dist/ts-host.mjs"
+    },
+    "./types": {
+      "types": "./dist/types.d.mts",
+      "import": "./dist/types.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown --config ../../tsdown.config.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "pack:check": "npm pack --dry-run --json"
+  },
+  "dependencies": {
+    "@forma/ts": "0.1.0",
+    "@forma/ocaml": "0.1.0",
+    "effect": "^3.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}
