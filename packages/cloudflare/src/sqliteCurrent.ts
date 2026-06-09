@@ -38,6 +38,7 @@ import type {
   DurableObjectSqliteCollectionTickStatus,
   DurableObjectSqliteCollectionStatus,
   DurableObjectSqliteCollectionStore,
+  DurableObjectSqliteDagEventInput,
   DurableObjectSqliteDagRun,
   DurableObjectSqliteDagRunStatus,
   DurableObjectSqliteDagStore,
@@ -248,6 +249,67 @@ export const DurableObjectSqliteDagEventInputSchema = Schema.Struct({
   message: Schema.optionalWith(Schema.String, { exact: true }),
 });
 
+const DurableObjectSqliteDagStepAssertionSchema = Schema.Struct({
+  a: Schema.String,
+  v: Schema.Any,
+  validFrom: Schema.optionalWith(Schema.Number, { exact: true }),
+  validTo: Schema.optionalWith(Schema.Union(Schema.Number, Schema.Null), {
+    exact: true,
+  }),
+  actor: Schema.String,
+  actorType: Schema.optionalWith(
+    Schema.Literal("human", "agent", "system", "migration"),
+    { exact: true },
+  ),
+  causalRefs: Schema.optionalWith(Schema.Array(Schema.String), {
+    exact: true,
+  }),
+  reason: Schema.optionalWith(Schema.String, { exact: true }),
+});
+
+export const DurableObjectSqliteExecuteDagStepKindSchema = Schema.Literal(
+  "assert",
+  "collect",
+  "wait",
+  "unsupported",
+);
+
+export const DurableObjectSqliteExecuteDagStepArgsSchema = Schema.Struct({
+  runId: Schema.String,
+  flowDefName: Schema.String,
+  subject: Schema.String,
+  stepId: Schema.String,
+  kind: DurableObjectSqliteExecuteDagStepKindSchema,
+  eventId: Schema.String,
+  now: Schema.optionalWith(Schema.Number, { exact: true }),
+  nextStepId: Schema.optionalWith(Schema.String, { exact: true }),
+  context: Schema.optionalWith(Schema.Any, { exact: true }),
+  message: Schema.optionalWith(Schema.String, { exact: true }),
+  assertions: Schema.optionalWith(
+    Schema.Array(DurableObjectSqliteDagStepAssertionSchema),
+    { exact: true },
+  ),
+  collection: Schema.optionalWith(
+    Schema.Struct({
+      token: Schema.String,
+      form: Schema.String,
+      expiresAt: Schema.optionalWith(Schema.Union(Schema.Number, Schema.Null), {
+        exact: true,
+      }),
+      scope: Schema.optionalWith(Schema.String, { exact: true }),
+    }),
+    { exact: true },
+  ),
+  wait: Schema.optionalWith(
+    Schema.Struct({
+      id: Schema.String,
+      eventId: Schema.String,
+      fireAt: Schema.Number,
+    }),
+    { exact: true },
+  ),
+});
+
 export const DurableObjectSqliteRecordDagRunArgsSchema = Schema.Struct({
   runId: Schema.optionalWith(Schema.String, { exact: true }),
   flowDefName: Schema.String,
@@ -346,6 +408,8 @@ export type DurableObjectSqliteListFlowWaitTicksArgs =
   typeof DurableObjectSqliteListFlowWaitTicksArgsSchema.Type;
 export type DurableObjectSqliteFireFlowWaitTickArgs =
   typeof DurableObjectSqliteFireFlowWaitTickArgsSchema.Type;
+export type DurableObjectSqliteExecuteDagStepArgs =
+  typeof DurableObjectSqliteExecuteDagStepArgsSchema.Type;
 export type DurableObjectSqliteRecordDagRunArgs =
   typeof DurableObjectSqliteRecordDagRunArgsSchema.Type;
 export type DurableObjectSqliteDagRunByIdArgs =
@@ -403,6 +467,13 @@ export type DurableObjectSqliteFireCollectionTickResult = {
 export type DurableObjectSqliteFireFlowWaitTickResult = {
   readonly tick: DurableObjectSqliteFlowWaitTick;
   readonly run?: DurableObjectSqliteDagRun;
+};
+
+export type DurableObjectSqliteExecuteDagStepResult = {
+  readonly run: DurableObjectSqliteDagRun;
+  readonly assertions: readonly DurableObjectSqliteAppendAndRebuildResult[];
+  readonly collection?: DurableObjectSqliteCollection;
+  readonly waitTick?: DurableObjectSqliteFlowWaitTick;
 };
 
 export type DurableObjectSqliteCurrentSurfaceOptions = {
@@ -472,6 +543,9 @@ export type DurableObjectSqliteCurrentSurface = {
   fireFlowWaitTick(
     args: DurableObjectSqliteFireFlowWaitTickArgs,
   ): Promise<DurableObjectSqliteFireFlowWaitTickResult>;
+  executeDagStep(
+    args: DurableObjectSqliteExecuteDagStepArgs,
+  ): Promise<DurableObjectSqliteExecuteDagStepResult>;
   recordDagRun(
     args: DurableObjectSqliteRecordDagRunArgs,
   ): Promise<DurableObjectSqliteDagRun>;
@@ -1272,6 +1346,198 @@ export function fireDurableObjectSqliteFlowWaitTickEffect(
   });
 }
 
+function requireDagStepField<A>(
+  operation: string,
+  value: A | undefined,
+  message: string,
+): Effect.Effect<A, DurableObjectSqliteCurrentSurfaceError> {
+  return value === undefined
+    ? Effect.fail(surfaceError(operation, new Error(message)))
+    : Effect.succeed(value);
+}
+
+function dagStepTimelineEvent(
+  decoded: DurableObjectSqliteExecuteDagStepArgs,
+  type: string,
+  kind: string,
+): DurableObjectSqliteDagEventInput {
+  return {
+    eventId: decoded.eventId,
+    stepId: decoded.stepId,
+    type,
+    kind,
+    ...(decoded.message === undefined ? {} : { message: decoded.message }),
+  };
+}
+
+export function executeDurableObjectSqliteDagStepEffect(
+  dag: DurableObjectSqliteDagStore,
+  collections: DurableObjectSqliteCollectionStore,
+  flowWaitTimers: DurableObjectSqliteFlowWaitTimerStore,
+  args: DurableObjectSqliteExecuteDagStepArgs,
+  defaultNow: number,
+  cardinalityOf: CardinalityOf,
+  coord: Coord,
+): Effect.Effect<
+  DurableObjectSqliteExecuteDagStepResult,
+  RuntimeError | DurableObjectSqliteCurrentSurfaceError,
+  | EventStoreService
+  | ProjectionStoreService
+  | RuntimeClockService
+  | RuntimeSequencerService
+  | RuntimeProfileService
+  | TransportService
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "executeDagStep",
+      DurableObjectSqliteExecuteDagStepArgsSchema,
+      args,
+    );
+    const now = decoded.now ?? defaultNow;
+    const assertions: DurableObjectSqliteAppendAndRebuildResult[] = [];
+
+    if (decoded.kind === "assert") {
+      const stepAssertions = yield* requireDagStepField(
+        "executeDagStep",
+        decoded.assertions,
+        "assert DAG step requires assertions",
+      );
+      if (stepAssertions.length === 0) {
+        return yield* Effect.fail(
+          surfaceError(
+            "executeDagStep",
+            new Error("assert DAG step requires at least one assertion"),
+          ),
+        );
+      }
+      for (const assertion of stepAssertions) {
+        const event = yield* applyOperationEffect({
+          op: "assert",
+          e: decoded.subject,
+          a: assertion.a,
+          v: assertion.v,
+          validFrom: assertion.validFrom,
+          validTo: assertion.validTo,
+          actor: assertion.actor,
+          actorType: assertion.actorType as ActorType | undefined,
+          causalRefs: assertion.causalRefs,
+          reason: assertion.reason,
+        });
+        const projection = yield* reconcileDurableObjectSqliteCurrentEventEffect(
+          event,
+          cardinalityOf,
+          coord,
+        );
+        assertions.push({ event, projection });
+      }
+      const run = yield* Effect.tryPromise({
+        try: () =>
+          dag.record({
+            runId: decoded.runId,
+            flowDefName: decoded.flowDefName,
+            subject: decoded.subject,
+            status: decoded.nextStepId === undefined ? "completed" : "running",
+            currentStepId: decoded.nextStepId ?? decoded.stepId,
+            context: decoded.context,
+            events: [dagStepTimelineEvent(decoded, "action", "asserted")],
+            now,
+          }),
+        catch: (cause) => surfaceError("executeDagStep", cause),
+      });
+      return { run, assertions };
+    }
+
+    if (decoded.kind === "collect") {
+      const collectionInput = yield* requireDagStepField(
+        "executeDagStep",
+        decoded.collection,
+        "collect DAG step requires collection input",
+      );
+      const collection = yield* Effect.tryPromise({
+        try: () =>
+          collections.issue({
+            token: collectionInput.token,
+            subject: decoded.subject,
+            form: collectionInput.form,
+            issuedAt: now,
+            expiresAt: collectionInput.expiresAt,
+            runId: decoded.runId,
+            stepId: decoded.stepId,
+            scope: collectionInput.scope,
+          }),
+        catch: (cause) => surfaceError("executeDagStep", cause),
+      });
+      const run = yield* Effect.tryPromise({
+        try: () =>
+          dag.record({
+            runId: decoded.runId,
+            flowDefName: decoded.flowDefName,
+            subject: decoded.subject,
+            status: "waiting",
+            currentStepId: decoded.stepId,
+            context: decoded.context,
+            events: [dagStepTimelineEvent(decoded, "collect", "collect-issued")],
+            now,
+          }),
+        catch: (cause) => surfaceError("executeDagStep", cause),
+      });
+      return { run, assertions, collection };
+    }
+
+    if (decoded.kind === "wait") {
+      const waitInput = yield* requireDagStepField(
+        "executeDagStep",
+        decoded.wait,
+        "wait DAG step requires wait input",
+      );
+      const run = yield* Effect.tryPromise({
+        try: () =>
+          dag.record({
+            runId: decoded.runId,
+            flowDefName: decoded.flowDefName,
+            subject: decoded.subject,
+            status: "waiting",
+            currentStepId: decoded.stepId,
+            context: decoded.context,
+            events: [dagStepTimelineEvent(decoded, "timer", "flow-wait-scheduled")],
+            now,
+          }),
+        catch: (cause) => surfaceError("executeDagStep", cause),
+      });
+      const waitTick = yield* Effect.tryPromise({
+        try: () =>
+          flowWaitTimers.schedule({
+            id: waitInput.id,
+            runId: decoded.runId,
+            stepId: decoded.stepId,
+            eventId: waitInput.eventId,
+            fireAt: waitInput.fireAt,
+            scheduledAt: now,
+          }),
+        catch: (cause) => surfaceError("executeDagStep", cause),
+      });
+      return { run, assertions, waitTick };
+    }
+
+    const run = yield* Effect.tryPromise({
+      try: () =>
+        dag.record({
+          runId: decoded.runId,
+          flowDefName: decoded.flowDefName,
+          subject: decoded.subject,
+          status: "unsupported",
+          currentStepId: decoded.stepId,
+          context: decoded.context,
+          events: [dagStepTimelineEvent(decoded, "unsupported", "unsupported")],
+          now,
+        }),
+      catch: (cause) => surfaceError("executeDagStep", cause),
+    });
+    return { run, assertions };
+  });
+}
+
 export function recordDurableObjectSqliteDagRunEffect(
   dag: DurableObjectSqliteDagStore,
   args: DurableObjectSqliteRecordDagRunArgs,
@@ -1809,6 +2075,18 @@ export function createDurableObjectSqliteCurrentSurface(
           runtime.flowWaitTimers,
           args,
           coord().txTime,
+        ),
+      ),
+    executeDagStep: (args) =>
+      run(
+        executeDurableObjectSqliteDagStepEffect(
+          runtime.dag,
+          runtime.collections,
+          runtime.flowWaitTimers,
+          args,
+          coord().txTime,
+          options.cardinalityOf,
+          coord(),
         ),
       ),
     recordDagRun: (args) =>

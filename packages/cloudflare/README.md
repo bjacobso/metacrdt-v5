@@ -44,6 +44,15 @@ implements them on Cloudflare.
   lifecycle helpers replace only the touched current coordinate through
   `ProjectionStoreService.replaceMatching`, while `rebuildCurrent` remains the
   full recovery rebuild.
+- **Durable Object SQLite flow-step execution seed** —
+  `executeDagStep` on `createDurableObjectSqliteCurrentSurface` runs one
+  caller-described `assert`, `collect`, `wait`, or `unsupported` DAG step over
+  the existing append/reconcile, collection, DAG timeline, and flow-wait timer
+  primitives. Assertion steps append protocol events for the subject, collect
+  steps issue caller-provided collection tokens and park runs, and wait steps
+  schedule caller-provided wake ticks for the alarm path. This is a structural
+  single-step primitive, not a declarative DAG interpreter, configured action
+  registry executor, or host action invocation layer.
 - **Durable Object SQLite live invalidation fanout** —
   `DurableObjectSqliteLiveInvalidationFanout` plus Effect/Promise publish
   helpers accept bounded `e` / `a` subscriptions over structural WebSocket
@@ -209,8 +218,8 @@ historical provider has conformance-style coverage for joins, disjunction,
 negation, compare/compute, pagination, aggregation, derived rows, lifecycle
 visibility, and bounded SQLite scan counters. The remaining parity plan —
 broader historical SQL-indexed query optimization, full flow interpreter/action
-execution, and full React/frontend SDK live-query package/auth integration over
-DO WebSockets — is
+registry execution, and full React/frontend SDK live-query package/auth
+integration over DO WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth

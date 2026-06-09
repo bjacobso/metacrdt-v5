@@ -1696,4 +1696,205 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       }),
     ).rejects.toThrow(/runId required/);
   });
+
+  test("current surface executes an assert DAG step through protocol append and current reconcile", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:dag-step-assert",
+      wall: () => 975,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const executed = await surface.executeDagStep({
+      runId: "dag:worker:step:assert",
+      flowDefName: "owned_flow",
+      subject: "worker:step-assert",
+      stepId: "activate",
+      kind: "assert",
+      eventId: "dag:event:worker:step:assert:activate",
+      now: 70_000,
+      context: { source: "dag-step" },
+      message: "activate worker",
+      assertions: [
+        {
+          a: "worker.status",
+          v: "active",
+          validFrom: 9_000,
+          actor: "system:flow",
+          actorType: "system",
+          reason: "flow assert step",
+        },
+      ],
+    });
+
+    expect(executed.run).toMatchObject({
+      runId: "dag:worker:step:assert",
+      flowDefName: "owned_flow",
+      subject: "worker:step-assert",
+      status: "completed",
+      currentStepId: "activate",
+      completedAt: 70_000,
+      context: { source: "dag-step" },
+    });
+    expect(executed.run.events).toEqual([
+      {
+        eventId: "dag:event:worker:step:assert:activate",
+        runId: "dag:worker:step:assert",
+        ts: 70_000,
+        stepId: "activate",
+        type: "action",
+        kind: "asserted",
+        message: "activate worker",
+      },
+    ]);
+    expect(executed.assertions).toHaveLength(1);
+    expect(executed.assertions[0]?.event).toMatchObject({
+      kind: "assert",
+      e: "worker:step-assert",
+      a: "worker.status",
+      v: "active",
+      seq: 1,
+    });
+    await expect(
+      surface.listCurrent({ e: "worker:step-assert", a: "worker.status" }),
+    ).resolves.toMatchObject([
+      {
+        e: "worker:step-assert",
+        a: "worker.status",
+        v: "active",
+      },
+    ]);
+  });
+
+  test("current surface executes a collect DAG step by issuing a collection token and parking the run", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:dag-step-collect",
+      wall: () => 980,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const executed = await surface.executeDagStep({
+      runId: "dag:worker:step:collect",
+      flowDefName: "owned_flow",
+      subject: "worker:step-collect",
+      stepId: "collect-i9",
+      kind: "collect",
+      eventId: "dag:event:worker:step:collect:issued",
+      now: 71_000,
+      context: { requirement: "i9" },
+      collection: {
+        token: "collection:worker:step-collect:i9",
+        form: "owned_i9",
+        expiresAt: 80_000,
+        scope: "worker:i9",
+      },
+    });
+
+    expect(executed.collection).toMatchObject({
+      token: "collection:worker:step-collect:i9",
+      subject: "worker:step-collect",
+      form: "owned_i9",
+      status: "issued",
+      issuedAt: 71_000,
+      expiresAt: 80_000,
+      runId: "dag:worker:step:collect",
+      stepId: "collect-i9",
+      scope: "worker:i9",
+    });
+    expect(executed.run).toMatchObject({
+      runId: "dag:worker:step:collect",
+      status: "waiting",
+      currentStepId: "collect-i9",
+      context: { requirement: "i9" },
+    });
+    expect(executed.run.events.map((event) => event.kind)).toEqual([
+      "collect-issued",
+    ]);
+    await expect(
+      surface.collectionByToken({ token: "collection:worker:step-collect:i9" }),
+    ).resolves.toEqual(executed.collection);
+    await expect(
+      surface.executeDagStep({
+        runId: "dag:worker:step:collect:missing",
+        flowDefName: "owned_flow",
+        subject: "worker:step-collect",
+        stepId: "collect-i9",
+        kind: "collect",
+        eventId: "dag:event:worker:step:collect:missing",
+        now: 71_500,
+      }),
+    ).rejects.toThrow(/requires collection input/);
+  });
+
+  test("current surface executes a wait DAG step by scheduling a caller-identified wake tick", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:dag-step-wait",
+      wall: () => 985,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const executed = await surface.executeDagStep({
+      runId: "dag:worker:step:wait",
+      flowDefName: "owned_flow",
+      subject: "worker:step-wait",
+      stepId: "sleep",
+      kind: "wait",
+      eventId: "dag:event:worker:step:wait:scheduled",
+      now: 72_000,
+      context: { delay: "short" },
+      wait: {
+        id: "flow-wait:worker:step-wait:sleep",
+        eventId: "dag:event:worker:step:wait:woke",
+        fireAt: 75_000,
+      },
+    });
+
+    expect(executed.run).toMatchObject({
+      runId: "dag:worker:step:wait",
+      status: "waiting",
+      currentStepId: "sleep",
+      context: { delay: "short" },
+    });
+    expect(executed.waitTick).toEqual({
+      id: "flow-wait:worker:step-wait:sleep",
+      runId: "dag:worker:step:wait",
+      stepId: "sleep",
+      eventId: "dag:event:worker:step:wait:woke",
+      fireAt: 75_000,
+      status: "pending",
+      scheduledAt: 72_000,
+      firedAt: null,
+    });
+    await expect(
+      surface.listFlowWaitTicks({ runId: "dag:worker:step:wait" }),
+    ).resolves.toEqual([executed.waitTick]);
+
+    const fired = await surface.fireFlowWaitTick({
+      id: "flow-wait:worker:step-wait:sleep",
+      firedAt: 75_000,
+    });
+    expect(fired.run).toMatchObject({
+      runId: "dag:worker:step:wait",
+      status: "running",
+      currentStepId: "sleep",
+    });
+    expect(fired.run?.events.map((event) => event.kind)).toEqual([
+      "flow-wait-scheduled",
+      "flow-wait",
+    ]);
+  });
 });

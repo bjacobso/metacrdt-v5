@@ -8,12 +8,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ### Current pulse
 
-- [x] Goal 141 shipped: Cloudflare live-query session helper seed.
+- [x] Goal 142 shipped: Cloudflare flow-step execution seed.
 - [ ] Choose the next active slice from remaining Cloudflare parity (full flow
-  interpreter/action execution, full React/frontend SDK live-query package, or
-  broader historical SQL query-provider parity/performance hardening), Node
-  production hardening, provider-specific auth/UI wrapping, or a scoped Confect/
-  domain wrapper.
+  interpreter/action registry execution, full React/frontend SDK live-query
+  package, or broader historical SQL query-provider parity/performance
+  hardening), Node production hardening, provider-specific auth/UI wrapping, or
+  a scoped Confect/domain wrapper.
 
 ### Handoff: continue MetaCRDT on `main` from commit `c6c4379`
 
@@ -234,10 +234,16 @@ After implementation:
   client with a caller-provided stable connection id, URL query-param helper,
   hydration/reconnect delegation, and latest result snapshots keyed by
   subscription id.
+- [x] **Goal 142 shipped: flow-step execution seed** —
+  `executeDagStep` composes the existing DO SQLite current facade for
+  caller-identified `assert`, `collect`, `wait`, and `unsupported` DAG steps:
+  assertion steps append protocol events through scoped projection reconcile,
+  collect steps issue collection tokens and park runs, and wait steps schedule
+  flow-wait ticks that resume through existing alarm plumbing.
 - [ ] **Remaining Cloudflare Phase D parity** — full flow interpreter/action
-  execution, full React/frontend SDK live-query package/auth integration, and
-  broader historical SQL query-provider parity/performance hardening remain
-  open; do not claim full parity until those are implemented.
+  registry execution, full React/frontend SDK live-query package/auth
+  integration, and broader historical SQL query-provider parity/performance
+  hardening remain open; do not claim full parity until those are implemented.
 
 **Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
 - [x] Commutative supersession — centralized Convex writes now stamp
@@ -362,6 +368,10 @@ After implementation:
   frontend/SDK callers can create a stable-connection live-query session that
   derives the WebSocket URL, delegates hydration/reconnect, and caches latest
   current-query snapshots without React or auth storage assumptions.
+- [x] Cloudflare Durable Object SQLite flow-step execution seed —
+  `executeDagStep` runs one caller-described DAG step over existing
+  append/reconcile, collection, DAG timeline, and flow-wait timer primitives
+  without claiming a full declarative workflow interpreter.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -372,7 +382,7 @@ After implementation:
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — full
   SQL-indexed query-provider parity/performance hardening, full flow
-  interpreter/action execution, full React/frontend SDK live-query package/auth
+  interpreter/action registry execution, full React/frontend SDK live-query package/auth
   integration, and broader production hardening on top of the persisted registry (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
@@ -903,6 +913,18 @@ After implementation:
 ---
 
 ## Log
+
+### 2026-06-09 — Cloudflare flow-step execution seed
+- [x] **Single-step executor.**
+  `executeDagStep` now runs one caller-described `assert`, `collect`, `wait`, or
+  `unsupported` DAG step through the existing DO SQLite current facade.
+- [x] **Operational effects.**
+  Assertion steps append protocol events and reconcile current projection rows,
+  collect steps issue caller-provided collection tokens and park runs, and wait
+  steps schedule caller-provided flow-wait ticks for the existing alarm path.
+- [x] **Still scoped.** Branching, declarative DAG interpretation, configured
+  action registry execution, React/frontend SDK integration, and broader SQL
+  query-provider hardening remain open.
 
 ### 2026-06-09 — Cloudflare live-query session helper seed
 - [x] **Stable session helper.**

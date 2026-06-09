@@ -298,13 +298,20 @@ callers provide a stable `connectionId`, the helper derives a matching
 WebSocket URL, delegates hydration/reconnect to the existing client, and tracks
 latest per-subscription result snapshots. This still does not provide React
 bindings, application auth storage, server-issued durable session tokens, a full
-SDK package, or full flow execution. The next active goal should be chosen from
+SDK package, or full flow execution. Goal 142 adds the first structural
+Cloudflare flow-step execution seed: `executeDagStep` composes the existing
+current facade primitives for caller-identified `assert`, `collect`, `wait`,
+and `unsupported` DAG steps, recording deterministic timeline rows, issuing
+collection tokens, scheduling flow-wait ticks, and appending assertion events
+through the existing projection reconcile path. This still does not provide a
+declarative DAG interpreter, branching, configured action registry execution, or
+full workflow parity. The next active goal should be chosen from
 the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (broader SQL query-provider
-parity/performance hardening, full flow interpreter/action execution, or a full
-React/frontend SDK live-query package),
+parity/performance hardening, a full flow interpreter/action registry executor,
+or a full React/frontend SDK live-query package),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9519,6 +9526,49 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 142 — Cloudflare Flow Step Execution Seed
+
+**Status:** shipped.
+
+**Objective:** add the first narrow Cloudflare flow execution surface on top of
+the existing DO SQLite current facade, so callers can deterministically execute
+one structural DAG step without claiming full workflow parity.
+
+### What Shipped
+
+- Added `executeDagStep` to `createDurableObjectSqliteCurrentSurface` plus the
+  Effect-native `executeDurableObjectSqliteDagStepEffect` helper.
+- The helper supports caller-identified `assert`, `collect`, `wait`, and
+  `unsupported` step kinds. All operational ids remain caller-provided:
+  `runId`, timeline `eventId`, collection token, wait tick id, and wait wake
+  event id are not generated with randomness and do not consume EventStore
+  sequence numbers.
+- `assert` steps append submitted protocol assertions for the DAG subject
+  through the existing `applyOperationEffect` and scoped current-coordinate
+  reconcile path, then record a DAG timeline event.
+- `collect` steps issue a collection token tied to the run/step and park the DAG
+  run in `waiting`.
+- `wait` steps record a waiting DAG run and schedule a caller-identified
+  `flow_wait_timers` row that resumes through the existing timer firing path.
+- Focused Cloudflare tests prove assert-step projection updates, collect-step
+  token issuance and validation errors, wait-step tick scheduling, and wake
+  firing back to a running DAG row.
+
+### Non-Goals
+
+- Do not claim a declarative Cloudflare DAG interpreter, branch evaluation,
+  configured action registry execution, host action invocation, or complete flow
+  parity.
+- Do not implement React hooks, frontend SDK auth storage, or broader historical
+  SQL query-provider parity/performance hardening.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 65 Cloudflare tests.
 
 ---
 

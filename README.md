@@ -173,8 +173,9 @@ Current packages:
   EventStore-backed bitemporal Datalog reads, projection-backed current Datalog
   reads, full-recovery rebuild, current rows/entities, projection invalidation
   summaries as `changed` `(e, a)` before/after event ids), collection rows and
-  timers, DAG run/timeline rows, flow-wait alarm plumbing, live invalidation and
-  current-query fanout with result-diff metadata, persisted live-query
+  timers, DAG run/timeline rows, single-step DAG execution, flow-wait alarm
+  plumbing, live invalidation and current-query fanout with result-diff metadata,
+  persisted live-query
   subscription rows, authenticated live-query and write routes, a SQLite
   live-query DO assembly, structural live-query client/session helpers,
   WebSocket relay shell, Worker router, and example Wrangler config.
@@ -245,7 +246,7 @@ Planned package graph:
 @metacrdt/agent       agent actors, proposals, skills
 @metacrdt/runtime     IR + Effect service interfaces/Layers
 @metacrdt/convex      Convex target / component / bindings
-@metacrdt/cloudflare  Durable Object / Worker target (KV relay shell + SQLite runtime seed)
+@metacrdt/cloudflare  Durable Object / Worker target (KV relay shell + SQLite current/query/DAG seed)
 @metacrdt/local       browser/local-first target
 @metacrdt/testkit     target conformance checks
 @metacrdt/node        Node target (memory + structural SQLite/Postgres + SQL lifecycle plan + HTTP/SSE + listener + sync client + production assembly + dev-server CLI shipped)
