@@ -8,12 +8,12 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ### Current pulse
 
-- [x] Goal 142 shipped: Cloudflare flow-step execution seed.
+- [x] Goal 143 shipped: Cloudflare action execution seed.
 - [ ] Choose the next active slice from remaining Cloudflare parity (full flow
-  interpreter/action registry execution, full React/frontend SDK live-query
-  package, or broader historical SQL query-provider parity/performance
-  hardening), Node production hardening, provider-specific auth/UI wrapping, or
-  a scoped Confect/domain wrapper.
+  interpreter/registry lookup/host action invocation, full React/frontend SDK
+  live-query package, or broader historical SQL query-provider
+  parity/performance hardening), Node production hardening, provider-specific
+  auth/UI wrapping, or a scoped Confect/domain wrapper.
 
 ### Handoff: continue MetaCRDT on `main` from commit `c6c4379`
 
@@ -240,10 +240,17 @@ After implementation:
   assertion steps append protocol events through scoped projection reconcile,
   collect steps issue collection tokens and park runs, and wait steps schedule
   flow-wait ticks that resume through existing alarm plumbing.
-- [ ] **Remaining Cloudflare Phase D parity** — full flow interpreter/action
-  registry execution, full React/frontend SDK live-query package/auth
-  integration, and broader historical SQL query-provider parity/performance
-  hardening remain open; do not claim full parity until those are implemented.
+- [x] **Goal 143 shipped: action execution seed** —
+  `executeAction` validates a caller-described action and delegates to the same
+  DO SQLite DAG-step primitives for exactly one supported effect: protocol
+  assertions or collection-token opening. Assertion actions append protocol
+  events and reconcile current projection rows; collection-opening actions issue
+  caller-provided tokens and park the run.
+- [ ] **Remaining Cloudflare Phase D parity** — full flow interpreter,
+  configured registry lookup/branching/host action invocation, full
+  React/frontend SDK live-query package/auth integration, and broader historical
+  SQL query-provider parity/performance hardening remain open; do not claim full
+  parity until those are implemented.
 
 **Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
 - [x] Commutative supersession — centralized Convex writes now stamp
@@ -372,6 +379,10 @@ After implementation:
   `executeDagStep` runs one caller-described DAG step over existing
   append/reconcile, collection, DAG timeline, and flow-wait timer primitives
   without claiming a full declarative workflow interpreter.
+- [x] Cloudflare Durable Object SQLite action execution seed —
+  `executeAction` runs one caller-described action effect by delegating to the
+  DAG-step primitives for assertions or collection-token opening, without
+  claiming configured registry lookup, branching, or host action invocation.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -382,8 +393,9 @@ After implementation:
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — full
   SQL-indexed query-provider parity/performance hardening, full flow
-  interpreter/action registry execution, full React/frontend SDK live-query package/auth
-  integration, and broader production hardening on top of the persisted registry (see
+  interpreter/registry lookup/host action invocation, full React/frontend SDK
+  live-query package/auth integration, and broader production hardening on top
+  of the persisted registry (see
   [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
   [foldkit.md](./docs/foldkit.md), [alchemy.md](./docs/alchemy.md)).
@@ -913,6 +925,20 @@ After implementation:
 ---
 
 ## Log
+
+### 2026-06-09 — Cloudflare action execution seed
+- [x] **Action facade.**
+  `executeAction` now validates a caller-described action and runs exactly one
+  supported effect over the existing DO SQLite DAG-step substrate: assertions or
+  collection opening.
+- [x] **Delegated operational effects.**
+  Assertion actions append protocol events and reconcile current projection
+  rows; collection-opening actions issue caller-provided collection tokens and
+  park DAG runs through the same collection/DAG timeline semantics as
+  `executeDagStep`.
+- [x] **Still scoped.** Configured action registry lookup, branching,
+  declarative DAG interpretation, host action invocation, React/frontend SDK
+  integration, and broader SQL query-provider hardening remain open.
 
 ### 2026-06-09 — Cloudflare flow-step execution seed
 - [x] **Single-step executor.**

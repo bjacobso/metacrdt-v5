@@ -305,13 +305,18 @@ and `unsupported` DAG steps, recording deterministic timeline rows, issuing
 collection tokens, scheduling flow-wait ticks, and appending assertion events
 through the existing projection reconcile path. This still does not provide a
 declarative DAG interpreter, branching, configured action registry execution, or
-full workflow parity. The next active goal should be chosen from
+full workflow parity. Goal 143 adds a narrow Cloudflare action execution seed:
+`executeAction` validates a caller-described action and delegates exactly one
+supported effect to those same DAG-step primitives, either appending protocol
+assertions or opening a caller-provided collection token. This still does not
+provide configured action registry lookup, branch evaluation, host action
+invocation, or a full flow interpreter. The next active goal should be chosen from
 the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (broader SQL query-provider
-parity/performance hardening, a full flow interpreter/action registry executor,
-or a full React/frontend SDK live-query package),
+parity/performance hardening, a full flow interpreter/registry lookup/host
+action invocation surface, or a full React/frontend SDK live-query package),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9526,6 +9531,46 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 143 — Cloudflare Action Execution Seed
+
+**Status:** shipped.
+
+**Objective:** add the first narrow Cloudflare action execution facade on top of
+the DO SQLite single-step flow substrate, so callers can run one
+caller-described action effect without claiming configured action registry or
+full workflow parity.
+
+### What Shipped
+
+- Added `executeAction` to `createDurableObjectSqliteCurrentSurface` plus the
+  Effect-native `executeDurableObjectSqliteActionEffect` helper.
+- The helper validates caller-provided operational identifiers (`runId`,
+  `actionName`, timeline `eventId`, and optional `stepId`) and requires exactly
+  one supported action effect in this seed: `assertions` or `collection`.
+- Assertion actions delegate to the `executeDagStep` assert path, appending
+  protocol events for the subject through `applyOperationEffect` and scoped
+  current-coordinate projection reconcile before recording a DAG timeline event.
+- Collection-opening actions delegate to the `executeDagStep` collect path,
+  issuing the caller-provided collection token and parking the DAG run in
+  `waiting`.
+- Focused Cloudflare tests prove assertion-action projection updates,
+  collection-opening token issuance/run parking, and rejection of action
+  definitions with zero or multiple supported effects.
+
+### Non-Goals
+
+- Do not claim configured action registry lookup, branch evaluation, declarative
+  DAG interpretation, host action invocation, or complete flow parity.
+- Do not implement React hooks, frontend SDK auth storage, or broader historical
+  SQL query-provider parity/performance hardening.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 68 Cloudflare tests.
 
 ---
 

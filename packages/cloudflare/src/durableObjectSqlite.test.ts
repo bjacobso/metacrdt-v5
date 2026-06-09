@@ -1897,4 +1897,171 @@ describe("@metacrdt/cloudflare Durable Object SQLite runtime", () => {
       "flow-wait",
     ]);
   });
+
+  test("current surface executes an assertion action through DAG step semantics", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:action-assert",
+      wall: () => 990,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const executed = await surface.executeAction({
+      runId: "dag:worker:action:terminate",
+      flowDefName: "owned_action_flow",
+      subject: "worker:action-assert",
+      actionName: "terminate_worker",
+      eventId: "dag:event:worker:action:terminate",
+      now: 73_000,
+      message: "terminate worker",
+      assertions: [
+        {
+          a: "worker.status",
+          v: "terminated",
+          validFrom: 9_500,
+          actor: "system:action",
+          actorType: "system",
+          reason: "configured action",
+        },
+      ],
+    });
+
+    expect(executed.actionName).toBe("terminate_worker");
+    expect(executed.run).toMatchObject({
+      runId: "dag:worker:action:terminate",
+      flowDefName: "owned_action_flow",
+      subject: "worker:action-assert",
+      status: "completed",
+      currentStepId: "terminate_worker",
+    });
+    expect(executed.run.events).toEqual([
+      {
+        eventId: "dag:event:worker:action:terminate",
+        runId: "dag:worker:action:terminate",
+        ts: 73_000,
+        stepId: "terminate_worker",
+        type: "action",
+        kind: "asserted",
+        message: "terminate worker",
+      },
+    ]);
+    expect(executed.assertions[0]?.event).toMatchObject({
+      e: "worker:action-assert",
+      a: "worker.status",
+      v: "terminated",
+      seq: 1,
+    });
+    await expect(
+      surface.listCurrent({ e: "worker:action-assert", a: "worker.status" }),
+    ).resolves.toMatchObject([
+      {
+        e: "worker:action-assert",
+        a: "worker.status",
+        v: "terminated",
+      },
+    ]);
+  });
+
+  test("current surface executes a collection-opening action and parks the run", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:action-collect",
+      wall: () => 995,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    const executed = await surface.executeAction({
+      runId: "dag:worker:action:collect-i9",
+      flowDefName: "owned_action_flow",
+      subject: "worker:action-collect",
+      actionName: "open_i9_collection",
+      stepId: "collect-i9",
+      eventId: "dag:event:worker:action:collect-i9",
+      now: 74_000,
+      context: { action: "open_i9_collection" },
+      collection: {
+        token: "collection:worker:action-collect:i9",
+        form: "owned_i9",
+        expiresAt: 82_000,
+        scope: "worker:i9",
+      },
+    });
+
+    expect(executed.actionName).toBe("open_i9_collection");
+    expect(executed.collection).toMatchObject({
+      token: "collection:worker:action-collect:i9",
+      subject: "worker:action-collect",
+      form: "owned_i9",
+      status: "issued",
+      issuedAt: 74_000,
+      runId: "dag:worker:action:collect-i9",
+      stepId: "collect-i9",
+    });
+    expect(executed.run).toMatchObject({
+      runId: "dag:worker:action:collect-i9",
+      status: "waiting",
+      currentStepId: "collect-i9",
+      context: { action: "open_i9_collection" },
+    });
+    expect(executed.run.events.map((event) => event.kind)).toEqual([
+      "collect-issued",
+    ]);
+    await expect(
+      surface.collectionByToken({
+        token: "collection:worker:action-collect:i9",
+      }),
+    ).resolves.toEqual(executed.collection);
+  });
+
+  test("current surface rejects action definitions without exactly one supported effect", async () => {
+    const sql = new FakeDurableObjectSqlStorage();
+    const runtime = await createDurableObjectSqliteRuntime({
+      sql,
+      replicaId: "do-sqlite:action-invalid",
+      wall: () => 1_000,
+    });
+    const surface = createDurableObjectSqliteCurrentSurface(runtime, {
+      cardinalityOf,
+      currentCoord: () => coord,
+    });
+
+    await expect(
+      surface.executeAction({
+        runId: "dag:worker:action:none",
+        flowDefName: "owned_action_flow",
+        subject: "worker:action-invalid",
+        actionName: "noop",
+        eventId: "dag:event:worker:action:none",
+      }),
+    ).rejects.toThrow(/requires exactly one supported action effect/);
+
+    await expect(
+      surface.executeAction({
+        runId: "dag:worker:action:both",
+        flowDefName: "owned_action_flow",
+        subject: "worker:action-invalid",
+        actionName: "ambiguous",
+        eventId: "dag:event:worker:action:both",
+        assertions: [
+          {
+            a: "worker.status",
+            v: "active",
+            actor: "system:action",
+          },
+        ],
+        collection: {
+          token: "collection:worker:action-invalid:ambiguous",
+          form: "owned_i9",
+        },
+      }),
+    ).rejects.toThrow(/requires exactly one supported action effect/);
+  });
 });

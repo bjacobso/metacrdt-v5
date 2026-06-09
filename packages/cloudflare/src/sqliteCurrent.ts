@@ -310,6 +310,34 @@ export const DurableObjectSqliteExecuteDagStepArgsSchema = Schema.Struct({
   ),
 });
 
+export const DurableObjectSqliteExecuteActionArgsSchema = Schema.Struct({
+  runId: Schema.String,
+  flowDefName: Schema.String,
+  subject: Schema.String,
+  actionName: Schema.String,
+  eventId: Schema.String,
+  now: Schema.optionalWith(Schema.Number, { exact: true }),
+  stepId: Schema.optionalWith(Schema.String, { exact: true }),
+  nextStepId: Schema.optionalWith(Schema.String, { exact: true }),
+  context: Schema.optionalWith(Schema.Any, { exact: true }),
+  message: Schema.optionalWith(Schema.String, { exact: true }),
+  assertions: Schema.optionalWith(
+    Schema.Array(DurableObjectSqliteDagStepAssertionSchema),
+    { exact: true },
+  ),
+  collection: Schema.optionalWith(
+    Schema.Struct({
+      token: Schema.String,
+      form: Schema.String,
+      expiresAt: Schema.optionalWith(Schema.Union(Schema.Number, Schema.Null), {
+        exact: true,
+      }),
+      scope: Schema.optionalWith(Schema.String, { exact: true }),
+    }),
+    { exact: true },
+  ),
+});
+
 export const DurableObjectSqliteRecordDagRunArgsSchema = Schema.Struct({
   runId: Schema.optionalWith(Schema.String, { exact: true }),
   flowDefName: Schema.String,
@@ -410,6 +438,8 @@ export type DurableObjectSqliteFireFlowWaitTickArgs =
   typeof DurableObjectSqliteFireFlowWaitTickArgsSchema.Type;
 export type DurableObjectSqliteExecuteDagStepArgs =
   typeof DurableObjectSqliteExecuteDagStepArgsSchema.Type;
+export type DurableObjectSqliteExecuteActionArgs =
+  typeof DurableObjectSqliteExecuteActionArgsSchema.Type;
 export type DurableObjectSqliteRecordDagRunArgs =
   typeof DurableObjectSqliteRecordDagRunArgsSchema.Type;
 export type DurableObjectSqliteDagRunByIdArgs =
@@ -475,6 +505,11 @@ export type DurableObjectSqliteExecuteDagStepResult = {
   readonly collection?: DurableObjectSqliteCollection;
   readonly waitTick?: DurableObjectSqliteFlowWaitTick;
 };
+
+export type DurableObjectSqliteExecuteActionResult =
+  DurableObjectSqliteExecuteDagStepResult & {
+    readonly actionName: string;
+  };
 
 export type DurableObjectSqliteCurrentSurfaceOptions = {
   readonly cardinalityOf: CardinalityOf;
@@ -546,6 +581,9 @@ export type DurableObjectSqliteCurrentSurface = {
   executeDagStep(
     args: DurableObjectSqliteExecuteDagStepArgs,
   ): Promise<DurableObjectSqliteExecuteDagStepResult>;
+  executeAction(
+    args: DurableObjectSqliteExecuteActionArgs,
+  ): Promise<DurableObjectSqliteExecuteActionResult>;
   recordDagRun(
     args: DurableObjectSqliteRecordDagRunArgs,
   ): Promise<DurableObjectSqliteDagRun>;
@@ -1538,6 +1576,75 @@ export function executeDurableObjectSqliteDagStepEffect(
   });
 }
 
+export function executeDurableObjectSqliteActionEffect(
+  dag: DurableObjectSqliteDagStore,
+  collections: DurableObjectSqliteCollectionStore,
+  flowWaitTimers: DurableObjectSqliteFlowWaitTimerStore,
+  args: DurableObjectSqliteExecuteActionArgs,
+  defaultNow: number,
+  cardinalityOf: CardinalityOf,
+  coord: Coord,
+): Effect.Effect<
+  DurableObjectSqliteExecuteActionResult,
+  RuntimeError | DurableObjectSqliteCurrentSurfaceError,
+  | EventStoreService
+  | ProjectionStoreService
+  | RuntimeClockService
+  | RuntimeSequencerService
+  | RuntimeProfileService
+  | TransportService
+> {
+  return Effect.gen(function* () {
+    const decoded = yield* decode(
+      "executeAction",
+      DurableObjectSqliteExecuteActionArgsSchema,
+      args,
+    );
+    const hasAssertions = decoded.assertions !== undefined;
+    const hasCollection = decoded.collection !== undefined;
+    if ((hasAssertions ? 1 : 0) + (hasCollection ? 1 : 0) !== 1) {
+      return yield* Effect.fail(
+        surfaceError(
+          "executeAction",
+          new Error(
+            "executeAction requires exactly one supported action effect: assertions or collection",
+          ),
+        ),
+      );
+    }
+
+    const stepResult = yield* executeDurableObjectSqliteDagStepEffect(
+      dag,
+      collections,
+      flowWaitTimers,
+      {
+        runId: decoded.runId,
+        flowDefName: decoded.flowDefName,
+        subject: decoded.subject,
+        stepId: decoded.stepId ?? decoded.actionName,
+        kind: hasAssertions ? "assert" : "collect",
+        eventId: decoded.eventId,
+        now: decoded.now ?? defaultNow,
+        ...(decoded.nextStepId === undefined
+          ? {}
+          : { nextStepId: decoded.nextStepId }),
+        ...(decoded.context === undefined ? {} : { context: decoded.context }),
+        ...(decoded.message === undefined ? {} : { message: decoded.message }),
+        ...(decoded.assertions === undefined
+          ? {}
+          : { assertions: decoded.assertions }),
+        ...(decoded.collection === undefined
+          ? {}
+          : { collection: decoded.collection }),
+      },
+      defaultNow,
+      cardinalityOf,
+      coord,
+    );
+    return { actionName: decoded.actionName, ...stepResult };
+  });
+}
+
 export function recordDurableObjectSqliteDagRunEffect(
   dag: DurableObjectSqliteDagStore,
   args: DurableObjectSqliteRecordDagRunArgs,
@@ -2080,6 +2187,18 @@ export function createDurableObjectSqliteCurrentSurface(
     executeDagStep: (args) =>
       run(
         executeDurableObjectSqliteDagStepEffect(
+          runtime.dag,
+          runtime.collections,
+          runtime.flowWaitTimers,
+          args,
+          coord().txTime,
+          options.cardinalityOf,
+          coord(),
+        ),
+      ),
+    executeAction: (args) =>
+      run(
+        executeDurableObjectSqliteActionEffect(
           runtime.dag,
           runtime.collections,
           runtime.flowWaitTimers,

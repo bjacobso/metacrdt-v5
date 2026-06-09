@@ -53,6 +53,12 @@ implements them on Cloudflare.
   schedule caller-provided wake ticks for the alarm path. This is a structural
   single-step primitive, not a declarative DAG interpreter, configured action
   registry executor, or host action invocation layer.
+- **Durable Object SQLite action execution seed** —
+  `executeAction` on `createDurableObjectSqliteCurrentSurface` validates one
+  caller-described action effect and delegates to the DAG-step substrate for
+  protocol assertions or collection-token opening. This is an action-effect
+  primitive, not configured action registry lookup, branch evaluation,
+  declarative workflow interpretation, or host action invocation.
 - **Durable Object SQLite live invalidation fanout** —
   `DurableObjectSqliteLiveInvalidationFanout` plus Effect/Promise publish
   helpers accept bounded `e` / `a` subscriptions over structural WebSocket
@@ -217,9 +223,9 @@ deterministic `changed` summaries for current-projection rebuilds. The indexed
 historical provider has conformance-style coverage for joins, disjunction,
 negation, compare/compute, pagination, aggregation, derived rows, lifecycle
 visibility, and bounded SQLite scan counters. The remaining parity plan —
-broader historical SQL-indexed query optimization, full flow interpreter/action
-registry execution, and full React/frontend SDK live-query package/auth
-integration over DO WebSockets — is
+broader historical SQL-indexed query optimization, full flow
+interpreter/registry lookup/host action invocation, and full React/frontend SDK
+live-query package/auth integration over DO WebSockets — is
 [docs/cloudflare-target.md](../../docs/cloudflare-target.md).
 
 Live Cloudflare deployment remains on the frontier; the Worker relay auth
