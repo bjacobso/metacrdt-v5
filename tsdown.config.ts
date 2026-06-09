@@ -22,12 +22,13 @@ const packageEntries: Record<string, UserConfig["entry"]> = {
     "src/component/log.ts",
     "src/component/_generated/component.ts",
   ],
-  "@metacrdt/forma": ["src/*.ts"],
+  "@forma/ts": ["src/*.ts"],
+  "@forma/host": ["src/*.ts"],
   "@metacrdt/node": ["src/index.ts", "src/dev-server.ts"],
   "@metacrdt/views": ["src/index.ts", "src/runtime.ts"],
 };
 
-const nodeLikePackages = new Set(["@metacrdt/forma", "@metacrdt/node"]);
+const nodeLikePackages = new Set(["@forma/ts", "@forma/host", "@metacrdt/node"]);
 
 const packageName = pkg.name ?? basename(cwd);
 const nodeLike = nodeLikePackages.has(packageName);
@@ -42,6 +43,6 @@ export default defineConfig({
   clean: true,
   platform: nodeLike ? "node" : "neutral",
   target: nodeLike ? "esnext" : "es2020",
-  fixedExtension: packageName === "@metacrdt/forma",
+  fixedExtension: packageName === "@forma/ts" || packageName === "@forma/host",
   unbundle: true,
 });

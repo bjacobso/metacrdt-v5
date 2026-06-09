@@ -19,7 +19,7 @@ describes everything else.
   - `viewspec-protocol.lisp` — the expression/action/event/state/envelope
     protocol descriptors and the descriptor-tree protocol registry.
 - **`scripts/generate-view-node.ts`** — the in-package generate step. It runs
-  `@metacrdt/forma`'s descriptor codegen over the preludes and emits the Effect
+  `@forma/ts`'s descriptor codegen over the preludes and emits the Effect
   Schema IR. Forma is a **build-time devDependency only**.
 - **`src/generated/*.generated.ts`** — the **vendored** Schema IR (committed).
   Treated as generated artifacts; never hand-edited.
@@ -40,7 +40,7 @@ describes everything else.
 
 - **Runtime:** `effect` only. The shipped runtime + vendored Schema never import
   Forma, a target, or React — so the package stays embeddable.
-- **Build-time (devDependency):** `@metacrdt/forma` runs the generate step.
+- **Build-time (devDependency):** `@forma/ts` runs the generate step.
   Consumers never need it.
 
 ## Regenerating the IR

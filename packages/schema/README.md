@@ -33,7 +33,7 @@ it.
   and the reference runtime.
 - Query execution / Datalog — that is `@metacrdt/query`.
 - The event fold itself — that is `@metacrdt/core`.
-- Authoring syntax — that is `@metacrdt/forma`.
+- Authoring syntax — that is `@forma/ts`.
 
 ## Dependencies
 

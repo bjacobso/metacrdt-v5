@@ -1,0 +1,17 @@
+# Toolchain for building @forma/ocaml (the OCaml language engine).
+# Run `mise install` to provision OCaml + dune + js_of_ocaml, then
+# `npm run build -w @forma/ocaml` (or via turbo) to produce dist artifacts.
+#
+# js_of_ocaml is installed via opam (the dune build picks it up when present;
+# the build degrades to native-only if it is missing).
+[tools]
+ocaml = "5.2"
+opam = "latest"
+dune = "latest"
+
+[env]
+# Keep the OCaml build self-contained under the package.
+
+[tasks."forma:ocaml:deps"]
+description = "Install OCaml package deps (js_of_ocaml) into the opam switch"
+run = "opam install -y js_of_ocaml js_of_ocaml-compiler"

@@ -149,7 +149,7 @@ Current packages:
   neutral `projectionRows` read model that provides `ProjectionStoreService`
   and passes the shared materialized projection-store suite.
   Includes Confect sidecar guidance.
-- **`@metacrdt/forma`** (`packages/forma`) — runtime-neutral Lisp / S-expression
+- **`@forma/ts`** (`packages/@forma/ts`) — runtime-neutral Lisp / S-expression
   authoring language extracted from Open Ontology: reader, formatter, evaluator,
   VM, type inference, and language-owned elaboration utilities.
 - **`@metacrdt/runtime`** (`packages/runtime`) — target-neutral Effect service
@@ -234,7 +234,7 @@ Planned package graph:
 
 ```text
 @metacrdt/core        protocol kernel: events, ids, order, fold
-@metacrdt/forma       Lisp authoring language
+@forma/ts       Lisp authoring language
 @metacrdt/schema      schema-as-facts, types, attributes (definition lowering shipped)
 @metacrdt/query       Datalog, rules, derivation (query helpers + emit shaping + planner + dedupe + pattern inputs + join expansion + negation/state/limit/bound-var/frame helpers shipped)
 @metacrdt/workflow    processes, flows, obligations
@@ -256,7 +256,7 @@ Open Ontology is vendored as a context submodule at
 [.context/open-ontology](../../.context/open-ontology). The fold plan is documented
 in [docs/package-consolidation.md](../archive/package-consolidation.md):
 
-- Open Ontology's Lisp layer becomes `@metacrdt/forma`.
+- Open Ontology's Lisp layer becomes `@forma/ts`.
 - ViewSpec becomes `@metacrdt/views`.
 - The old triple-store/database concepts split into `@metacrdt/core`,
   `@metacrdt/query`, and target packages.

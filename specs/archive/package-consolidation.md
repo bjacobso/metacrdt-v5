@@ -24,12 +24,67 @@ proven.
 
 ---
 
+## Update (2026-06-09): the Forma language layer moved to `@forma/*`
+
+The language layer is no longer a proposal — it has been extracted into a
+dedicated scope, `packages/@forma/*`, segregated from the rest of `@metacrdt/*`.
+The proposal below predates the move and floated `@metacrdt/forma*`-style names;
+the shipped scope is `@forma/*`, and the destination columns have been updated to
+match what actually landed.
+
+| Old (Open Ontology) | Now in this repo | Notes |
+| --- | --- | --- |
+| `@open-ontology/language-ts` | **`@forma/ts`** | The TypeScript Forma engine (reader, evaluator, VM, HM types, descriptor/codegen). Pure; depends only on `effect`. |
+| `@open-ontology/language-ocaml` | **`@forma/ocaml`** | OCaml engine built from source via dune (native + js_of_ocaml + wasm). `private`; consumed by `@forma/host` over a filesystem path, not as a module. Toolchain pinned by `mise.toml`. |
+| `@open-ontology/language-host` | **`@forma/host`** | The shared ABI facade bridging the TS and OCaml engines. Its conformance suite runs TS, native-OCaml, and JS-OCaml against the same operations. |
+| `@open-ontology/language-ocaml-lsp` | **`@forma/ocaml-lsp`** | LSP server over `@forma/host`. |
+| `@open-ontology/language-editor` | **`@forma/editor`** | CodeMirror + React editor integration. Generates its Lezer parser at build time. |
+| `@open-ontology/language-e2e` | *(dissolved into tests)* | See below — its engine-parity job is already covered by `@forma/host`'s conformance suite. |
+
+**The boundary that makes this clean:** Forma terminates at a typed descriptor /
+Effect Schema. Everything past that — CanonicalIR, lowering to facts, execution —
+is a MetaCRDT concern. That is what keeps `@forma/*` runtime-neutral.
+
+### Where the left-behind middle layer fits
+
+`language-e2e` and the `ontology-compiler` / IR closure were intentionally **not**
+moved (they would drag in ~10 more packages). They are the *bridge* between
+authoring (`@forma/*`) and facts/execution (`@metacrdt/*`):
+
+```text
+@forma/ts ── elaborate ──► typed descriptor ──► CanonicalIR ──► facts ──► query/runtime
+@forma/ocaml               (Forma ends here)     └──────── MetaCRDT owns this ───────┘
+```
+
+| Left-behind package | Future home | Rationale |
+| --- | --- | --- |
+| `ontology-ir` (CanonicalIR) | `@metacrdt/runtime` first → maybe `@metacrdt/ir` later | The harness contract / load-bearing boundary. Don't make it standalone until a 2nd target or compiler needs it. |
+| `ontology-compiler` | **splits** — front half already in `@forma/ts`; back half (lower→IR, datalog type-check) → `@metacrdt/runtime` | It does not move as a unit; it is cut at the IR boundary. |
+| `ontology-project` (workspace/source-graph loading, markdown extraction) | `@metacrdt/cli`/`sdk`, or `@forma/project` | Depends only on `@forma/host`; authoring-workspace tooling, not substrate. |
+| `logic-ast` (TypeExpr/Datalog/LogicExpr grammars) | `@metacrdt/query` | Query already owns clause syntax + planning; this is the typed front of derivation. |
+| `view-protocol` | `@metacrdt/views` | Views already consumes `@forma/ts/descriptor`. |
+| `compiler-descriptor-protocol` / `compiler-protocol-codegen` | fold into IR/runtime contracts; codegen → `@metacrdt/cli` | Thin protocol/tooling layers. |
+| `language-e2e` | `@forma/host` conformance + `@metacrdt/testkit` | Not a public package. Its engine-parity half is **already** covered by `@forma/host`'s conformance suite (it runs all three engines side by side); only its compiler-level fixtures wait for the compiler pieces to land. |
+
+### The one decision still open
+
+Reframed now that `@forma/*` is real: **is CanonicalIR a Forma output (`@forma/ir`)
+or a MetaCRDT input (`@metacrdt/ir`)?**
+
+Recommendation: **MetaCRDT input.** Forma already terminates at an Effect Schema;
+keeping lowering-to-facts out of Forma is exactly what preserves its
+runtime-neutrality. Concretely: fold IR + the compiler back-half into
+`@metacrdt/runtime` now, and only carve out `@metacrdt/ir` when a second target or
+a second compiler (e.g. the OCaml engine emitting IR directly) proves the boundary.
+
+---
+
 ## Decision summary
 
 1. **This repository becomes the canonical MetaCRDT monorepo.**
    `.context/open-ontology` remains a pinned reference until the useful code and
    specs have been folded in.
-2. **The Lisp language is formalized as `@metacrdt/forma`.**
+2. **The Lisp language is formalized as `@forma/ts`.**
    Forma owns the generic Lisp reader/evaluator/type/tooling layer. It is not the
    ontology runtime and not the product. It is the authoring language.
 3. **`@metacrdt/core` stays the first extracted package.**
@@ -59,7 +114,7 @@ proven.
 ```text
 packages/
 ├── core/              @metacrdt/core       # done: SPEC §4-5 kernel
-├── forma/            @metacrdt/forma      # Lisp reader/evaluator/types/tooling
+├── forma/            @forma/ts      # Lisp reader/evaluator/types/tooling
 ├── schema/           @metacrdt/schema     # done: ids, cardinality, meta attrs, definition lowering
 ├── query/            @metacrdt/query      # done slices: parser, operators, rows, aggregation, emit shaping, planner, dedupe, source inputs, join expansion, negation/state/limit/bound-var/frame helpers
 ├── workflow/         @metacrdt/workflow   # durable steps, processes, obligations
@@ -121,13 +176,13 @@ The proposed MetaCRDT destination is intentionally not one-to-one.
 
 | Open Ontology source | MetaCRDT destination | Decision |
 | --- | --- | --- |
-| `@open-ontology/language-ts` | `@metacrdt/forma` | Rename and fold. This is the TypeScript Forma engine. |
-| `@open-ontology/language-ocaml` | `@metacrdt/forma-ocaml` or archive | Keep as research until TS Forma stabilizes. Do not make it default. |
-| `@open-ontology/language-ocaml-lsp` | `@metacrdt/forma-lsp` or archive | Candidate later. Do not port before `forma` API is stable. |
-| `@open-ontology/language-host` | `@metacrdt/forma/host` or `@metacrdt/runtime` | Split by owner: host ABI contracts belong near Forma; runtime service bindings belong in runtime. |
-| `@open-ontology/language-editor` | `@metacrdt/forma-editor` | Optional editor package after Forma extraction. |
-| `@open-ontology/language-e2e` | `@metacrdt/forma` tests / `@metacrdt/testkit` | Keep tests, not a public package. |
-| `@open-ontology/onlang` | `@metacrdt/forma` CLI subcommand or legacy alias | Onlang becomes the old name for the Forma authoring surface. |
+| `@open-ontology/language-ts` | `@forma/ts` | Rename and fold. This is the TypeScript Forma engine. |
+| `@open-ontology/language-ocaml` | `@forma/ocaml` or archive | Keep as research until TS Forma stabilizes. Do not make it default. |
+| `@open-ontology/language-ocaml-lsp` | `@forma/ocaml-lsp` or archive | Candidate later. Do not port before `forma` API is stable. |
+| `@open-ontology/language-host` | `@forma/host` or `@metacrdt/runtime` | Split by owner: host ABI contracts belong near Forma; runtime service bindings belong in runtime. |
+| `@open-ontology/language-editor` | `@forma/editor` | Optional editor package after Forma extraction. |
+| `@open-ontology/language-e2e` | `@forma/ts` tests / `@metacrdt/testkit` | Keep tests, not a public package. |
+| `@open-ontology/onlang` | `@forma/ts` CLI subcommand or legacy alias | Onlang becomes the old name for the Forma authoring surface. |
 | `@open-ontology/dsl-ts` | `@metacrdt/schema` / `@metacrdt/runtime` builders | Mine for TypeScript builders; do not preserve as a package. |
 
 ### Compiler and IR
@@ -135,10 +190,10 @@ The proposed MetaCRDT destination is intentionally not one-to-one.
 | Open Ontology source | MetaCRDT destination | Decision |
 | --- | --- | --- |
 | `@open-ontology/ontology-ir` | `@metacrdt/runtime` initially, maybe `@metacrdt/ir` later | IR is the harness contract. Avoid a standalone package until two compilers/targets need it. |
-| `@open-ontology/ontology-compiler` | `@metacrdt/forma` + `@metacrdt/runtime` | Split: Forma parses/elaborates; runtime owns deployable IR semantics. |
+| `@open-ontology/ontology-compiler` | `@forma/ts` + `@metacrdt/runtime` | Split: Forma parses/elaborates; runtime owns deployable IR semantics. |
 | `@open-ontology/ontology-project` | `@metacrdt/cli` / `@metacrdt/sdk` | Project loading is tooling, not substrate semantics. |
 | `@open-ontology/ontology-generate` | `@metacrdt/cli` / `@metacrdt/runtime` | Keep generation as a tool over IR. |
-| `@open-ontology/compiler-editor` | Schematics / `@metacrdt/forma-editor` | Product/editor layer; not core substrate. |
+| `@open-ontology/compiler-editor` | Schematics / `@forma/editor` | Product/editor layer; not core substrate. |
 | `@open-ontology/compiler-descriptor-protocol` | `@metacrdt/runtime` contracts | Fold stable descriptor concepts into the IR. |
 | `@open-ontology/compiler-protocol-codegen` | `@metacrdt/cli` | Tooling only. |
 | `@open-ontology/logic-ast` | `@metacrdt/query` | Query/rule AST belongs with derivation. |
@@ -204,7 +259,7 @@ are one representation of facts inside a convergent event log.
 ### Use
 
 - `@metacrdt/core` — already real.
-- `@metacrdt/forma` — the formal Lisp/expression language.
+- `@forma/ts` — the formal Lisp/expression language.
 - `@metacrdt/schema` — schema-as-facts and type contracts. First slice shipped:
   carrier ids, bootstrap cardinality rules, value/cardinality guards, and
   meta-attribute definitions. Definition fact lowering and attribute-shape
@@ -240,7 +295,7 @@ are one representation of facts inside a convergent event log.
 
 ## Forma definition
 
-`@metacrdt/forma` is the formal authoring language for MetaCRDT.
+`@forma/ts` is the formal authoring language for MetaCRDT.
 
 It owns:
 
@@ -265,7 +320,7 @@ The compiler boundary should look like:
 
 ```text
 Forma source
-  → @metacrdt/forma parses/elaborates/types
+  → @forma/ts parses/elaborates/types
   → @metacrdt/runtime IR
   → target package emits/binds/deploys
 ```
@@ -303,9 +358,9 @@ Done:
 This comes before folding in larger Open Ontology packages because it keeps the
 new repo honest: the canonical runtime must actually use the canonical core.
 
-### Phase 3 — Extract `@metacrdt/forma`
+### Phase 3 — Extract `@forma/ts`
 
-Status: shipped as `packages/forma` / `@metacrdt/forma`.
+Status: shipped as `packages/@forma/ts` / `@forma/ts`.
 
 Source material:
 
@@ -318,7 +373,7 @@ Source material:
 
 Deliverables:
 
-- [x] `packages/forma`
+- [x] `packages/@forma/ts`
 - [x] README defining the language boundary
 - [x] source parser/evaluator/type API
 - [x] fixtures proving compatibility with selected Open Ontology Lisp examples
@@ -407,7 +462,7 @@ Every folded package must satisfy:
 
 ## Open questions
 
-1. **Does `@metacrdt/forma` include the compiler, or only the language?**
+1. **Does `@forma/ts` include the compiler, or only the language?**
    Recommendation: language first; compiler-to-runtime lowering moves into
    `@metacrdt/runtime` until the IR boundary proves it deserves `@metacrdt/ir`.
 2. **Should `@metacrdt/views` render React?**
@@ -427,7 +482,7 @@ Open Ontology collapses under MetaCRDT like this:
 
 ```text
 Open Ontology methodology/spec      → Open Ontology (community/spec label)
-Open Ontology language/onlang       → @metacrdt/forma
+Open Ontology language/onlang       → @forma/ts
 Open Ontology triple/database layer → @metacrdt/core + @metacrdt/query + targets
 Open Ontology runtime               → @metacrdt/runtime
 Open Ontology platform-*            → @metacrdt/{convex,cloudflare,local,node}
@@ -436,6 +491,6 @@ Open Ontology app/editor surfaces   → Schematics / apps, not substrate core
 ```
 
 The canonical repo is this one. `@metacrdt/core` is the convergence kernel,
-`@metacrdt/forma` is the language package, and `@metacrdt/testkit` is now the
+`@forma/ts` is the language package, and `@metacrdt/testkit` is now the
 first conformance package. Everything else is extracted only when the boundary is
 proven by real code.

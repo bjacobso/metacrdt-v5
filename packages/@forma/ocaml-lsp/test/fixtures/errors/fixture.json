@@ -1,0 +1,5 @@
+{
+  "id": "type-error",
+  "source": "(+ 1 \"two\")",
+  "requests": [{ "kind": "diagnostics" }]
+}

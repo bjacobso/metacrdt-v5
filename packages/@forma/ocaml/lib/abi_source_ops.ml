@@ -1,0 +1,538 @@
+type request = Abi_request.t
+
+module Response = Abi_response
+
+let request_source_id (request : request) =
+  match request.source_id with Some source_id -> source_id | None -> "request"
+
+let missing_source operation =
+  Response.error_json
+    [
+      Response.diagnostic_json ~code:"abi/missing-source"
+        ~message:(Printf.sprintf "%s requires a source string field." operation);
+    ]
+
+let unknown_source source_id =
+  Response.error_json
+    [
+      Response.diagnostic_json ~code:"abi/unknown-source"
+        ~message:(Printf.sprintf "Unknown loaded source %S." source_id);
+    ]
+
+let parse_ast_text (request : request) source k =
+  let source_id = request_source_id request in
+  match Reader.parse_ast ~source_id source with
+  | Error diagnostics -> Response.reader_diagnostics_json diagnostics
+  | Ok exprs -> k exprs
+
+let warning_json span message =
+  Printf.sprintf
+    "{\"span\":{\"sourceId\":%s,\"startOffset\":%d,\"endOffset\":%d},\"severity\":\"warning\",\"message\":%s,\"notes\":[],\"fixes\":[]}"
+    (Value.string_json span.Ast.source_id)
+    span.start_offset span.end_offset
+    (Value.string_json message)
+
+let pattern_head_name = function
+  | Ast.Symbol (_, name) | Ast.Keyword (_, name) -> Some name
+  | Ast.List (_, (Ast.Symbol (_, name) | Ast.Keyword (_, name)) :: _)
+  | Ast.Vector (_, (Ast.Symbol (_, name) | Ast.Keyword (_, name)) :: _) ->
+      Some name
+  | _ -> None
+
+let match_pattern_name = function
+  | Ast.Symbol (_, "_") -> None
+  | pattern -> pattern_head_name pattern
+
+let adt_constructor_names = function
+  | Ast.List
+      ( _,
+        Ast.Symbol (_, "define-type")
+        :: Ast.List (_, Ast.Symbol (_, _) :: _)
+        :: constructors ) ->
+      constructors |> List.filter_map pattern_head_name
+  | _ -> []
+
+let direct_scrutinee_constructor = function
+  | Ast.Symbol (_, name) | Ast.Keyword (_, name) -> Some name
+  | Ast.List (_, Ast.Symbol (_, name) :: _)
+  | Ast.List (_, Ast.Keyword (_, name) :: _)
+  | Ast.Vector (_, Ast.Symbol (_, name) :: _)
+  | Ast.Vector (_, Ast.Keyword (_, name) :: _) ->
+      Some name
+  | _ -> None
+
+let constructor_binding env name = List.assoc_opt name env
+
+let rec pattern_bound_names = function
+  | Ast.Symbol (_, "_") | Ast.Keyword (_, "_") -> []
+  | Ast.Symbol (_, name) | Ast.Keyword (_, name) -> [ name ]
+  | Ast.List (_, exprs) | Ast.Vector (_, exprs) ->
+      exprs |> List.concat_map pattern_bound_names
+  | Ast.Map (_, entries) ->
+      entries
+      |> List.concat_map (fun (key, value) ->
+          pattern_bound_names key @ pattern_bound_names value)
+  | Ast.Nil _ | Ast.Bool _ | Ast.Int _ | Ast.Float _ | Ast.String _ -> []
+
+let remove_bound_names env names =
+  List.filter (fun (name, _) -> not (List.mem name names)) env
+
+let constructor_binding_of_expr env expr =
+  match expr with
+  | Ast.Symbol (_, name) -> (
+      match constructor_binding env name with
+      | Some constructor_name -> Some constructor_name
+      | None -> Some name)
+  | _ -> direct_scrutinee_constructor expr
+
+let collect_match_warning_jsons exprs =
+  let constructor_sets =
+    exprs
+    |> List.filter_map (fun expr ->
+        match adt_constructor_names expr with [] -> None | names -> Some names)
+    |> List.concat_map (fun names -> List.map (fun name -> (name, names)) names)
+  in
+  let constructor_set_for name = List.assoc_opt name constructor_sets in
+  let rec analyze_match env span scrutinee arms =
+    match constructor_binding_of_expr env scrutinee with
+    | None -> []
+    | Some constructor_name -> (
+        match constructor_set_for constructor_name with
+        | None -> []
+        | Some constructors -> (
+            let patterns =
+              let rec collect acc = function
+                | [] -> List.rev acc
+                | pattern :: _body :: rest ->
+                    collect (match_pattern_name pattern :: acc) rest
+                | _ -> List.rev acc
+              in
+              collect [] arms
+            in
+            let rec find_redundant_after_wildcard = function
+              | [] | [ None ] -> false
+              | None :: _ -> true
+              | _ :: rest -> find_redundant_after_wildcard rest
+            in
+            if find_redundant_after_wildcard patterns then
+              [
+                warning_json span
+                  "Unreachable match arm(s) after wildcard pattern";
+              ]
+            else
+              let rec find_duplicate seen = function
+                | [] -> None
+                | None :: rest -> find_duplicate seen rest
+                | Some name :: rest ->
+                    if List.mem name seen then Some name
+                    else find_duplicate (name :: seen) rest
+              in
+              match find_duplicate [] patterns with
+              | Some name ->
+                  [
+                    warning_json span
+                      (Printf.sprintf "Duplicate match arm for constructor '%s'"
+                         name);
+                  ]
+              | None ->
+                  if List.mem None patterns then []
+                  else
+                    let covered =
+                      patterns |> List.filter_map Fun.id
+                      |> List.sort_uniq String.compare
+                    in
+                    let missing =
+                      List.filter
+                        (fun name -> not (List.mem name covered))
+                        constructors
+                    in
+                    if missing = [] then []
+                    else
+                      [
+                        warning_json span
+                          (Printf.sprintf
+                             "Non-exhaustive match: missing constructor(s) %s"
+                             (String.concat ", " missing));
+                      ]))
+  and collect_match_arms env arms =
+    let rec loop acc = function
+      | pattern :: body :: rest ->
+          let env = remove_bound_names env (pattern_bound_names pattern) in
+          loop (acc @ collect_expr env body) rest
+      | _ -> acc
+    in
+    loop [] arms
+  and collect_let env bindings body =
+    let rec loop warnings env = function
+      | Ast.Symbol (_, name) :: value_expr :: rest ->
+          let warnings = warnings @ collect_expr env value_expr in
+          let env =
+            match constructor_binding_of_expr env value_expr with
+            | Some constructor_name ->
+                (name, constructor_name) :: remove_bound_names env [ name ]
+            | None -> remove_bound_names env [ name ]
+          in
+          loop warnings env rest
+      | _ -> (warnings, env)
+    in
+    let binding_warnings, env = loop [] env bindings in
+    binding_warnings @ List.concat_map (collect_expr env) body
+  and collect_lambda env params body =
+    let param_names =
+      let rec loop acc = function
+        | [] -> List.rev acc
+        | Ast.Symbol (_, "&") :: Ast.Symbol (_, name) :: rest ->
+            loop (name :: acc) rest
+        | Ast.Symbol (_, name) :: rest -> loop (name :: acc) rest
+        | _ :: rest -> loop acc rest
+      in
+      loop [] params
+    in
+    collect_exprs (remove_bound_names env param_names) body
+  and collect_expr env = function
+    | Ast.List (span, Ast.Symbol (_, "match") :: scrutinee :: arms) ->
+        analyze_match env span scrutinee arms
+        @ collect_expr env scrutinee
+        @ collect_match_arms env arms
+    | Ast.List
+        (_, Ast.Symbol (_, ("let" | "let*")) :: Ast.Vector (_, bindings) :: body)
+      ->
+        collect_let env bindings body
+    | Ast.List
+        (_, Ast.Symbol (_, ("fn" | "lambda")) :: Ast.Vector (_, params) :: body)
+      ->
+        collect_lambda env params body
+    | Ast.List
+        ( _,
+          [ Ast.Symbol (_, ("define" | "def")); Ast.Symbol (_, _); value_expr ]
+        ) ->
+        collect_expr env value_expr
+    | Ast.List (_, items) | Ast.Vector (_, items) -> collect_exprs env items
+    | Ast.Map (_, entries) ->
+        entries
+        |> List.concat_map (fun (key, value) ->
+            collect_expr env key @ collect_expr env value)
+    | Ast.Nil _ | Ast.Bool _ | Ast.Int _ | Ast.Float _ | Ast.String _
+    | Ast.Symbol _ | Ast.Keyword _ ->
+        []
+  and collect_exprs _env exprs =
+    let rec loop acc env = function
+      | [] -> acc
+      | Ast.List
+          ( _,
+            [
+              Ast.Symbol (_, ("define" | "def"));
+              Ast.Symbol (_, name);
+              value_expr;
+            ] )
+        :: rest ->
+          let warnings = acc @ collect_expr env value_expr in
+          let env =
+            match constructor_binding_of_expr env value_expr with
+            | Some constructor_name ->
+                (name, constructor_name) :: remove_bound_names env [ name ]
+            | None -> remove_bound_names env [ name ]
+          in
+          loop warnings env rest
+      | expr :: rest -> loop (acc @ collect_expr env expr) env rest
+    in
+    loop [] _env exprs
+  in
+  collect_exprs [] exprs
+
+let with_request_exprs ~with_session ~missing_source_message (request : request)
+    k =
+  match (request.source, request.session_id, request.source_id) with
+  | Some source, Some session_id, _ ->
+      parse_ast_text request source (fun exprs ->
+          with_session (Some session_id) (fun session -> k (Some session) exprs))
+  | Some source, None, _ ->
+      parse_ast_text request source (fun exprs -> k None exprs)
+  | None, Some session_id, Some source_id ->
+      with_session (Some session_id) (fun session ->
+          match Hashtbl.find_opt session.Session.parsed_sources source_id with
+          | Some exprs -> k (Some session) exprs
+          | None -> unknown_source source_id)
+  | None, _, _ ->
+      Response.error_json
+        [
+          Response.diagnostic_json ~code:"abi/missing-source"
+            ~message:missing_source_message;
+        ]
+
+let with_session_exprs ~with_session ~missing_session_message
+    ~missing_source_message (request : request) k =
+  match (request.source, request.session_id, request.source_id) with
+  | Some source, Some session_id, _ ->
+      parse_ast_text request source (fun exprs ->
+          with_session (Some session_id) (fun session -> k session exprs))
+  | None, Some session_id, Some source_id ->
+      with_session (Some session_id) (fun session ->
+          match Hashtbl.find_opt session.Session.parsed_sources source_id with
+          | Some exprs -> k session exprs
+          | None -> unknown_source source_id)
+  | Some _, None, _ | None, None, _ ->
+      Response.error_json
+        [
+          Response.diagnostic_json ~code:"abi/missing-session"
+            ~message:missing_session_message;
+        ]
+  | None, Some _, None ->
+      Response.error_json
+        [
+          Response.diagnostic_json ~code:"abi/missing-source"
+            ~message:missing_source_message;
+        ]
+
+let parse_source (request : request) =
+  match request.source with
+  | None -> missing_source "parse"
+  | Some source -> (
+      let source_id = request_source_id request in
+      match Reader.parse_cst ~source_id source with
+      | Error diagnostics -> Response.reader_diagnostics_json diagnostics
+      | Ok exprs ->
+          Printf.sprintf "{\"ok\":true,\"value\":[%s]}"
+            (String.concat "," (List.map Reader.expr_to_json exprs)))
+
+let parse_ast_source (request : request) =
+  match request.source with
+  | None -> missing_source "parseAst"
+  | Some source ->
+      parse_ast_text request source (fun exprs ->
+          Printf.sprintf "{\"ok\":true,\"value\":%s}"
+            (Response.ast_exprs_json exprs))
+
+let parse_summary (request : request) =
+  match request.source with
+  | None -> missing_source "parseSummary"
+  | Some source -> (
+      let source_id = request_source_id request in
+      match Reader.parse_cst ~source_id source with
+      | Error diagnostics -> Response.reader_diagnostics_json diagnostics
+      | Ok exprs ->
+          Printf.sprintf "{\"ok\":true,\"value\":{\"formCount\":%d}}"
+            (List.length exprs))
+
+let expand_exprs env exprs =
+  match env with
+  | None -> Eval.expand_program exprs
+  | Some env -> Eval.expand_program_with_env env exprs |> Result.map fst
+
+let expand_source ~with_session (request : request) =
+  let expand_and_encode env exprs =
+    match expand_exprs env exprs with
+    | Error diagnostics -> Response.eval_diagnostics_json diagnostics
+    | Ok exprs ->
+        Printf.sprintf "{\"ok\":true,\"value\":%s}"
+          (Response.ast_exprs_json exprs)
+  in
+  with_request_exprs ~with_session
+    ~missing_source_message:
+      "expand requires either a source string field or sessionId plus sourceId."
+    request (fun session exprs ->
+      expand_and_encode
+        (Option.map (fun session -> session.Session.env) session)
+        exprs)
+
+let lower_core_source ~with_session (request : request) =
+  let lower_exprs env exprs =
+    match expand_exprs env exprs with
+    | Error diagnostics -> Response.eval_diagnostics_json diagnostics
+    | Ok expanded -> (
+        match Lower.program expanded with
+        | Error diagnostics -> Response.lower_diagnostics_json diagnostics
+        | Ok program ->
+            Printf.sprintf "{\"ok\":true,\"value\":%s}"
+              (Core_ast.program_to_json program))
+  in
+  with_request_exprs ~with_session
+    ~missing_source_message:
+      "lowerCore requires either a source string field or sessionId plus \
+       sourceId." request (fun session exprs ->
+      lower_exprs
+        (Option.map (fun session -> session.Session.env) session)
+        exprs)
+
+let typecheck_typed_core type_env eval_env program =
+  match (type_env, eval_env) with
+  | None, None ->
+      Typecheck.typecheck_core_program_typed_with_descriptor_infer
+        Descriptor_protocol.empty_hooks [] program
+      |> Result.map fst
+  | Some type_env, None ->
+      Typecheck.typecheck_core_program_typed_with_descriptor_infer
+        Descriptor_protocol.empty_hooks type_env program
+      |> Result.map fst
+  | None, Some env ->
+      Typecheck.typecheck_core_program_typed_with_descriptor_infer
+        (Descriptor_contract.descriptor_hooks env)
+        [] program
+      |> Result.map fst
+  | Some type_env, Some env ->
+      Typecheck.typecheck_core_program_typed_with_descriptor_infer
+        (Descriptor_contract.descriptor_hooks env)
+        type_env program
+      |> Result.map fst
+
+let typecheck_core_success_json ?(typed_core = false) program =
+  let result_type = Typed_core.result_type_string program in
+  if typed_core then
+    Printf.sprintf "{\"ok\":true,\"type\":\"%s\",\"typedCore\":%s}"
+      (Response.json_escape result_type)
+      (Typed_core.to_json program)
+  else
+    Printf.sprintf "{\"ok\":true,\"type\":\"%s\"}"
+      (Response.json_escape result_type)
+
+let typecheck_core_result_json ~typed type_env eval_env program =
+  match typecheck_typed_core type_env eval_env program with
+  | Error diagnostics -> Response.typecheck_diagnostics_json diagnostics
+  | Ok program -> typecheck_core_success_json ~typed_core:typed program
+
+let typecheck_core_source ?(typed = false) ~with_session (request : request) =
+  let typecheck_exprs type_env eval_env exprs =
+    match expand_exprs eval_env exprs with
+    | Error diagnostics -> Response.eval_diagnostics_json diagnostics
+    | Ok expanded -> (
+        match Lower.program expanded with
+        | Error diagnostics -> Response.lower_diagnostics_json diagnostics
+        | Ok program ->
+            typecheck_core_result_json ~typed type_env eval_env program)
+  in
+  with_request_exprs ~with_session
+    ~missing_source_message:
+      "typecheckCore requires either a source string field or sessionId plus \
+       sourceId." request (fun session exprs ->
+      typecheck_exprs
+        (Option.map (fun session -> session.Session.type_env) session)
+        (Option.map (fun session -> session.Session.env) session)
+        exprs)
+
+let evaluate_source ~with_session (request : request) =
+  let evaluate_exprs env exprs =
+    let evaluated =
+      match env with
+      | None -> Eval.evaluate_program exprs
+      | Some env -> Eval.evaluate_program_with_env env exprs |> Result.map fst
+    in
+    match evaluated with
+    | Error diagnostics -> Response.eval_diagnostics_json diagnostics
+    | Ok value ->
+        Printf.sprintf "{\"ok\":true,\"value\":%s}" (Eval.value_to_json value)
+  in
+  with_request_exprs ~with_session
+    ~missing_source_message:
+      "evaluate requires either a source string field or sessionId plus \
+       sourceId." request (fun session exprs ->
+      evaluate_exprs
+        (Option.map (fun session -> session.Session.env) session)
+        exprs)
+
+let typecheck_source ~with_session (request : request) =
+  let typecheck_exprs ?source_text type_env eval_env exprs =
+    match expand_exprs eval_env exprs with
+    | Error diagnostics -> Response.eval_diagnostics_json diagnostics
+    | Ok expanded -> (
+        let base_env = Option.value type_env ~default:[] in
+        match Abi_type_policy.apply request base_env expanded with
+        | Error diagnostics -> Response.typecheck_diagnostics_json diagnostics
+        | Ok base_env -> (
+            match
+              Abi_effect_typecheck.collect_effect_registry base_env expanded
+            with
+            | Error diagnostics ->
+                Response.typecheck_diagnostics_json diagnostics
+            | Ok effect_registry -> (
+                let effect_warnings, effect_errors =
+                  Abi_effect_typecheck.collect_effect_typecheck_diagnostics
+                    ?source_text effect_registry expanded
+                in
+                if effect_errors <> [] then
+                  Response.typecheck_diagnostics_json effect_errors
+                else
+                  let extra_diagnostics =
+                    collect_match_warning_jsons expanded @ effect_warnings
+                  in
+                  let rewritten =
+                    Abi_effect_typecheck.rewrite_effect_exprs exprs
+                  in
+                  let result =
+                    let type_env =
+                      Abi_effect_typecheck.registry_env effect_registry
+                    in
+                    match request.result with
+                    | Some "per-expression" ->
+                        Typecheck.typecheck_program_with_env_all type_env
+                          rewritten
+                        |> Result.map (fun (expression_types, typ, _env) ->
+                            (typ, expression_types))
+                    | _ ->
+                        Typecheck.typecheck_program_with_env type_env rewritten
+                        |> Result.map (fun (typ, _env) -> (typ, []))
+                  in
+                  match result with
+                  | Error diagnostics ->
+                      Response.typecheck_diagnostics_json diagnostics
+                  | Ok (typ, expression_types) ->
+                      let typ =
+                        match source_text with
+                        | Some source_text -> (
+                            match
+                              Abi_effect_typecheck.annotated_result_type_string
+                                ~source_text exprs typ
+                            with
+                            | Some annotated -> annotated
+                            | None -> typ)
+                        | None -> typ
+                      in
+                      Abi_typecheck_response.success_json request typ rewritten
+                        extra_diagnostics ~expression_types)))
+  in
+  match (request.source, request.session_id, request.source_id) with
+  | Some source, Some session_id, _ ->
+      let rewritten_source =
+        Abi_effect_typecheck.preprocess_effect_type_source source
+      in
+      parse_ast_text request rewritten_source (fun exprs ->
+          with_session (Some session_id) (fun session ->
+              typecheck_exprs ~source_text:source
+                (Some session.Session.type_env) (Some session.Session.env) exprs))
+  | Some source, None, _ ->
+      let rewritten_source =
+        Abi_effect_typecheck.preprocess_effect_type_source source
+      in
+      parse_ast_text request rewritten_source (fun exprs ->
+          typecheck_exprs ~source_text:source None None exprs)
+  | None, Some session_id, Some source_id ->
+      with_session (Some session_id) (fun session ->
+          match Hashtbl.find_opt session.Session.parsed_sources source_id with
+          | Some exprs ->
+              typecheck_exprs (Some session.Session.type_env)
+                (Some session.Session.env) exprs
+          | None -> unknown_source source_id)
+  | None, _, _ ->
+      Response.error_json
+        [
+          Response.diagnostic_json ~code:"abi/missing-source"
+            ~message:
+              "typecheck requires either a source string field or sessionId \
+               plus sourceId.";
+        ]
+
+let emitted_values_exprs (session : Session.t) exprs =
+  match Elaborate.emitted_values session.env exprs with
+  | Error diagnostics -> Response.eval_diagnostics_json diagnostics
+  | Ok values ->
+      Printf.sprintf "{\"ok\":true,\"value\":%s}"
+        (Elaborate.emitted_values_json values)
+
+let emitted_values_source ~with_session (request : request) =
+  with_session_exprs ~with_session
+    ~missing_session_message:
+      "elaborate requires a sessionId so loaded preludes can provide construct \
+       hooks."
+    ~missing_source_message:
+      "elaborate requires either a source string field or sessionId plus \
+       sourceId."
+    request emitted_values_exprs

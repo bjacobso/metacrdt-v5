@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>onlang — a typed Lisp grounded in time</title>
+    <meta
+      name="description"
+      content="A typed Lisp with capability-based effects and a time-traveling triple store as elaboration context. Clojure's lessons, plus types and effects, grounded in time."
+    />
+    <style>
+      :root {
+        --fg: #141414;
+        --bg: #fafaf7;
+        --muted: #666;
+        --accent: #0a7755;
+        --rule: #e5e5e0;
+        --code-bg: #1a1a1a;
+        --code-fg: #e8e8e2;
+        --inline-bg: #ececdf;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font:
+          16px/1.65 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          system-ui,
+          sans-serif;
+        color: var(--fg);
+        background: var(--bg);
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 64px 24px 96px;
+      }
+      header {
+        margin-bottom: 40px;
+      }
+      h1 {
+        font-size: 52px;
+        margin: 0;
+        letter-spacing: -0.03em;
+        font-weight: 700;
+      }
+      .tagline {
+        color: var(--muted);
+        font-size: 20px;
+        margin: 6px 0 0;
+        letter-spacing: -0.01em;
+      }
+      .status-row {
+        margin-top: 22px;
+      }
+      .status {
+        display: inline-block;
+        padding: 3px 9px;
+        background: var(--inline-bg);
+        color: var(--muted);
+        border-radius: 3px;
+        font-size: 13px;
+        font-family: "SF Mono", Menlo, Consolas, monospace;
+      }
+      h2 {
+        font-size: 22px;
+        margin: 56px 0 16px;
+        padding-top: 32px;
+        border-top: 1px solid var(--rule);
+        letter-spacing: -0.01em;
+        font-weight: 600;
+      }
+      p {
+        margin: 0 0 16px;
+      }
+      em {
+        font-style: italic;
+      }
+      ul {
+        padding-left: 22px;
+        margin: 0 0 16px;
+      }
+      li {
+        margin-bottom: 10px;
+      }
+      li strong {
+        font-weight: 600;
+      }
+      code,
+      pre {
+        font:
+          14px/1.55 "SF Mono",
+          Menlo,
+          Consolas,
+          monospace;
+      }
+      pre {
+        background: var(--code-bg);
+        color: var(--code-fg);
+        padding: 20px 22px;
+        border-radius: 6px;
+        overflow-x: auto;
+        margin: 16px 0;
+      }
+      p code,
+      li code {
+        background: var(--inline-bg);
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-size: 13.5px;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+        border-bottom: 1px solid currentColor;
+      }
+      a:hover {
+        opacity: 0.75;
+      }
+      footer {
+        margin-top: 72px;
+        padding-top: 24px;
+        border-top: 1px solid var(--rule);
+        color: var(--muted);
+        font-size: 14px;
+      }
+      footer p {
+        margin: 0 0 8px;
+      }
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 20px 0 0;
+      }
+      .pill {
+        font-size: 13px;
+        padding: 4px 10px;
+        background: var(--inline-bg);
+        color: var(--muted);
+        border-radius: 999px;
+        font-family: "SF Mono", Menlo, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>onlang</h1>
+        <p class="tagline">A typed Lisp grounded in time.</p>
+        <div class="status-row">
+          <span class="status">pre-alpha &middot; research-stage</span>
+        </div>
+      </header>
+
+      <p>
+        onlang inherits from Clojure &mdash; immutable data, macros, REPL, Datalog, time travel
+        &mdash; and adds what Clojure users have been patching in for a decade: a real type system,
+        a capability-based effect system, and a time-traveling triple store that is the database
+        <em>and</em> the elaboration context.
+      </p>
+
+      <h2>What onlang is</h2>
+      <ul>
+        <li>
+          <strong>A Lisp.</strong> Homoiconic, macro-first, REPL-driven. If you've written Clojure,
+          the surface will feel familiar.
+        </li>
+        <li>
+          <strong>Typed.</strong> Bidirectional elaboration with typed macros. Macros produce typed
+          IR, not just syntax. Errors point at the source form, not the expansion.
+        </li>
+        <li>
+          <strong>Effectful.</strong> <code>!</code>-suffixed operations resolve through
+          capabilities in scope. No <code>IO</code> monad, no row polymorphism at the surface
+          &mdash; handlers are resolved at elaboration time.
+        </li>
+        <li>
+          <strong>Grounded in time.</strong> The substrate is a time-traveling triple store with
+          Datalog queries. Ontologies, schemas, types, and deployments are all first-class ontology
+          entities.
+        </li>
+      </ul>
+
+      <h2>A taste</h2>
+      <pre><code>(define-schema Blob
+  {:id      Uuid
+   :content Bytes
+   :mime    (Refine String :mime-type)})
+
+(define-error BlobNotFound {:id Uuid})
+
+(define-api-group blob-api
+  (endpoint :upload
+    :method :post :path "/blobs"
+    :request  {:content Bytes :mime String}
+    :response Blob
+    :errors   [BlobNotFound])
+
+  (endpoint :get
+    :method :get :path "/blobs/:id"
+    :params {:id Uuid}
+    :response Blob
+    :errors   [BlobNotFound]))</code></pre>
+      <p>
+        One source feeds the type checker, the HTTP router, a codegen target (TypeScript + Effect
+        first; Rust and Go follow), and the ontology's own schema registry.
+      </p>
+
+      <h2>Why</h2>
+      <p>
+        Clojure taught us: data beats functions, functions beat macros, simple beats easy. onlang
+        keeps that. But Clojure's users have been bolting on types, effects, and external graph
+        stores for ten years. onlang's bet is that these aren't separate tools. They're one
+        primitive. The type system, the effect system, and the runtime store are the same
+        time-traveling ontology.
+      </p>
+
+      <h2>Prior art</h2>
+      <p>
+        onlang stands on the shoulders of Clojure (data and macros), Racket/Turnstile+ (typed
+        macros), Lean 4 (elaborator reflection), Effekt and Scala's capability calculus (effect
+        handlers), and Datomic/XTDB (time-traveling triples). None of the individual ideas are new.
+        The bet is that the <em>combination</em> &mdash; a Lisp whose elaborator runs over a
+        time-traveling ontology &mdash; is.
+      </p>
+      <div class="pill-row">
+        <span class="pill">Clojure</span>
+        <span class="pill">Racket / Turnstile+</span>
+        <span class="pill">Lean 4</span>
+        <span class="pill">Effekt</span>
+        <span class="pill">Datomic / XTDB</span>
+      </div>
+
+      <h2>Status</h2>
+      <p>
+        Pre-alpha. The engine compiles and runs native, JS, and Wasm. The HTTP DSL has a landing
+        slice. The effect system is a spike. There is no stable API, no release, no published
+        package. Reading is welcome; production is not.
+      </p>
+
+      <h2>Build</h2>
+      <pre><code>opam switch create onlang 5.1.1
+eval "$(opam env)"
+opam install dune js_of_ocaml wasm_of_ocaml-compiler
+
+dune build
+dune exec bin/oo_lang_cli.exe -- request '{"op":"version"}'</code></pre>
+      <p>See the <a href="README.md">README</a> for the full development guide.</p>
+
+      <footer>
+        <p>MIT licensed.</p>
+        <p>
+          onlang is developed inside
+          <a href="../../README.md">Open Ontology</a> as the language that authors the runtime's
+          ontologies, schemas, and APIs.
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,125 @@
+{
+  "name": "@forma/ts",
+  "version": "0.1.0",
+  "description": "Forma (TypeScript): the runtime-neutral Lisp/sexpr authoring language. Extracted from Open Ontology language-ts.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./reader": {
+      "types": "./dist/Reader.d.mts",
+      "import": "./dist/Reader.mjs"
+    },
+    "./source": {
+      "types": "./dist/Source.d.mts",
+      "import": "./dist/Source.mjs"
+    },
+    "./session": {
+      "types": "./dist/Session.d.mts",
+      "import": "./dist/Session.mjs"
+    },
+    "./engine": {
+      "types": "./dist/Engine.d.mts",
+      "import": "./dist/Engine.mjs"
+    },
+    "./artifact": {
+      "types": "./dist/Artifact.d.mts",
+      "import": "./dist/Artifact.mjs"
+    },
+    "./mechanics": {
+      "types": "./dist/Mechanics.d.mts",
+      "import": "./dist/Mechanics.mjs"
+    },
+    "./sexpr": {
+      "types": "./dist/SExpr.d.mts",
+      "import": "./dist/SExpr.mjs"
+    },
+    "./expander": {
+      "types": "./dist/Expander.d.mts",
+      "import": "./dist/Expander.mjs"
+    },
+    "./evaluator": {
+      "types": "./dist/Evaluator.d.mts",
+      "import": "./dist/Evaluator.mjs"
+    },
+    "./vm": {
+      "types": "./dist/VM.d.mts",
+      "import": "./dist/VM.mjs"
+    },
+    "./builtins": {
+      "types": "./dist/Builtins.d.mts",
+      "import": "./dist/Builtins.mjs"
+    },
+    "./type": {
+      "types": "./dist/Type.d.mts",
+      "import": "./dist/Type.mjs"
+    },
+    "./elaboration": {
+      "types": "./dist/Elaboration.d.mts",
+      "import": "./dist/Elaboration.mjs"
+    },
+    "./form": {
+      "types": "./dist/Form.d.mts",
+      "import": "./dist/Form.mjs"
+    },
+    "./core-expr": {
+      "types": "./dist/CoreExpr.d.mts",
+      "import": "./dist/CoreExpr.mjs"
+    },
+    "./env": {
+      "types": "./dist/Env.d.mts",
+      "import": "./dist/Env.mjs"
+    },
+    "./diagnostic": {
+      "types": "./dist/Diagnostic.d.mts",
+      "import": "./dist/Diagnostic.mjs"
+    },
+    "./formatter": {
+      "types": "./dist/Formatter.d.mts",
+      "import": "./dist/Formatter.mjs"
+    },
+    "./editor": {
+      "types": "./dist/Editor.d.mts",
+      "import": "./dist/Editor.mjs"
+    },
+    "./lsp": {
+      "types": "./dist/LSP.d.mts",
+      "import": "./dist/LSP.mjs"
+    },
+    "./codegen": {
+      "types": "./dist/CodeGen.d.mts",
+      "import": "./dist/CodeGen.mjs"
+    },
+    "./descriptor-codegen": {
+      "types": "./dist/DescriptorCodegen.d.mts",
+      "import": "./dist/DescriptorCodegen.mjs"
+    },
+    "./descriptor": {
+      "types": "./dist/Descriptor.d.mts",
+      "import": "./dist/Descriptor.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown --config ../../tsdown.config.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "pack:check": "node ../../scripts/pnpm-pack-check.mjs"
+  },
+  "dependencies": {
+    "effect": "^3.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}

@@ -139,7 +139,7 @@ Built:
 - `@metacrdt/core`
 - bitemporal visibility via core in the read path
 - `@metacrdt/schema`, `@metacrdt/query`, `@metacrdt/convex`,
-  `@metacrdt/forma`, `@metacrdt/runtime`, `@metacrdt/cloudflare`,
+  `@forma/ts`, `@metacrdt/runtime`, `@metacrdt/cloudflare`,
   `@metacrdt/local`, `@metacrdt/node`, and the first `@metacrdt/testkit`
 - docs/spec/architecture package plan
 

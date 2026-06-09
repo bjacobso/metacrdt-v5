@@ -1,0 +1,41 @@
+export type {
+  AbortEvaluationRequest,
+  AbortEvaluationResult,
+  AstNode,
+  CallValueRequest,
+  Diagnostic,
+  EditorAnalysisError,
+  EditorAnalysisRequest,
+  EditorAnalysisResult,
+  EditorParseProjection,
+  EditorTypedSpan,
+  ExpandRequest,
+  ExpandResult,
+  EvaluateRequest,
+  EvaluationResult,
+  EvaluationState,
+  ExpressionType,
+  HostBuiltinDescriptor,
+  HostCall,
+  HostCallResumeResult,
+  LanguageHost,
+  ParseRequest,
+  ParseResult,
+  ResumeHostCallRequest,
+  SessionVariable,
+  Span,
+  SyntaxTreeProjection,
+  TypePolicy,
+  TypeProjection,
+  TypeSchemeExpr,
+  TypecheckRequest,
+  TypecheckResult,
+  ValueProjectionName,
+  ValueProjection,
+  VersionResult,
+} from "./types.js";
+export { findEditorTypeAtOffset } from "./editor.js";
+export { createDefaultLanguageHost, type DefaultLanguageHost } from "./default-host.js";
+export { TsLanguageHost } from "./ts-host.js";
+export { NodeOcamlLanguageHost, type NodeOcamlLanguageHostOptions } from "./ocaml-host.js";
+export { JsOcamlLanguageHost, type JsOcamlLanguageHostOptions } from "./js-ocaml-host.js";

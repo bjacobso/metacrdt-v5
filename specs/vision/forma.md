@@ -11,7 +11,7 @@
 > the present MetaCRDT direction rather than rebased away from it. The Effect-native
 > mandate (SPEC §1.2, PLAN Goal 111) and Confect at the Convex boundary revive the
 > Schema-everywhere authoring story that earlier Convex notes had cut. The
-> language engine already exists as `@metacrdt/forma` (extracted from Open
+> language engine already exists as `@forma/ts` (extracted from Open
 > Ontology: reader, evaluator, type inference, and a `descriptor → Effect Schema`
 > elaboration path). What does **not** yet exist is the shared IR these front-ends
 > lower to, and the binding from that IR to targets. This doc names that missing
@@ -117,7 +117,7 @@ effects*, grants are *coordination* (SPEC §9). Nothing here is target-specific.
 
 ## 3. What it lowers to: the MetaCRDT DSL (the shared IR)
 
-Forma's elaboration already terminates at an Effect Schema (`@metacrdt/forma`'s
+Forma's elaboration already terminates at an Effect Schema (`@forma/ts`'s
 `descriptor → protocol-effect-schema` path). The unification step is to make that
 target a **named, shared IR** living in `@metacrdt/schema` (which already owns
 fact-lowering via `attributeDefinitionFacts` / `entityTypeDefinitionFacts`):
@@ -222,14 +222,14 @@ End-state above is ambitious. The incremental path keeps each step shippable:
 2. **Builder facade** (`dsl.md` style) that emits the IR. Pure ergonomics.
 3. **Confect-from-IR**: generate one entity type's typed functions from the IR,
    proving the runtime-shape compile.
-4. **Forma adapter**: wire `@metacrdt/forma`'s `ProtocolDescriptor → Ontology`,
+4. **Forma adapter**: wire `@forma/ts`'s `ProtocolDescriptor → Ontology`,
    so a Lisp `define-entity` round-trips to the same facts as the blueprint.
 5. **Second target**: lower the IR onto Cloudflare DO+SQLite, proving
    target-neutrality with a cross-target conformance test (`@metacrdt/testkit`).
 
 ### Status / open items
 
-- **Built:** `@metacrdt/forma` language engine; `@metacrdt/schema` fact-lowering;
+- **Built:** `@forma/ts` language engine; `@metacrdt/schema` fact-lowering;
   the plain-TS blueprint; Confect typed-function sidecar; runtime service Layers.
 - **Not built / unscheduled:** the shared `Ontology` IR, the builder facade, the
   Forma→IR adapter, IR→Confect function generation, and IR→non-Convex lowering.

@@ -1,0 +1,4 @@
+(executable
+ (name oo_lang_cli)
+ (public_name oo-lang-ocaml)
+ (libraries language_ocaml))

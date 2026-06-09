@@ -33,7 +33,7 @@
     "effect": "^3.21.3"
   },
   "devDependencies": {
-    "@metacrdt/forma": "workspace:*",
+    "@forma/ts": "workspace:*",
     "@types/node": "^24.10.1",
     "tsx": "^4.19.2",
     "typescript": "^6.0.3",
