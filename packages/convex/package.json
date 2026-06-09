@@ -36,16 +36,16 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "pack:check": "npm pack --dry-run --json"
+    "pack:check": "node ../../scripts/pnpm-pack-check.mjs"
   },
   "dependencies": {
-    "@metacrdt/core": "0.1.0",
-    "@metacrdt/runtime": "0.1.0",
+    "@metacrdt/core": "workspace:*",
+    "@metacrdt/runtime": "workspace:*",
     "convex": "^1.40.0",
     "effect": "^3.21.3"
   },
   "devDependencies": {
-    "@metacrdt/testkit": "0.1.0",
+    "@metacrdt/testkit": "workspace:*",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
   }

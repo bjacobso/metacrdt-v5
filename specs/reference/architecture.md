@@ -125,10 +125,10 @@ not invented:
   preserving `src/` as the authored implementation.
 - Package payloads are intentionally `dist`-only, plus package metadata and
   target-specific examples such as `@metacrdt/cloudflare`'s
-  `wrangler.example.toml`; `npm run pack:packages` dry-runs those payloads
+  `wrangler.example.toml`; `pnpm pack:packages` dry-runs those payloads
   through Turbo.
 - The product/reference app remains a Vite application. Vite is not the package
-  builder; root `npm run build` composes package builds first, then the app.
+  builder; root `pnpm build` composes package builds first, then the app.
 
 ## Three disciplines
 

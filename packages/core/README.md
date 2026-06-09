@@ -56,6 +56,6 @@ import { assert, seal, merge, fromEvents, visible } from "@metacrdt/core";
 
 ## Tests
 
-`npm test --workspace @metacrdt/core` proves the CRDT merge laws, content
+`pnpm --filter @metacrdt/core test` proves the CRDT merge laws, content
 addressing, fold determinism under insertion-order shuffle, cardinality-one
 supersession by `≺`-max, and the bitemporal visibility quadrants.

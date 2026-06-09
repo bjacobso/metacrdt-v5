@@ -90,9 +90,9 @@ Non-goals:
 
 Each slice should pass:
 
-- `npm run typecheck`
-- `npm run build`
+- `pnpm typecheck`
+- `pnpm build`
 - relevant package tests
-- `npm run test:packages`
-- `npm run pack:packages`
+- `pnpm test:packages`
+- `pnpm pack:packages`
 - `git diff --check`

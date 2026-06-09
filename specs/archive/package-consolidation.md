@@ -394,7 +394,7 @@ Every folded package must satisfy:
 - [x] Package builds with tsdown/Rolldown into `dist` ESM + declarations,
   coordinated by Turbo and centralized through the root `tsdown.config.ts`.
 - [ ] Package `main`, `types`, and `exports` point at `dist`, not raw `src`.
-- [ ] `npm pack --dry-run` shows no `src` or test files in the published
+- [ ] `pnpm pack --dry-run` shows no `src` or test files in the published
   payload unless a package explicitly documents why source must ship.
 - [ ] Tests ported or rewritten under the new package.
 - [ ] Dependency direction matches [architecture.md](../reference/architecture.md).

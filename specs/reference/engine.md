@@ -225,9 +225,9 @@ Package build policy:
   targets centralized there.
 - Package `main`, `types`, and `exports` point at `dist`, not raw `src/*.ts`.
 - Package payloads are `dist`-only (plus package metadata and the Cloudflare
-  Wrangler example); `npm run pack:packages` dry-runs every package through
+  Wrangler example); `pnpm pack:packages` dry-runs every package through
   Turbo to verify no source or test files ship.
-- The React app remains a **Vite** application build. Root `npm run build`
+- The React app remains a **Vite** application build. Root `pnpm build`
   builds packages first, then runs Vite.
 
 Planned package graph:

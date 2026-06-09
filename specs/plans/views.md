@@ -134,7 +134,7 @@ Properties that make this "best of both worlds":
   embeddability and the held-v4 posture are preserved.
 - **The generated Schema is committed (vendored).** Ships now; no codegen at
   install time.
-- **A drift test ties the knot:** `npm run generate` into a temp dir, diff
+- **A drift test ties the knot:** `pnpm generate` into a temp dir, diff
   against committed `src/generated/`, fail if stale. Vendored stability + the
   source can't silently rot. (The snapshot pattern OO used, but enforced.)
 - **It exercises forma for real, now** — the first production use of forma's
@@ -247,8 +247,8 @@ collapsed into one step.
 - `@metacrdt/forma` is a build-time devDependency only; the shipped runtime +
   vendored Schema depend only on `effect`.
 
-Gates green: `npm run test:packages`, `npm run pack:packages`,
-`npm run typecheck`, `npm run build` (packages + vite app). Pure extraction, no
+Gates green: `pnpm test:packages`, `pnpm pack:packages`,
+`pnpm typecheck`, `pnpm build` (packages + vite app). Pure extraction, no
 behavior change.
 
 ### Phase 2 — Raw-JSON model proof (headless) — SHIPPED ✅
@@ -288,7 +288,7 @@ Minimal ViewSpec → React renderer, inline in the app:
   `<ViewRenderer node={spec.root} ctx={ctx} />`, fed by `queryEntities` +
   `typeSchemaAsOf`; row click navigates to the entity. First *visible* proof.
 
-Verified: app `tsc --noEmit`, full `npm run build` (packages + vite app), and a
+Verified: app `tsc --noEmit`, full `pnpm build` (packages + vite app), and a
 `react-dom/server` smoke render (table with status badges, denied-attribute
 handling, mono ids, clickable rows; empty-state path). Package stays
 `effect`-only; the app gained `@metacrdt/views` as a dependency.
@@ -340,8 +340,8 @@ Likely starts as Forma preludes / app code; becomes a package only when proven.
   tests green (25 tests total).
 - [x] Runtime depends only on `effect`; `@metacrdt/forma` is a build-time
   devDependency only.
-- [x] `npm run test:packages`, `npm run build:packages`, `npm run pack:packages`,
-  `npm run typecheck`, `npm run build` pass.
+- [x] `pnpm test:packages`, `pnpm build:packages`, `pnpm pack:packages`,
+  `pnpm typecheck`, `pnpm build` pass.
 
 ## What we get by expressing ViewSpec as Forma preludes
 
