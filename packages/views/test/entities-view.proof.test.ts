@@ -13,7 +13,7 @@ import {
   type ViewSpec,
 } from "../src/index.js";
 
-// Phase 2 of plans/views.md — the raw-JSON model proof.
+// Phase 2 of specs/plans/views.md — the raw-JSON model proof.
 //
 // Proves the @metacrdt/views runtime carries a real surface (a generic
 // "Entities of type X" list) headlessly: no React, no query execution, no
