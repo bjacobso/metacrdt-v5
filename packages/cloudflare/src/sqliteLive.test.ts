@@ -3,9 +3,11 @@ import {
   DurableObjectSqliteLiveCurrentQueryFanout,
   DurableObjectSqliteLiveInvalidationFanout,
   createDurableObjectSqliteRuntime,
+  createDurableObjectSqliteLiveQueryClient,
   durableObjectSqliteLiveQueryDependencies,
   publishDurableObjectSqliteLiveCurrentQueryChanges,
   publishDurableObjectSqliteLiveInvalidations,
+  type DurableObjectSqliteLiveQueryClientSocket,
   type DurableObjectSqliteProjectionChange,
   type DurableObjectSqliteLiveQueryServerMessage,
   type DurableObjectSqliteLiveServerMessage,
@@ -84,9 +86,89 @@ class FakeSocket implements WebSocketLike {
   }
 }
 
+class FakeClientWebSocket implements DurableObjectSqliteLiveQueryClientSocket {
+  static instances: FakeClientWebSocket[] = [];
+
+  readonly url: string;
+  readyState = 0;
+  readonly sent: string[] = [];
+  readonly openListeners = new Set<(event: Record<string, unknown>) => void>();
+  readonly messageListeners = new Set<(event: { data: unknown }) => void>();
+  readonly closeListeners = new Set<(event: { code?: number; reason?: string }) => void>();
+  readonly errorListeners = new Set<(event: { code?: number; reason?: string }) => void>();
+
+  constructor(url: string) {
+    this.url = url;
+    FakeClientWebSocket.instances.push(this);
+  }
+
+  send(message: string): void {
+    this.sent.push(message);
+  }
+
+  close(code?: number, reason?: string): void {
+    this.readyState = 3;
+    for (const listener of this.closeListeners) listener({ code, reason });
+  }
+
+  addEventListener(
+    type: "open" | "message" | "close" | "error",
+    listener:
+      | ((event: Record<string, unknown>) => void)
+      | ((event: { data: unknown }) => void)
+      | ((event: { code?: number; reason?: string }) => void),
+  ): void {
+    if (type === "open") {
+      this.openListeners.add(listener as (event: Record<string, unknown>) => void);
+    } else if (type === "message") {
+      this.messageListeners.add(listener as (event: { data: unknown }) => void);
+    } else if (type === "close") {
+      this.closeListeners.add(listener as (event: { code?: number; reason?: string }) => void);
+    } else {
+      this.errorListeners.add(listener as (event: { code?: number; reason?: string }) => void);
+    }
+  }
+
+  removeEventListener(
+    type: "open" | "message" | "close" | "error",
+    listener:
+      | ((event: Record<string, unknown>) => void)
+      | ((event: { data: unknown }) => void)
+      | ((event: { code?: number; reason?: string }) => void),
+  ): void {
+    if (type === "open") {
+      this.openListeners.delete(listener as (event: Record<string, unknown>) => void);
+    } else if (type === "message") {
+      this.messageListeners.delete(listener as (event: { data: unknown }) => void);
+    } else if (type === "close") {
+      this.closeListeners.delete(listener as (event: { code?: number; reason?: string }) => void);
+    } else {
+      this.errorListeners.delete(listener as (event: { code?: number; reason?: string }) => void);
+    }
+  }
+
+  open(): void {
+    this.readyState = 1;
+    for (const listener of this.openListeners) listener({});
+  }
+
+  receive(message: unknown): void {
+    for (const listener of this.messageListeners) listener({ data: message });
+  }
+
+  messages(): unknown[] {
+    return this.sent.map((message) => JSON.parse(message) as unknown);
+  }
+}
+
 async function flush(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function flushTimers(): Promise<void> {
+  await flush();
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
@@ -635,5 +717,161 @@ describe("@metacrdt/cloudflare SQLite live invalidation fanout", () => {
       reason: "invalid live query subscription",
     });
     expect(fanout.subscriptionCount).toBe(0);
+  });
+
+  test("live-query client subscribes and receives current-query messages", async () => {
+    FakeClientWebSocket.instances = [];
+    const received: DurableObjectSqliteLiveQueryServerMessage[] = [];
+    const client = createDurableObjectSqliteLiveQueryClient({
+      url: "wss://relay.example/live-query/room?client=browser",
+      protocol: "live-query.client",
+      WebSocket: FakeClientWebSocket,
+      onMessage: (message) => received.push(message),
+    });
+
+    const socket = client.connect() as FakeClientWebSocket;
+    expect(socket.url).toBe("wss://relay.example/live-query/room?client=browser");
+    socket.open();
+    client.subscribe({ id: "query:status", query: liveQueryArgs });
+
+    expect(socket.messages()).toEqual([
+      {
+        protocol: "live-query.client",
+        type: "query.subscribe",
+        id: "query:status",
+        query: liveQueryArgs,
+      },
+    ]);
+
+    socket.receive(
+      JSON.stringify({
+        protocol: "live-query.client",
+        type: "query.subscribed",
+        from: "do:room",
+        id: "query:status",
+        dependencies: [{ e: "task:1", a: "status" }],
+        result: queryResult("open"),
+      }),
+    );
+    socket.receive(
+      JSON.stringify({
+        protocol: "live-query.client",
+        type: "query.updated",
+        from: "do:room",
+        id: "query:status",
+        changed: [statusChange],
+        result: queryResult("closed"),
+      }),
+    );
+    socket.receive(
+      JSON.stringify({
+        protocol: "other",
+        type: "query.updated",
+        from: "do:room",
+        id: "query:status",
+        changed: [statusChange],
+        result: queryResult("ignored"),
+      }),
+    );
+
+    expect(received).toEqual([
+      {
+        protocol: "live-query.client",
+        type: "query.subscribed",
+        from: "do:room",
+        id: "query:status",
+        dependencies: [{ e: "task:1", a: "status" }],
+        result: queryResult("open"),
+      },
+      {
+        protocol: "live-query.client",
+        type: "query.updated",
+        from: "do:room",
+        id: "query:status",
+        changed: [statusChange],
+        result: queryResult("closed"),
+      },
+    ]);
+
+    client.unsubscribe("query:status");
+    expect(socket.messages()[1]).toEqual({
+      protocol: "live-query.client",
+      type: "query.unsubscribe",
+      id: "query:status",
+    });
+  });
+
+  test("live-query client flushes pre-connect subscriptions once", async () => {
+    FakeClientWebSocket.instances = [];
+    const client = createDurableObjectSqliteLiveQueryClient({
+      url: "wss://relay.example/live-query/room",
+      protocol: "live-query.client",
+      WebSocket: FakeClientWebSocket,
+    });
+
+    const socket = client.connect() as FakeClientWebSocket;
+    client.subscribe({ id: "query:status", query: liveQueryArgs });
+    socket.open();
+
+    expect(socket.messages()).toEqual([
+      {
+        protocol: "live-query.client",
+        type: "query.subscribe",
+        id: "query:status",
+        query: liveQueryArgs,
+      },
+    ]);
+  });
+
+  test("live-query client reconnects with a stable hydration request", async () => {
+    FakeClientWebSocket.instances = [];
+    const closes: unknown[] = [];
+    const opens: unknown[] = [];
+    const client = createDurableObjectSqliteLiveQueryClient({
+      url: "wss://relay.example/live-query/room?client=client:reconnect",
+      protocol: "live-query.client",
+      connectionId: "client:reconnect",
+      WebSocket: FakeClientWebSocket,
+      reconnect: { retries: 1, delayMs: 0 },
+      onOpen: () => opens.push({ opened: true }),
+      onClose: (event) => closes.push(event),
+    });
+
+    const first = client.connect() as FakeClientWebSocket;
+    client.subscribe({ id: "query:status", query: liveQueryArgs });
+    first.open();
+    expect(first.messages()).toEqual([
+      {
+        protocol: "live-query.client",
+        type: "query.subscribe",
+        id: "query:status",
+        query: liveQueryArgs,
+      },
+      {
+        protocol: "live-query.client",
+        type: "query.hydrate",
+        connectionId: "client:reconnect",
+      },
+    ]);
+
+    first.close(1006, "network");
+    await flushTimers();
+    expect(FakeClientWebSocket.instances).toHaveLength(2);
+    const second = FakeClientWebSocket.instances[1]!;
+    second.open();
+    expect(second.messages()).toEqual([
+      {
+        protocol: "live-query.client",
+        type: "query.hydrate",
+        connectionId: "client:reconnect",
+      },
+    ]);
+    expect(opens).toHaveLength(2);
+    expect(closes).toEqual([{ code: 1006, reason: "network" }]);
+
+    client.close(1000, "done");
+    second.close(1006, "after-client-close");
+    await flushTimers();
+    expect(FakeClientWebSocket.instances).toHaveLength(2);
   });
 });

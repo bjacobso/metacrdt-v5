@@ -21,6 +21,7 @@ const DEFAULT_QUERY_PROTOCOL = "metacrdt.cloudflare.sqlite.live-query.v1";
 
 type MessageEventLike = { data: unknown };
 type CloseEventLike = { code?: number; reason?: string };
+type OpenEventLike = Record<string, unknown>;
 
 export class DurableObjectSqliteLiveError extends Data.TaggedError(
   "DurableObjectSqliteLiveError",
@@ -191,6 +192,68 @@ export type DurableObjectSqliteLiveQueryOptions = {
   readonly subscriptions?: DurableObjectSqliteLiveQuerySubscriptionStore;
   readonly now?: () => number;
   readonly scope?: string;
+};
+
+export type DurableObjectSqliteLiveQueryClientSocket = {
+  readonly readyState?: number;
+  send(message: string): void;
+  close(code?: number, reason?: string): void;
+  addEventListener?(
+    type: "open" | "message" | "close" | "error",
+    listener:
+      | ((event: OpenEventLike) => void)
+      | ((event: MessageEventLike) => void)
+      | ((event: CloseEventLike) => void),
+  ): void;
+  removeEventListener?(
+    type: "open" | "message" | "close" | "error",
+    listener:
+      | ((event: OpenEventLike) => void)
+      | ((event: MessageEventLike) => void)
+      | ((event: CloseEventLike) => void),
+  ): void;
+};
+
+export type DurableObjectSqliteLiveQueryClientSocketConstructor = new (
+  url: string,
+) => DurableObjectSqliteLiveQueryClientSocket;
+
+export type DurableObjectSqliteLiveQueryClientOptions = {
+  readonly url: string;
+  readonly protocol?: string;
+  readonly connectionId?: string;
+  readonly WebSocket?: DurableObjectSqliteLiveQueryClientSocketConstructor;
+  readonly autoHydrate?: boolean;
+  readonly reconnect?: {
+    readonly retries?: number;
+    readonly delayMs?: number;
+  } | false;
+  readonly onMessage?: (
+    message: DurableObjectSqliteLiveQueryServerMessage,
+  ) => void;
+  readonly onOpen?: () => void;
+  readonly onClose?: (event: CloseEventLike) => void;
+  readonly onError?: (event: CloseEventLike) => void;
+};
+
+export type DurableObjectSqliteLiveQueryClientSubscribeOptions = {
+  readonly id: string;
+  readonly query: DatalogQueryArgsType;
+};
+
+export type DurableObjectSqliteLiveQueryClient = {
+  readonly protocol: string;
+  readonly connectionId?: string;
+  readonly subscriptions: ReadonlyMap<
+    string,
+    DurableObjectSqliteLiveQueryClientSubscribeOptions
+  >;
+  connect(): DurableObjectSqliteLiveQueryClientSocket;
+  close(code?: number, reason?: string): void;
+  hydrate(connectionId?: string): void;
+  subscribe(options: DurableObjectSqliteLiveQueryClientSubscribeOptions): void;
+  unsubscribe(id: string): void;
+  send(message: DurableObjectSqliteLiveQueryClientMessage): void;
 };
 
 function liveError(operation: string, cause: unknown): DurableObjectSqliteLiveError {
@@ -1017,6 +1080,204 @@ export class DurableObjectSqliteLiveCurrentQueryFanout {
       }
     }
   }
+}
+
+function defaultLiveQueryWebSocket():
+  DurableObjectSqliteLiveQueryClientSocketConstructor {
+  const ctor = (globalThis as {
+    WebSocket?: DurableObjectSqliteLiveQueryClientSocketConstructor;
+  }).WebSocket;
+  if (ctor === undefined) {
+    throw liveError(
+      "liveQueryClient.connect",
+      new Error("WebSocket is not available in this runtime"),
+    );
+  }
+  return ctor;
+}
+
+function socketIsOpen(socket: DurableObjectSqliteLiveQueryClientSocket): boolean {
+  return socket.readyState === undefined || socket.readyState === 1;
+}
+
+function serializeLiveQueryClientMessage(
+  message: DurableObjectSqliteLiveQueryClientMessage,
+): string {
+  return JSON.stringify(message);
+}
+
+function parseLiveQueryServerMessage(
+  protocol: string,
+  raw: unknown,
+): DurableObjectSqliteLiveQueryServerMessage | undefined {
+  const parsed = parseMessage(raw);
+  if (objectProtocol(parsed) !== protocol) return undefined;
+  if (typeof parsed !== "object" || parsed === null || !("type" in parsed)) {
+    return undefined;
+  }
+  const type = (parsed as { type?: unknown }).type;
+  if (
+    type !== "query.subscribed" &&
+    type !== "query.updated" &&
+    type !== "query.unsubscribed"
+  ) {
+    return undefined;
+  }
+  return parsed as DurableObjectSqliteLiveQueryServerMessage;
+}
+
+export function createDurableObjectSqliteLiveQueryClient(
+  options: DurableObjectSqliteLiveQueryClientOptions,
+): DurableObjectSqliteLiveQueryClient {
+  const protocol = options.protocol ?? DEFAULT_QUERY_PROTOCOL;
+  const subscriptions = new Map<
+    string,
+    DurableObjectSqliteLiveQueryClientSubscribeOptions
+  >();
+  const pending: DurableObjectSqliteLiveQueryClientMessage[] = [];
+  const SocketCtor = options.WebSocket ?? defaultLiveQueryWebSocket();
+  const reconnect =
+    options.reconnect === false
+      ? undefined
+      : {
+          retries: options.reconnect?.retries ?? 0,
+          delayMs: options.reconnect?.delayMs ?? 1_000,
+        };
+  let socket: DurableObjectSqliteLiveQueryClientSocket | undefined;
+  let reconnectAttempts = 0;
+  let closedByClient = false;
+  let openedOnce = false;
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const flush = () => {
+    const current = socket;
+    if (current === undefined || !socketIsOpen(current)) return;
+    while (pending.length > 0) {
+      const message = pending.shift();
+      if (message !== undefined) {
+        current.send(serializeLiveQueryClientMessage(message));
+      }
+    }
+  };
+
+  const enqueue = (message: DurableObjectSqliteLiveQueryClientMessage) => {
+    pending.push(message);
+    flush();
+  };
+
+  const hydrate = (connectionId = options.connectionId) => {
+    enqueue({
+      protocol,
+      type: "query.hydrate",
+      ...(connectionId === undefined ? {} : { connectionId }),
+    });
+  };
+
+  const resubscribe = () => {
+    for (const subscription of subscriptions.values()) {
+      enqueue({
+        protocol,
+        type: "query.subscribe",
+        id: subscription.id,
+        query: subscription.query,
+      });
+    }
+  };
+
+  const open = () => {
+    reconnectAttempts = 0;
+    const firstOpen = !openedOnce;
+    openedOnce = true;
+    options.onOpen?.();
+    if (options.autoHydrate !== false && options.connectionId !== undefined) {
+      hydrate(options.connectionId);
+    } else if (!firstOpen || pending.length === 0) {
+      resubscribe();
+    }
+    flush();
+  };
+
+  const scheduleReconnect = () => {
+    if (closedByClient || reconnect === undefined) return;
+    if (reconnectAttempts >= reconnect.retries) return;
+    reconnectAttempts++;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = undefined;
+      client.connect();
+    }, reconnect.delayMs);
+  };
+
+  const onMessage = (event: MessageEventLike) => {
+    try {
+      const message = parseLiveQueryServerMessage(protocol, event.data);
+      if (message !== undefined) options.onMessage?.(message);
+    } catch (cause) {
+      options.onError?.({
+        reason: cause instanceof Error ? cause.message : String(cause),
+      });
+    }
+  };
+  const onClose = (event: CloseEventLike) => {
+    socket?.removeEventListener?.("message", onMessage);
+    socket?.removeEventListener?.("close", onClose);
+    socket?.removeEventListener?.("error", onError);
+    socket?.removeEventListener?.("open", open);
+    socket = undefined;
+    options.onClose?.(event);
+    scheduleReconnect();
+  };
+  const onError = (event: CloseEventLike) => {
+    options.onError?.(event);
+  };
+
+  const client: DurableObjectSqliteLiveQueryClient = {
+    protocol,
+    connectionId: options.connectionId,
+    subscriptions,
+    connect() {
+      if (reconnectTimer !== undefined) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
+      }
+      closedByClient = false;
+      socket = new SocketCtor(options.url);
+      socket.addEventListener?.("message", onMessage);
+      socket.addEventListener?.("close", onClose);
+      socket.addEventListener?.("error", onError);
+      socket.addEventListener?.("open", open);
+      if (socketIsOpen(socket)) open();
+      return socket;
+    },
+    close(code?: number, reason?: string) {
+      closedByClient = true;
+      if (reconnectTimer !== undefined) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
+      }
+      const current = socket;
+      current?.close(code, reason);
+      if (current === undefined) socket = undefined;
+    },
+    hydrate,
+    subscribe(subscription) {
+      subscriptions.set(subscription.id, subscription);
+      enqueue({
+        protocol,
+        type: "query.subscribe",
+        id: subscription.id,
+        query: subscription.query,
+      });
+    },
+    unsubscribe(id) {
+      subscriptions.delete(id);
+      enqueue({ protocol, type: "query.unsubscribe", id });
+    },
+    send(message) {
+      enqueue(message);
+    },
+  };
+
+  return client;
 }
 
 export function publishDurableObjectSqliteLiveInvalidationsEffect(

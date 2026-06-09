@@ -286,14 +286,18 @@ publish seed on top of that assembly: `MetaCrdtSqliteLiveQueryDurableObject`
 accepts authenticated-Worker-compatible POST write routes for append assert,
 append lifecycle, and collection submit, routes them through the existing
 current surface, and publishes returned projection-change summaries through the
-live current-query fanout. This still does not provide frontend SDK behavior,
-durable client session protocol, result diffs, or full flow execution. The next
-active goal should be chosen from the remaining TODO candidates:
+live current-query fanout. Goal 139 adds a first structural frontend
+live-query client helper: `createDurableObjectSqliteLiveQueryClient` can open a
+WebSocket, subscribe/unsubscribe bounded current queries, filter server
+messages by protocol, use a stable connection id to request `query.hydrate`, and
+optionally reconnect. This still does not provide React bindings, durable
+session-token protocol, result diffs, or full flow execution. The next active
+goal should be chosen from the remaining TODO candidates:
 choosing/wiring the provider-specific React wrapper/JWT flow, adding Node
 production hardening around auth middleware/retry loops/observability,
 remaining Cloudflare DO+SQLite operational parity (broader SQL query-provider
 parity/performance hardening, full flow interpreter/action execution,
-frontend SDK/live-query reconnect protocol integration),
+frontend SDK/live-query session/result-diff integration),
 another carefully scoped Confect/domain wrapper, or the next projection
 dependency (closure/derived provenance or remaining operational process state).
 
@@ -9508,6 +9512,43 @@ a premature `@metacrdt/sdk` package. The client should be an adapter over Goal
   - `syncFrom` performs a bidirectional exchange through the structural handler;
   - the Effect facade returns tagged `NodeSyncClientError` on HTTP errors.
 - `npm run typecheck --workspace @metacrdt/node` passes.
+
+---
+
+## Goal 139 — Cloudflare Live Query Client Reconnect Seed
+
+**Status:** shipped.
+
+**Objective:** add the first dependency-free frontend/client helper for
+Cloudflare SQLite live current queries, including stable connection-id hydration
+and opt-in reconnect behavior.
+
+### What Shipped
+
+- Added `createDurableObjectSqliteLiveQueryClient` to `@metacrdt/cloudflare`.
+  The helper accepts a structural WebSocket constructor, sends
+  `query.subscribe`, `query.unsubscribe`, and `query.hydrate` messages using the
+  existing live-query protocol, and filters incoming server messages by
+  protocol before invoking the caller's `onMessage`.
+- The client tracks local subscription declarations, supports a stable
+  `connectionId` for persisted-subscription hydration, and can opt into bounded
+  reconnect attempts with configurable delay.
+- Exported the client, socket, option, and subscription types from the package.
+- Added focused Cloudflare tests with a fake browser-style WebSocket proving
+  subscribe/update handling and reconnect hydration behavior.
+
+### Non-Goals
+
+- Do not claim React hooks, a full frontend SDK package, durable session-token
+  issuance, result diffing, retry/backoff policy beyond the small structural
+  option, or application-specific auth storage.
+- Do not implement Cloudflare flow interpreter/action execution or broader
+  historical SQL query-provider parity/performance hardening.
+
+### Verification
+
+- `npm run typecheck --workspace @metacrdt/cloudflare` passes.
+- `npm test --workspace @metacrdt/cloudflare` passes with 59 Cloudflare tests.
 
 ---
 

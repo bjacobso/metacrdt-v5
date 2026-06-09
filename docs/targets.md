@@ -73,7 +73,8 @@ On open hosts the adapter is a selectable dependency.
   SQLite live invalidation fanout seed for changed `(e, a)` coordinates, and a
   bounded live current-query snapshot/update seed with optional persisted
   subscription rows plus structural reconnect hydration for connected sockets
-  and an authenticated Worker route seed.
+  and an authenticated Worker route seed, SQLite DO assembly, write-route
+  publish orchestration, and a structural frontend client reconnect helper.
   Growing to a full DO + SQLite bitemporal triple store remains the active target plan
   ([cloudflare-target.md](./cloudflare-target.md)).
 - `@metacrdt/local` — browser/local-first host with localStorage / IndexedDB /
@@ -144,7 +145,7 @@ On open hosts the adapter is a selectable dependency.
 | SQLite-wasm | `local` | done |
 | SQLite (server) | `node` | done (structural driver API + shared lifecycle plan) |
 | Postgres | `node` | done (structural `query(sql, params)` adapter + shared lifecycle plan) |
-| DO SQLite | `cloudflare` | started (runtime-service substrate + projection/persistence conformance + log/current/query surface, including projection-backed current Datalog reads, collection capability rows with optional assertion lowering, collection timer rows, collection/flow-wait alarm multiplexing, DAG run/timeline rows, terminal DAG resume seed, live invalidation fanout seed, live current-query snapshot/update seed, persisted current-query subscription rows, structural reconnect hydration, authenticated live-query Worker route seed, SQLite live-query DO assembly seed, and write-route publish seed; full operational flow interpreter/action parity and frontend SDK/live-query reconnect protocol integration planned in [cloudflare-target.md](./cloudflare-target.md)) |
+| DO SQLite | `cloudflare` | started (runtime-service substrate + projection/persistence conformance + log/current/query surface, including projection-backed current Datalog reads, collection capability rows with optional assertion lowering, collection timer rows, collection/flow-wait alarm multiplexing, DAG run/timeline rows, terminal DAG resume seed, live invalidation fanout seed, live current-query snapshot/update seed, persisted current-query subscription rows, structural reconnect hydration, authenticated live-query Worker route seed, SQLite live-query DO assembly seed, write-route publish seed, and structural live-query client reconnect seed; full operational flow interpreter/action parity and frontend SDK session/result-diff integration planned in [cloudflare-target.md](./cloudflare-target.md)) |
 | Convex tables | `convex` | done (managed) |
 | FoundationDB | — | archive unless a real need appears |
 
@@ -294,10 +295,10 @@ a sibling target.
    conformance-style clause/visibility/index-scan coverage, and bounded live
    current-query subscriptions now have persisted metadata rows plus structural
    hydration, authenticated Worker route plumbing, and SQLite DO assembly
-   plumbing plus write-route publish orchestration; next is broader SQL query
-   provider parity/performance hardening plus full flow interpreter/action
-   execution and frontend SDK/live-query
-   reconnect protocol integration
+   plumbing plus write-route publish orchestration and a structural frontend
+   client reconnect helper; next is broader SQL query provider
+   parity/performance hardening plus full flow interpreter/action execution and
+   frontend SDK session/result-diff integration
    ([cloudflare-target.md](./cloudflare-target.md)).
 4. **Extract `@metacrdt/sql`** once node-SQLite/Postgres and DO-SQLite reveal
    enough repeated DDL/query-generation logic beyond the current Node lifecycle

@@ -8,9 +8,9 @@ newest first. See [PLAN.md](./PLAN.md) for the full backlog and
 
 ### Current pulse
 
-- [x] Goal 138 shipped: Cloudflare SQLite live-query write publish route seed.
+- [x] Goal 139 shipped: Cloudflare live-query client reconnect seed.
 - [ ] Choose the next active slice from remaining Cloudflare parity (full flow
-  interpreter/action execution, frontend SDK/live-query reconnect protocol
+  interpreter/action execution, frontend SDK live-query session/result-diff
   integration, or broader historical SQL query-provider parity/performance
   hardening), Node production hardening, provider-specific auth/UI wrapping, or
   a scoped Confect/domain wrapper.
@@ -220,10 +220,15 @@ After implementation:
   `MetaCrdtSqliteLiveQueryDurableObject` exposes POST JSON write routes for
   append assert, append lifecycle, and collection submit that publish returned
   projection-change summaries to live current-query subscribers.
+- [x] **Goal 139 shipped: live-query client reconnect seed** —
+  `createDurableObjectSqliteLiveQueryClient` now provides a dependency-free
+  structural WebSocket client for current-query subscribe/unsubscribe,
+  protocol-filtered server messages, stable connection-id hydration, and
+  opt-in bounded reconnect attempts.
 - [ ] **Remaining Cloudflare Phase D parity** — full flow interpreter/action
-  execution, frontend SDK/live-query reconnect protocol integration, and broader
-  historical SQL query-provider parity/performance hardening remain open; do not
-  claim full parity until those are implemented.
+  execution, frontend SDK live-query session/result-diff integration, and
+  broader historical SQL query-provider parity/performance hardening remain
+  open; do not claim full parity until those are implemented.
 
 **Substrate frontier (cashes the name)** — specified in [SPEC.md](./SPEC.md)
 - [x] Commutative supersession — centralized Convex writes now stamp
@@ -337,6 +342,10 @@ After implementation:
   append asserts, append lifecycle events, or submit collection assertions
   through the current surface and publish changed `(e, a)` summaries to live
   current-query subscribers.
+- [x] Cloudflare Durable Object SQLite live-query client reconnect seed —
+  `createDurableObjectSqliteLiveQueryClient` is a structural frontend WebSocket
+  helper for current-query subscribe/unsubscribe, protocol-filtered messages,
+  stable connection-id hydration, and opt-in bounded reconnect attempts.
 - [x] Browser local-first package — `@metacrdt/local` composes the localStorage
   runtime target seed with BroadcastChannel anti-entropy and browser defaults.
 - [x] IndexedDB-compatible async local persistence — `@metacrdt/local` now has
@@ -347,7 +356,7 @@ After implementation:
   DataChannel anti-entropy transport with multi-hop gossip.
 - [ ] Cloudflare remaining component-equivalent SQLite surface — full
   SQL-indexed query-provider parity/performance hardening, full flow
-  interpreter/action execution, frontend SDK/live-query reconnect protocol
+  interpreter/action execution, frontend SDK live-query session/result-diff
   integration, and broader production hardening on top of the persisted registry
   (see [docs/cloudflare-target.md](./docs/cloudflare-target.md)).
 - [ ] Live Cloudflare deployment (see
@@ -878,6 +887,18 @@ After implementation:
 ---
 
 ## Log
+
+### 2026-06-09 — Cloudflare live-query client reconnect seed
+- [x] **Structural client helper.**
+  `createDurableObjectSqliteLiveQueryClient` opens a caller-supplied WebSocket,
+  sends `query.subscribe` / `query.unsubscribe` / `query.hydrate` messages, and
+  filters incoming live-query server messages by protocol.
+- [x] **Reconnect hydration seed.** The helper tracks subscription declarations,
+  can use a stable connection id for persisted-subscription hydration, and
+  supports bounded opt-in reconnect attempts.
+- [x] **Still scoped.** This is a dependency-free client primitive only; React
+  hooks, durable session token issuance, result diffs, application auth storage,
+  full flow execution, and broader SQL query-provider hardening remain open.
 
 ### 2026-06-09 — Cloudflare SQLite live-query write publish route seed
 - [x] **Authenticated write route forwarding.** `createRelayWorker` now includes
