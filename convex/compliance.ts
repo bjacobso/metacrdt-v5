@@ -4,18 +4,16 @@ import { v } from "convex/values";
 import { assertInTx, createTransaction } from "./facts";
 import { requireWritePrincipal } from "./lib/writeAuth";
 import { obligationsFromEventLog } from "./lib/obligations";
-
-const DAY = 24 * 60 * 60 * 1000;
+import {
+  DAY_MS,
+  requirementClauses,
+  type RequirementSpec as CollectRequirementSpec,
+} from "./lib/collect";
 
 // Each form is required within a SCOPE (the entity attribute on a placement it
 // keys off). A submission is keyed by the same scope entity, so one submission
 // satisfies every placement sharing that scope — reuse falls out of the key.
-type FormDef = {
-  form: string;
-  scopeAttr: string; // placement attribute naming the scope entity
-  guard?: [string, unknown]; // optional (attr, value) the scope entity must match
-  validityDays?: number; // default expiry when submitting
-};
+type FormDef = CollectRequirementSpec;
 
 export const FORMS: FormDef[] = [
   { form: "i9", scopeAttr: "employer", validityDays: 365 * 3 },
@@ -23,22 +21,6 @@ export const FORMS: FormDef[] = [
   { form: "forklift", scopeAttr: "job", guard: ["role", "forklift"] },
   { form: "venue_disclosure", scopeAttr: "venue" },
 ];
-
-function requirementWhere(f: FormDef): unknown[] {
-  const where: unknown[] = [
-    ["?p", "type", "Placement"],
-    ["?p", "worker", "?w"],
-    ["?p", f.scopeAttr, "?s"],
-  ];
-  if (f.guard) where.push(["?s", f.guard[0], f.guard[1]]);
-  return where;
-}
-
-function requirementDeps(f: FormDef): string[] {
-  const deps = ["type", "worker", f.scopeAttr];
-  if (f.guard) deps.push(f.guard[0]);
-  return [...new Set(deps)];
-}
 
 // --- setup ------------------------------------------------------------------
 
@@ -53,21 +35,20 @@ export const setupComplianceRules = mutation({
   handler: async (ctx) => {
     await requireWritePrincipal(ctx);
     for (const f of FORMS) {
-      const reqWhere = requirementWhere(f);
-      const reqDeps = requirementDeps(f);
+      const clauses = requirementClauses(f);
 
       await ctx.runMutation(api.rules.defineRule, {
-        name: `require.${f.form}`,
-        where: reqWhere,
-        emit: { e: "?w", a: `requires.${f.form}`, v: "?s" },
-        dependsOnAttributes: reqDeps,
+        name: clauses.requirement.name,
+        where: [...clauses.requirement.where],
+        emit: clauses.requirement.emit,
+        dependsOnAttributes: [...clauses.requirement.dependsOnAttributes],
       });
 
       await ctx.runMutation(api.rules.defineRule, {
-        name: `task.${f.form}`,
-        where: [...reqWhere, { not: ["?w", `submitted.${f.form}`, "?s"] }],
-        emit: { e: "?w", a: `task.${f.form}`, v: "?s" },
-        dependsOnAttributes: [...reqDeps, `submitted.${f.form}`],
+        name: clauses.task.name,
+        where: [...clauses.task.where],
+        emit: clauses.task.emit,
+        dependsOnAttributes: [...clauses.task.dependsOnAttributes],
       });
     }
     return { rules: FORMS.length * 2 };
@@ -151,7 +132,7 @@ export const submitForm = mutation({
       e: args.worker,
       a: `submitted.${args.form}`,
       value: args.scope,
-      validTo: days !== undefined ? now + days * DAY : undefined,
+      validTo: days !== undefined ? now + days * DAY_MS : undefined,
     });
     return { txId, factId };
   },

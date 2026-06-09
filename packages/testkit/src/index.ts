@@ -15,6 +15,15 @@ import {
   valueKey,
 } from "@metacrdt/query";
 import {
+  COLLECT_TOKEN_TTL_MS,
+  formDefinitionFacts,
+  requirementClauses,
+  scopeEntity,
+  submissionFacts,
+  tokenInvalidReason,
+  type FormDef as CollectFormDef,
+} from "@metacrdt/collect";
+import {
   DatalogQueryService,
   applyOperationEffect,
   datalogQueryLayer,
@@ -35,6 +44,13 @@ import {
   type ProjectionRow,
   projectionDatalogQueryLayer,
 } from "@metacrdt/runtime";
+import {
+  stepFlow,
+  validateFlowDef,
+  waitKeyFromSubmission,
+  type FlowDef,
+  type FlowRun,
+} from "@metacrdt/workflow";
 import { Effect, Layer } from "effect";
 import * as Either from "effect/Either";
 
@@ -114,6 +130,10 @@ export interface RuntimeSchedulerConformanceTarget
   readScheduled(): readonly ScheduledObservation[];
   resetScheduler?(): void | Promise<void>;
 }
+
+export interface WorkflowConformanceTarget extends NamedTarget {}
+
+export interface CollectConformanceTarget extends NamedTarget {}
 
 export interface RuntimeTransportConformanceTarget
   extends RuntimeLayerConformanceTarget {
@@ -1445,6 +1465,221 @@ export async function runRuntimeSchedulerConformance(
     "scheduler should preserve operation payloads",
   );
   checks.push("scheduler-preserves-payloads");
+
+  return { target: target.name, checks };
+}
+
+export async function runWorkflowConformance(
+  target: WorkflowConformanceTarget,
+): Promise<ConformanceReport> {
+  const checks: string[] = [];
+  const flow: FlowDef = {
+    name: "testkit_onboarding",
+    startStepId: "collect-i9",
+    steps: [
+      {
+        id: "collect-i9",
+        type: "collect",
+        config: { form: "i9", scopeFrom: "employer", reminderSeconds: 5 },
+        next: "branch",
+      },
+      {
+        id: "branch",
+        type: "branch",
+        config: { ifTrue: "assert", ifFalse: "wait" },
+      },
+      { id: "assert", type: "assert", config: { a: "workflow.done", v: true }, next: "done" },
+      { id: "wait", type: "wait", config: { seconds: 2 }, next: "done" },
+      { id: "done", type: "done" },
+    ],
+  };
+  const run: FlowRun = {
+    id: "flow:1",
+    subject: "worker:maria",
+    status: "running",
+    currentStepId: "collect-i9",
+    context: { employer: "employer:acme" },
+  };
+
+  const validation = validateFlowDef(flow);
+  expect(target, validation.ok, "workflow conformance flow should be valid");
+  checks.push("dag-validation-accepts-valid-flow");
+
+  const invalid = validateFlowDef({
+    name: "bad",
+    startStepId: "a",
+    steps: [
+      { id: "a", type: "notify", next: "missing" },
+      { id: "orphan", type: "done" },
+    ],
+  });
+  expect(
+    target,
+    !invalid.ok &&
+      invalid.diagnostics.some((diag) => diag.code === "dangling-target") &&
+      invalid.diagnostics.some((diag) => diag.code === "unreachable-step"),
+    "workflow DAG validation should reject dangling and unreachable steps",
+  );
+  checks.push("dag-validation-rejects-bad-defs");
+
+  const collect = stepFlow(flow, run);
+  const parked = collect.intents.find((intent) => intent.kind === "park");
+  expect(target, collect.run.status === "waiting", "collect step should park run");
+  expect(
+    target,
+    parked?.kind === "park" &&
+      parked.reason === "collect" &&
+      JSON.stringify(parked.waitKey) ===
+        JSON.stringify({ subject: "worker:maria", form: "i9", scope: "employer:acme" }),
+    "collect step should park on the submitted marker wait-key",
+  );
+  checks.push("collect-step-parks-on-wait-key");
+
+  const parsedKey = waitKeyFromSubmission(
+    "worker:maria",
+    "submitted.i9",
+    "employer:acme",
+  );
+  expect(
+    target,
+    JSON.stringify(parsedKey) === JSON.stringify(parked?.kind === "park" ? parked.waitKey : null),
+    "submitted marker should round-trip to the parked wait-key",
+  );
+  checks.push("submitted-marker-resolves-wait-key");
+
+  const branched = stepFlow(
+    flow,
+    { ...run, currentStepId: "branch" },
+    { branchResults: { branch: true } },
+  );
+  expect(
+    target,
+    branched.intents.some((intent) => intent.kind === "assert" && intent.a === "workflow.done"),
+    "branch true path should reach assert step",
+  );
+  checks.push("branch-routes-true-to-assert");
+
+  const waiting = stepFlow(flow, { ...run, currentStepId: "wait" });
+  expect(
+    target,
+    waiting.intents.some(
+      (intent) =>
+        intent.kind === "schedule" &&
+        intent.afterMs === 2_000 &&
+        intent.op.op === "flow.resume",
+    ),
+    "wait step should schedule flow resume",
+  );
+  checks.push("wait-step-schedules-resume");
+
+  const done = stepFlow(flow, { ...run, currentStepId: "done" });
+  expect(target, done.run.status === "completed", "done step should complete run");
+  checks.push("done-step-completes");
+
+  return { target: target.name, checks };
+}
+
+export async function runCollectConformance(
+  target: CollectConformanceTarget,
+): Promise<ConformanceReport> {
+  const checks: string[] = [];
+  const form: CollectFormDef = {
+    form: "i9",
+    title: "Form I-9",
+    validityDays: 365,
+    fields: [
+      { name: "ssn", label: "SSN", type: "string", required: true, pii: true },
+      {
+        name: "citizenship",
+        label: "Citizenship",
+        type: "select",
+        required: true,
+        options: ["citizen", "authorized_alien"],
+      },
+    ],
+  };
+
+  expect(
+    target,
+    JSON.stringify(formDefinitionFacts(form)) ===
+      JSON.stringify([
+        { e: "form:i9", a: "type", value: "Form" },
+        {
+          e: "form:i9",
+          a: "formDef",
+          value: { title: "Form I-9", fields: form.fields },
+        },
+      ]),
+    "form definition facts should use the canonical form entity",
+  );
+  checks.push("form-definition-facts");
+
+  const facts = submissionFacts(
+    "worker:maria",
+    form,
+    { ssn: "123", citizenship: "authorized_alien" },
+    "employer:acme",
+    1_000,
+  );
+  expect(
+    target,
+    facts.some((fact) => fact.e === "worker:maria" && fact.a === "i9/ssn" && fact.value === "123"),
+    "submission should lower field values to facts",
+  );
+  checks.push("submission-field-facts");
+  expect(
+    target,
+    facts.some(
+      (fact) =>
+        fact.e === "worker:maria" &&
+        fact.a === "submitted.i9" &&
+        fact.value === "employer:acme" &&
+        fact.validTo === 1_000 + 365 * 24 * 60 * 60 * 1000,
+    ),
+    "submission should lower the scope-keyed submitted marker with validTo",
+  );
+  checks.push("submission-marker-with-validity");
+
+  const clauses = requirementClauses({
+    form: "forklift",
+    scopeAttr: "job",
+    guard: ["role", "forklift"],
+  });
+  const lastTaskClause = clauses.task.where[clauses.task.where.length - 1];
+  expect(
+    target,
+    JSON.stringify(lastTaskClause) ===
+      JSON.stringify({ not: ["?w", "submitted.forklift", "?s"] }),
+    "task requirement should be requirements AND NOT submitted",
+  );
+  checks.push("requirement-negation-clause");
+
+  expect(
+    target,
+    scopeEntity(
+      { scopeAttr: "job", guard: ["role", "forklift"] },
+      { job: "job:forklift1" },
+      { role: "forklift" },
+    ) === "job:forklift1",
+    "scopeEntity should reuse a matching guarded scope",
+  );
+  checks.push("scope-reuse-guard");
+
+  expect(
+    target,
+    tokenInvalidReason(
+      { status: "waiting", tokenExpiresAt: 1_000 + COLLECT_TOKEN_TTL_MS },
+      1_000,
+    ) === null,
+    "fresh waiting token should be valid",
+  );
+  expect(
+    target,
+    tokenInvalidReason({ status: "waiting", tokenExpiresAt: 1_000 }, 1_000) ===
+      "expired",
+    "expired token should be rejected",
+  );
+  checks.push("token-expiry-predicates");
 
   return { target: target.name, checks };
 }

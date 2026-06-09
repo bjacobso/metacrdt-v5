@@ -32,6 +32,14 @@ fact store, can policies, automations, and forms collapse into a single, elegant
 > ambitious; the migration path (§4) is deliberately conservative. The two are kept separate
 > on purpose — mirroring `PLAN.md`'s "build now vs. keep the door open" discipline.
 
+> **Package status (2026-06-09).** The portable workflow core now lives in
+> `@metacrdt/workflow`: step types, `$subject`/`$ctx` value resolution, wait-key
+> helpers, DAG validation, flow-definition lowering, and a pure step reducer.
+> Convex re-exports it from `convex/lib/workflow.ts`; Cloudflare uses the shared
+> step reducer in its registered-flow executor and translates reducer intents
+> into Durable Object SQLite effects. Target-owned storage, branch IO, scheduler
+> execution, and external actions remain outside the package.
+
 ---
 
 ## 0. The central realization

@@ -5,6 +5,11 @@ import { v } from "convex/values";
 import { attrId, typeId } from "./lib/meta";
 import { assertInTx, createTransaction, retractInTx } from "./facts";
 import { requireWritePrincipal } from "./lib/writeAuth";
+import {
+  formEntity,
+  requirementClauses,
+  type RequirementSpec,
+} from "./lib/collect";
 
 // Config-as-code. A tenant declares its shape — entity types, attributes, forms,
 // flows, requirements, actions — as one literal, and applyConfig *lowers* it into
@@ -16,13 +21,6 @@ import { requireWritePrincipal } from "./lib/writeAuth";
 //
 // Each lowering target is an existing upsert mutation, so applyConfig is
 // idempotent: rerunning it converges rather than duplicating.
-
-type RequirementSpec = {
-  form: string;
-  scopeAttr: string;
-  guard?: [string, unknown];
-  validityDays?: number;
-};
 
 type ConfigKind =
   | "attribute"
@@ -42,26 +40,6 @@ const OWN_ATTR: Record<ConfigKind, string> = {
   requirement: "owns.requirement",
   action: "owns.action",
 };
-
-/** Build the requirement / task Datalog clauses for one requirement spec. */
-function requirementWhere(f: RequirementSpec): unknown[] {
-  const where: unknown[] = [
-    ["?p", "type", "Placement"],
-    ["?p", "worker", "?w"],
-    ["?p", f.scopeAttr, "?s"],
-  ];
-  if (f.guard) where.push(["?s", f.guard[0], f.guard[1]]);
-  return where;
-}
-function requirementDeps(f: RequirementSpec): string[] {
-  const deps = ["type", "worker", f.scopeAttr];
-  if (f.guard) deps.push(f.guard[0]);
-  return [...new Set(deps)];
-}
-
-function formEntity(form: string): string {
-  return `form:${form}`;
-}
 
 function actionEntity(action: string): string {
   return `action:${action}`;
@@ -338,19 +316,18 @@ export const applyConfig = mutation({
     }
 
     for (const r of cfg.requirements ?? []) {
-      const where = requirementWhere(r);
-      const deps = requirementDeps(r);
+      const clauses = requirementClauses(r);
       await ctx.runMutation(api.rules.defineRule, {
-        name: `require.${r.form}`,
-        where,
-        emit: { e: "?w", a: `requires.${r.form}`, v: "?s" },
-        dependsOnAttributes: deps,
+        name: clauses.requirement.name,
+        where: [...clauses.requirement.where],
+        emit: clauses.requirement.emit,
+        dependsOnAttributes: [...clauses.requirement.dependsOnAttributes],
       });
       await ctx.runMutation(api.rules.defineRule, {
-        name: `task.${r.form}`,
-        where: [...where, { not: ["?w", `submitted.${r.form}`, "?s"] }],
-        emit: { e: "?w", a: `task.${r.form}`, v: "?s" },
-        dependsOnAttributes: [...deps, `submitted.${r.form}`],
+        name: clauses.task.name,
+        where: [...clauses.task.where],
+        emit: clauses.task.emit,
+        dependsOnAttributes: [...clauses.task.dependsOnAttributes],
       });
       applied.rules += 2;
     }

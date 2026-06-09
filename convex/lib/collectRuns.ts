@@ -1,27 +1,6 @@
 import type { MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
-
-const DEFAULT_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
-function hasLiveToken(
-  run: {
-    status: string;
-    token?: string;
-    tokenConsumedAt?: number;
-    tokenExpiresAt?: number;
-    collectionTarget?: "host" | "component";
-  },
-  now: number,
-  collectionTarget: "host" | "component",
-): boolean {
-  return (
-    run.status === "waiting" &&
-    run.token !== undefined &&
-    run.tokenConsumedAt === undefined &&
-    (run.tokenExpiresAt === undefined || run.tokenExpiresAt > now) &&
-    (run.collectionTarget ?? "host") === collectionTarget
-  );
-}
+import { COLLECT_TOKEN_TTL_MS, isLiveToken } from "./collect";
 
 /**
  * Issue or reuse the simple collection run used by configured actions.
@@ -53,7 +32,7 @@ export async function issueActionCollectRun(
     )
     .collect();
   const now = Date.now();
-  const live = existing.find((r) => hasLiveToken(r, now, collectionTarget));
+  const live = existing.find((r) => isLiveToken(r, now, collectionTarget));
   if (live) {
     return {
       runId: live._id,
@@ -74,7 +53,7 @@ export async function issueActionCollectRun(
     issuedAt: now,
     updatedAt: now,
     token,
-    tokenExpiresAt: now + DEFAULT_TOKEN_TTL_MS,
+    tokenExpiresAt: now + COLLECT_TOKEN_TTL_MS,
     collectionTarget,
   });
   await ctx.db.insert("flowEvents", {

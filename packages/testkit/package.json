@@ -23,9 +23,11 @@
     "pack:check": "node ../../scripts/pnpm-pack-check.mjs"
   },
   "dependencies": {
+    "@metacrdt/collect": "workspace:*",
     "@metacrdt/core": "workspace:*",
     "@metacrdt/query": "workspace:*",
     "@metacrdt/runtime": "workspace:*",
+    "@metacrdt/workflow": "workspace:*",
     "effect": "^3.21.3"
   },
   "devDependencies": {

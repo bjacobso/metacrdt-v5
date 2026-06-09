@@ -17,6 +17,9 @@ importers:
       '@convex-dev/static-hosting':
         specifier: ^0.1.3
         version: 0.1.3(convex@1.40.0(react@19.2.7))(react@19.2.7)
+      '@metacrdt/collect':
+        specifier: workspace:*
+        version: link:packages/collect
       '@metacrdt/convex':
         specifier: workspace:*
         version: link:packages/convex
@@ -32,6 +35,9 @@ importers:
       '@metacrdt/views':
         specifier: workspace:*
         version: link:packages/views
+      '@metacrdt/workflow':
+        specifier: workspace:*
+        version: link:packages/workflow
       convex:
         specifier: ^1.40.0
         version: 1.40.0(react@19.2.7)
@@ -60,6 +66,9 @@ importers:
       '@edge-runtime/vm':
         specifier: ^5.0.0
         version: 5.0.0
+      '@metacrdt/testkit':
+        specifier: workspace:*
+        version: link:packages/testkit
       '@tailwindcss/vite':
         specifier: ^4.3.0
         version: 4.3.0(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -234,6 +243,9 @@ importers:
       '@metacrdt/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@metacrdt/workflow':
+        specifier: workspace:*
+        version: link:../workflow
       effect:
         specifier: ^3.21.3
         version: 3.21.3
@@ -241,6 +253,22 @@ importers:
       '@metacrdt/testkit':
         specifier: workspace:*
         version: link:../testkit
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.8(@edge-runtime/vm@5.0.0)(@types/node@24.13.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/collect:
+    dependencies:
+      '@metacrdt/core':
+        specifier: workspace:*
+        version: link:../core
+      '@metacrdt/query':
+        specifier: workspace:*
+        version: link:../query
+    devDependencies:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -368,6 +396,9 @@ importers:
 
   packages/testkit:
     dependencies:
+      '@metacrdt/collect':
+        specifier: workspace:*
+        version: link:../collect
       '@metacrdt/core':
         specifier: workspace:*
         version: link:../core
@@ -377,6 +408,9 @@ importers:
       '@metacrdt/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@metacrdt/workflow':
+        specifier: workspace:*
+        version: link:../workflow
       effect:
         specifier: ^3.21.3
         version: 3.21.3
@@ -403,6 +437,28 @@ importers:
       tsx:
         specifier: ^4.19.2
         version: 4.22.4
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.8(@edge-runtime/vm@5.0.0)(@types/node@24.13.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/workflow:
+    dependencies:
+      '@metacrdt/core':
+        specifier: workspace:*
+        version: link:../core
+      '@metacrdt/query':
+        specifier: workspace:*
+        version: link:../query
+      '@metacrdt/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      effect:
+        specifier: ^3.21.3
+        version: 3.21.3
+    devDependencies:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

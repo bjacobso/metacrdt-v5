@@ -20,6 +20,8 @@ intact. This is the **actionable** altitude — for the durable model see
 | [Provider Auth UI](./provider-auth-ui.md) | Provider-specific React/JWT wrapper over the fail-closed auth config | Choose provider and wire `ConvexProviderWithAuth` |
 | [Confect Domain Wrapper](./confect-domain-wrapper.md) | Scoped Confect/Effect sidecar expansion without converting Convex wholesale | Pick one read/planning domain with stable semantics |
 | [Views](./views.md) | Fold Open Ontology's ViewSpec into `@metacrdt/views`, generated from in-package Forma preludes | Phase 4: extract `@metacrdt/views-react` |
+| [App & UI Restructure](./app-ui-restructure.md) | Unify the top-level `convex/`, `confect/`, `src/` into packages + `apps/` once the substrate is packaged | Phase 1: converge the Convex target binding into `packages/convex` |
+| [Client / Atom](./client-atom.md) | `@metacrdt/client` — effect-atom frontend over a `MetacrdtClient` service with swappable backend Layers (Confect WS, raw Convex, polling, CF, node, local) | Phase 1: the `MetacrdtClient` interface + Schema payloads |
 
 ## Working Rules
 

@@ -1,7 +1,7 @@
 {
-  "name": "@metacrdt/cloudflare",
+  "name": "@metacrdt/collect",
   "version": "0.1.0",
-  "description": "MetaCRDT Cloudflare target helpers: Durable Object storage-backed runtime services for event logs, HLC clocks, and per-replica sequencing.",
+  "description": "MetaCRDT collection semantics: form lowering, submission facts, requirement clauses, and token predicates.",
   "type": "module",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -13,8 +13,7 @@
     }
   },
   "files": [
-    "dist",
-    "wrangler.example.toml"
+    "dist"
   ],
   "scripts": {
     "build": "tsdown --config ../../tsdown.config.ts",
@@ -25,13 +24,9 @@
   },
   "dependencies": {
     "@metacrdt/core": "workspace:*",
-    "@metacrdt/query": "workspace:*",
-    "@metacrdt/runtime": "workspace:*",
-    "@metacrdt/workflow": "workspace:*",
-    "effect": "^3.21.3"
+    "@metacrdt/query": "workspace:*"
   },
   "devDependencies": {
-    "@metacrdt/testkit": "workspace:*",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
   }
