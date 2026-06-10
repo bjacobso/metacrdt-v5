@@ -14,6 +14,8 @@ import {
   runEventStoreConformance,
   runRuntimeConformance,
   runRuntimeConvergenceConformance,
+  runRuntimeDeterministicSimulationConformance,
+  runRuntimeFoldPermutationConformance,
   runRuntimeNetworkTransportConformance,
   runRuntimePersistenceConformance,
   runRuntimeProjectionConformance,
@@ -388,7 +390,48 @@ describe("@metacrdt/testkit", () => {
   test("combined conformance returns all checks", async () => {
     const report = await runRuntimeConformance(memoryTarget);
     expect(report.target).toBe("memory");
-    expect(report.checks).toHaveLength(19);
+    expect(report.checks).toHaveLength(26);
+  });
+
+  test("fold-permutation conformance passes for the in-memory target", async () => {
+    const report = await runRuntimeFoldPermutationConformance(memoryTarget);
+    expect(report.target).toBe("memory");
+    expect(report.checks).toEqual([
+      "anti-entropy-flood-convergence",
+      "content-id-integrity",
+      "fold-permutation-invariance",
+      "fold-oracle-agreement",
+    ]);
+  });
+
+  test("fold-permutation conformance holds across seeds", async () => {
+    for (const seed of [1, 7, 0xdecaf]) {
+      await runRuntimeFoldPermutationConformance(memoryTarget, {
+        seed,
+        rounds: 1,
+        replicas: 4,
+        eventCount: 80,
+      });
+    }
+  });
+
+  test("fold-permutation conformance is non-vacuous even with a tiny event count", async () => {
+    await runRuntimeFoldPermutationConformance(memoryTarget, {
+      seed: 42,
+      rounds: 1,
+      replicas: 2,
+      eventCount: 1,
+    });
+  });
+
+  test("deterministic simulation conformance exercises partition catch-up", async () => {
+    const report = await runRuntimeDeterministicSimulationConformance(memoryTarget);
+    expect(report.target).toBe("memory");
+    expect(report.checks).toEqual([
+      "deterministic-fault-simulation",
+      "partitioned-replica-catch-up",
+      "duplicate-delivery-idempotence",
+    ]);
   });
 
   test("runtime projection conformance passes for the in-memory target", async () => {

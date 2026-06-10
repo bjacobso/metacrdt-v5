@@ -4,6 +4,7 @@ import {
   fromEvents,
   retract as retractEvent,
   tombstone as tombstoneEvent,
+  untombstone as untombstoneEvent,
   visible,
   value as projectValue,
   valueOf,
@@ -598,6 +599,431 @@ export async function runRuntimeConvergenceConformance(
 
     return { target: target.name, checks };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Fold-permutation convergence: the operational proof of SPEC §4.3 + §5 (see
+// specs/vision/convergence.md §5). A seeded generator produces one canonical
+// event set — asserts, retracts, tombstones, untombstones, concurrent HLCs
+// forcing ≺ tiebreaks, overlapping valid-time intervals. The set is delivered
+// to N replica sessions in different shuffled partial orders and chunkings,
+// gossiped until anti-entropy floods every event everywhere, and then every
+// replica's bitemporal fold must be byte-identical to the pure @metacrdt/core
+// fold over the canonical set — the core fold is the oracle. Same merged set
+// ⇒ same state, regardless of delivery order.
+// ---------------------------------------------------------------------------
+
+export interface FoldPermutationConformanceOptions {
+  readonly seed?: number;
+  readonly rounds?: number;
+  readonly replicas?: number;
+  readonly eventCount?: number;
+}
+
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function rngInt(rng: () => number, maxExclusive: number): number {
+  return Math.floor(rng() * maxExclusive);
+}
+
+function pickOne<T>(rng: () => number, items: readonly T[]): T {
+  return items[rngInt(rng, items.length)]!;
+}
+
+function shuffled<T>(rng: () => number, items: readonly T[]): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = rngInt(rng, i + 1);
+    const tmp = out[i]!;
+    out[i] = out[j]!;
+    out[j] = tmp;
+  }
+  return out;
+}
+
+const PERM_ENTITIES = [
+  "worker:maria",
+  "worker:omar",
+  "placement:7",
+  "employer:acme",
+];
+const PERM_ONE_ATTRS = ["one.status", "one.level"];
+const PERM_MANY_ATTRS = ["many.tag", "many.cert"];
+const PERM_ATTRS = [...PERM_ONE_ATTRS, ...PERM_MANY_ATTRS];
+const PERM_ACTORS = ["alice", "bob", "carol", "dave"];
+const PERM_VALUES: readonly Value[] = ["active", "terminated", "pending", 1, 2];
+const PERM_VALID_FROMS = [0, 500, 1_000, 1_500];
+
+const permCardinalityOf = (a: string): "one" | "many" =>
+  a.startsWith("one.") ? "one" : "many";
+
+function generatePermutationEvents(rng: () => number, count: number): Event[] {
+  const raceLeft = assertEvent({
+    e: "worker:maria",
+    a: "one.status",
+    v: "active",
+    validFrom: 0,
+    validTo: 2_000,
+    actor: "alice",
+    hlc: { pt: 10, l: 0, r: "perm:0" },
+  });
+  const raceRight = assertEvent({
+    e: "worker:maria",
+    a: "one.status",
+    v: "terminated",
+    validFrom: 0,
+    validTo: null,
+    actor: "bob",
+    hlc: { pt: 10, l: 0, r: "perm:1" },
+  });
+  const manyAlpha = assertEvent({
+    e: "worker:omar",
+    a: "many.tag",
+    v: "active",
+    validFrom: 0,
+    validTo: null,
+    actor: "carol",
+    hlc: { pt: 12, l: 0, r: "perm:0" },
+  });
+  const manyBeta = assertEvent({
+    e: "worker:omar",
+    a: "many.tag",
+    v: "pending",
+    validFrom: 0,
+    validTo: null,
+    actor: "dave",
+    hlc: { pt: 13, l: 0, r: "perm:1" },
+  });
+  const retractBeta = retractEvent({
+    target: manyBeta.id,
+    actor: "alice",
+    hlc: { pt: 20, l: 0, r: "perm:2" },
+  });
+  const tombstoneAlpha = tombstoneEvent({
+    target: manyAlpha.id,
+    actor: "bob",
+    hlc: { pt: 21, l: 0, r: "perm:0" },
+  });
+  const untombstoneAlpha = untombstoneEvent({
+    target: manyAlpha.id,
+    actor: "carol",
+    hlc: { pt: 22, l: 0, r: "perm:1" },
+  });
+  const seeded = [
+    raceLeft,
+    raceRight,
+    manyAlpha,
+    manyBeta,
+    retractBeta,
+    tombstoneAlpha,
+    untombstoneAlpha,
+  ];
+  const out: Event[] = [...seeded];
+  const asserts: Event[] = seeded.filter((event) => event.kind === "assert");
+  const seen = new Set<string>();
+  for (const event of seeded) seen.add(event.id);
+  count = Math.max(count, seeded.length);
+  while (out.length < count) {
+    const roll = rng();
+    const hlc = {
+      pt: 1 + rngInt(rng, 40),
+      l: rngInt(rng, 3),
+      r: `perm:${rngInt(rng, 3)}`,
+    };
+    const actor = pickOne(rng, PERM_ACTORS);
+    let event: Event;
+    if (asserts.length === 0 || roll < 0.6) {
+      const validFrom = pickOne(rng, PERM_VALID_FROMS);
+      event = assertEvent({
+        e: pickOne(rng, PERM_ENTITIES),
+        a: pickOne(rng, PERM_ATTRS),
+        v: pickOne(rng, PERM_VALUES),
+        validFrom,
+        validTo: rng() < 0.5 ? null : validFrom + 250 + rngInt(rng, 1_500),
+        actor,
+        hlc,
+      });
+    } else {
+      const input = { target: pickOne(rng, asserts).id, actor, hlc };
+      event =
+        roll < 0.75
+          ? retractEvent(input)
+          : roll < 0.9
+            ? tombstoneEvent(input)
+            : untombstoneEvent(input);
+    }
+    if (seen.has(event.id)) continue; // identical body ⇒ same content address
+    seen.add(event.id);
+    if (event.kind === "assert") asserts.push(event);
+    out.push(event);
+  }
+  return out;
+}
+
+function permutationCoords(
+  events: readonly Event[],
+): { txTime: number; validTime: number }[] {
+  const maxPt = Math.max(...events.map((e) => e.hlc.pt));
+  const coords: { txTime: number; validTime: number }[] = [];
+  for (const txTime of [Math.ceil(maxPt / 3), Math.ceil((2 * maxPt) / 3), maxPt + 10]) {
+    for (const validTime of [0, 750, 2_000]) coords.push({ txTime, validTime });
+  }
+  return coords;
+}
+
+/**
+ * Canonical fold snapshot. Sets (cardinality-many values, attribute maps) are
+ * sorted so the snapshot is a function of the event *set*, not of log
+ * insertion order — the equality SEC actually promises.
+ */
+function foldSnapshot(
+  events: readonly Event[],
+  coords: readonly { txTime: number; validTime: number }[],
+): string {
+  const log = fromEvents(events);
+  const out: Record<string, unknown> = {};
+  for (const c of coords) {
+    const at: Record<string, unknown> = {};
+    for (const e of PERM_ENTITIES) {
+      const attrs: Record<string, unknown> = {};
+      for (const a of PERM_ATTRS) {
+        const v = valueOf(e, a, c, log, permCardinalityOf);
+        if (v === undefined) continue;
+        attrs[a] = Array.isArray(v) ? v.map(valueKey).sort() : valueKey(v);
+      }
+      if (Object.keys(attrs).length > 0) at[e] = attrs;
+    }
+    out[`tx:${c.txTime}|valid:${c.validTime}`] = at;
+  }
+  return JSON.stringify(out);
+}
+
+export async function runRuntimeFoldPermutationConformance(
+  target: AnyRuntimeConformanceTarget,
+  options: FoldPermutationConformanceOptions = {},
+): Promise<ConformanceReport> {
+  const seed = options.seed ?? 0xc0ffee;
+  const rounds = options.rounds ?? 2;
+  const replicaCount = options.replicas ?? 3;
+  const eventCount = options.eventCount ?? 60;
+
+  for (let round = 0; round < rounds; round++) {
+    const rng = mulberry32(seed + round * 0x9e3779b9);
+    const canonical = generatePermutationEvents(rng, eventCount);
+    const coords = permutationCoords(canonical);
+    const oracle = foldSnapshot(canonical, coords);
+
+    // Non-vacuity: the generated set must actually exercise the contested
+    // paths — ≺ supersession races on a cardinality-one attribute, plus
+    // retraction and tombstone lifecycles — or the proof passes emptily.
+    const oneAsserts = canonical.filter(
+      (ev) => ev.kind === "assert" && permCardinalityOf(ev.a!) === "one",
+    );
+    const contested = oneAsserts.some((ev) =>
+      oneAsserts.some(
+        (other) => other.id !== ev.id && other.e === ev.e && other.a === ev.a,
+      ),
+    );
+    expect(target, contested, "generator produced no cardinality-one races");
+    expect(
+      target,
+      canonical.some((ev) => ev.kind === "retract") &&
+        canonical.some((ev) => ev.kind === "tombstone") &&
+        canonical.some((ev) => ev.kind === "untombstone"),
+      "generator produced no retract/tombstone/untombstone lifecycle events",
+    );
+
+    const sessions: TargetLayerSession[] = [];
+    for (let i = 0; i < replicaCount; i++) {
+      sessions.push(
+        await layerSession(target, {
+          replicaId: `testkit:perm:${round}:${i}`,
+          wall: () => 1_000,
+        }),
+      );
+    }
+
+    await withLayerSessions(sessions, async () => {
+      // Partial, shuffled, chunked initial delivery: every event reaches at
+      // least one replica; nothing about order or placement is shared.
+      const assigned: Event[][] = sessions.map(() => []);
+      for (const event of canonical) {
+        const home = rngInt(rng, replicaCount);
+        for (let i = 0; i < replicaCount; i++) {
+          if (i === home || rng() < 0.3) assigned[i]!.push(event);
+        }
+      }
+      for (let i = 0; i < replicaCount; i++) {
+        const order = shuffled(rng, assigned[i]!);
+        for (let at = 0; at < order.length; ) {
+          const n = 1 + rngInt(rng, Math.max(1, Math.ceil(order.length / 3)));
+          await mergeInto(sessions[i]!, order.slice(at, at + n));
+          at += n;
+        }
+      }
+
+      // Random gossip, then two full ring passes so anti-entropy provably
+      // floods every event to every replica before the fold comparison.
+      for (let g = 0; g < replicaCount * 2; g++) {
+        const a = rngInt(rng, replicaCount);
+        const b = (a + 1 + rngInt(rng, replicaCount - 1)) % replicaCount;
+        await exchangeDeltasEffect(sessions[a]!, sessions[b]!);
+      }
+      for (let pass = 0; pass < 2; pass++) {
+        for (let i = 0; i < replicaCount; i++) {
+          await exchangeDeltasEffect(sessions[i]!, sessions[(i + 1) % replicaCount]!);
+        }
+      }
+
+      for (const session of sessions) {
+        const held = await eventsFor(session);
+        for (const event of held) {
+          expect(target, verifyId(event), "content id failed verification after sync");
+        }
+        expect(
+          target,
+          sameIds(held, canonical),
+          "replica event set diverged from the canonical set after anti-entropy",
+        );
+        expect(
+          target,
+          foldSnapshot(held, coords) === oracle,
+          "replica fold snapshot diverged from the core-fold oracle",
+        );
+      }
+    });
+  }
+
+  return {
+    target: target.name,
+    checks: [
+      "anti-entropy-flood-convergence",
+      "content-id-integrity",
+      "fold-permutation-invariance",
+      "fold-oracle-agreement",
+    ],
+  };
+}
+
+export interface DeterministicSimulationConformanceOptions {
+  readonly seed?: number;
+  readonly replicas?: number;
+  readonly eventCount?: number;
+}
+
+export async function runRuntimeDeterministicSimulationConformance(
+  target: AnyRuntimeConformanceTarget,
+  options: DeterministicSimulationConformanceOptions = {},
+): Promise<ConformanceReport> {
+  const rng = mulberry32(options.seed ?? 0x51a7e);
+  const replicaCount = Math.max(3, options.replicas ?? 3);
+  const canonical = generatePermutationEvents(rng, options.eventCount ?? 48);
+  const coords = permutationCoords(canonical);
+  const oracle = foldSnapshot(canonical, coords);
+  const delayed = replicaCount - 1;
+
+  const sessions: TargetLayerSession[] = [];
+  for (let i = 0; i < replicaCount; i++) {
+    sessions.push(
+      await layerSession(target, {
+        replicaId: `testkit:sim:${i}`,
+        wall: () => 1_000,
+      }),
+    );
+  }
+
+  await withLayerSessions(sessions, async () => {
+    // Deterministic fault script:
+    // - replica N-1 starts as a delayed peer
+    // - initial delivery is shuffled and chunked across the other replicas
+    // - duplicate deliveries exercise idempotence
+    // - early exchanges happen only inside a partition
+    // - final anti-entropy floods all partitions until quiescence
+    const activeReplicas = replicaCount - 1;
+    for (let i = 0; i < activeReplicas; i++) {
+      const shard = canonical.filter((_, idx) => idx % activeReplicas === i);
+      const order = shuffled(rng, shard);
+      for (let at = 0; at < order.length; at += 4) {
+        const chunk = order.slice(at, at + 4);
+        await mergeInto(sessions[i]!, chunk);
+        if (at === 0) await mergeInto(sessions[i]!, chunk);
+      }
+    }
+
+    for (let i = 0; i < activeReplicas - 1; i++) {
+      await exchangeDeltasEffect(sessions[i]!, sessions[i + 1]!);
+    }
+
+    expect(
+      target,
+      !sameIds(await eventsFor(sessions[delayed]!), canonical),
+      "delayed replica should not converge while partitioned",
+    );
+
+    const delayedSeed = shuffled(rng, canonical).slice(0, Math.ceil(canonical.length / 5));
+    await mergeInto(sessions[delayed]!, delayedSeed);
+    await mergeInto(sessions[delayed]!, delayedSeed);
+
+    let quiesced = false;
+    for (let round = 0; round < replicaCount * 6; round++) {
+      let inserted = 0;
+      for (let i = 0; i < replicaCount; i++) {
+        const forward = await exchangeDeltasEffect(
+          sessions[i]!,
+          sessions[(i + 1) % replicaCount]!,
+        );
+        inserted += forward.insertedIntoA + forward.insertedIntoB;
+        if (round % 2 === 0) {
+          const backward = await exchangeDeltasEffect(
+            sessions[(i + 1) % replicaCount]!,
+            sessions[i]!,
+          );
+          inserted += backward.insertedIntoA + backward.insertedIntoB;
+        }
+      }
+      const allConverged = (
+        await Promise.all(sessions.map((session) => eventsFor(session)))
+      ).every((events) => sameIds(events, canonical));
+      if (allConverged && inserted === 0) {
+        quiesced = true;
+        break;
+      }
+    }
+
+    expect(target, quiesced, "deterministic simulation did not quiesce");
+
+    for (const session of sessions) {
+      const held = await eventsFor(session);
+      expect(
+        target,
+        sameIds(held, canonical),
+        "simulated replica event set diverged from canonical set",
+      );
+      expect(
+        target,
+        foldSnapshot(held, coords) === oracle,
+        "simulated replica fold diverged from core oracle",
+      );
+    }
+  });
+
+  return {
+    target: target.name,
+    checks: [
+      "deterministic-fault-simulation",
+      "partitioned-replica-catch-up",
+      "duplicate-delivery-idempotence",
+    ],
+  };
 }
 
 export async function runRuntimeProjectionConformance(
@@ -1298,6 +1724,8 @@ export async function runRuntimeConformance(
 ): Promise<ConformanceReport> {
   const store = await runEventStoreConformance(target);
   const convergence = await runRuntimeConvergenceConformance(target);
+  const permutation = await runRuntimeFoldPermutationConformance(target);
+  const simulation = await runRuntimeDeterministicSimulationConformance(target);
   const projection = await runRuntimeProjectionConformance(target);
   const query = await runRuntimeQueryConformance(target);
   return {
@@ -1305,6 +1733,8 @@ export async function runRuntimeConformance(
     checks: [
       ...store.checks,
       ...convergence.checks,
+      ...permutation.checks,
+      ...simulation.checks,
       ...projection.checks,
       ...query.checks,
     ],

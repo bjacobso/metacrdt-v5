@@ -589,6 +589,12 @@ describe("@metacrdt/node target", () => {
         "append-idempotent",
         "deterministic-fold-convergence",
         "idempotent-second-sync",
+        "anti-entropy-flood-convergence",
+        "fold-permutation-invariance",
+        "fold-oracle-agreement",
+        "deterministic-fault-simulation",
+        "partitioned-replica-catch-up",
+        "duplicate-delivery-idempotence",
       ]),
     });
   });
@@ -655,6 +661,12 @@ describe("@metacrdt/node target", () => {
         "append-idempotent",
         "deterministic-fold-convergence",
         "idempotent-second-sync",
+        "anti-entropy-flood-convergence",
+        "fold-permutation-invariance",
+        "fold-oracle-agreement",
+        "deterministic-fault-simulation",
+        "partitioned-replica-catch-up",
+        "duplicate-delivery-idempotence",
       ]),
     });
   });
@@ -680,6 +692,12 @@ describe("@metacrdt/node target", () => {
         "append-idempotent",
         "deterministic-fold-convergence",
         "idempotent-second-sync",
+        "anti-entropy-flood-convergence",
+        "fold-permutation-invariance",
+        "fold-oracle-agreement",
+        "deterministic-fault-simulation",
+        "partitioned-replica-catch-up",
+        "duplicate-delivery-idempotence",
       ]),
     });
   });

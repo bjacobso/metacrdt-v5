@@ -165,6 +165,7 @@ requires _no storage change at all_, because the convergence is already latent i
 | [`dsl.md`](./dsl.md)                     | End-to-end demo: a staffing company (I-9/handbook/forklift-quiz/venue-disclosure) defined with the Effect DSLs — the spec for an e2e test | demo / e2e    |
 | [`forma.md`](./forma.md)                 | A Lisp authoring surface that elaborates to one shared MetaCRDT DSL/IR, compiles to a Confect-shaped typed runtime, and lowers to Convex/Cloudflare/Node targets | authoring     |
 | [`assessment.md`](./assessment.md)       | Holistic review against the current product: value, gaps, steelman/strawman, recommendation, and alternatives                             | assessment    |
+| [`convergence.md`](./convergence.md)     | Can the log provably converge multi-replica? Verified research pass: G-Set/Merkle-CRDT/CALM theory, prior art to adopt, verification ladder | research      |
 
 **Reading order:** [`triples.md`](./triples.md) → [`workflows.md`](./workflows.md) →
 [`compliance.md`](./compliance.md) → [`library.md`](./library.md) → [`integrations.md`](./integrations.md) →

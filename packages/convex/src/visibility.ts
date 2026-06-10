@@ -43,14 +43,16 @@ export function foldEventsForFactProjection(fact: FactProjectionRow): {
     });
   }
   if (fact.tombstonedAt !== undefined) {
-    // Current Convex projection semantics hide tombstoned facts regardless of
-    // query txTime, so this synthetic fold event is effective from the start.
+    // SPEC §5.3: tombstone visibility is time-indexed (T.hlc.pt ≤ C.txTime) —
+    // before the tombstone landed, the assert was visible ("what was known
+    // then"). Keeps the facts projection in agreement with the core fold over
+    // factEvents at every coordinate.
     evs.push({
       ...SYS,
       id: `${assertEv.id}:tombstone`,
       kind: "tombstone",
       target: assertEv.id,
-      hlc: hlc(0),
+      hlc: hlc(fact.tombstonedAt),
     });
   }
   return { assertEv, log: fromEvents(evs) };

@@ -2,7 +2,7 @@ import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
-import { valueKey } from "./lib/visibility";
+import { isVisible, valueKey } from "./lib/visibility";
 import { attrId, BUILTIN_CARDINALITY } from "./lib/meta";
 import {
   canReadAttribute,
@@ -207,15 +207,19 @@ async function reconcileCardinalityOneCurrent(
     .collect();
   for (const row of existing) await ctx.db.delete("currentFacts", row._id);
 
-  await ctx.db.insert("currentFacts", {
-    e: winner.item.e,
-    a: winner.item.a,
-    v: winner.item.v,
-    factId: winner.item._id,
-    validFrom: winner.item.validFrom,
-    txTime: now,
-    updatedAt: now,
-  });
+  // Same now-visibility guard as upsertCurrentFact: a ≺-winning assert whose
+  // valid interval has already lapsed is not current.
+  if (isVisible(winner.item, { txTime: now, validTime: now })) {
+    await ctx.db.insert("currentFacts", {
+      e: winner.item.e,
+      a: winner.item.a,
+      v: winner.item.v,
+      factId: winner.item._id,
+      validFrom: winner.item.validFrom,
+      txTime: now,
+      updatedAt: now,
+    });
+  }
 
   return winner.item;
 }
@@ -266,6 +270,12 @@ async function upsertCurrentFact(
       await ctx.db.delete("currentFacts", row._id);
     }
   }
+
+  // currentFacts is the now-projection: only facts the core fold deems visible
+  // at (now, now) belong in it. Same predicate as rebuildProjections, so the
+  // write path and a rebuild agree (e.g. an assert whose validTo has already
+  // lapsed never surfaces as current).
+  if (!isVisible(fact, { txTime: now, validTime: now })) return;
 
   await ctx.db.insert("currentFacts", {
     e: fact.e,
