@@ -137,3 +137,14 @@ export {
   type InferResult,
   type InferAllResult,
 } from "./type/index.js";
+
+export {
+  inferAuthoritySource,
+  checkAuthority,
+  assertAttributesFromEffect,
+  type GrantFact,
+  type CheckAuthorityOptions,
+  type AuthorityManifest,
+  type AuthorityInferenceResult,
+  type AuthorityCheckResult,
+} from "./type/authority.js";
