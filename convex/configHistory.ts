@@ -10,7 +10,8 @@ type ConfigKind =
   | "form"
   | "flow"
   | "requirement"
-  | "action";
+  | "action"
+  | "view";
 
 type ConfigItem = {
   kind: ConfigKind;
@@ -33,6 +34,7 @@ const OWN_ATTR: Record<ConfigKind, string> = {
   flow: "owns.flow",
   requirement: "owns.requirement",
   action: "owns.action",
+  view: "owns.view",
 };
 const ATTR_KIND = new Map(
   Object.entries(OWN_ATTR).map(([kind, attr]) => [attr, kind as ConfigKind]),
@@ -120,6 +122,7 @@ function counts(keys: Set<string>): Record<ConfigKind, number> {
     flow: 0,
     requirement: 0,
     action: 0,
+    view: 0,
   };
   for (const key of keys) out[fromKey(key).kind]++;
   return out;
@@ -184,6 +187,7 @@ export const currentManifest = query({
       flow: [],
       requirement: [],
       action: [],
+      view: [],
     };
     for (const key of snap) {
       const item = fromKey(key);

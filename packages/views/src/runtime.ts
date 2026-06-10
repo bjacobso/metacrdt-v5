@@ -20,6 +20,7 @@ import type {
   ViewExprSource,
 } from "./generated/view-expression.generated.js";
 import type { ViewStateDecl } from "./generated/view-state.generated.js";
+import type { ViewSpec } from "./generated/view-spec.generated.js";
 
 // Re-export the plain types render targets commonly need, effect-free.
 export type {
@@ -40,6 +41,11 @@ export type ViewValue = unknown;
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function isRenderableViewSpec(value: unknown): value is ViewSpec {
+  if (!isRecord(value)) return false;
+  return isRecord(value["root"]);
 }
 
 // =============================================================================
@@ -243,6 +249,24 @@ function applyBinary(op: ViewExprBinary["op"], left: unknown, right: unknown): u
 
 function applyPipe(name: string, value: unknown, args: readonly unknown[]): unknown {
   switch (name) {
+    case "path":
+    case "get": {
+      const path = args.map((arg) => String(arg));
+      return readPath(value, path);
+    }
+    case "findBy": {
+      if (!Array.isArray(value)) return null;
+      const key = String(args[0] ?? "");
+      const expected = args[1];
+      if (key === "") return null;
+      return (
+        value.find(
+          (item) =>
+            isRecord(item) &&
+            (item as Record<string, unknown>)[key] === expected,
+        ) ?? null
+      );
+    }
     case "default":
       return value === null || value === undefined || value === "" ? (args[0] ?? null) : value;
     case "length":

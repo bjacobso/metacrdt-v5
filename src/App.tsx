@@ -9,6 +9,8 @@ import EntityDetail from "./pages/EntityDetail";
 import ComponentEntity from "./pages/ComponentEntity";
 import Compliance from "./pages/Compliance";
 import Flows from "./pages/Flows";
+import Views from "./pages/Views";
+import ViewPage from "./pages/ViewPage";
 import TransactionLog from "./pages/TransactionLog";
 import DataModel from "./pages/DataModel";
 import Collect from "./pages/Collect";
@@ -89,6 +91,8 @@ export default function App() {
         <Route path="/component/e/:id" element={<ComponentEntity />} />
         <Route path="/compliance" element={<Compliance />} />
         <Route path="/flows" element={<Flows />} />
+        <Route path="/views" element={<Views />} />
+        <Route path="/views/:name" element={<ViewPage />} />
         <Route path="/transactions" element={<TransactionLog />} />
         <Route path="/data-model" element={<DataModel />} />
         <Route path="*" element={<Overview />} />
