@@ -11,6 +11,7 @@
 | [`confect.md`](./confect.md) | What the whole backend becomes if written in **Effect** on Convex via [Confect](https://github.com/rjdellecese/confect) — schema, the config DSL, flows, and the Datalog engine rebuilt on Effect `Schema`. |
 | [`foldkit.md`](./foldkit.md) | The **client as a pure projection** — the Elm-architecture Model/Message/update stack in Effect, taken to "the client is a per-session fold of the log." |
 | [`alchemy.md`](./alchemy.md) | **Infrastructure as part of the program** — resources, bindings, deploys, and edge actors (R2, Queues, Durable-Object-per-group) modeled as one type-safe Effect program via [Alchemy](https://alchemy.run), with Convex as system of record. |
+| [`algebra-dsl.md`](./algebra-dsl.md) | **Operational Algebra as an Effect/Schema TS DSL** in the `HttpApi` idiom — `Algebra.make(...)` as data, executors as the boundary, authority as middleware, typed Datalog, and the §5 residue surfacing as the `R` channel. |
 
 Related, but committed reference rather than exploration: the substrate's runtime
 targets are described in [`../reference/targets.md`](../reference/targets.md).
