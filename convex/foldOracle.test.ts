@@ -74,11 +74,8 @@ async function currentProjectionValues(
   a: string,
 ): Promise<string[]> {
   return await t.run(async (ctx) => {
-    const rows = await ctx.db
-      .query("currentFacts")
-      .withIndex("by_e_a", (q) => q.eq("e", e).eq("a", a))
-      .collect();
-    return sortedKeys(rows.map((r) => r.v));
+    const rows = await ctx.db.query("currentFacts").collect();
+    return sortedKeys(rows.filter((r) => r.e === e && r.a === a).map((r) => r.v));
   });
 }
 
@@ -89,11 +86,10 @@ async function factsProjectionValues(
   coord: { txTime: number; validTime: number },
 ): Promise<string[]> {
   return await t.run(async (ctx) => {
-    const rows = await ctx.db
-      .query("facts")
-      .withIndex("by_e_a", (q) => q.eq("e", e).eq("a", a))
-      .collect();
-    return sortedKeys(rows.filter((f) => isVisible(f, coord)).map((f) => f.v));
+    const rows = await ctx.db.query("facts").collect();
+    return sortedKeys(
+      rows.filter((f) => f.e === e && f.a === a && isVisible(f, coord)).map((f) => f.v),
+    );
   });
 }
 
