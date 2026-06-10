@@ -11,6 +11,7 @@
 import type * as actions from "../actions.js";
 import type * as appconfig from "../appconfig.js";
 import type * as attributes from "../attributes.js";
+import type * as auth from "../auth.js";
 import type * as compliance from "../compliance.js";
 import type * as complianceConfect from "../complianceConfect.js";
 import type * as configHistory from "../configHistory.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   actions: typeof actions;
   appconfig: typeof appconfig;
   attributes: typeof attributes;
+  auth: typeof auth;
   compliance: typeof compliance;
   complianceConfect: typeof complianceConfect;
   configHistory: typeof configHistory;
@@ -117,4 +119,5 @@ export declare const internal: FilterApi<
 export declare const components: {
   selfHosting: import("@convex-dev/static-hosting/_generated/component.js").ComponentApi<"selfHosting">;
   metacrdt: import("@metacrdt/convex/_generated/component.js").ComponentApi<"metacrdt">;
+  betterAuth: import("@convex-dev/better-auth/_generated/component.js").ComponentApi<"betterAuth">;
 };

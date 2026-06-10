@@ -18,12 +18,14 @@ import {
   X,
   HelpCircle,
   LogIn,
+  LogOut,
   FileText,
 } from "lucide-react";
 import CommandMenu from "./CommandMenu";
 import GuidedTour, { tourDismissed } from "./GuidedTour";
 import { Button, Input } from "./ui";
 import { useWriteGate } from "./auth";
+import { authClient } from "./lib/auth-client";
 
 type Item = {
   to: string;
@@ -114,7 +116,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [newRole, setNewRole] = useState("driver");
   const [creating, setCreating] = useState(false);
   const [describeOpen, setDescribeOpen] = useState(false);
-  const { isAuthenticated, openAuthDialog, guardWrite } = useWriteGate();
+  const { isAuthenticated, isLoading, openAuthDialog, guardWrite } = useWriteGate();
   const createOwnedEntity = useMutation(api.metacrdtComponent.createOwnedEntity);
   const summary = useQuery(api.overview.summary, {});
   const compliance = useQuery(api.compliance.workerCompliance, {
@@ -170,7 +172,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     if (!isAuthenticated) {
       openAuthDialog({
         description:
-          "Creating a component-owned entity is a protected write. Configure and sign in with an auth provider before creating data.",
+          "Creating a component-owned entity is a protected write. Sign in with a Better Auth demo account before creating data.",
       });
       return;
     }
@@ -178,12 +180,33 @@ export default function Layout({ children }: { children: ReactNode }) {
   }
 
   function AuthStatus() {
-    if (isAuthenticated) {
+    const { data: session } = authClient.useSession();
+
+    if (isLoading) {
       return (
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-green/30 bg-green-soft px-2.5 py-1 text-[12px] font-medium text-green">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-[12px] font-medium text-muted">
           <CircleDot className="h-3.5 w-3.5" />
-          Signed in
+          Auth...
         </span>
+      );
+    }
+    if (isAuthenticated) {
+      const email = session?.user?.email ?? "Signed in";
+      return (
+        <div className="inline-flex items-center overflow-hidden rounded-full border border-green/30 bg-green-soft text-[12px] font-medium text-green">
+          <span className="inline-flex max-w-48 items-center gap-1.5 truncate px-2.5 py-1">
+            <CircleDot className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{email}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => void authClient.signOut()}
+            className="border-l border-green/20 px-2 py-1 transition-colors hover:bg-green/10"
+            title="Sign out"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+          </button>
+        </div>
       );
     }
     return (
@@ -192,7 +215,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         onClick={() =>
           openAuthDialog({
             description:
-              "Production login is intentionally provider-backed. Choose Convex Auth, Clerk, WorkOS, Auth0, or custom OIDC, then wire the provider to Convex.",
+              "Sign in or create a demo Better Auth account to run protected writes.",
           })
         }
       >
