@@ -1,0 +1,15 @@
+{
+  "unify-binds": { "kind": "string", "value": "onboarded" },
+  "unify-clash": { "kind": "bool", "value": true },
+  "where-count": { "kind": "int", "value": 2 },
+  "where-join": { "kind": "string", "value": "ben" },
+  "without-violation": { "kind": "string", "value": "alice" },
+  "violations-count": { "kind": "int", "value": 1 },
+  "can-true": { "kind": "bool", "value": true },
+  "can-false": { "kind": "bool", "value": false },
+  "opeval-refuses": { "kind": "int", "value": 0 },
+  "opeval-admits": { "kind": "int", "value": 2 },
+  "action-executes": { "kind": "bool", "value": true },
+  "obligate-once": { "kind": "int", "value": 1 },
+  "process-advances": { "kind": "string", "value": "handbook" }
+}
