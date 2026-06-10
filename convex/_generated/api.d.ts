@@ -11,6 +11,7 @@
 import type * as actions from "../actions.js";
 import type * as appconfig from "../appconfig.js";
 import type * as attributes from "../attributes.js";
+import type * as auth from "../auth.js";
 import type * as compliance from "../compliance.js";
 import type * as complianceConfect from "../complianceConfect.js";
 import type * as configHistory from "../configHistory.js";
@@ -22,6 +23,7 @@ import type * as flows from "../flows.js";
 import type * as forms from "../forms.js";
 import type * as http from "../http.js";
 import type * as lib_actionDefs from "../lib/actionDefs.js";
+import type * as lib_collect from "../lib/collect.js";
 import type * as lib_collectRuns from "../lib/collectRuns.js";
 import type * as lib_coreEvent from "../lib/coreEvent.js";
 import type * as lib_engine from "../lib/engine.js";
@@ -32,6 +34,7 @@ import type * as lib_obligations from "../lib/obligations.js";
 import type * as lib_origin from "../lib/origin.js";
 import type * as lib_readAuth from "../lib/readAuth.js";
 import type * as lib_visibility from "../lib/visibility.js";
+import type * as lib_workflow from "../lib/workflow.js";
 import type * as lib_writeAuth from "../lib/writeAuth.js";
 import type * as materialize from "../materialize.js";
 import type * as metacrdtComponent from "../metacrdtComponent.js";
@@ -52,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   actions: typeof actions;
   appconfig: typeof appconfig;
   attributes: typeof attributes;
+  auth: typeof auth;
   compliance: typeof compliance;
   complianceConfect: typeof complianceConfect;
   configHistory: typeof configHistory;
@@ -63,6 +67,7 @@ declare const fullApi: ApiFromModules<{
   forms: typeof forms;
   http: typeof http;
   "lib/actionDefs": typeof lib_actionDefs;
+  "lib/collect": typeof lib_collect;
   "lib/collectRuns": typeof lib_collectRuns;
   "lib/coreEvent": typeof lib_coreEvent;
   "lib/engine": typeof lib_engine;
@@ -73,6 +78,7 @@ declare const fullApi: ApiFromModules<{
   "lib/origin": typeof lib_origin;
   "lib/readAuth": typeof lib_readAuth;
   "lib/visibility": typeof lib_visibility;
+  "lib/workflow": typeof lib_workflow;
   "lib/writeAuth": typeof lib_writeAuth;
   materialize: typeof materialize;
   metacrdtComponent: typeof metacrdtComponent;
@@ -113,4 +119,5 @@ export declare const internal: FilterApi<
 export declare const components: {
   selfHosting: import("@convex-dev/static-hosting/_generated/component.js").ComponentApi<"selfHosting">;
   metacrdt: import("@metacrdt/convex/_generated/component.js").ComponentApi<"metacrdt">;
+  betterAuth: import("@convex-dev/better-auth/_generated/component.js").ComponentApi<"betterAuth">;
 };
