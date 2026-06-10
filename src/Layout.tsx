@@ -7,6 +7,7 @@ import {
   Boxes,
   ShieldCheck,
   Workflow,
+  PanelsTopLeft,
   Database,
   History,
   Library,
@@ -89,6 +90,7 @@ const TITLES: Record<string, string> = {
   "/entities": "Entities",
   "/compliance": "Compliance",
   "/flows": "Flows",
+  "/views": "Views",
   "/data-model": "Data model",
   "/transactions": "Transaction log",
 };
@@ -123,6 +125,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     worker: "worker:maria",
   });
   const defs = useQuery(api.flows.listFlowDefs, {});
+  const views = useQuery(api.views.listViews, {});
   const activity = useQuery(
     api.overview.recentActivity,
     describeOpen ? { limit: 5 } : "skip",
@@ -134,6 +137,8 @@ export default function Layout({ children }: { children: ReactNode }) {
       ? "Component entity"
       : pathname.startsWith("/e/")
         ? "Entity"
+        : pathname.startsWith("/views/")
+          ? "View"
         : "Triple Store");
 
   async function createEntity(ev: FormEvent) {
@@ -239,6 +244,12 @@ export default function Layout({ children }: { children: ReactNode }) {
       label: "Flows",
       icon: <Workflow className={ICON} />,
       badge: defs?.length,
+    },
+    {
+      to: "/views",
+      label: "Views",
+      icon: <PanelsTopLeft className={ICON} />,
+      badge: views?.length,
     },
   ];
   const configure: Item[] = [

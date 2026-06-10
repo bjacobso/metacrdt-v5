@@ -14,6 +14,8 @@ import {
 } from "./lib/meta";
 import { assertInTx, createTransaction, retractInTx } from "./facts";
 import { requireWritePrincipal } from "./lib/writeAuth";
+import { project, runWhere } from "./lib/engine";
+import { eventLogTripleSource } from "./lib/eventLogTripleSource";
 
 // Schema-as-facts: attribute definitions, entity-type definitions, and
 // type→attribute membership are all bitemporal triples. Nothing here writes to
@@ -45,6 +47,24 @@ async function visibleRowsAsOf(
     .withIndex("by_e", (q) => q.eq("e", e))
     .take(2000);
   return rows.filter((r) => isVisible(r, coord));
+}
+
+async function declaredAttributesAsOf(
+  ctx: QueryCtx,
+  type: string,
+  coord: { txTime: number; validTime: number },
+): Promise<string[]> {
+  const rows = project(
+    await runWhere(
+      ctx,
+      [[typeId(type), "hasAttribute", "?attribute"]],
+      coord,
+      {},
+      { source: eventLogTripleSource },
+    ),
+    ["?attribute"],
+  );
+  return rows.map((r) => attrNameOf(String(r.attribute))).sort();
 }
 
 // --- mutations --------------------------------------------------------------
@@ -240,11 +260,7 @@ export const typeSchemaAsOf = query({
       txTime: args.txTime ?? Date.now(),
       validTime: args.validTime ?? Date.now(),
     };
-    const rows = await visibleRowsAsOf(ctx, typeId(args.type), coord);
-    const attributes = rows
-      .filter((r) => r.a === "hasAttribute")
-      .map((r) => attrNameOf(String(r.v)))
-      .sort();
+    const attributes = await declaredAttributesAsOf(ctx, args.type, coord);
     const columns = [];
     for (const name of attributes) {
       const attrRows = await visibleRowsAsOf(ctx, attrId(name), coord);

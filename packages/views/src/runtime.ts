@@ -243,6 +243,24 @@ function applyBinary(op: ViewExprBinary["op"], left: unknown, right: unknown): u
 
 function applyPipe(name: string, value: unknown, args: readonly unknown[]): unknown {
   switch (name) {
+    case "path":
+    case "get": {
+      const path = args.map((arg) => String(arg));
+      return readPath(value, path);
+    }
+    case "findBy": {
+      if (!Array.isArray(value)) return null;
+      const key = String(args[0] ?? "");
+      const expected = args[1];
+      if (key === "") return null;
+      return (
+        value.find(
+          (item) =>
+            isRecord(item) &&
+            (item as Record<string, unknown>)[key] === expected,
+        ) ?? null
+      );
+    }
     case "default":
       return value === null || value === undefined || value === "" ? (args[0] ?? null) : value;
     case "length":

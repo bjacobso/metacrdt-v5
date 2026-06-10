@@ -33,6 +33,7 @@ import type * as lib_meta from "../lib/meta.js";
 import type * as lib_obligations from "../lib/obligations.js";
 import type * as lib_origin from "../lib/origin.js";
 import type * as lib_readAuth from "../lib/readAuth.js";
+import type * as lib_viewDefs from "../lib/viewDefs.js";
 import type * as lib_visibility from "../lib/visibility.js";
 import type * as lib_workflow from "../lib/workflow.js";
 import type * as lib_writeAuth from "../lib/writeAuth.js";
@@ -44,6 +45,7 @@ import type * as rebuild from "../rebuild.js";
 import type * as rules from "../rules.js";
 import type * as staticHosting from "../staticHosting.js";
 import type * as system from "../system.js";
+import type * as views from "../views.js";
 
 import type {
   ApiFromModules,
@@ -77,6 +79,7 @@ declare const fullApi: ApiFromModules<{
   "lib/obligations": typeof lib_obligations;
   "lib/origin": typeof lib_origin;
   "lib/readAuth": typeof lib_readAuth;
+  "lib/viewDefs": typeof lib_viewDefs;
   "lib/visibility": typeof lib_visibility;
   "lib/workflow": typeof lib_workflow;
   "lib/writeAuth": typeof lib_writeAuth;
@@ -88,6 +91,7 @@ declare const fullApi: ApiFromModules<{
   rules: typeof rules;
   staticHosting: typeof staticHosting;
   system: typeof system;
+  views: typeof views;
 }>;
 
 /**

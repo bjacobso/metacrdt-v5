@@ -5,7 +5,7 @@ import {
   type ViewNode,
   type ViewTableColumn,
 } from "@metacrdt/views/runtime";
-import { Mono, StatusBadge } from "../ui";
+import { Button, Card, CardHeader, Chip, Mono, StatusBadge } from "../ui";
 
 // Phase 3 of specs/plans/views.md — a MINIMAL ViewSpec -> React renderer, inline in
 // the app. It covers exactly the nodes the Entities list needs (rows, columns,
@@ -19,6 +19,10 @@ import { Mono, StatusBadge } from "../ui";
 export type ViewRow = Record<string, unknown>;
 
 export interface ViewRenderContext extends ViewExpressionContext {
+  readonly dispatch?: (
+    actionOrList: unknown,
+    scope?: Partial<ViewExpressionContext>,
+  ) => void;
   /** Host action: invoked when a table row is activated (the spec only declares intent). */
   readonly onRowActivate?: (row: ViewRow) => void;
 }
@@ -34,6 +38,19 @@ function display(value: unknown): string {
 
 function normalizeColumn(col: string | ViewTableColumn): ViewTableColumn {
   return typeof col === "string" ? { key: col } : col;
+}
+
+function renderChildren(nodes: readonly ViewNode[], ctx: ViewRenderContext) {
+  return nodes.map((child, i) => <ViewRenderer key={i} node={child} ctx={ctx} />);
+}
+
+function buttonVariant(
+  variant: Extract<ViewNode, { type: "button" }>["variant"],
+): Parameters<typeof Button>[0]["variant"] {
+  if (variant === "default") return "primary";
+  if (variant === "destructive") return "collect";
+  if (variant === "ghost" || variant === "link") return "ghost";
+  return "outline";
 }
 
 function Cell({ value, kind }: { value: unknown; kind?: ViewTableColumn["kind"] }) {
@@ -63,7 +80,9 @@ function TableNode({
     );
   }
 
-  const clickable = Boolean(node.events?.onRowClick && ctx.onRowActivate);
+  const clickable = Boolean(
+    node.events?.onRowClick && (ctx.dispatch || ctx.onRowActivate),
+  );
 
   return (
     <div className="overflow-x-auto">
@@ -81,7 +100,17 @@ function TableNode({
           {rows.map((row, i) => (
             <tr
               key={display(row["id"]) || i}
-              onClick={clickable ? () => ctx.onRowActivate?.(row) : undefined}
+              onClick={
+                clickable
+                  ? () => {
+                      if (ctx.dispatch) {
+                        ctx.dispatch(node.events?.onRowClick, { $row: row });
+                      } else {
+                        ctx.onRowActivate?.(row);
+                      }
+                    }
+                  : undefined
+              }
               className={clickable ? "cursor-pointer hover:bg-line-soft" : undefined}
             >
               {columns.map((col) => (
@@ -111,19 +140,40 @@ export function ViewRenderer({
     case "rows":
       return (
         <div className="flex flex-col gap-3">
-          {childrenOf(node).map((child, i) => (
-            <ViewRenderer key={i} node={child} ctx={ctx} />
-          ))}
+          {renderChildren(childrenOf(node), ctx)}
         </div>
       );
     case "columns":
       return (
-        <div className="flex gap-3">
-          {childrenOf(node).map((child, i) => (
-            <ViewRenderer key={i} node={child} ctx={ctx} />
-          ))}
+        <div className="flex flex-wrap items-center gap-3">
+          {renderChildren(childrenOf(node), ctx)}
         </div>
       );
+    case "card": {
+      const title = display(evaluateViewExpression(node.title, ctx));
+      const description = display(evaluateViewExpression(node.description, ctx));
+      const action = (node as { action?: readonly ViewNode[] }).action ?? [];
+      const footer = (node as { footer?: readonly ViewNode[] }).footer ?? [];
+      return (
+        <Card>
+          {(title || description || action.length > 0) && (
+            <CardHeader
+              title={title}
+              hint={description}
+              right={<div className="flex gap-2">{renderChildren(action, ctx)}</div>}
+            />
+          )}
+          <div className="space-y-3 px-5 py-4">
+            {renderChildren(childrenOf(node), ctx)}
+          </div>
+          {footer.length > 0 && (
+            <div className="border-t border-line-soft px-5 py-3">
+              {renderChildren(footer, ctx)}
+            </div>
+          )}
+        </Card>
+      );
+    }
     case "heading": {
       const text = display(evaluateViewExpression(node.text, ctx));
       const level = node.level ?? 2;
@@ -134,6 +184,69 @@ export function ViewRenderer({
       const text = display(evaluateViewExpression(node.content ?? node.bind, ctx));
       return <span className="text-[13px] text-ink-2">{text}</span>;
     }
+    case "badge": {
+      const text = display(evaluateViewExpression(node.content, ctx));
+      return text ? <StatusBadge status={text} /> : <Chip>None</Chip>;
+    }
+    case "button": {
+      const disabled = Boolean(evaluateViewExpression(node.disabled, ctx));
+      const label = display(evaluateViewExpression(node.label, ctx));
+      return (
+        <Button
+          variant={buttonVariant(node.variant)}
+          disabled={disabled}
+          onClick={() => ctx.dispatch?.(node.events?.onClick)}
+        >
+          {childrenOf(node).length > 0
+            ? renderChildren(childrenOf(node), ctx)
+            : label}
+        </Button>
+      );
+    }
+    case "stat-group":
+      return (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {renderChildren(childrenOf(node), ctx)}
+        </div>
+      );
+    case "metric": {
+      const label = display(evaluateViewExpression(node.label, ctx));
+      const value = display(evaluateViewExpression(node.value ?? node.bind, ctx));
+      return (
+        <div className="rounded-ds border border-line bg-surface px-4 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+            {label}
+          </div>
+          <div className="tnum mt-2 text-2xl font-semibold text-ink">
+            {value || "0"}
+          </div>
+        </div>
+      );
+    }
+    case "divider":
+    case "separator":
+      return <div className="h-px w-full bg-line-soft" />;
+    case "condition": {
+      const children = childrenOf(node);
+      const chosen =
+        children.find(
+          (child) =>
+            child.type === "case" &&
+            Boolean(
+              evaluateViewExpression(
+                (child as Extract<ViewNode, { type: "case" }>).when,
+                ctx,
+              ),
+            ),
+        ) ?? children.find((child) => child.type === "else");
+      return chosen ? <ViewRenderer node={chosen} ctx={ctx} /> : null;
+    }
+    case "case":
+      return Boolean(evaluateViewExpression(node.when, ctx)) ? (
+        <>{renderChildren(childrenOf(node), ctx)}</>
+      ) : null;
+    case "else":
+      return <>{renderChildren(childrenOf(node), ctx)}</>;
     case "empty-state":
       return (
         <p className="px-5 py-4 text-[13px] text-muted">
@@ -143,7 +256,10 @@ export function ViewRenderer({
     case "table":
       return <TableNode node={node} ctx={ctx} />;
     default:
-      // Unsupported node kinds render nothing in this minimal renderer.
-      return null;
+      return (
+        <div className="rounded-md border border-orange/30 bg-orange-soft px-3 py-2 text-[12px] text-orange-ink">
+          Unsupported view node: <Mono>{node.type}</Mono>
+        </div>
+      );
   }
 }

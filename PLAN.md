@@ -1,526 +1,232 @@
-# Better Auth Component Setup Plan
+# Views Tab — ontology-defined views, listed, rendered, and action-bound
+
+> Replaces the previous PLAN.md (Better Auth setup), which shipped in PR #8.
 
 ## Goal
 
-Install and wire `@convex-dev/better-auth` as this app's real authentication
-provider so the hosted demo can support sign-in, protected Convex writes, and
-future production auth without a custom dummy JWT issuer.
+Add a **Views** tab to the sidebar. Clicking it lists every view defined in the
+tenant's ontology (as ViewSpec definitions stored schema-as-facts, like actions
+and flows already are). Clicking a view renders it with the ViewSpec renderer,
+binds its declared `queries` to **live Convex subscriptions**, and binds its
+declared events/actions so a button in a view can execute a real ontology
+action (`api.actions.runAction`) — the same loop Open Ontology workspaces have
+(see `.context/open-ontology`, `packages/web/app/components/workspaces/`).
 
-The first usable slice should support easy demo auth online. Prefer Better
-Auth's supported email/password or anonymous flows over a client-only bypass.
-The backend must continue deriving identity from Convex auth through
-`ctx.auth.getUserIdentity()`.
+This is the vertical slice through phases 4–6 of `specs/plans/views.md`:
+stored view definitions (a slice of phase 6's "ontology produces specs"), an
+edge binding layer (phase 5), and a grown-up renderer (phase 4's precursor).
+Update that doc's status table when this lands.
 
-## Source Documentation
+## Reference: how Open Ontology does it (`.context/open-ontology`)
 
-- Component package: `@convex-dev/better-auth`
-- Install command from component docs:
-  `npm install @convex-dev/better-auth`
-- Convex component markdown:
-  `https://www.convex.dev/components/better-auth/better-auth.md`
-- Convex component `llms.txt`:
-  `https://www.convex.dev/components/better-auth/llms.txt`
-- Full Convex + Better Auth docs:
-  `https://labs.convex.dev/better-auth`
-- React/Vite guide:
-  `https://labs.convex.dev/better-auth/framework-guides/react`
-- Authorization guide:
-  `https://labs.convex.dev/better-auth/basic-usage/authorization`
-- Better Auth test utilities:
-  `https://better-auth.com/llms.txt/docs/plugins/test-utils.md`
-- Better Auth anonymous plugin:
-  `https://better-auth.com/llms.txt/docs/plugins/anonymous.md`
+The loop we are porting, adapted to this repo's Convex substrate:
 
-## Current Repo State
+| Concern | Open Ontology | This repo (target) |
+|---|---|---|
+| Definition | `define-view` / `define-workspace` Lisp forms → compiled ViewSpec, persisted as triples (`[?id, ":system/type", "View"]` + `:view:definition`) — `packages/runtime/src/views/ViewService.ts` | View defs as **schema-as-facts** on `view:<name>` entities, installed by config-as-code (`convex/appconfig.ts`), exactly like `action:<name>` defs |
+| Listing | `ViewService.list()` → `allViewsAtom` → workspace sidebar nav (`WorkspaceBlocks.tsx`) | `api.views.listViews` Convex query → `/views` page + sidebar badge |
+| Rendering | `ViewRenderer.tsx` `nodeRenderers` map over 40+ component types | Extend `src/views/ViewRenderer.tsx` (already covers the Entities subset) |
+| Query binding | `runSingleQuery` fetch per binding + state-dependency re-run | `queryRef` → allowlisted Convex query via `useQueries` — **live by construction**, no re-run machinery needed |
+| Actions | `runtime.dispatch()` switch over `ViewAction` variants; `executeAction` → ActionExecutionService | `dispatch()` switch in a `useViewHost` hook; `executeAction` → `api.actions.runAction`, gated by `useWriteGate` |
 
-- Package manager is `pnpm@10.20.0`.
-- `convex` is already `^1.40.0`, which satisfies the component's documented
-  `convex >= 1.25.0` requirement.
-- `convex/auth.config.ts` exists but intentionally fails closed with
-  `providers: []`.
-- `src/main.tsx` already wraps the app in `ConvexProviderWithAuth`, but the
-  current `useNoAuthProvider` always returns signed out and no access token.
-- `src/auth.tsx` has app-level auth UI state and write gates based on
-  `useConvexAuth()`.
-- Protected writes already expect server-derived identity and should remain
-  protected.
-- `convex/convex.config.ts` already registers:
-  - `@convex-dev/static-hosting`
-  - `@metacrdt/convex`
-- `convex/http.ts` currently registers static hosting with `spaFallback: true`.
-  Better Auth routes must be registered before static hosting routes.
+Key simplification vs OO: Convex `useQuery` subscriptions are reactive, so the
+"action ran → re-run queries" plumbing (OO's `run-queries` callbacks, depMap
+re-execution) mostly disappears — execute the action and the bound data
+updates itself. That live-update moment is the demo payoff.
 
-## Recommendation
+## Layering rules (do not violate)
 
-Use Better Auth as the demo and eventual production auth substrate.
+From `specs/plans/views.md` (and memory): `@metacrdt/views` stays
+**query-agnostic and render-agnostic**.
 
-For the immediate online demo, use one of these two blessed development paths:
+- The app imports **only** `@metacrdt/views/runtime` (effect-free, ~5 kB).
+  Never the main entry — it drags the Effect Schema IR into the bundle
+  (the +260 kB regression documented in views.md).
+- Query bindings stay **opaque** to the views package. Resolution of
+  `queryRef` → Convex function lives in the app (the "edge binding layer").
+- The renderer stays a render *target*: it never executes queries; data and
+  dispatch arrive via the host-provided context.
+- View **specs are app/tenant content**; the package owns only the contract.
 
-1. Email/password with `requireEmailVerification: false`
-   - Best when we want demo users to enter visible dummy emails.
-   - Supports "accept dummy emails" by allowing normal sign-up/sign-in with a
-     known demo password.
-   - This is not a test bypass; it creates real Better Auth users and Convex JWT
-     sessions.
+## Storage model — `view:<name>` schema-as-facts
 
-2. Anonymous plugin
-   - Best when we want one-click "Continue as guest."
-   - Official Better Auth plugin and listed as supported by the Convex
-     integration.
-   - Can later link anonymous users to email/password accounts.
+Mirror the action-def pattern (`convex/actions.ts` header comment):
 
-For automated tests, use Better Auth's `testUtils()` plugin only in a test-only
-auth instance. Do not add `testUtils()` to the production auth config.
-
-## Non-Negotiable Auth Invariants
-
-- Do not accept a user ID, email, or role from client arguments for
-  authorization.
-- Keep write authorization based on `ctx.auth.getUserIdentity()`.
-- Prefer `identity.tokenIdentifier` for durable identity keys.
-- Use Convex auth state (`useConvexAuth()`, `<Authenticated>`,
-  `<Unauthenticated>`, `<AuthLoading>`) for UI gates that call authenticated
-  Convex functions.
-- Do not use Better Auth `useSession()` as the only signal before calling
-  protected Convex functions, because Convex still needs to validate the token.
-- Do not ship a client-only dummy auth provider.
-
-## Phase 1: Install Packages
-
-Run:
-
-```bash
-pnpm add @convex-dev/better-auth better-auth@~1.6.15
+```
+(view:<name>, type,        "View")
+(view:<name>, label,       "Worker roster")          // display title
+(view:<name>, description, "All workers with …")     // optional
+(view:<name>, spec,        { …ViewSpec v2 JSON… })   // the whole envelope, one fact value
 ```
 
-The component docs show `npm install @convex-dev/better-auth`; the React/Vite
-guide also installs Better Auth itself and pins it near `1.6.15`.
-
-After install:
-
-```bash
-pnpm exec convex dev
-```
-
-Keep `convex dev` running while adding component files so generated types update.
-
-## Phase 2: Register the Convex Component
-
-Edit `convex/convex.config.ts`.
-
-Add:
-
-```ts
-import betterAuth from "@convex-dev/better-auth/convex.config";
-```
-
-Then register it alongside existing components:
-
-```ts
-const app = defineApp();
-app.use(selfHosting);
-app.use(metacrdtConvex, { name: "metacrdt" });
-app.use(betterAuth);
-```
-
-Open question: register `betterAuth` before or after `metacrdt`. The docs do not
-require a specific order. Use the default name `betterAuth` because docs and
-generated `components.betterAuth` examples assume it.
-
-## Phase 3: Configure Convex JWT Auth
-
-Replace the fail-closed `convex/auth.config.ts` with Better Auth's provider.
-
-Expected shape:
-
-```ts
-import { getAuthConfigProvider } from "@convex-dev/better-auth/auth-config";
-import type { AuthConfig } from "convex/server";
-
-export default {
-  providers: [getAuthConfigProvider()],
-} satisfies AuthConfig;
-```
-
-This is the piece that makes `ctx.auth.getUserIdentity()` non-null when the
-client has a valid Better Auth Convex JWT.
-
-## Phase 4: Create the Better Auth Server
-
-Add `convex/auth.ts`.
-
-Use the React/Vite guide's starter shape:
-
-```ts
-import { createClient, type GenericCtx } from "@convex-dev/better-auth";
-import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
-import { components } from "./_generated/api";
-import type { DataModel } from "./_generated/dataModel";
-import { query } from "./_generated/server";
-import { betterAuth } from "better-auth/minimal";
-import authConfig from "./auth.config";
-
-const siteUrl = process.env.SITE_URL!;
-
-export const authComponent = createClient<DataModel>(components.betterAuth);
-
-export const createAuth = (ctx: GenericCtx<DataModel>) => {
-  return betterAuth({
-    baseURL: process.env.CONVEX_SITE_URL,
-    trustedOrigins: [siteUrl],
-    database: authComponent.adapter(ctx),
-    emailAndPassword: {
-      enabled: true,
-      requireEmailVerification: false,
-    },
-    plugins: [
-      crossDomain({ siteUrl }),
-      convex({ authConfig }),
-    ],
-  });
-};
-
-export const getCurrentUser = query({
-  args: {},
-  handler: async (ctx) => {
-    return authComponent.getAuthUser(ctx);
-  },
-});
-```
-
-Notes:
-
-- Use `better-auth/minimal` to keep Convex bundle size down.
-- Keep `requireEmailVerification: false` for the demo slice.
-- Add social providers later, after the basic flow is working.
-- Consider `registerRoutesLazy()` in `convex/http.ts` if Convex reports bundle
-  memory issues.
-
-## Phase 5: Mount Better Auth HTTP Routes
-
-Edit `convex/http.ts`.
-
-Register Better Auth routes before static hosting:
-
-```ts
-import { httpRouter } from "convex/server";
-import { registerStaticRoutes } from "@convex-dev/static-hosting";
-import { authComponent, createAuth } from "./auth";
-import { components } from "./_generated/api";
-
-const http = httpRouter();
-
-authComponent.registerRoutes(http, createAuth, { cors: true });
-
-registerStaticRoutes(http, components.selfHosting, {
-  spaFallback: true,
-});
-
-export default http;
-```
-
-Route ordering matters because static hosting uses SPA fallback for unmatched
-paths. Auth routes must be installed first.
-
-## Phase 6: Create the Frontend Auth Client
-
-Add `src/lib/auth-client.ts`.
-
-```ts
-import { createAuthClient } from "better-auth/react";
-import {
-  convexClient,
-  crossDomainClient,
-} from "@convex-dev/better-auth/client/plugins";
-
-export const authClient = createAuthClient({
-  baseURL: import.meta.env.VITE_CONVEX_SITE_URL,
-  plugins: [convexClient(), crossDomainClient()],
-});
-```
-
-If we add anonymous auth in Phase 10, also add `anonymousClient()` from Better
-Auth's client plugins.
-
-## Phase 7: Replace the No-Auth Provider
-
-Edit `src/main.tsx`.
-
-Replace `ConvexProviderWithAuth` and `useNoAuthProvider` with
-`ConvexBetterAuthProvider`.
-
-Expected shape:
-
-```tsx
-import { ConvexReactClient } from "convex/react";
-import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
-import { authClient } from "./lib/auth-client";
-
-const convex = new ConvexReactClient(convexUrl, {
-  expectAuth: true,
-});
-
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <ConvexBetterAuthProvider client={convex} authClient={authClient}>
-      <AuthUiProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </AuthUiProvider>
-    </ConvexBetterAuthProvider>
-  </React.StrictMode>,
-);
-```
-
-Open question: `expectAuth: true` pauses unauthenticated queries. This app has
-public read surfaces today, so test carefully. If public reads stall signed out,
-omit `expectAuth: true` and keep write gates signed-in only.
-
-## Phase 8: Update Auth UI
-
-Edit `src/auth.tsx` and `src/Layout.tsx`.
-
-Minimum demo UI:
-
-- Signed-out state:
-  - "Sign in" button opens a real form.
-  - Form fields:
-    - email
-    - password
-  - Buttons:
-    - "Sign in"
-    - "Create demo account"
-- Signed-in state:
-  - show current user email if available
-  - show "Sign out"
-- Errors:
-  - invalid email
-  - weak password
-  - wrong credentials
-  - auth service unavailable
-
-Implementation details:
-
-- `Create demo account` calls `authClient.signUp.email`.
-- `Sign in` calls `authClient.signIn.email`.
-- `Sign out` calls `authClient.signOut`.
-- Keep `useWriteGate()` based on `useConvexAuth()`.
-- Do not let Better Auth's client session alone enable protected write controls.
-
-Demo defaults:
-
-- Suggested email: `demo@example.com`
-- Suggested password: `password1234`
-- Do not prefill a real user's email.
-- Keep UI copy clear that this is a demo account, not verified production auth.
-
-## Phase 9: Required Environment Variables
-
-Convex deployment env:
-
-```bash
-pnpm exec convex env set BETTER_AUTH_SECRET "$(openssl rand -base64 32)"
-pnpm exec convex env set SITE_URL http://localhost:5173
-```
-
-Frontend `.env.local` for local Vite:
-
-```env
-CONVEX_DEPLOYMENT=dev:your-deployment-name
-VITE_CONVEX_URL=https://your-deployment.convex.cloud
-VITE_CONVEX_SITE_URL=https://your-deployment.convex.site
-```
-
-For hosted static deployment:
-
-```bash
-pnpm exec convex env set SITE_URL https://your-deployment.convex.site
-```
-
-If the frontend is hosted somewhere other than `.convex.site`, use that hosted
-frontend origin for Convex `SITE_URL`. Keep `VITE_CONVEX_SITE_URL` pointed at
-the Convex `.site` origin that serves Better Auth HTTP routes.
-
-Future OAuth provider env vars:
-
-- Google:
-  - provider client ID
-  - provider client secret
-  - authorized redirect URI:
-    `https://your-deployment.convex.site/api/auth/callback/google`
-- GitHub:
-  - provider client ID
-  - provider client secret
-  - callback URL:
-    `https://your-deployment.convex.site/api/auth/callback/github`
-
-## Phase 10: Blessed Dev and Testing Auth Options
-
-### Development Demo Auth
-
-Use email/password with verification disabled for the first pass:
-
-```ts
-emailAndPassword: {
-  enabled: true,
-  requireEmailVerification: false,
-}
-```
-
-This is the most direct replacement for "dummy emails." It still persists real
-users, sessions, and accounts through Better Auth and the Convex component.
-
-### One-Click Guest Auth
-
-If the demo should avoid passwords, add the Anonymous plugin later.
-
-Server:
-
-```ts
-import { anonymous } from "better-auth/plugins/anonymous";
-
-plugins: [
-  anonymous(),
-  crossDomain({ siteUrl }),
-  convex({ authConfig }),
-]
-```
-
-Client:
-
-```ts
-import { anonymousClient } from "better-auth/client/plugins";
-
-plugins: [convexClient(), crossDomainClient(), anonymousClient()]
-```
-
-Then the UI can call:
-
-```ts
-await authClient.signIn.anonymous();
-```
-
-The Convex component docs list Anonymous as a supported plugin.
-
-### Automated Tests
-
-Use Better Auth's `testUtils()` plugin only in a test-only auth instance.
-
-Do not include `testUtils()` in the production `createAuth` config. It does not
-create public routes, but it exposes privileged server-side helpers through
-`ctx.test`, so keep it out of shipped auth code.
-
-Use test utils to:
-
-- create users
-- save users
-- create sessions
-- produce auth headers/cookies for integration or browser tests
-- capture OTPs if we later use email OTP
-
-## Phase 11: Authorization Integration
-
-After Better Auth is wired, review protected Convex functions.
-
-Keep this pattern:
-
-```ts
-const identity = await ctx.auth.getUserIdentity();
-if (identity === null) {
-  throw new Error("Not authenticated");
-}
-```
-
-If app-level user details are needed, use:
-
-```ts
-const user = await authComponent.getAuthUser(ctx);
-```
-
-Guidance:
-
-- Use `ctx.auth.getUserIdentity()` for fast auth presence and JWT claims.
-- Use `authComponent.getAuthUser(ctx)` when session validation or Better Auth
-  user data is needed.
-- Do not add a parallel `users` table unless a feature needs app-specific user
-  profile data outside Better Auth.
-
-## Phase 12: Verification
-
-Static checks:
-
-```bash
-pnpm typecheck
-pnpm exec vitest run convex/writeAuth.test.ts
-```
-
-Local app verification:
-
-```bash
-pnpm exec convex dev
-pnpm dev:web
-```
-
-Manual flow:
-
-1. Open `http://localhost:5173`.
-2. Confirm signed-out UI renders without protected write access.
-3. Click Sign in.
-4. Create a demo account with `demo@example.com` and `password1234`.
-5. Confirm `useConvexAuth()` reports authenticated and the layout shows signed
-   in.
-6. Create a component-owned entity.
-7. Confirm the write succeeds.
-8. Confirm the backend author/principal comes from Convex auth, not a client
-   argument.
-9. Sign out.
-10. Confirm protected writes are blocked again.
-
-Hosted verification:
-
-1. Set hosted `SITE_URL`.
-2. Deploy Convex functions.
-3. Build and deploy static hosting.
-4. Open the hosted URL.
-5. Repeat the manual flow above.
-6. Confirm auth cookies and callbacks use the `.convex.site` auth origin.
-
-Debugging:
-
-- Enable backend verbose logs with `createClient(components.betterAuth, {
-  verbose: true })` if needed.
-- Enable Convex client verbose logs if token handoff is unclear.
-- If Convex code push reports memory pressure, use `registerRoutesLazy()` and
-  Better Auth plugin subpath imports.
-
-## Phase 13: Production Follow-Up
-
-Before calling this production-ready:
-
-- Decide whether email verification is required.
-- Add transactional email for verification and password reset.
-- Decide whether sign-up should be open or invite-only.
-- Add OAuth providers if needed.
-- Add account recovery UX.
-- Add rate-limit and abuse controls if public sign-up is enabled.
-- Review cookie/domain behavior for final hosting domain.
-- Add end-to-end auth tests around sign-up, sign-in, sign-out, and protected
-  writes.
-
-## Open Questions
-
-- Should the first demo use email/password or anonymous "Continue as guest"?
-- Should public demo sign-up be unrestricted, domain-restricted, or invite-only?
-- Should local public reads remain available while signed out? This determines
-  whether `expectAuth: true` is appropriate.
-- Should the auth dialog stay modal-only, or should there be a `/login` route
-  for easier demo links?
-
-## Non-Goals
-
-- Do not build a custom dummy JWT issuer in this slice.
-- Do not implement OAuth providers until email/password or anonymous auth works.
-- Do not add an app-specific user profile table unless a feature needs it.
-- Do not weaken existing backend authorization checks.
-- Do not ship test-only auth helpers in production auth config.
+Storing the envelope as one JSON fact value (like an action's `asserts` /
+`fields`) keeps it transactional, historized, and reconcilable by
+`applyConfig`. No new tables.
+
+## Phases
+
+### Phase A — backend: view registry (`convex/views.ts` + config kind)
+
+1. **`convex/views.ts`** (new), modeled on `actions.ts`:
+   - `defineView` mutation — args `{ name, label?, description?, spec: v.any() }`;
+     `requireWritePrincipal`; asserts the facts above in one transaction.
+     Do a **light structural gate** server-side (object with
+     `$viewSpec.version === "2"` and a `root` node) — full Schema validation
+     stays in tests/CI via `@metacrdt/views`' `validateViewSpecStructure`
+     (don't pull the Effect Schema IR into the Convex bundle until proven
+     cheap; revisit if the gate proves too weak).
+   - `listViews` query — all `view:*` defs → `{ name, label, description }`,
+     for the sidebar/list page (no specs; keep it light).
+   - `getView` query — one def by name, including `spec`.
+   - Helper `convex/lib/viewDefs.ts` (mirror `lib/actionDefs.ts`): `viewId()`,
+     `loadViewDef()`, `listViewDefs()`.
+2. **`convex/appconfig.ts`** — add `"view"` to `ConfigKind`, `OWN_ATTR`
+   (`owns.view`), `previousOwned`, the reconcile/retract path, and a `views:`
+   array in the config literal type lowered through `defineView`'s logic
+   (idempotent upsert, like every other kind).
+3. **Blueprint content** — add two demo views to the staffing config in
+   `appconfig.ts` (`setupStaffing`):
+   - **`worker-roster`** — exercises query params, state, table events, and an
+     action: a `table` bound to `queries.workers`
+     (`queryRef: "entities.queryEntities"`, params `{ type: "Worker" }`),
+     `onRowClick` → `setState selectedWorker` ; a header row with the selected
+     worker and two `button`s dispatching
+     `executeAction "terminate" / "reactivate"` on `state.selectedWorker`,
+     `disabled` when nothing is selected (expression-driven).
+   - **`onboarding-dashboard`** — exercises metrics/layout: `stat-group` of
+     `metric`s bound to `queries.summary` (`queryRef: "overview.summary"`),
+     plus a compliance table (`queryRef: "compliance.workerCompliance"`).
+4. **Tests** — `convex/views.test.ts` (convex-test, like `actions.test.ts`):
+   define/list/get round-trip, applyConfig idempotency + reconcile (removing a
+   view from config retracts it), reject malformed spec. Plus a vitest that
+   runs the blueprint specs through `validateViewSpecStructure` from
+   `@metacrdt/views` (full validation lives here, off the serving path).
+
+### Phase B — frontend: Views tab + list page
+
+1. **`src/App.tsx`** — routes `/views` → `Views`, `/views/:name` → `ViewPage`.
+2. **`src/Layout.tsx`** — Workspace nav item
+   `{ to: "/views", label: "Views", icon: <PanelsTopLeft/>, badge: views?.length }`
+   via `api.views.listViews`; add `/views` to `TITLES`.
+3. **`src/pages/Views.tsx`** — list page: card per view (label, description,
+   name as mono) → links to `/views/:name`. Empty state points at the staffing
+   blueprint setup (same pattern as `Entities.tsx`).
+
+### Phase C — the host runtime: `useViewHost` (edge binding layer)
+
+The heart of the feature. New `src/views/host/` (app code; extraction to a
+package only when proven — same rule as the renderer):
+
+1. **`queryRegistry.ts`** — the explicit allowlist mapping `queryRef` strings
+   to Convex functions + a param codec:
+   ```ts
+   const registry = {
+     "entities.queryEntities":      { fn: api.entities.queryEntities,      select: (r) => r.page },
+     "overview.summary":            { fn: api.overview.summary,            select: (r) => [r] },
+     "compliance.workerCompliance": { fn: api.compliance.workerCompliance, select: (r) => r.open },
+     "flows.listFlowDefs":          { fn: api.flows.listFlowDefs },
+     "actions.actionsForType":      { fn: api.actions.actionsForType },
+   };
+   ```
+   Unknown `queryRef` → renders an inline "unknown query binding" notice, never
+   throws. The allowlist **is** the security boundary: a stored spec can only
+   reach read-only queries we registered, with params it can shape but not
+   functions it can choose. `select` flattens backend rows into renderer scope
+   (generalizes `flattenEntityRows`).
+2. **`useViewHost.ts`** — one hook owning the loop:
+   - `state` from `initializeViewState(spec)` (`@metacrdt/views/runtime`).
+   - Evaluate each binding's `params` expressions against
+     `{ state, input, query }` scope (`evaluateViewExpression`), resolve via
+     the registry, subscribe with `useQueries` (object form, non-throwing) —
+     params referencing state re-subscribe automatically when state changes,
+     which replaces OO's depMap re-run machinery.
+   - `dispatch(actionOrList, scope)` — switch over the `ViewAction` subset:
+     - `setState` / `patchState` / `toggleState` — path helpers from runtime.
+     - `navigate` — react-router (`/e/:id` for entity refs, plain paths otherwise).
+     - `showToast` — minimal inline toast (the app has none yet; keep it tiny).
+     - `executeAction` — evaluate `name`/`entity`/`parameters` expressions →
+       `guardWrite(label, () => runAction({ action, entity, args }))` from
+       `useWriteGate` (`src/auth.tsx`), so view actions get the same auth gate
+       as every other write in the app.
+     - `runQuery` / `runQueries` — no-op + console.debug (subscriptions are
+       live); kept so OO-authored specs don't error.
+     - Everything else (`openDialog`, `emit`, `toolCall`, …) — log-and-ignore
+       with a visible dev warning. Document the supported subset.
+   - Returns `{ ctx: ViewRenderContext, dispatch, loading, errors }`.
+3. **`src/pages/ViewPage.tsx`** — `getView(name)` → `useViewHost(spec)` →
+   `<ViewRenderer node={spec.root} ctx={ctx}/>` in a `Card`, with loading /
+   not-found / invalid-spec states.
+
+### Phase D — renderer growth (only what the demo views need)
+
+Extend `src/views/ViewRenderer.tsx` node coverage from the Entities subset to:
+`card`, `stat-group`, `metric`, `badge`, `button` (events.onClick → dispatch),
+`divider`/`separator`, `condition`/`case`/`else` (for the "nothing selected"
+affordance). The renderer gains a `dispatch` on its context for event nodes;
+`onRowActivate` is rewired as the `onRowClick` event dispatched through the
+host (keep the old prop working for `Entities.tsx`, or migrate it — small).
+Unknown node types render a labeled placeholder (OO's
+`UnknownComponentPlaceholder` pattern), not nothing — authors need to see what
+didn't render.
+
+### Phase E — acceptance demo (the loop, end to end)
+
+On a seeded staffing deployment:
+
+1. Sidebar shows **Views (2)** → `/views` lists *Worker roster* and
+   *Onboarding dashboard* with descriptions.
+2. Open *Worker roster*: live table of workers from the bound query.
+3. Click a row → selection state updates (expression-driven header).
+4. Click **Terminate** → write gate (sign-in if needed) → `runAction` →
+   the worker's status badge flips to `terminated` **live** via Convex
+   reactivity — no manual refetch. Reactivate flips it back.
+5. Open *Onboarding dashboard*: metrics + compliance table render from two
+   independent bindings.
+6. `pnpm typecheck`, `pnpm test`, `pnpm build` green; app bundle did not
+   regress (only `@metacrdt/views/runtime` imported — check the build output).
+
+## Out of scope (explicitly deferred)
+
+- **Workspaces** (`define-workspace` grouping/nav/persona/home view) — the
+  Views tab is the flat catalog; workspaces layer on top later.
+- **Forma authoring** — views land in the blueprint as already-lowered
+  ViewSpec JSON. The `define-view` Lisp → ViewSpec lowering is views.md
+  phase 6 and stays separate (the storage + listing built here is its target).
+- **View CRUD UI** — no in-app view editor; config-as-code only.
+- **`@metacrdt/views-react` extraction** (views.md phase 4) — extract after
+  this proves the renderer's real surface area.
+- **OO action richness** — preconditions, approvals, computed params. This
+  repo's actions are `asserts`-style; `executeAction` maps to `runAction` 1:1.
+
+## Risks / decisions
+
+- **Spec trust**: stored specs are data from the DB rendered into the DOM.
+  Renderer must never `dangerouslySetInnerHTML` (skip `raw-html`/`raw-css`
+  nodes), and the query allowlist bounds what a spec can read. Actions are
+  already server-gated by `requireWritePrincipal`.
+- **Server-side validation depth**: light structural gate in `defineView`
+  vs full Schema validation. Start light + full validation in tests; if junk
+  specs become a problem, measure the cost of `normalizeViewSpec` in the
+  Convex bundle before pulling it in.
+- **`useQueries` with dynamic binding sets**: bindings are static per spec, so
+  hook-order issues don't arise; param changes just change subscription args.
+- **Expression evaluation cost**: specs are small; evaluate per render like
+  the Entities view already does. No memoization until it shows up in a profile.
+
+## File inventory
+
+| File | Change |
+|---|---|
+| `convex/views.ts` | new — defineView / listViews / getView |
+| `convex/lib/viewDefs.ts` | new — id/load/list helpers |
+| `convex/views.test.ts` | new — registry + reconcile + validation tests |
+| `convex/appconfig.ts` | add `view` ConfigKind + 2 blueprint views |
+| `src/App.tsx` | routes `/views`, `/views/:name` |
+| `src/Layout.tsx` | Views nav item + title |
+| `src/pages/Views.tsx` | new — catalog page |
+| `src/pages/ViewPage.tsx` | new — render page |
+| `src/views/host/queryRegistry.ts` | new — queryRef allowlist + row flattening |
+| `src/views/host/useViewHost.ts` | new — state + live bindings + dispatch |
+| `src/views/ViewRenderer.tsx` | grow node coverage + event dispatch |
+| `src/views/entitiesView.ts` | fold `flattenEntityRows` into the registry (or keep; minor) |
+| `specs/plans/views.md` | update status table when this lands |

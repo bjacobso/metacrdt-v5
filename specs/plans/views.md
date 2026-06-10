@@ -13,9 +13,10 @@ descriptor codegen.
 | 2 | Raw-JSON Entities model proof (headless; proves views never executes queries) | ✅ shipped |
 | 3 | Inline ViewSpec→React renderer; Entities list renders from a ViewSpec | ✅ shipped |
 | — | Effect-free `@metacrdt/views/runtime` entry (fixed a bundle regression) | ✅ shipped |
+| — | App vertical slice: ontology-defined views stored as facts, listed in `/views`, live Convex bindings, and `executeAction` dispatch | ✅ shipped |
 | 4 | Extract `@metacrdt/views-react` (deps: `@metacrdt/views/runtime` + react) | ⏳ later |
-| 5 | Edge binding layer: ViewSpec `queries` → `@metacrdt/query` → Convex execution | ⏳ later |
-| 6 | Ontology → ViewSpec authoring (Forma lens/view defs lower to ViewSpec) | ⏳ later |
+| 5 | General edge binding package: ViewSpec `queries` → `@metacrdt/query` → Convex execution | ⏳ later |
+| 6 | Ontology → ViewSpec authoring (Forma lens/view defs lower to ViewSpec) | ⏳ later; storage target now exists |
 
 Detail for each phase is in **Phases** below. Phases 1–3 + the runtime entry are
 on PR #1. Phases 4–6 are independent follow-ons.

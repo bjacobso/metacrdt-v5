@@ -124,6 +124,23 @@ describe("schema-as-facts: entity types", () => {
     });
   });
 
+  test("typeSchemaAsOf projects repeated type declarations as a set", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    for (let i = 0; i < 3; i++) {
+      await t.mutation(api.attributes.defineType, {
+        name: "Job",
+        attributes: ["role"],
+      });
+    }
+
+    const shape = await t.query(api.attributes.typeSchemaAsOf, {
+      type: "Job",
+    });
+
+    expect(shape.attributes).toEqual(["role"]);
+    expect(shape.columns.map((c) => c.name)).toEqual(["role"]);
+  });
+
   test("bootstrapSchema makes meta-attributes self-describing", async () => {
     const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
     await t.mutation(api.attributes.bootstrapSchema, {});

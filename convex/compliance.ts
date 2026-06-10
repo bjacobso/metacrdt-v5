@@ -71,6 +71,7 @@ export const seedStaffingDemo = mutation({
     // Subjects & scope entities.
     await f("worker:maria", "type", "Worker");
     await f("worker:maria", "name", "Maria");
+    await f("worker:maria", "worker.status", "active");
     await f("employer:acme", "type", "Employer");
     await f("employer:acme", "name", "Acme Staffing");
     await f("client:globex", "type", "Client");

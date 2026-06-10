@@ -124,8 +124,10 @@ const STATUS_TONE: Record<string, string> = {
   running: "bg-blue-soft text-blue-ink",
   waiting: "bg-orange-soft text-orange-ink",
   completed: "bg-green-soft text-green",
+  active: "bg-green-soft text-green",
   expired: "bg-red-soft text-red-ink",
   cancelled: "bg-red-soft text-red-ink",
+  terminated: "bg-red-soft text-red-ink",
   open: "bg-orange-soft text-orange-ink",
 };
 

@@ -128,6 +128,30 @@ describe("Entities ViewSpec — raw-JSON model proof", () => {
     ]);
   });
 
+  it("can derive a selected entity from live query rows by id", () => {
+    const selectedNameExpr = {
+      kind: "pipe",
+      name: "path",
+      value: {
+        kind: "pipe",
+        name: "findBy",
+        value: { kind: "var", source: "query", path: ["entities", "page"] },
+        args: [
+          { kind: "literal", value: "id" },
+          { kind: "var", source: "state", path: ["selectedId"] },
+        ],
+      },
+      args: [{ kind: "literal", value: "name" }],
+    };
+
+    expect(
+      evaluateViewExpression(selectedNameExpr, {
+        ...contextWith(personRows),
+        state: { selectedId: "person/alan" },
+      }),
+    ).toBe("Alan Turing");
+  });
+
   it("supports an empty-state decision via a length expression", () => {
     const table = findNode(spec.root, "table") as { bind?: unknown; emptyState?: string };
 
