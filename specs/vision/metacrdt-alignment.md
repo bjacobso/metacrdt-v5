@@ -6,7 +6,11 @@
 > share, so they read as consequences of one primitive rather than a pile of good
 > ideas. Companion to [`../reference/protocol.md`](../reference/protocol.md) (the protocol), [`forma.md`](./forma.md)
 > and [`dsl.md`](./dsl.md) (authoring), and [`../reference/targets.md`](../reference/targets.md)
-> (one feature set, many targets).
+> (one feature set, many targets). The fact/fold/reaction lens named here is
+> taken further by [`operational-algebra.md`](./operational-algebra.md) (the
+> kernel reduction: two verbs, one rule, two laws) and
+> [`forma-zero.md`](./forma-zero.md) (the kernel as syntax, with an executable
+> conformance suite at `packages/@forma/conformance/`).
 
 ---
 
