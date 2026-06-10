@@ -1,0 +1,26 @@
+{
+  "permitted-reaction": {
+    "author": "system",
+    "grants": [["system", "can", "must"]],
+    "ok": true,
+    "missing": []
+  },
+  "denied-reaction": {
+    "author": "system",
+    "grants": [],
+    "ok": false,
+    "missing": ["must"]
+  },
+  "multi-attribute-partial-denial": {
+    "author": "system",
+    "grants": [["system", "can", "must"]],
+    "ok": false,
+    "missing": ["now"]
+  },
+  "higher-order-call-site": {
+    "author": "system",
+    "grants": [["system", "can", "must"]],
+    "ok": true,
+    "missing": []
+  }
+}
