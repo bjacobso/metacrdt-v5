@@ -147,6 +147,9 @@ requires _no storage change at all_, because the convergence is already latent i
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
 | [`overview.md`](./overview.md)           | The one-page thesis: layers, the system/configured/data seam, and all twelve pillars with status tags — **start here**                       | thesis        |
 | [`metacrdt-alignment.md`](./metacrdt-alignment.md) | The lens for the whole set: every doc is a fact, a fold, or a reaction over the convergent log — **read first**                  | lens          |
+| [`branding.md`](./branding.md)           | The name stack, consolidated: Operational Algebra is the front door (theory + system + product), Operational Algebra Cloud the hosted runtime, Forma/MetaCRDT/Alchemy components, Onboarded the proof | naming        |
+| [`operational-algebra.md`](./operational-algebra.md) | Arguing the algebra down: the paper's five primitives and six operators derived from fact/fold/reaction — two verbs, one rule, two laws | kernel        |
+| [`forma-zero.md`](./forma-zero.md)       | The kernel as syntax: McCarthy's seven + `assert`/`fold`/`react`, the surface language derived as macros, and `opeval` written in itself | kernel        |
 | [`convex.md`](./convex.md)               | How does the whole vision rebase onto Convex? (decided: reframes, cuts, what's already shipped — now: one target among many)              | decisions     |
 | [`triples.md`](./triples.md)             | What is the substrate, and why is it the foundation?                                                                                      | vision        |
 | [`workflows.md`](./workflows.md)         | Can policies + automations + forms become one `Flow`?                                                                                     | design + spec |
