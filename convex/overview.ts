@@ -88,15 +88,22 @@ export const summary = query({
     });
     const required = obligations.filter((o) => !o.open).length;
     const open = obligations.filter((o) => o.open).length;
+    const totalRequired = required;
+    const satisfied = Math.max(totalRequired - open, 0);
 
     return {
       configuredTypes,
       placements,
       reusedScopes,
       evidence: submitted.length || allSubmitted,
-      required,
+      required: totalRequired,
       open,
-      satisfiedPct: required === 0 ? 100 : Math.round(((required - open) / required) * 100),
+      satisfied,
+      totalRequired,
+      satisfiedPct:
+        totalRequired === 0
+          ? 100
+          : Math.round((satisfied / totalRequired) * 100),
     };
   },
 });

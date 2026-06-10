@@ -3,17 +3,26 @@ import { v } from "convex/values";
 import { assertInTx, createTransaction, retractInTx } from "./facts";
 import { listViewDefs, loadViewDef, viewId } from "./lib/viewDefs";
 import { requireWritePrincipal } from "./lib/writeAuth";
+import { isRenderableViewSpec } from "@metacrdt/views/runtime";
 
-function isValidViewSpecShell(spec: unknown): boolean {
-  if (spec === null || typeof spec !== "object" || Array.isArray(spec)) {
-    return false;
-  }
-  const record = spec as Record<string, unknown>;
-  return (
-    record["root"] !== null &&
-    typeof record["root"] === "object" &&
-    !Array.isArray(record["root"])
-  );
+type DesiredFact = { a: string; value: unknown };
+
+function valueKey(value: unknown): string {
+  return JSON.stringify(value);
+}
+
+function factKey(fact: DesiredFact): string {
+  return `${fact.a}\u0000${valueKey(fact.value)}`;
+}
+
+function sameFactSet(
+  current: { a: string; v: unknown }[],
+  desired: DesiredFact[],
+): boolean {
+  if (current.length !== desired.length) return false;
+  const currentKeys = new Set(current.map((row) => factKey({ a: row.a, value: row.v })));
+  if (currentKeys.size !== desired.length) return false;
+  return desired.every((fact) => currentKeys.has(factKey(fact)));
 }
 
 /** Define (or replace) a view definition as schema-as-facts. */
@@ -26,40 +35,41 @@ export const defineView = mutation({
   },
   handler: async (ctx, args) => {
     await requireWritePrincipal(ctx);
-    if (!isValidViewSpecShell(args.spec)) {
+    if (!isRenderableViewSpec(args.spec)) {
       throw new Error("malformed view spec: expected a renderable spec with a root node");
     }
     const now = Date.now();
     const e = viewId(args.name);
+    const desired: DesiredFact[] = [
+      { a: "type", value: "View" },
+      { a: "specJson", value: JSON.stringify(args.spec) },
+    ];
+    if (args.label !== undefined) {
+      desired.push({ a: "label", value: args.label });
+    }
+    if (args.description !== undefined) {
+      desired.push({ a: "description", value: args.description });
+    }
+    const current = await ctx.db
+      .query("currentFacts")
+      .withIndex("by_e", (q) => q.eq("e", e))
+      .take(1000);
+    if (sameFactSet(current, desired)) {
+      return { viewEntity: e, changed: false };
+    }
+
     const txId = await createTransaction(ctx, {
       actorId: "config",
       reason: `define view ${args.name}`,
       now,
     });
-    const current = await ctx.db
-      .query("currentFacts")
-      .withIndex("by_e", (q) => q.eq("e", e))
-      .take(1000);
     for (const row of current) {
       await retractInTx(ctx, txId, now, row.factId, "view definition replaced");
     }
-    await assertInTx(ctx, txId, now, { e, a: "type", value: "View" });
-    await assertInTx(ctx, txId, now, {
-      e,
-      a: "specJson",
-      value: JSON.stringify(args.spec),
-    });
-    if (args.label !== undefined) {
-      await assertInTx(ctx, txId, now, { e, a: "label", value: args.label });
+    for (const fact of desired) {
+      await assertInTx(ctx, txId, now, { e, a: fact.a, value: fact.value });
     }
-    if (args.description !== undefined) {
-      await assertInTx(ctx, txId, now, {
-        e,
-        a: "description",
-        value: args.description,
-      });
-    }
-    return { viewEntity: e };
+    return { viewEntity: e, changed: true };
   },
 });
 

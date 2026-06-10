@@ -1,21 +1,10 @@
 import { useParams } from "react-router-dom";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import type { ViewSpec } from "@metacrdt/views/runtime";
+import { isRenderableViewSpec, type ViewSpec } from "@metacrdt/views/runtime";
 import { Card, CardHeader, Mono } from "../ui";
 import { ViewRenderer } from "../views/ViewRenderer";
 import { useViewHost } from "../views/host/useViewHost";
-
-function isViewSpec(value: unknown): value is ViewSpec {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  return (
-    record["root"] !== null &&
-    typeof record["root"] === "object"
-  );
-}
 
 function Toasts({
   toasts,
@@ -76,7 +65,7 @@ function RenderedView({ spec }: { spec: ViewSpec }) {
 
 export default function ViewPage() {
   const params = useParams();
-  const name = params.name ? decodeURIComponent(params.name) : "";
+  const name = params.name ?? "";
   const view = useQuery(api.views.getView, name ? { name } : "skip");
 
   if (!name) {
@@ -95,7 +84,7 @@ export default function ViewPage() {
       </Card>
     );
   }
-  if (!isViewSpec(view.spec)) {
+  if (!isRenderableViewSpec(view.spec)) {
     return (
       <Card className="p-6">
         <h2 className="text-lg font-semibold text-ink">Invalid view spec</h2>

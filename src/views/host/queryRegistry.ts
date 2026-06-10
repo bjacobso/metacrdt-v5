@@ -1,7 +1,7 @@
 import type { FunctionReference } from "convex/server";
+import { isRecord } from "@metacrdt/views/runtime";
 import { api } from "../../../convex/_generated/api";
-import { shortId } from "../../ui";
-import type { ViewRow } from "../ViewRenderer";
+import { flattenEntityRows, type RawEntityRow } from "../entityRows";
 
 type QueryArgs = Record<string, unknown>;
 type QueryFn = FunctionReference<"query">;
@@ -14,44 +14,8 @@ export type QueryRegistryEntry = {
 
 export type QueryRegistryKey = keyof typeof queryRegistry;
 
-export interface RawEntityRow {
-  readonly id: string;
-  readonly attributes: Record<string, readonly unknown[]>;
-  readonly denied?: readonly { readonly a: string }[];
-}
-
-function valueText(value: unknown): string {
-  return typeof value === "string" ? value : JSON.stringify(value);
-}
-
-export function flattenEntityRows(rows: readonly RawEntityRow[]): ViewRow[] {
-  const attrNames = [
-    ...new Set(
-      rows.flatMap((row) =>
-        Object.keys(row.attributes).filter((name) => name !== "name" && name !== "type"),
-      ),
-    ),
-  ].sort();
-
-  return rows.map((row) => {
-    const deniedKeys = new Set((row.denied ?? []).map((d) => d.a));
-    const out: ViewRow = {
-      id: row.id,
-      name: valueText(row.attributes["name"]?.[0] ?? shortId(row.id)),
-    };
-    for (const name of attrNames) {
-      out[name] = deniedKeys.has(name)
-        ? "Denied"
-        : (row.attributes[name] ?? []).map(valueText).join(", ");
-    }
-    return out;
-  });
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+function asRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
 }
 
 function stringParam(params: QueryArgs, key: string): string {
@@ -75,13 +39,13 @@ export const queryRegistry = {
       type: stringParam(params, "type"),
       pageSize: numberParam(params, "pageSize", 50),
       ...(Array.isArray(params["filters"]) ? { filters: params["filters"] } : {}),
-      ...(record(params["sort"]) ? { sort: params["sort"] } : {}),
+      ...(isRecord(params["sort"]) ? { sort: params["sort"] } : {}),
       ...(typeof params["cursor"] === "string" ? { cursor: params["cursor"] } : {}),
     }),
     select: (result) =>
       flattenEntityRows(
-        Array.isArray(record(result)["page"])
-          ? (record(result)["page"] as RawEntityRow[])
+        Array.isArray(asRecord(result)["page"])
+          ? (asRecord(result)["page"] as RawEntityRow[])
           : [],
       ),
   },
@@ -89,14 +53,23 @@ export const queryRegistry = {
     fn: api.overview.summary,
     args: () => ({}),
     select: (result) => {
-      const summary = record(result);
+      const summary = asRecord(result);
       const required =
         typeof summary["required"] === "number" ? summary["required"] : 0;
       const open = typeof summary["open"] === "number" ? summary["open"] : 0;
+      const satisfied =
+        typeof summary["satisfied"] === "number"
+          ? summary["satisfied"]
+          : Math.max(required - open, 0);
+      const totalRequired =
+        typeof summary["totalRequired"] === "number"
+          ? summary["totalRequired"]
+          : Math.max(required, satisfied + open);
       return [
         {
           ...summary,
-          satisfiedRatio: required === 0 ? 1 : (required - open) / required,
+          satisfiedRatio:
+            totalRequired === 0 ? 1 : satisfied / totalRequired,
         },
       ];
     },
@@ -105,10 +78,10 @@ export const queryRegistry = {
     fn: api.compliance.workerCompliance,
     args: (params) => ({ worker: stringParam(params, "worker") }),
     select: (result) => {
-      const open = record(result)["open"];
+      const open = asRecord(result)["open"];
       const rows = Array.isArray(open) ? open : [];
       return rows.map((row: unknown) => {
-        const item = record(row);
+        const item = asRecord(row);
         const because = item["because"];
         return {
           form: item["form"],

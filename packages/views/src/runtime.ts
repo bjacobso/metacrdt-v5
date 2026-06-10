@@ -20,6 +20,7 @@ import type {
   ViewExprSource,
 } from "./generated/view-expression.generated.js";
 import type { ViewStateDecl } from "./generated/view-state.generated.js";
+import type { ViewSpec } from "./generated/view-spec.generated.js";
 
 // Re-export the plain types render targets commonly need, effect-free.
 export type {
@@ -40,6 +41,11 @@ export type ViewValue = unknown;
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function isRenderableViewSpec(value: unknown): value is ViewSpec {
+  if (!isRecord(value)) return false;
+  return isRecord(value["root"]);
 }
 
 // =============================================================================

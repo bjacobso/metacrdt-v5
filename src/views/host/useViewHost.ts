@@ -10,6 +10,7 @@ import {
   evaluateViewValue,
   getValueAtPath,
   initializeViewState,
+  isRecord,
   patchValueAtPath,
   setValueAtPath,
   type ViewExpressionContext,
@@ -51,10 +52,6 @@ type QueryResultState =
   | { status: "success"; data: unknown };
 
 const EMPTY_INPUT: Record<string, unknown> = {};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 function actionList(actionOrList: ViewActionInput): readonly ViewActionLike[] {
   if (actionOrList === undefined) return [];
@@ -198,99 +195,124 @@ export function useViewHost(
       actionOrList: ViewActionInput,
       scope: Partial<ViewExpressionContext> = {},
     ) => {
-      const scopedCtx: ViewExpressionContext = {
-        state,
-        input: stableInput,
-        query,
-        ...scope,
+      const dispatchActions = async (
+        nextActionOrList: ViewActionInput,
+        nextScope: Partial<ViewExpressionContext>,
+        initialState: Record<string, unknown>,
+      ): Promise<Record<string, unknown>> => {
+        let currentState = initialState;
+        const runChild = async (
+          child: ViewActionInput,
+          childScope: Partial<ViewExpressionContext> = nextScope,
+        ) => {
+          currentState = await dispatchActions(child, childScope, currentState);
+        };
+
+        for (const action of actionList(nextActionOrList)) {
+          if (!action || typeof action.action !== "string") continue;
+          const scopedCtx: ViewExpressionContext = {
+            state: currentState,
+            input: stableInput,
+            query,
+            ...nextScope,
+          };
+          try {
+            if (action.action === "setState" && typeof action.key === "string") {
+              const value = evaluateViewValue(action.value, scopedCtx);
+              currentState = setValueAtPath(
+                currentState,
+                action.key,
+                value,
+              ) as Record<string, unknown>;
+              setState(currentState);
+              await runChild(action.onSuccess);
+            } else if (
+              action.action === "patchState" &&
+              typeof action.key === "string"
+            ) {
+              const value = evaluateViewValue(action.value, scopedCtx);
+              currentState = patchValueAtPath(
+                currentState,
+                action.key,
+                value,
+              ) as Record<string, unknown>;
+              setState(currentState);
+              await runChild(action.onSuccess);
+            } else if (
+              action.action === "toggleState" &&
+              typeof action.key === "string"
+            ) {
+              currentState = setValueAtPath(
+                currentState,
+                action.key,
+                !Boolean(getValueAtPath(currentState, action.key)),
+              ) as Record<string, unknown>;
+              setState(currentState);
+              await runChild(action.onSuccess);
+            } else if (action.action === "navigate") {
+              const rawPath = evaluateViewExpression(action.path, scopedCtx);
+              const path = display(rawPath);
+              if (path.includes(":") && !path.startsWith("/")) {
+                navigate(`/e/${encodeURIComponent(path)}`);
+              } else if (path !== "") {
+                navigate(path);
+              }
+              await runChild(action.onSuccess);
+            } else if (action.action === "showToast") {
+              pushToast({
+                message: display(evaluateViewExpression(action.message, scopedCtx)),
+                description: action.description
+                  ? display(evaluateViewExpression(action.description, scopedCtx))
+                  : undefined,
+                variant: "variant" in action ? display(action["variant"]) : undefined,
+              });
+              await runChild(action.onSuccess);
+            } else if (action.action === "executeAction") {
+              const actionName = display(
+                evaluateViewExpression(action.actionRef ?? action.name, scopedCtx),
+              );
+              const entity = display(
+                evaluateViewExpression(action.entityId ?? action.entity, scopedCtx),
+              );
+              const args = evaluatedRecord(action.parameters, scopedCtx);
+              if (actionName === "" || entity === "") {
+                throw new Error("executeAction requires actionRef and entityId");
+              }
+              const result = await guardWrite(`Run ${actionName}`, () =>
+                runAction({ action: actionName, entity, args }),
+              );
+              if (result !== undefined) {
+                pushToast({ message: `${actionName} complete` });
+                await runChild(action.onSuccess, { ...nextScope, $result: result });
+              }
+            } else if (
+              action.action === "runQuery" ||
+              action.action === "runQueries"
+            ) {
+              console.debug("View query actions are no-ops; Convex subscriptions are live.", {
+                query: action.query,
+                queries: action.queries,
+              });
+              await runChild(action.onSuccess);
+            } else {
+              console.debug(`Unsupported ViewAction ignored: ${action.action}`, action);
+            }
+          } catch (err) {
+            console.error("View action failed", err);
+            pushToast({
+              message: "View action failed",
+              description: display(err),
+              variant: "error",
+            });
+            await runChild(action.onError, { ...nextScope, $error: err });
+          } finally {
+            await runChild(action.onFinally);
+          }
+        }
+        return currentState;
       };
 
-      for (const action of actionList(actionOrList)) {
-        if (!action || typeof action.action !== "string") continue;
-        try {
-          if (action.action === "setState" && typeof action.key === "string") {
-            const value = evaluateViewValue(action.value, scopedCtx);
-            setState((current) => setValueAtPath(current, action.key!, value) as Record<string, unknown>);
-            await dispatch(action.onSuccess, scope);
-          } else if (
-            action.action === "patchState" &&
-            typeof action.key === "string"
-          ) {
-            const value = evaluateViewValue(action.value, scopedCtx);
-            setState((current) => patchValueAtPath(current, action.key!, value) as Record<string, unknown>);
-            await dispatch(action.onSuccess, scope);
-          } else if (
-            action.action === "toggleState" &&
-            typeof action.key === "string"
-          ) {
-            setState((current) =>
-              setValueAtPath(
-                current,
-                action.key!,
-                !Boolean(getValueAtPath(current, action.key!)),
-              ) as Record<string, unknown>,
-            );
-            await dispatch(action.onSuccess, scope);
-          } else if (action.action === "navigate") {
-            const rawPath = evaluateViewExpression(action.path, scopedCtx);
-            const path = display(rawPath);
-            if (path.includes(":") && !path.startsWith("/")) {
-              navigate(`/e/${encodeURIComponent(path)}`);
-            } else if (path !== "") {
-              navigate(path);
-            }
-            await dispatch(action.onSuccess, scope);
-          } else if (action.action === "showToast") {
-            pushToast({
-              message: display(evaluateViewExpression(action.message, scopedCtx)),
-              description: action.description
-                ? display(evaluateViewExpression(action.description, scopedCtx))
-                : undefined,
-              variant: "variant" in action ? display(action["variant"]) : undefined,
-            });
-            await dispatch(action.onSuccess, scope);
-          } else if (action.action === "executeAction") {
-            const actionName = display(
-              evaluateViewExpression(action.actionRef ?? action.name, scopedCtx),
-            );
-            const entity = display(
-              evaluateViewExpression(action.entityId ?? action.entity, scopedCtx),
-            );
-            const args = evaluatedRecord(action.parameters, scopedCtx);
-            if (actionName === "" || entity === "") {
-              throw new Error("executeAction requires actionRef and entityId");
-            }
-            const result = await guardWrite(`Run ${actionName}`, () =>
-              runAction({ action: actionName, entity, args }),
-            );
-            if (result !== undefined) {
-              pushToast({ message: `${actionName} complete` });
-            }
-            await dispatch(action.onSuccess, scope);
-          } else if (
-            action.action === "runQuery" ||
-            action.action === "runQueries"
-          ) {
-            console.debug("View query actions are no-ops; Convex subscriptions are live.", {
-              query: action.query,
-              queries: action.queries,
-            });
-            await dispatch(action.onSuccess, scope);
-          } else {
-            console.debug(`Unsupported ViewAction ignored: ${action.action}`, action);
-          }
-        } catch (err) {
-          console.error("View action failed", err);
-          pushToast({
-            message: "View action failed",
-            description: display(err),
-            variant: "error",
-          });
-          await dispatch(action.onError, { ...scope, $error: err });
-        } finally {
-          await dispatch(action.onFinally, scope);
-        }
-      }
+      await dispatchActions(actionOrList, scope, state);
     },
     [guardWrite, navigate, pushToast, query, runAction, stableInput, state],
   );

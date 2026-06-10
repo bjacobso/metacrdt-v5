@@ -51,6 +51,70 @@ describe("ontology view registry", () => {
     }
   });
 
+  test("listViews uses metadata only and does not parse specJson", async () => {
+    const t = convexTest(schema, modules).withIdentity({
+      tokenIdentifier: "system",
+    });
+
+    await t.mutation(api.views.defineView, {
+      name: "metadata-only",
+      label: "Metadata only",
+      spec: MINIMAL_SPEC,
+    });
+    await t.run(async (ctx) => {
+      const rows = await ctx.db
+        .query("currentFacts")
+        .withIndex("by_e_a", (q) =>
+          q.eq("e", "view:metadata-only").eq("a", "specJson"),
+        )
+        .collect();
+      for (const row of rows) await ctx.db.patch(row._id, { v: "{" });
+    });
+
+    expect(await t.query(api.views.listViews, {})).toEqual([
+      {
+        name: "metadata-only",
+        label: "Metadata only",
+        description: undefined,
+      },
+    ]);
+  });
+
+  test("defineView skips byte-identical redefines", async () => {
+    const t = convexTest(schema, modules).withIdentity({
+      tokenIdentifier: "system",
+    });
+
+    const first = await t.mutation(api.views.defineView, {
+      name: "stable",
+      label: "Stable",
+      spec: MINIMAL_SPEC,
+    });
+    const eventCount = await t.run(async (ctx) => {
+      const rows = await ctx.db
+        .query("factEvents")
+        .withIndex("by_e", (q) => q.eq("e", "view:stable"))
+        .collect();
+      return rows.length;
+    });
+    const second = await t.mutation(api.views.defineView, {
+      name: "stable",
+      label: "Stable",
+      spec: MINIMAL_SPEC,
+    });
+    const eventCountAfter = await t.run(async (ctx) => {
+      const rows = await ctx.db
+        .query("factEvents")
+        .withIndex("by_e", (q) => q.eq("e", "view:stable"))
+        .collect();
+      return rows.length;
+    });
+
+    expect(first.changed).toBe(true);
+    expect(second.changed).toBe(false);
+    expect(eventCountAfter).toBe(eventCount);
+  });
+
   test("applyConfig is idempotent and reconciles removed views", async () => {
     vi.useFakeTimers();
     try {
