@@ -1,0 +1,23 @@
+{
+  "name": "@forma/type-level",
+  "version": "0.1.0",
+  "description": "Forma embedded in the TypeScript type system: type-level lexer, parser, and evaluator so forma`(+ 1 2)` has type 3. Exploration package.",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "main": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@forma/ts": "workspace:*",
+    "effect": "^3.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}
