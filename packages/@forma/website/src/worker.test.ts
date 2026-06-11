@@ -165,6 +165,17 @@ describe("pipeline registry", () => {
     expect(pipeline.preview?.output).toContain("Schema.Array(CheckoutLineSchema)");
   });
 
+  test("generates the Effect TypeScript target from mechanics service declarations", () => {
+    const pipeline = getPipeline("effect-ts");
+
+    expect(pipeline.source).toContain("(define-service CartRepo");
+    expect(pipeline.source).toContain("(define-operation checkout [request]");
+    expect(pipeline.preview?.output).toContain('import { Context, Effect } from "effect";');
+    expect(pipeline.preview?.output).toContain("export class CartRepo extends Context.Tag");
+    expect(pipeline.preview?.output).toContain("const cart = yield* cartRepo.load(request);");
+    expect(pipeline.preview?.output).toContain("Effect.gen(function* ()");
+  });
+
   test("defers the Alchemy infrastructure preview", () => {
     expect(pipelines.map((pipeline) => pipeline.id)).not.toContain("alchemy");
   });

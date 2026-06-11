@@ -17,6 +17,11 @@ export {
 } from "./mechanics/effect-schema.js";
 
 export {
+  generateMechanicsEffectTypeScriptModule,
+  type MechanicsEffectTypeScriptModule,
+} from "./mechanics/effect-typescript.js";
+
+export {
   makeMechanicsRuntime,
   MechanicsRuntimeError,
   type MechanicsRuntime,

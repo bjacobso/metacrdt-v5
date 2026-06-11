@@ -1,6 +1,10 @@
 import { Effect } from "effect";
 import { PRELUDE_SOURCE } from "@forma/ts/expander";
-import { generateMechanicsEffectSchemaModule, mechanicsPackageableDeclarations } from "@forma/ts/mechanics";
+import {
+  generateMechanicsEffectSchemaModule,
+  generateMechanicsEffectTypeScriptModule,
+  mechanicsPackageableDeclarations,
+} from "@forma/ts/mechanics";
 import { parseManyToSExpr } from "@forma/ts/reader";
 import type { PipelineDef } from "./types";
 
@@ -38,10 +42,57 @@ const gradesSource = `(define grade (fn [score]
 
 (map grade [95 82 75 63 45])`;
 
-const effectTsSource = `(checkout
-  {:cart-id "cart_123"
-   :customer-id "cus_456"
-   :coupon "SUMMER"})`;
+const effectTsSource = `(define-schema CheckoutLine
+  (Struct
+    (field sku String)
+    (field quantity Int)
+    (field price-cents Int)))
+
+(define-schema CheckoutRequest
+  (Struct
+    (field cart-id (Brand CartId String))
+    (field customer-id (Brand CustomerId String))
+    (field coupon (Optional String))
+    (field lines (Array CheckoutLine))))
+
+(define-schema Cart
+  (Struct
+    (field cart-id (Brand CartId String))
+    (field lines (Array CheckoutLine))))
+
+(define-schema PricedCart
+  (Struct
+    (field cart Cart)
+    (field total-cents Int)))
+
+(define-schema CheckoutResult
+  (Struct
+    (field order-id String)
+    (field total-cents Int)))
+
+(define-error CheckoutRejected
+  (:fields
+    (field reason String)))
+
+(define-service CartRepo
+  (:methods
+    (load [request CheckoutRequest] (Effect Cart [CheckoutRejected] [CartRepo]))))
+
+(define-service Pricing
+  (:methods
+    (price [cart Cart request CheckoutRequest] (Effect PricedCart [CheckoutRejected] [Pricing]))))
+
+(define-service Orders
+  (:methods
+    (create [priced PricedCart] (Effect CheckoutResult [CheckoutRejected] [Orders]))))
+
+(: checkout (-> CheckoutRequest (Effect CheckoutResult [CheckoutRejected] [CartRepo Pricing Orders])))
+(define-operation checkout [request]
+  (do!
+    [cart (<- (CartRepo.load request))
+     priced (<- (Pricing.price cart request))
+     order (<- (Orders.create priced))]
+    (succeed order)))`;
 
 const schemaSource = `(define-schema CheckoutLine
   (Struct
@@ -186,21 +237,17 @@ export const pipelines: readonly PipelineDef[] = [
     preview: {
       targetLabel: "Generated Effect TypeScript",
       language: "typescript",
-      output: `export const checkout = Effect.gen(function* () {
-  const cart = yield* Cart.load("cart_123").pipe(withSpan("2:3-2:22"));
-  const customer = yield* Customer.load("cus_456").pipe(withSpan("3:3-3:27"));
-  const priced = yield* Pricing.applyCoupon(cart, "SUMMER");
-  return yield* Orders.create({ customer, priced });
-});`,
+      output: effectTypeScriptTarget(effectTsSource),
+      notice: "This target is generated in-browser from mechanics service and operation declarations through @forma/ts/mechanics.",
     },
     narration: [
       {
         stage: "parse",
-        md: "The live pass verifies the source shape. The target pane is the roadmap backend, not a hidden server call.",
+        md: "`define-service` and `define-operation` describe a typed effect boundary. The live pass reads those forms into mechanics artifacts.",
       },
       {
         stage: "target",
-        md: "Only effectful bindings get `yield*`; provenance comments keep emitted code tied to original spans.",
+        md: "The target pane lowers service requirements into Effect Context tags and turns `<-` bindings into `yield*` inside `Effect.gen`.",
       },
     ],
   },
@@ -248,4 +295,13 @@ function effectSchemaTarget(source: string): string {
     return JSON.stringify({ diagnostics: result.diagnostics }, null, 2);
   }
   return generateMechanicsEffectSchemaModule(result.declarations).code;
+}
+
+function effectTypeScriptTarget(source: string): string {
+  const exprs = Effect.runSync(parseManyToSExpr(source));
+  const result = mechanicsPackageableDeclarations(exprs, "effect-ts");
+  if (!result.ok) {
+    return JSON.stringify({ diagnostics: result.diagnostics }, null, 2);
+  }
+  return generateMechanicsEffectTypeScriptModule(result.declarations).code;
 }
