@@ -7,6 +7,64 @@ settings:
 importers:
 
   .:
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.2
+        version: 0.22.2(tsx@4.22.4)(typescript@6.0.3)
+      turbo:
+        specifier: ^2.9.16
+        version: 2.9.16
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.8(@edge-runtime/vm@5.0.0)(@types/node@24.13.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  apps/cloudflare-demo:
+    dependencies:
+      '@metacrdt/client':
+        specifier: workspace:*
+        version: link:../../packages/client
+      '@metacrdt/client-cloudflare':
+        specifier: workspace:*
+        version: link:../../packages/client-cloudflare
+      '@metacrdt/cloudflare':
+        specifier: workspace:*
+        version: link:../../packages/cloudflare
+      '@metacrdt/dashboard':
+        specifier: workspace:*
+        version: link:../../packages/dashboard
+      react:
+        specifier: ^19.2.7
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.2.7
+        version: 19.2.7(react@19.2.7)
+      react-router-dom:
+        specifier: ^7.17.0
+        version: 7.17.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+    devDependencies:
+      '@tailwindcss/vite':
+        specifier: ^4.3.0
+        version: 4.3.0(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+      '@types/react':
+        specifier: ^19.2.16
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.17)
+      '@vitejs/plugin-react':
+        specifier: ^6.0.2
+        version: 6.0.2(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^8.0.16
+        version: 8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)
+
+  apps/convex-demo:
     dependencies:
       '@confect/core':
         specifier: ^8.0.0
@@ -20,27 +78,36 @@ importers:
       '@convex-dev/static-hosting':
         specifier: ^0.1.3
         version: 0.1.3(convex@1.40.0(react@19.2.7))(react@19.2.7)
+      '@metacrdt/client':
+        specifier: workspace:*
+        version: link:../../packages/client
       '@metacrdt/collect':
         specifier: workspace:*
-        version: link:packages/collect
+        version: link:../../packages/collect
       '@metacrdt/convex':
         specifier: workspace:*
-        version: link:packages/convex
+        version: link:../../packages/convex
       '@metacrdt/core':
         specifier: workspace:*
-        version: link:packages/core
+        version: link:../../packages/core
+      '@metacrdt/dashboard':
+        specifier: workspace:*
+        version: link:../../packages/dashboard
       '@metacrdt/query':
         specifier: workspace:*
-        version: link:packages/query
+        version: link:../../packages/query
       '@metacrdt/schema':
         specifier: workspace:*
-        version: link:packages/schema
+        version: link:../../packages/schema
       '@metacrdt/views':
         specifier: workspace:*
-        version: link:packages/views
+        version: link:../../packages/views
+      '@metacrdt/views-react':
+        specifier: workspace:*
+        version: link:../../packages/views-react
       '@metacrdt/workflow':
         specifier: workspace:*
-        version: link:packages/workflow
+        version: link:../../packages/workflow
       better-auth:
         specifier: ~1.6.15
         version: 1.6.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.8(@edge-runtime/vm@5.0.0)(@types/node@24.13.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))
@@ -62,9 +129,6 @@ importers:
       react-router-dom:
         specifier: ^7.17.0
         version: 7.17.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      typescript:
-        specifier: ^6.0.3
-        version: 6.0.3
     devDependencies:
       '@confect/cli':
         specifier: ^8.0.0
@@ -74,7 +138,7 @@ importers:
         version: 5.0.0
       '@metacrdt/testkit':
         specifier: workspace:*
-        version: link:packages/testkit
+        version: link:../../packages/testkit
       '@tailwindcss/vite':
         specifier: ^4.3.0
         version: 4.3.0(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -90,24 +154,58 @@ importers:
       convex-test:
         specifier: ^0.0.53
         version: 0.0.53(convex@1.40.0(react@19.2.7))
-      rolldown:
-        specifier: ^1.1.0
-        version: 1.1.0
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
-      tsdown:
-        specifier: ^0.22.2
-        version: 0.22.2(tsx@4.22.4)(typescript@6.0.3)
-      turbo:
-        specifier: ^2.9.16
-        version: 2.9.16
       vite:
         specifier: ^8.0.16
         version: 8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)
       vitest:
         specifier: ^4.1.8
         version: 4.1.8(@edge-runtime/vm@5.0.0)(@types/node@24.13.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  apps/node-demo:
+    dependencies:
+      '@metacrdt/client':
+        specifier: workspace:*
+        version: link:../../packages/client
+      '@metacrdt/client-node':
+        specifier: workspace:*
+        version: link:../../packages/client-node
+      '@metacrdt/dashboard':
+        specifier: workspace:*
+        version: link:../../packages/dashboard
+      '@metacrdt/node':
+        specifier: workspace:*
+        version: link:../../packages/node
+      react:
+        specifier: ^19.2.7
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.2.7
+        version: 19.2.7(react@19.2.7)
+      react-router-dom:
+        specifier: ^7.17.0
+        version: 7.17.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+    devDependencies:
+      '@tailwindcss/vite':
+        specifier: ^4.3.0
+        version: 4.3.0(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+      '@types/react':
+        specifier: ^19.2.16
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.17)
+      '@vitejs/plugin-react':
+        specifier: ^6.0.2
+        version: 6.0.2(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^8.0.16
+        version: 8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)
 
   packages/@forma/editor:
     dependencies:
@@ -238,6 +336,72 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@edge-runtime/vm@5.0.0)(@types/node@24.13.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
+  packages/client:
+    dependencies:
+      react:
+        specifier: ^19.2.7
+        version: 19.2.7
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.16
+        version: 19.2.17
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.8(@edge-runtime/vm@5.0.0)(@types/node@24.13.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/client-cloudflare:
+    dependencies:
+      '@metacrdt/client':
+        specifier: workspace:*
+        version: link:../client
+      '@metacrdt/cloudflare':
+        specifier: workspace:*
+        version: link:../cloudflare
+      '@metacrdt/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      react:
+        specifier: ^19.2.7
+        version: 19.2.7
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.16
+        version: 19.2.17
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.8(@edge-runtime/vm@5.0.0)(@types/node@24.13.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/client-node:
+    dependencies:
+      '@metacrdt/client':
+        specifier: workspace:*
+        version: link:../client
+      '@metacrdt/core':
+        specifier: workspace:*
+        version: link:../core
+      '@metacrdt/node':
+        specifier: workspace:*
+        version: link:../node
+      react:
+        specifier: ^19.2.7
+        version: 19.2.7
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.16
+        version: 19.2.17
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.8(@edge-runtime/vm@5.0.0)(@types/node@24.13.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
   packages/cloudflare:
     dependencies:
       '@metacrdt/core':
@@ -300,6 +464,21 @@ importers:
       '@metacrdt/testkit':
         specifier: workspace:*
         version: link:../testkit
+      convex-test:
+        specifier: ^0.0.53
+        version: 0.0.53(convex@1.40.0(react@19.2.7))
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^8.0.16
+        version: 8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.8(@edge-runtime/vm@5.0.0)(@types/node@24.13.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/core:
+    devDependencies:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -307,8 +486,30 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@edge-runtime/vm@5.0.0)(@types/node@24.13.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
-  packages/core:
+  packages/dashboard:
+    dependencies:
+      '@metacrdt/client':
+        specifier: workspace:*
+        version: link:../client
+      '@metacrdt/views':
+        specifier: workspace:*
+        version: link:../views
+      '@metacrdt/views-react':
+        specifier: workspace:*
+        version: link:../views-react
+      lucide-react:
+        specifier: ^1.17.0
+        version: 1.17.0(react@19.2.7)
+      react:
+        specifier: ^19.2.7
+        version: 19.2.7
+      react-router-dom:
+        specifier: ^7.17.0
+        version: 7.17.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
     devDependencies:
+      '@types/react':
+        specifier: ^19.2.16
+        version: 19.2.17
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -443,6 +644,25 @@ importers:
       tsx:
         specifier: ^4.19.2
         version: 4.22.4
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.8(@edge-runtime/vm@5.0.0)(@types/node@24.13.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/views-react:
+    dependencies:
+      '@metacrdt/views':
+        specifier: workspace:*
+        version: link:../views
+      react:
+        specifier: ^19.2.7
+        version: 19.2.7
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.16
+        version: 19.2.17
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
