@@ -7,7 +7,7 @@ export function TargetPane({ preview }: { readonly preview: PipelinePreview | un
     <div className="target-pane">
       <div className="preview-banner">
         <strong>PREVIEW</strong>
-        <span>This target fixture is checked in; the earlier live passes ran in this tab.</span>
+        <span>{preview.notice ?? "This target fixture is checked in; the earlier live passes ran in this tab."}</span>
       </div>
       <div className="pane-heading">
         <span>{preview.targetLabel}</span>

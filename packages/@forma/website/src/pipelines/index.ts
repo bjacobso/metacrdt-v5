@@ -1,4 +1,7 @@
+import { Effect } from "effect";
 import { PRELUDE_SOURCE } from "@forma/ts/expander";
+import { generateMechanicsEffectSchemaModule, mechanicsPackageableDeclarations } from "@forma/ts/mechanics";
+import { parseManyToSExpr } from "@forma/ts/reader";
 import type { PipelineDef } from "./types";
 
 const helloSource = `(let [rate 150
@@ -35,27 +38,23 @@ const gradesSource = `(define grade (fn [score]
 
 (map grade [95 82 75 63 45])`;
 
-const entitiesSource = `(define-entity Customer
-  [:id String]
-  [:email String]
-  [:plan Keyword])
-
-(define-query activeCustomers
-  (from Customer)
-  (where (= :plan :pro))
-  (select [:id :email]))`;
-
 const effectTsSource = `(checkout
   {:cart-id "cart_123"
    :customer-id "cus_456"
    :coupon "SUMMER"})`;
 
-const alchemySource = `(define-stack forma-demo
-  (worker api
-    :route "/api/*"
-    :runtime :cloudflare)
-  (kv sessions)
-  (durable-object pipeline-cache))`;
+const schemaSource = `(define-schema CheckoutLine
+  (Struct
+    (field sku String)
+    (field quantity Int)
+    (field price-cents Int)))
+
+(define-schema CheckoutRequest
+  (Struct
+    (field cart-id (Brand CartId String))
+    (field customer-id (Brand CustomerId String))
+    (field coupon (Optional String))
+    (field lines (Array CheckoutLine))))`;
 
 const threadLastMacro = preludeSection(";; ->>") ?? `(define-macro ->> [x & forms]
   ...)`;
@@ -178,52 +177,6 @@ export const pipelines: readonly PipelineDef[] = [
     ],
   },
   {
-    id: "entities",
-    title: "Elaboration: Programs That Describe Systems",
-    tagline: "Descriptor-looking source becomes an ontology-shaped artifact.",
-    badge: "preview",
-    source: entitiesSource,
-    passes: ["parse"],
-    preview: {
-      targetLabel: "Ontology IR JSON",
-      language: "json",
-      output: JSON.stringify(
-        {
-          entities: [
-            {
-              name: "Customer",
-              fields: [
-                { name: "id", type: "String" },
-                { name: "email", type: "String" },
-                { name: "plan", type: "Keyword" },
-              ],
-            },
-          ],
-          queries: [
-            {
-              name: "activeCustomers",
-              from: "Customer",
-              where: ["=", "plan", "pro"],
-              select: ["id", "email"],
-            },
-          ],
-        },
-        null,
-        2,
-      ),
-    },
-    narration: [
-      {
-        stage: "parse",
-        md: "The live read pass still proves this is Forma-shaped source. The final IR pane is a preview fixture until descriptor bootstrap is exposed here.",
-      },
-      {
-        stage: "target",
-        md: "Elaboration means the program returns a system description, not just a value. This pane is clearly marked preview.",
-      },
-    ],
-  },
-  {
     id: "effect-ts",
     title: "Target: Effect-Flavored TypeScript",
     tagline: "A future backend can emit TypeScript while preserving compiler provenance.",
@@ -252,44 +205,26 @@ export const pipelines: readonly PipelineDef[] = [
     ],
   },
   {
-    id: "alchemy",
-    title: "Target: Infrastructure",
-    tagline: "A Forma system description can point at concrete Cloudflare resources.",
+    id: "effect-schema",
+    title: "Target: Effect Schema",
+    tagline: "Forma schema declarations compile into Effect Schema validators.",
     badge: "preview",
-    source: alchemySource,
+    source: schemaSource,
     passes: ["parse"],
     preview: {
-      targetLabel: "Alchemy v2 TypeScript",
+      targetLabel: "Generated Effect Schema",
       language: "typescript",
-      output: `import * as Alchemy from "alchemy";
-import * as Cloudflare from "alchemy/Cloudflare";
-import { Effect } from "effect";
-
-export default Alchemy.Stack(
-  "forma-demo",
-  { providers: Cloudflare.providers() },
-  Effect.gen(function* () {
-    const sessions = yield* Cloudflare.KVNamespace("sessions");
-    const pipelineCache = yield* Cloudflare.DurableObjectNamespace("pipeline-cache");
-
-    const api = yield* Cloudflare.Worker("api", {
-      main: "./src/api.ts",
-      bindings: { sessions, pipelineCache },
-      routes: ["/api/*"],
-    });
-
-    return { url: api.url };
-  }),
-);`,
+      output: effectSchemaTarget(schemaSource),
+      notice: "This target is generated in-browser from the parsed Forma schema declarations through @forma/ts/mechanics.",
     },
     narration: [
       {
         stage: "source",
-        md: "The source describes the system at the level a product thread usually starts from: worker, storage, durable cache.",
+        md: "`define-schema` is already a Forma mechanics artifact form. The live pass reads the Lisp source into structured forms.",
       },
       {
         stage: "target",
-        md: "The generated target is previewed as an Alchemy `Stack`, matching the documented v2 shape for Cloudflare resources.",
+        md: "The target pane is generated from those parsed schema declarations through `@forma/ts/mechanics`, then emitted as Effect Schema code.",
       },
     ],
   },
@@ -304,4 +239,13 @@ function preludeSection(marker: string): string | null {
   if (start === -1) return null;
   const next = PRELUDE_SOURCE.indexOf("\n;; ", start + marker.length);
   return PRELUDE_SOURCE.slice(start, next === -1 ? undefined : next).trim();
+}
+
+function effectSchemaTarget(source: string): string {
+  const exprs = Effect.runSync(parseManyToSExpr(source));
+  const result = mechanicsPackageableDeclarations(exprs, "effect-schema");
+  if (!result.ok) {
+    return JSON.stringify({ diagnostics: result.diagnostics }, null, 2);
+  }
+  return generateMechanicsEffectSchemaModule(result.declarations).code;
 }

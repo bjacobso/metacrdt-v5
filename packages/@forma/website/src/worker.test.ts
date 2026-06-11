@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { serializablePassResult, timeoutRunResult } from "./engine/protocol";
-import { getPipeline } from "./pipelines";
+import { getPipeline, pipelines } from "./pipelines";
 import worker from "./worker";
 
 const indexHtml = `<!doctype html>
@@ -154,6 +154,19 @@ describe("pipeline registry", () => {
 
     expect(pipeline.context?.code).toContain("(define-macro ->> [x & forms]");
     expect(pipeline.context?.code).toContain("threaded");
+  });
+
+  test("generates the Effect Schema target from Forma schema declarations", () => {
+    const pipeline = getPipeline("effect-schema");
+
+    expect(pipeline.preview?.output).toContain('import { Schema } from "effect";');
+    expect(pipeline.preview?.output).toContain("export const CheckoutLineSchema = Schema.Struct");
+    expect(pipeline.preview?.output).toContain("cart-id");
+    expect(pipeline.preview?.output).toContain("Schema.Array(CheckoutLineSchema)");
+  });
+
+  test("defers the Alchemy infrastructure preview", () => {
+    expect(pipelines.map((pipeline) => pipeline.id)).not.toContain("alchemy");
   });
 });
 

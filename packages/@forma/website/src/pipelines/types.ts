@@ -13,6 +13,7 @@ export interface PipelinePreview {
   readonly targetLabel: string;
   readonly output: string;
   readonly language: "typescript" | "json";
+  readonly notice?: string | undefined;
 }
 
 export interface PipelineVariant {

@@ -24,6 +24,10 @@ export {
   type MechanicsArtifactResult,
 } from "./mechanics/artifact.js";
 export {
+  generateMechanicsEffectSchemaModule,
+  type MechanicsEffectSchemaModule,
+} from "./mechanics/effect-schema.js";
+export {
   makeMechanicsRuntime,
   MechanicsRuntimeError,
   type MechanicsRuntime,

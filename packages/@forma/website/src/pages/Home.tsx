@@ -63,8 +63,8 @@ export function Home() {
           <span>Types without writing types</span>
           <ArrowRight size={17} />
         </Link>
-        <Link to="/demo/alchemy">
-          <span>One source, many targets</span>
+        <Link to="/demo/effect-schema">
+          <span>Schemas become validators</span>
           <ArrowRight size={17} />
         </Link>
       </section>
