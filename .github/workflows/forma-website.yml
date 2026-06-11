@@ -1,0 +1,76 @@
+name: Forma Website
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/forma-website.yml"
+      - "packages/@forma/**"
+      - "pnpm-lock.yaml"
+      - "package.json"
+      - "turbo.json"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/forma-website.yml"
+      - "packages/@forma/**"
+      - "pnpm-lock.yaml"
+      - "package.json"
+      - "turbo.json"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and dry-run deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @forma/editor build
+
+      - run: pnpm --filter @forma/ts build
+
+      - run: pnpm --filter @forma/website test
+
+      - run: pnpm --filter @forma/website build
+
+      - run: pnpm --filter @forma/website exec wrangler deploy --dry-run
+
+  deploy:
+    name: Deploy to Cloudflare Workers
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @forma/website build
+
+      - run: pnpm --filter @forma/website exec wrangler deploy
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

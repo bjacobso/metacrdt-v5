@@ -5,4 +5,4 @@
  */
 
 export { expandProgramSync, getPreludeEnvSync } from "./expander/expand.js";
-export { PreludeEnv } from "./expander/prelude.js";
+export { PreludeEnv, PRELUDE_SOURCE } from "./expander/prelude.js";

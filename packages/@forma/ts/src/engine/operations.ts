@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import * as Builtins from "../Builtins.js";
 import type { Env } from "../Env.js";
 import * as Evaluator from "../Evaluator.js";
+import { analyzeLsp } from "../lsp/hm-lsp.js";
 import * as Reader from "../Reader.js";
 import type { LanguageSession } from "../Session.js";
 import * as Type from "../Type.js";
@@ -299,12 +300,7 @@ export function typecheck(request: TypecheckRequest): TypecheckResult {
       diagnostics,
       ...(mergedRequest.result === "per-expression"
         ? {
-            expressionTypes: displays.map((item, index) => ({
-              expressionId: `${sourceId}:${index}`,
-              formIndex: index,
-              display: item,
-              type: typeProjection(item),
-            })),
+            expressionTypes: expressionTypesFromSource(sourceId, mergedSource, displays, inferOptions),
           }
         : {}),
     };
@@ -380,6 +376,44 @@ export async function evaluateInSession(
     request.session.env = result.env;
   }
   return result;
+}
+
+function expressionTypesFromSource(
+  sourceId: string,
+  source: string,
+  topLevelDisplays: readonly string[],
+  inferOptions: Type.InferOptions,
+): readonly ExpressionType[] {
+  try {
+    const analysis = Effect.runSync(
+      analyzeLsp(source, {
+        ...(inferOptions.dslProvider ? { dslProvider: inferOptions.dslProvider } : {}),
+      }),
+    );
+    if (analysis.success && analysis.typedSpans.length > 0) {
+      return analysis.typedSpans.map((item, index) => ({
+        expressionId: item.id,
+        formIndex: index,
+        span: {
+          sourceId,
+          startOffset: item.span.start,
+          endOffset: item.span.end,
+        },
+        display: item.typeString,
+        type: typeProjection(item.typeString),
+      }));
+    }
+  } catch {
+    // Keep the host-facing typecheck API best-effort; the headline result above
+    // is still authoritative if typed-span analysis cannot run.
+  }
+
+  return topLevelDisplays.map((item, index) => ({
+    expressionId: `${sourceId}:${index}`,
+    formIndex: index,
+    display: item,
+    type: typeProjection(item),
+  }));
 }
 
 export function typeProjection(display: string): TypeProjection {

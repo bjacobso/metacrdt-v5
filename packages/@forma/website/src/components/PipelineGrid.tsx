@@ -1,0 +1,27 @@
+import { ArrowRight } from "lucide-react";
+import { Link } from "react-router-dom";
+import { pipelines } from "../pipelines";
+import { Badge } from "./Badge";
+
+export function PipelineGrid() {
+  return (
+    <div className="pipeline-grid">
+      {pipelines.map((pipeline) => (
+        <Link className="pipeline-card" key={pipeline.id} to={`/demo/${pipeline.id}`}>
+          <div className="pipeline-card-top">
+            <Badge badge={pipeline.badge} />
+            <ArrowRight size={18} />
+          </div>
+          <h3>{pipeline.title}</h3>
+          <p>{pipeline.tagline}</p>
+          <div className="mini-stages">
+            {pipeline.passes.map((pass) => (
+              <code key={pass}>{pass === "parse" ? "read" : pass}</code>
+            ))}
+            {pipeline.preview ? <code>target</code> : null}
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+}

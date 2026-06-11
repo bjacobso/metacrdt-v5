@@ -13,6 +13,7 @@
     "build:packages": "turbo run build --filter='./packages/*' --filter='./packages/@forma/*'",
     "preview": "vite preview",
     "deploy": "convex deploy",
+    "deploy:forma": "pnpm --filter @forma/website deploy",
     "deploy:static": "static-hosting deploy",
     "confect:codegen": "node scripts/confect-codegen-sidecar.mjs",
     "test": "pnpm build:packages && vitest run",

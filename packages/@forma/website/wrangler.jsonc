@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "forma-website",
+  "compatibility_date": "2026-06-10",
+  "main": "./src/worker.ts",
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "./dist",
+    "html_handling": "none",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/",
+      "/about",
+      "/demo",
+      "/demo/*"
+    ]
+  }
+}
