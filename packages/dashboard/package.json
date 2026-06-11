@@ -1,0 +1,42 @@
+{
+  "name": "@metacrdt/dashboard",
+  "version": "0.1.0",
+  "description": "Target-agnostic MetaCRDT ontology explorer dashboard.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown --config ../../tsdown.config.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "pack:check": "node ../../scripts/pnpm-pack-check.mjs"
+  },
+  "dependencies": {
+    "@metacrdt/client": "workspace:*",
+    "@metacrdt/views": "workspace:*",
+    "@metacrdt/views-react": "workspace:*",
+    "lucide-react": "^1.17.0",
+    "react": "^19.2.7",
+    "react-router-dom": "^7.17.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.16",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-router-dom": "^7.0.0"
+  }
+}

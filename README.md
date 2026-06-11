@@ -12,11 +12,14 @@ deterministic fold of events. Because **derivation** is also a fold, obligations
 rules, workflows, permissions, and generated views converge without being
 separately synchronized. That is the "meta."
 
-This repository is the canonical MetaCRDT reference implementation and `@metacrdt/*`
-package monorepo. It currently runs on [Convex](https://convex.dev) as a
-centralized, reactive reference runtime, with the pure convergence kernel extracted
-as `@metacrdt/core`. The demo elaboration is **datarooms** (compliance/onboarding) —
-one physics over the substrate, not the substrate itself.
+This repository is the canonical MetaCRDT reference implementation and
+`@metacrdt/*` package monorepo. The full reference application lives in
+[`apps/convex-demo`](./apps/convex-demo) and runs on
+[Convex](https://convex.dev) as a centralized, reactive reference runtime. Thin
+Cloudflare and Node demos live in `apps/cloudflare-demo` and `apps/node-demo` to
+prove the shared dashboard/client boundary. The demo elaboration is
+**datarooms** (compliance/onboarding) — one physics over the substrate, not the
+substrate itself.
 
 > **Research Preview.** What is *built* vs. *research frontier* is marked
 > explicitly in the docs. The log is a CRDT today; the multi-replica convergence
@@ -48,16 +51,16 @@ Install dependencies:
 pnpm install
 ```
 
-Run the Convex backend:
+Run the Convex reference app backend:
 
 ```bash
-pnpm exec convex dev
+pnpm --filter @metacrdt/convex-demo exec convex dev
 ```
 
 Configure backend JWT auth when a provider is chosen:
 
 ```ts
-// convex/auth.config.ts
+// apps/convex-demo/convex/auth.config.ts
 export default {
   providers: [
     {
@@ -72,12 +75,12 @@ For deployments where the issuer/audience should come from Convex environment
 values, use this shape after setting the values:
 
 ```bash
-pnpm exec convex env set CONVEX_AUTH_ISSUER https://your-issuer.example.com
-pnpm exec convex env set CONVEX_AUTH_APPLICATION_ID convex
+pnpm --filter @metacrdt/convex-demo exec convex env set CONVEX_AUTH_ISSUER https://your-issuer.example.com
+pnpm --filter @metacrdt/convex-demo exec convex env set CONVEX_AUTH_APPLICATION_ID convex
 ```
 
 ```ts
-// convex/auth.config.ts, after both env vars exist in the deployment
+// apps/convex-demo/convex/auth.config.ts, after both env vars exist in the deployment
 export default {
   providers: [
     {
@@ -99,20 +102,27 @@ Run the Vite frontend:
 pnpm dev:web
 ```
 
+Run the thin target demos:
+
+```bash
+pnpm --filter @metacrdt/cloudflare-demo dev
+pnpm --filter @metacrdt/node-demo dev
+```
+
 Run tests:
 
 ```bash
 pnpm test          # build packages, then run the Convex backend suite
 pnpm test:packages # all @metacrdt/* package tests through Turbo
-pnpm test:all      # package tests, then root backend tests
+pnpm test:all      # package tests, then Convex app tests
 ```
 
 Build:
 
 ```bash
-pnpm build          # package builds, then Vite app build
+pnpm build          # package builds, then all app builds
 pnpm build:packages # package builds only
-pnpm build:app      # Vite app build only
+pnpm build:apps     # Convex, Cloudflare, and Node app builds
 pnpm pack:packages  # package dry-run pack checks through Turbo
 ```
 
@@ -122,9 +132,12 @@ Typecheck:
 pnpm typecheck
 ```
 
-Deploy notes are tracked in `TODO.md`. In short: `pnpm exec convex dev --once`
-pushes functions to the dev deployment, and `pnpm exec static-hosting upload`
-uploads static assets to the dev `.convex.site` host.
+Deploy from the Convex app package. In short:
+`pnpm --filter @metacrdt/convex-demo exec convex dev --once` configures and
+pushes functions to a dev deployment. `pnpm run deploy` deploys Convex functions
+once `CONVEX_DEPLOYMENT` is configured locally or `CONVEX_DEPLOY_KEY` is present
+in CI. `pnpm run deploy:static` uploads static assets to the `.convex.site`
+host.
 
 ---
 
@@ -140,7 +153,10 @@ Built:
 - bitemporal visibility via core in the read path
 - `@metacrdt/schema`, `@metacrdt/query`, `@metacrdt/convex`,
   `@forma/ts`, `@metacrdt/runtime`, `@metacrdt/cloudflare`,
-  `@metacrdt/local`, `@metacrdt/node`, and the first `@metacrdt/testkit`
+  `@metacrdt/local`, `@metacrdt/node`, `@metacrdt/client`,
+  `@metacrdt/views-react`, `@metacrdt/dashboard`, and the first
+  `@metacrdt/testkit`
+- thin Cloudflare and Node dashboard demos over the shared client boundary
 - docs/spec/architecture package plan
 
 Frontier:

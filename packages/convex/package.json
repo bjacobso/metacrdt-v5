@@ -45,8 +45,10 @@
     "effect": "^3.21.3"
   },
   "devDependencies": {
+    "convex-test": "^0.0.53",
     "@metacrdt/testkit": "workspace:*",
     "typescript": "^6.0.3",
+    "vite": "^8.0.16",
     "vitest": "^4.1.8"
   }
 }
