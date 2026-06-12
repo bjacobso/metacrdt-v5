@@ -181,6 +181,12 @@ const validateMechanicsTypeRefs = (
             return;
           }
           case "TEApp": {
+            if (expr.con._tag === "TESym" && expr.con.name === "Brand") {
+              for (const arg of expr.args.slice(1)) {
+                yield* visit(arg);
+              }
+              return;
+            }
             yield* visit(expr.con);
             for (const arg of expr.args) {
               yield* visit(arg);

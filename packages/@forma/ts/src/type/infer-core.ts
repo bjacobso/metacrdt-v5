@@ -212,6 +212,10 @@ export const typeExprToType = (
       }
 
       case "TEApp": {
+        if (texpr.con._tag === "TESym" && texpr.con.name === "Brand" && texpr.args.length === 2) {
+          return yield* typeExprToType(texpr.args[1]!, tvarMap, rvarMap);
+        }
+
         if (
           texpr.con._tag === "TESym" &&
           (texpr.con.name === "ErrorSet" || texpr.con.name === "RequirementSet")

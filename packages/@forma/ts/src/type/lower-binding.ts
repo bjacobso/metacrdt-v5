@@ -223,7 +223,7 @@ export function lowerEffectDo(lower: LowerFn, span: Span, items: readonly SExpr[
     if (nameSym._tag !== "Sym") {
       throw new InferenceError({ message: "do! binding name must be a symbol" });
     }
-    return mkBinding(spanOf(nameSym), nameSym.name, lower(value));
+    return mkBinding(spanOf(nameSym), nameSym.name, lower(effectBindValue(value) ?? value));
   });
   const body = items.length === 3 ? lower(items[2]!) : lowerDoBody(lower, span, items.slice(2));
   return CEffectDo(span, bindings, body);

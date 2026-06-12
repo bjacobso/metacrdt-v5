@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { typecheck } from "@forma/ts/engine";
 import { serializablePassResult, timeoutRunResult } from "./engine/protocol";
 import { getPipeline, pipelines } from "./pipelines";
 import worker from "./worker";
@@ -180,6 +181,17 @@ describe("pipeline registry", () => {
     expect(pipeline.preview?.output).toContain("export class CartRepo extends Context.Tag");
     expect(pipeline.preview?.output).toContain("const cart = yield* cartRepo.load(request);");
     expect(pipeline.preview?.output).toContain("Effect.gen(function* ()");
+  });
+
+  test("typechecks the Effect TypeScript pipeline without diagnostics", () => {
+    const pipeline = getPipeline("effect-ts");
+    const result = typecheck({
+      sourceId: pipeline.id,
+      source: pipeline.source,
+      result: "per-expression",
+    });
+
+    expect(result.diagnostics).toEqual([]);
   });
 
   test("defers the Alchemy infrastructure preview", () => {
