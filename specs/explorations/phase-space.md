@@ -222,6 +222,18 @@ activity grows the garden. Path/Animal-Crossing energy. The reason it belongs
 in this doc: it proves the renderer-agnostic claim at maximum distance from
 CRUD.
 
+### 2.7 Elaborate into an iPaaS (`forma → Workato`)
+
+The integration boundary (`../vision/integrations.md`) reduces every
+integration to schema + Flows; an iPaaS sells the transport tier of exactly
+that shape. Elaborate `define-integration` into a generated Workato custom
+connector + recipes — the mapping logic stays a build output of the ontology,
+so the usual iPaaS failure mode (logic drifting into a GUI) is structurally
+prevented by a drift test. Written up in [`workato.md`](./workato.md), with
+[`n8n.md`](./n8n.md) as the second emitter proving the seam (self-hostable, so
+the transport tier itself becomes an alchemy resource); the durable artifact
+is the Integration IR + emitter seam, not the vendor choice.
+
 ---
 
 ## Axis 3 — new physics (laws the IR could carry that nothing else has)
