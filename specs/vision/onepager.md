@@ -63,13 +63,17 @@ the permission check that lives in four places and agrees in three.
 Our bet: **build the five primitives once, correctly, and products stop
 being applications you write. They become declarations you make.**
 
-## A foundation that doesn't lie
+## A foundation that keeps the whole story
 
-The bet only works if the foundation is honest about three things most
-systems lie about:
+The bet only works if the foundation carries three things most systems
+drop. Not through any fault of theirs — every database does exactly what
+it was asked to do — but no single application ever needed the entire
+scope to be correct at once, so the connective tissue got discarded: when
+things were true, where facts came from, why conclusions followed. This
+foundation is asked to be correct about all three, all the time:
 
 - **Time.** Every fact records both when it became true in the world and
-  when the system learned it. These are different dates, and most software
+  when the system learned it.[^bitemporal] These are different dates, and most software
   conflates them. Kept separate, "what did we know on March 3rd?" is an
   ordinary query — not a forensic project.
 - **Provenance.** Every fact knows who asserted it and why — a person, a
@@ -80,7 +84,7 @@ systems lie about:
   stored as mysterious side effects. Change the facts, and every
   consequence updates itself, carrying an explanation of why.
 
-Concretely, the foundation is an append-only log of facts. Nothing is ever
+Concretely, the foundation is an append-only log of facts.[^log] Nothing is ever
 updated in place; new facts supersede old ones, and the old ones remain,
 queryable at their place in history. Everything else the user sees —
 current state, dashboards, alerts, history views — is a deterministic
@@ -104,7 +108,7 @@ software stop being features:
 
 In 1960, John McCarthy showed that seven primitive operators suffice to
 express all of computation — and proved it in the most convincing way
-possible, by writing the evaluator in itself. Lisp was not designed so much
+possible, by writing the evaluator in itself.[^mccarthy] Lisp was not designed so much
 as *discovered*: a kernel small enough to hold in your head, with
 everything programmers actually use derived from it. **Operational algebra
 is the same move, aimed at operations instead of computation.**
@@ -122,7 +126,7 @@ so history is permanent, and every past state of the system remains
 queryable.
 
 Everything users touch is a derived form. Entities, relations, queries,
-mutations, processes, constraints, views — each is defined *in terms of*
+mutations, actions, processes, constraints, views — each is defined *in terms of*
 the three verbs, the way Lisp's `cond` and `let` are defined in terms of
 its primitives. And in McCarthy's tradition, the strongest evidence is
 self-description: the system's own admission loop — the machinery that
@@ -138,31 +142,42 @@ language" means concretely: Forma can guarantee that its definitions add
 legibility without adding power only because the algebra fixed, in advance,
 what power there is.
 
-The four parts of the stack are four ways of touching this kernel.
+The four parts of the stack are four ways of touching this kernel. A map
+for what follows: operational algebra is the physics; Forma, the language;
+MetaCRDT, the machine; Schematics, the workshop; ontology.run, the grid.
 
 ## Forma — the language
 
 Forma is how people and machines write an ontology. It is a small formal
-language designed to live inside ordinary documents: the markdown file
-explains the policy in prose, and the fenced code block *is* the policy.
+language designed to live inside ordinary documents: the prose explains the
+policy, and the code block *is* the policy. A staffing policy — the entity
+and the rule that governs it:
 
-````markdown
-# Staffing
-
-Workers must hold a current background check while placed at a hospital.
-
-```forma
+```lisp
 (define-entity Worker
-  (:field worker/name String)
-  (:field worker/status (enum active terminated)))
+  (:field (field :worker/name String (:required true)))
+  (:field (field :worker/status
+    (Enum "active" "terminated")
+    (:required true))))
 
-(define-rule hospital-placement-check
-  (:when    (placement/site ?p :hospital))
-  (:require (background-check ?p.worker :current)))
+(define-constraint background-check-current
+  (:description "Active hospital workers must hold a current background check")
+  (:find ?worker-name ?expires)
+  (:where
+    [?worker :worker/name ?worker-name]
+    [?worker :worker/status "active"]
+    [?placement :placement/worker ?worker]
+    [?placement :placement/site "hospital"]
+    [?check :check/worker ?worker]
+    [?check :check/expires-at ?expires]
+    [(< ?expires $now)]))
 ```
-````
 
-We call this pattern a **literate ontology**: the memo and the system are
+If this query ever returns results, the business has a violation[^datalog] — and the
+runtime evaluates it continuously, so the violation surfaces the moment it
+becomes true, routed as an obligation with its explanation attached.
+
+We call this pattern a **literate ontology**[^knuth]: the memo and the system are
 the same file. The document is versioned in git, reviewed in pull requests,
 and deployed like infrastructure — which means the operating model of the
 business has an owner, a history, and a diff for every change.
@@ -176,17 +191,30 @@ declared model or is rejected with a precise error pointing into the
 document. That property is what makes the next claim safe: humans write
 Forma, and AI agents write Forma, and the same validator gates both.
 
+Beneath the friendly surface, the language is doing quieter, harder work.
+Definitions are **typed**: a module is checked against the declared model
+before anything touches a runtime, moving whole classes of operational
+error from production to the editor. Definitions are **data**: the language
+is homoiconic — programs and the structures they describe share one form —
+so the same machinery that validates a module can inspect, transform, and
+generate one, which is what makes agent authorship tractable rather than
+terrifying. And definitions are **portable**: a module elaborates to the
+kernel, not to any particular runtime, so the ontology you write is not
+married to the infrastructure it first runs on. The language is held to
+the same standard as the theory: independent implementations, one shared
+conformance suite, identical behavior required.
+
 ## MetaCRDT — the substrate
 
 MetaCRDT is the fact log itself: the storage and synchronization layer that
 makes the foundation's three honesty properties real. The name is literal —
-CRDTs (conflict-free replicated data types) are the established technique
+CRDTs (conflict-free replicated data types)[^crdt] are the established technique
 for letting independent copies of data merge without conflicts; MetaCRDT
 applies that discipline not just to data but to everything above it: logic,
 schema, workflows, and permissions are all facts in the same log.
 
 Mechanically: every fact is an immutable event with a content-derived
-identity, a hybrid timestamp, and its provenance. A replica's state is a
+identity, a hybrid timestamp,[^hlc] and its provenance. A replica's state is a
 pure computation over its set of events, and merging two replicas is set
 union — an operation that is commutative, associative, and idempotent,
 which is the mathematical reason two copies that have seen the same facts
@@ -202,7 +230,7 @@ in very different places without porting:
 - on **edge infrastructure** — small authoritative replicas near your
   users, for collaboration and presence;
 - on a **server you own** — on-premise, air-gapped, or in CI;
-- in the **browser itself** — fully offline, syncing when reconnected.
+- in the **browser itself** — fully offline, syncing when reconnected.[^localfirst]
 
 These are not four products. They are one kernel under four physics,
 differing only in who sequences events, where facts persist, and how events
@@ -227,7 +255,7 @@ through the same views, writes through the same validators, and its patches
 are reviewable diffs like anyone else's.
 
 Deployment borrows the discipline operations teams already trust from
-infrastructure-as-code, aimed at ontologies instead of servers:
+infrastructure-as-code,[^terraform] aimed at ontologies instead of servers:
 
 - **plan** — elaborate the documents, diff the desired model against the
   live one, and show exactly what would change: which entity types, rules,
@@ -274,9 +302,10 @@ every proposal is checkable before it applies, every applied change carries
 provenance, every consequence is explainable from the rules that derived
 it. The same properties that give humans audit and history give agents
 guardrails. We believe substrates like this are how agent-built software
-stays governable.
+stays governable. Model vendors compete above this layer; business
+operations become stable underneath it.
 
-**The category is validated — behind a closed door.** Palantir's Foundry
+**The category is validated — behind a closed door.** Palantir's Foundry[^foundry]
 made "the ontology" the center of some of the world's most demanding
 operations, and proved that modeling operations as a living, executable
 graph is worth extraordinary amounts of money. That validation is real. It
@@ -308,6 +337,87 @@ We tag our own claims (`✅ shipped · 🚧 building · 📐 designed ·
   ecosystem where an operating model is as portable, forkable, and
   reviewable as source code.
 
+## Open questions — research needed
+
+In the same spirit of tagging claims, here is what we do not know yet.
+These are research questions, not roadmap items — and each doubles as a
+test of the theory, because every answer must be expressible in the
+existing kernel. The day one of them requires a new primitive, the algebra
+has been falsified and needs revision.
+
+**Modular ontologies.** How does a large ontology decompose into modules
+with clean boundaries? An ontology that cannot be broken apart cannot be
+reused, but the boundary semantics are genuinely open: what a module
+exports (entity types, rules, facts, or all three), how modules depend on
+and version against each other, and whether composition is closed — does
+importing two well-formed modules always yield a well-formed ontology?
+
+**Distributed query.** A question that spans modules must be answerable
+when the facts live in separate logs — two SQLite files, two Durable
+Objects, two backend deployments. Datalog over a single log is solved;
+Datalog *across* logs is a real research problem: how much of a query
+pushes down to each replica versus joins at the edge, what the cost model
+looks like, and — harder — what a cross-log answer even claims, when each
+log has its own clock and its own notion of "as of now."
+
+**Federation across organizations.** "My HR system, plus Stripe, plus
+ADP": composing ontologies you do not own. Vendor systems are foreign
+ontologies with their own identities and access rules, which opens three
+problems at once — entity resolution (the same employee exists in three
+systems under three identifiers), provenance across trust boundaries (a
+fact asserted by a vendor is evidence, not gospel — how is foreign
+assertion weighted and audited?), and authorization when the querying
+party is not the data's owner.
+
+**Scale, and the lifecycle of facts.** Append-only forever meets physical
+reality. At what volume do projections need tiering, and how does a log
+vacuum without breaking the conservation law? The candidate shape — fold
+a segment to a checkpoint, archive the segment to cold storage, keep a
+verifiable link from checkpoint to archive — preserves "no fact is
+destroyed" while admitting that not every fact stays hot. Whether that
+shape survives contact with compliance retention schedules and
+right-to-erasure is exactly the kind of question the first deployments
+will answer.
+
+**Evolving the model itself.** Ontologies change: attributes are renamed,
+entity types split, cardinalities tighten. Because the schema is itself
+facts, the old shape stays queryable at its own place in history — but
+derivation across versions is open. Does a rule written against today's
+schema evaluate over facts asserted under last year's? And is migration
+itself expressible as facts — an assertion mapping old shape to new —
+rather than as a script that rewrites history?
+
+**Acting on absence.** The most valuable conclusions are derived from
+what is *missing*: an obligation is "required, and no fact satisfies it."
+Under convergence, absence is unstable — the satisfying fact may exist on
+a replica that has not synced yet. Theory draws the line precisely:
+monotonic derivations are coordination-free, negation is not.[^calm] So
+when is it safe to act on a derived absence, when must the system
+coordinate first, and when is it cheaper to act and compensate when the
+late fact arrives? We suspect the answer should be declarable per rule —
+riskier conclusions buy more coordination — but that is a conjecture.
+
+**Privacy and provenance, composed.** Provenance says every derived fact
+can name its inputs; attribute-level permissions say some inputs are
+restricted. Together they force a question most systems never face: does
+a conclusion inherit the secrecy of its premises? If a derived flag
+depends on a social security number, who may see the flag — and may they
+see *why* it was raised? Information flow through derivation needs a real
+policy, not an accident.
+
+**The blast radius of a declaration.** Plan/apply can diff facts; the
+harder diff is consequences. A one-line rule change can create or retract
+ten thousand obligations. Before applying, the workbench should answer
+"what would this change derive?" — counterfactual evaluation against the
+live log, at plan time, fast enough to be routine.
+
+**The boundary of the fold.** Not all business logic is derivation.
+Scheduling, matching, and optimization are search problems: a fold can
+verify an assignment, but not necessarily find one. Where exactly is the
+boundary between what the kernel derives and what an external solver —
+reached through a governed action — decides? The theory requires that
+boundary to exist; the engineering has to find where it lies.
+
 ## Conclusion
 
 The claim, compressed: business software keeps rebuilding five primitives
@@ -331,5 +441,63 @@ notes — including the wrong turns — are public. If your business runs on
 facts, rules, processes, and obligations (it does), we would like to show
 you what it looks like when those are primitives instead of projects.
 
+Businesses are already ontologies — informal ones, scattered across wikis,
+spreadsheets, inboxes, and the heads of the people who keep things running.
+We are making them executable.
+
 *Databases store facts. CRDTs synchronize facts. This animates facts —
 logic, workflows, permissions, agents, and interfaces, one living system.*
+
+---
+
+[^mccarthy]: John McCarthy, "Recursive Functions of Symbolic Expressions
+    and Their Computation by Machine, Part I," *Communications of the ACM*
+    3(4), 1960. Paul Graham's "The Roots of Lisp" (2002) is the accessible
+    reconstruction this section leans on.
+
+[^log]: The log-as-source-of-truth has deep prior art: event sourcing in
+    the domain-driven-design tradition, and Jay Kreps, "The Log: What every
+    software engineer should know about real-time data's unifying
+    abstraction" (2013).
+
+[^bitemporal]: Two-axis time is a mature result of the temporal-database
+    literature — see Richard Snodgrass's bitemporal work of the 1990s —
+    with production lineage in Datomic (immutable facts with time-travel)
+    and XTDB (bitemporal Datalog). We stand on that work; the contribution
+    here is what is layered above it.
+
+[^crdt]: Marc Shapiro, Nuno Preguiça, Carlos Baquero, and Marek Zawirski,
+    "Conflict-free Replicated Data Types," *SSS 2011* — the paper that
+    formalized strong eventual consistency, the convergence guarantee this
+    section relies on.
+
+[^hlc]: Sandeep Kulkarni, Murat Demirbas, Deepak Madappa, Bharadwaj
+    Avva, and Marcelo Leone, "Logical Physical Clocks" (hybrid logical
+    clocks), *OPODIS 2014*.
+
+[^localfirst]: Martin Kleppmann, Adam Wiggins, Peter van Hardenberg, and
+    Mark McGranaghan, "Local-first software: You own your data, in spite
+    of the cloud," *Onward! 2019* — the design ideals the browser replica
+    aims to satisfy.
+
+[^knuth]: After Donald Knuth, "Literate Programming," *The Computer
+    Journal*, 1984. "The memo and the system are the same file" is Knuth's
+    idea, applied to operations.
+
+[^datalog]: The query and constraint language is Datalog — see Ceri,
+    Gottlob, and Tanca, "What You Always Wanted to Know About Datalog (And
+    Never Dared to Ask)," *IEEE TKDE*, 1989. Constraints-as-queries-that-
+    should-be-empty is the classic integrity-constraint reading.
+
+[^terraform]: The plan/apply/drift discipline is HashiCorp Terraform's
+    contribution to operations culture; we aim it at ontologies instead of
+    cloud resources.
+
+[^foundry]: Palantir Foundry's Ontology (palantir.com/platforms/foundry)
+    — the closed prior art this project positions against, and the
+    strongest commercial evidence that the category is real.
+
+[^calm]: Joseph M. Hellerstein and Peter Alvaro, "Keeping CALM: When
+    Distributed Consistency Is Easy," *Communications of the ACM*, 2020 —
+    consistency-as-logical-monotonicity, the result that makes "acting on
+    absence" a precise question rather than a vague worry.
