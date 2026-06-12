@@ -1,4 +1,3 @@
-import { ArrowRight, Code } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Dfn } from "../components/Dfn";
 import { PipelineGrid } from "../components/PipelineGrid";
@@ -15,13 +14,15 @@ export function Home() {
     <main>
       <section className="hero">
         <div className="hero-copy">
-          <span className="eyebrow">Forma</span>
-          <h1>A small typed language that compiles into the systems you already use.</h1>
-          <p>Source goes in, typed structure comes out, and every arrow is inspectable.</p>
+          <span className="eyebrow">Working note</span>
+          <h1>Forma</h1>
+          <p>
+            A small Lisp-shaped language for writing programs that can be checked, run, or
+            elaborated into typed target artifacts.
+          </p>
           <div className="hero-actions">
             <Link className="primary-action" to="/demo/hello">
-              Try the demo
-              <ArrowRight size={18} />
+              Demo
             </Link>
             <a
               className="secondary-action"
@@ -29,56 +30,32 @@ export function Home() {
               rel="noreferrer"
               target="_blank"
             >
-              <Code size={18} />
-              GitHub
+              Repository
             </a>
           </div>
         </div>
-        <div className="hero-pipeline" aria-label="Animated compiler pipeline">
-          <div className="hero-stage stage-a">
-            <b>source</b>
-            <code>(* rate hours)</code>
-          </div>
-          <div className="hero-stage stage-b">
-            <b>read</b>
-            <code>(list * rate hours)</code>
-          </div>
-          <div className="hero-stage stage-c">
-            <b>type</b>
-            <code>Number</code>
-          </div>
-          <div className="hero-stage stage-d">
-            <b>value</b>
-            <code>{`{:revenue 6000}`}</code>
-          </div>
-        </div>
+        <pre className="hero-transcript">{`source      (* rate hours)
+read        (list * rate hours)
+type        Number
+evaluate    {:revenue 6000}`}</pre>
       </section>
 
       <section className="claim-row">
-        <Link to="/demo/pipes">
-          <span>Operators are libraries</span>
-          <ArrowRight size={17} />
-        </Link>
-        <Link to="/demo/types">
-          <span>Types without writing types</span>
-          <ArrowRight size={17} />
-        </Link>
-        <Link to="/demo/effect-schema">
-          <span>Schemas become validators</span>
-          <ArrowRight size={17} />
-        </Link>
+        <Link to="/demo/pipes">Operators are libraries</Link>
+        <Link to="/demo/types">Types without writing types</Link>
+        <Link to="/demo/effect-schema">Schemas become validators</Link>
       </section>
 
       <section className="gallery gallery-compact">
         <div className="section-heading">
-          <span>Pipeline gallery</span>
-          <h2>Proof by pipeline</h2>
+          <span>Examples</span>
+          <h2>Compiler passes as evidence</h2>
         </div>
         <PipelineGrid />
       </section>
 
       <section className="story-band">
-        <h2>The story</h2>
+        <h2>Abstract</h2>
         <p>
           Forma treats compiler passes as product surface. Instead of asking you to trust that a
           {" "}

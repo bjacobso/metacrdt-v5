@@ -1,4 +1,3 @@
-import { ArrowRight, Code } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Dfn } from "../components/Dfn";
 import { useDocumentMeta } from "../lib/documentMeta";
@@ -16,16 +15,15 @@ export function About() {
         <Link className="back-link" to="/">
           Forma
         </Link>
-        <h1>One ontology, many front ends, many targets.</h1>
+        <h1>Notes toward one ontology, many front ends, many targets.</h1>
         <p>
           Forma is the Lisp-shaped authoring surface for a larger MetaCRDT idea:
           author a system once, check it as a program, then elaborate it into
           typed runtime and deployment artifacts.
         </p>
         <div className="hero-actions">
-          <Link className="primary-action" to="/demo/entities">
-            Inspect elaboration
-            <ArrowRight size={18} />
+          <Link className="primary-action" to="/demo/effect-schema">
+            Inspect schema elaboration
           </Link>
           <a
             className="secondary-action"
@@ -33,7 +31,6 @@ export function About() {
             rel="noreferrer"
             target="_blank"
           >
-            <Code size={18} />
             Specs
           </a>
         </div>

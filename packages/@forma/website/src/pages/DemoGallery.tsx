@@ -10,8 +10,8 @@ export function DemoGallery({ compact = false }: { readonly compact?: boolean })
   return (
     <section className={compact ? "gallery gallery-compact" : "gallery"}>
       <div className="section-heading">
-        <span>Pipeline gallery</span>
-        {!compact ? <h1>Choose a pass to inspect</h1> : <h2>Proof by pipeline</h2>}
+        <span>Examples</span>
+        {!compact ? <h1>Compiler passes as evidence</h1> : <h2>Compiler passes as evidence</h2>}
       </div>
       <PipelineGrid />
     </section>

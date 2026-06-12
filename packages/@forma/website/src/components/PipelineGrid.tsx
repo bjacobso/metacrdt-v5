@@ -1,4 +1,3 @@
-import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { pipelines } from "../pipelines";
 import { Badge } from "./Badge";
@@ -10,7 +9,7 @@ export function PipelineGrid() {
         <Link className="pipeline-card" key={pipeline.id} to={`/demo/${pipeline.id}`}>
           <div className="pipeline-card-top">
             <Badge badge={pipeline.badge} />
-            <ArrowRight size={18} />
+            <span>Open</span>
           </div>
           <h3>{pipeline.title}</h3>
           <p>{pipeline.tagline}</p>
