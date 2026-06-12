@@ -243,4 +243,5 @@ because the delivery fact is the dedup key, not Workato's job history.
 - **Workato is the example, not the commitment.** The deliverable of this doc
   is the **Integration IR + emitter seam**; Workato is the first emitter
   because its catalog is largest. If the OEM/pricing math fails, the IR is
-  unchanged.
+  unchanged. [`n8n.md`](./n8n.md) writes the second emitter to prove exactly
+  that — and a decision table for choosing between them.
