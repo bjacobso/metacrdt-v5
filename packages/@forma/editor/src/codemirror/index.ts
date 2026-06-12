@@ -5,6 +5,8 @@
 export { lispLanguage, lispSupport } from "./syntax.js";
 export {
   appLightTheme,
+  appLightHighlightStyle,
+  appLightSyntaxHighlighting,
   appDarkTheme,
   appDarkHighlightStyle,
   appDarkSyntaxHighlighting,

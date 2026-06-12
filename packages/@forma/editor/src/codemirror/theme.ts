@@ -14,32 +14,32 @@ import { tags as t } from "@lezer/highlight";
 
 export const appLightTheme = EditorView.theme({
   "&": {
-    backgroundColor: "#ffffff",
-    color: "#0a0a0a",
+    backgroundColor: "#fffdf8",
+    color: "#292524",
   },
   ".cm-content": {
-    caretColor: "#171717",
+    caretColor: "#292524",
     fontFamily: "monospace",
     fontSize: "14px",
     padding: "12px 0",
   },
   ".cm-cursor, .cm-dropCursor": {
-    borderLeftColor: "#171717",
+    borderLeftColor: "#292524",
   },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
-    backgroundColor: "#acd7ff",
+    backgroundColor: "#d8d2c8",
   },
   ".cm-activeLine": {
-    backgroundColor: "#f5f5f580",
+    backgroundColor: "#f4f0e8",
   },
   ".cm-gutters": {
-    backgroundColor: "#ffffff",
-    color: "#737373",
-    borderRight: "none",
+    backgroundColor: "#f4f0e8",
+    color: "#78716c",
+    borderRight: "1px solid #d8d2c8",
   },
   ".cm-activeLineGutter": {
-    backgroundColor: "#f5f5f580",
-    color: "#171717",
+    backgroundColor: "#e7e1d7",
+    color: "#292524",
   },
   ".cm-lineNumbers .cm-gutterElement": {
     padding: "0 8px 0 16px",
@@ -48,7 +48,7 @@ export const appLightTheme = EditorView.theme({
     overflow: "auto",
   },
   ".cm-placeholder": {
-    color: "#737373",
+    color: "#78716c",
     fontStyle: "normal",
   },
 });
@@ -156,4 +156,31 @@ export const appDarkHighlightStyle = HighlightStyle.define([
   { tag: t.propertyName, color: "#fbbf24" },
 ]);
 
+export const appLightHighlightStyle = HighlightStyle.define([
+  { tag: t.keyword, color: "#5b21b6", fontWeight: "600" },
+  { tag: t.variableName, color: "#292524" },
+  { tag: t.heading, color: "#1e3a8a", fontWeight: "700" },
+  { tag: t.heading1, color: "#1e3a8a", fontWeight: "700" },
+  { tag: t.heading2, color: "#1e3a8a", fontWeight: "700" },
+  { tag: t.heading3, color: "#1e3a8a", fontWeight: "700" },
+  { tag: t.processingInstruction, color: "#9d174d", fontWeight: "600" },
+  { tag: t.link, color: "#075985", textDecoration: "underline" },
+  { tag: t.url, color: "#075985" },
+  { tag: t.emphasis, fontStyle: "italic" },
+  { tag: t.strong, fontWeight: "700" },
+  { tag: t.atom, color: "#9a3412", fontWeight: "600" },
+  { tag: t.string, color: "#166534" },
+  { tag: t.number, color: "#075985" },
+  { tag: t.bool, color: "#5b21b6" },
+  { tag: t.lineComment, color: "#78716c", fontStyle: "italic" },
+  { tag: t.paren, color: "#57534e" },
+  { tag: t.squareBracket, color: "#57534e" },
+  { tag: t.brace, color: "#57534e" },
+  { tag: t.meta, color: "#9d174d" },
+  { tag: t.typeName, color: "#1e3a8a", fontWeight: "600" },
+  { tag: t.function(t.variableName), color: "#1d4ed8" },
+  { tag: t.propertyName, color: "#854d0e" },
+]);
+
 export const appDarkSyntaxHighlighting = syntaxHighlighting(appDarkHighlightStyle);
+export const appLightSyntaxHighlighting = syntaxHighlighting(appLightHighlightStyle);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { LispEditor, type LispEditorRef } from "@forma/editor/react";
 import { sameSpan, spanContains, spanSize, type SpanRange } from "../lib/artifacts";
+import { useTheme } from "../lib/theme";
 import type { PipelineContext } from "../pipelines/types";
 
 export function SourcePane({
@@ -24,6 +25,7 @@ export function SourcePane({
   readonly context?: PipelineContext | undefined;
   readonly onSelectSpan?: (span: SpanRange | null) => void;
 }) {
+  const { theme } = useTheme();
   const editorRef = useRef<LispEditorRef | null>(null);
   const lastSelected = useRef<SpanRange | null>(null);
   const orderedSpans = useMemo(
@@ -59,6 +61,7 @@ export function SourcePane({
       <LispEditor
         ariaLabel="Forma source"
         className="embedded-editor"
+        key={theme}
         lineNumbers
         maxHeight={620}
         minHeight={360}
@@ -66,6 +69,7 @@ export function SourcePane({
         ref={editorRef}
         readOnly={readOnly}
         showStatusBar={false}
+        theme={theme === "dark" ? "app-dark" : "light"}
         value={source}
       />
       <div className="source-status" aria-live="polite">

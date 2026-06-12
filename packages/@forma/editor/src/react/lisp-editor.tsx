@@ -23,7 +23,12 @@ import { closeBrackets } from "@codemirror/autocomplete";
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
 import { keymap } from "@codemirror/view";
 import { lispSupport } from "../codemirror/syntax.js";
-import { appDarkTheme, appDarkSyntaxHighlighting } from "../codemirror/theme.js";
+import {
+  appDarkTheme,
+  appDarkSyntaxHighlighting,
+  appLightTheme,
+  appLightSyntaxHighlighting,
+} from "../codemirror/theme.js";
 import { structuralKeymap } from "../codemirror/structural.js";
 import { createCompletionExtension } from "../codemirror/completion.js";
 import { createHoverExtension } from "../codemirror/hover.js";
@@ -176,7 +181,9 @@ export const LispEditor = forwardRef<LispEditorRef, LispEditorProps>(function Li
       // Language support (grammar + folding + indentation)
       lispSupport(),
       // Theme
-      ...(theme === "app-dark" ? [appDarkTheme, appDarkSyntaxHighlighting] : []),
+      ...(theme === "app-dark" || theme === "vs-dark"
+        ? [appDarkTheme, appDarkSyntaxHighlighting]
+        : [appLightTheme, appLightSyntaxHighlighting]),
       // Core editing
       history(),
       bracketMatching(),

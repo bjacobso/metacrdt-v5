@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { Home } from "./pages/Home";
 
 const About = lazy(() =>
@@ -14,14 +15,17 @@ const DemoPipeline = lazy(() =>
 
 export function App() {
   return (
-    <Suspense fallback={<main className="route-loading">Loading...</main>}>
-      <Routes>
-        <Route element={<Home />} path="/" />
-        <Route element={<About />} path="/about" />
-        <Route element={<DemoGallery />} path="/demo" />
-        <Route element={<DemoPipeline />} path="/demo/:pipelineId" />
-        <Route element={<Navigate replace to="/" />} path="*" />
-      </Routes>
-    </Suspense>
+    <>
+      <ThemeToggle />
+      <Suspense fallback={<main className="route-loading">Loading...</main>}>
+        <Routes>
+          <Route element={<Home />} path="/" />
+          <Route element={<About />} path="/about" />
+          <Route element={<DemoGallery />} path="/demo" />
+          <Route element={<DemoPipeline />} path="/demo/:pipelineId" />
+          <Route element={<Navigate replace to="/" />} path="*" />
+        </Routes>
+      </Suspense>
+    </>
   );
 }

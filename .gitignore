@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .turbo/
+test-results/
+packages/@forma/website/test-results/
 .confect-convex-target/
 
 .env.local

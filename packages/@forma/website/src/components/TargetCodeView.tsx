@@ -1,9 +1,16 @@
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
+import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
 import { EditorView, lineNumbers } from "@codemirror/view";
-import { appDarkSyntaxHighlighting, appDarkTheme } from "@forma/editor/codemirror";
+import {
+  appDarkSyntaxHighlighting,
+  appDarkTheme,
+  appLightSyntaxHighlighting,
+  appLightTheme,
+} from "@forma/editor/codemirror";
 import { useEffect, useRef } from "react";
+import { useTheme } from "../lib/theme";
 import type { PipelinePreview } from "../pipelines/types";
 
 export function TargetCodeView({
@@ -13,6 +20,7 @@ export function TargetCodeView({
   readonly code: string;
   readonly language: PipelinePreview["language"];
 }) {
+  const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
 
@@ -26,8 +34,9 @@ export function TargetCodeView({
       state: EditorState.create({
         doc: code,
         extensions: [
-          appDarkTheme,
-          appDarkSyntaxHighlighting,
+          ...(theme === "dark"
+            ? [appDarkTheme, appDarkSyntaxHighlighting]
+            : [appLightTheme, appLightSyntaxHighlighting, syntaxHighlighting(defaultHighlightStyle, { fallback: true })]),
           lineNumbers(),
           EditorState.readOnly.of(true),
           EditorView.editable.of(false),
@@ -44,7 +53,7 @@ export function TargetCodeView({
       viewRef.current?.destroy();
       viewRef.current = null;
     };
-  }, [code, language]);
+  }, [code, language, theme]);
 
   return <div className="target-code-view" ref={containerRef} />;
 }
