@@ -171,6 +171,12 @@ describe("pipeline registry", () => {
     expect(pipeline.source).toContain("(define-service CartRepo");
     expect(pipeline.source).toContain("(define-operation checkout [request]");
     expect(pipeline.preview?.output).toContain('import { Context, Effect } from "effect";');
+    expect(pipeline.preview?.output).toContain('export type CartId = Brand<"CartId", string>;');
+    expect(pipeline.preview?.output).toContain('export type CustomerId = Brand<"CustomerId", string>;');
+    expect(pipeline.preview?.output).toContain("export interface CheckoutRequest");
+    expect(pipeline.preview?.output).toContain('readonly "cart-id": CartId;');
+    expect(pipeline.preview?.output).toContain("readonly coupon?: string;");
+    expect(pipeline.preview?.output).toContain("export interface CheckoutRejected");
     expect(pipeline.preview?.output).toContain("export class CartRepo extends Context.Tag");
     expect(pipeline.preview?.output).toContain("const cart = yield* cartRepo.load(request);");
     expect(pipeline.preview?.output).toContain("Effect.gen(function* ()");

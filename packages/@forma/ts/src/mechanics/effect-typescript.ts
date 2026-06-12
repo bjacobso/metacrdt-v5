@@ -19,9 +19,32 @@ interface ServiceDefPayload {
   readonly methods: readonly JsonValue[];
 }
 
+interface SchemaDefPayload {
+  readonly kind: "SchemaDef";
+  readonly name: string;
+  readonly schema: JsonValue;
+}
+
+interface ErrorDefPayload {
+  readonly kind: "ErrorDef";
+  readonly name: string;
+  readonly schema: JsonValue;
+}
+
+interface BrandDef {
+  readonly name: string;
+  readonly base: JsonValue;
+}
+
 export function generateMechanicsEffectTypeScriptModule(
   declarations: readonly PackageableDeclaration[],
 ): MechanicsEffectTypeScriptModule {
+  const schemas = declarations
+    .map((declaration) => schemaPayload(declaration.payload))
+    .filter((payload): payload is SchemaDefPayload => payload !== undefined);
+  const errors = declarations
+    .map((declaration) => errorPayload(declaration.payload))
+    .filter((payload): payload is ErrorDefPayload => payload !== undefined);
   const services = declarations
     .map((declaration) => servicePayload(declaration.payload))
     .filter((payload): payload is ServiceDefPayload => payload !== undefined);
@@ -30,6 +53,24 @@ export function generateMechanicsEffectTypeScriptModule(
     .filter((payload): payload is EffectDefPayload => payload !== undefined);
 
   const lines = ['import { Context, Effect } from "effect";', ""];
+  const brands = uniqueBrands([...schemas.map((schema) => schema.schema), ...errors.map((error) => error.schema)]);
+  if (brands.length > 0) {
+    lines.push('type Brand<Name extends string, Type> = Type & { readonly "__brand": Name };');
+    for (const brand of brands) {
+      lines.push(`export type ${typeName(brand.name)} = Brand<${JSON.stringify(brand.name)}, ${typeExprTs(brand.base)}>;`);
+    }
+    lines.push("");
+  }
+
+  for (const schema of schemas) {
+    lines.push(...schemaTypeLines(schema.name, schema.schema, "type"));
+    lines.push("");
+  }
+
+  for (const error of errors) {
+    lines.push(...schemaTypeLines(error.name, error.schema, "error"));
+    lines.push("");
+  }
 
   for (const service of services) {
     lines.push(...serviceClassLines(service));
@@ -45,6 +86,22 @@ export function generateMechanicsEffectTypeScriptModule(
     code: lines.join("\n").trimEnd() + "\n",
     operationNames: effects.map((effect) => effect.name),
   };
+}
+
+function schemaPayload(payload: PackageableDeclaration["payload"]): SchemaDefPayload | undefined {
+  if (!isRecord(payload) || payload["kind"] !== "SchemaDef") return undefined;
+  const name = payload["name"];
+  const schema = payload["schema"];
+  if (typeof name !== "string" || schema === undefined) return undefined;
+  return { kind: "SchemaDef", name, schema };
+}
+
+function errorPayload(payload: PackageableDeclaration["payload"]): ErrorDefPayload | undefined {
+  if (!isRecord(payload) || payload["kind"] !== "ErrorDef") return undefined;
+  const name = payload["name"];
+  const schema = payload["schema"];
+  if (typeof name !== "string" || schema === undefined) return undefined;
+  return { kind: "ErrorDef", name, schema };
 }
 
 function servicePayload(payload: PackageableDeclaration["payload"]): ServiceDefPayload | undefined {
@@ -65,6 +122,31 @@ function effectPayload(payload: PackageableDeclaration["payload"]): EffectDefPay
     return undefined;
   }
   return { kind: "EffectDef", name, params, effect, body };
+}
+
+function schemaTypeLines(name: string, schema: JsonValue, kind: "type" | "error"): readonly string[] {
+  const type = typeName(name);
+  if (!isRecord(schema) || schema["kind"] !== "Struct") {
+    return [`export type ${type} = ${typeExprTs(schema)};`];
+  }
+  const lines = [`export interface ${type} {`];
+  if (kind === "error") {
+    lines.push(`  readonly _tag?: ${JSON.stringify(type)};`);
+  }
+  for (const field of arrayItems(schema["fields"])) {
+    const fieldLine = structFieldLine(field);
+    if (fieldLine) lines.push(fieldLine);
+  }
+  lines.push("}");
+  return lines;
+}
+
+function structFieldLine(field: JsonValue): string | null {
+  if (!isRecord(field) || typeof field["name"] !== "string") return null;
+  const schema = field["schema"];
+  const optional = isRecord(schema) && schema["kind"] === "Optional";
+  const type = optional && isRecord(schema) ? typeExprTs(schema["item"]) : typeExprTs(schema);
+  return `  readonly ${safePropertyName(field["name"])}${optional ? "?" : ""}: ${type};`;
 }
 
 function serviceClassLines(service: ServiceDefPayload): readonly string[] {
@@ -220,17 +302,40 @@ function typeExprTs(type: JsonValue | undefined): string {
       return primitiveTs(type["name"]);
     case "Ref":
       return typeName(String(type["name"] ?? "Unknown"));
+    case "Brand":
+      return typeName(String(type["name"] ?? "Brand"));
+    case "Struct":
+      return `{ ${arrayItems(type["fields"]).map(structInlineFieldTs).join("; ")} }`;
     case "Array":
       return `ReadonlyArray<${typeExprTs(type["item"])}>`;
     case "Optional":
       return `${typeExprTs(type["item"])} | undefined`;
     case "Map":
       return `Readonly<Record<string, ${typeExprTs(type["value"])}>>`;
+    case "Literal":
+      return literalUnion(type["values"]);
+    case "Tuple":
+      return `readonly [${arrayItems(type["items"]).map(typeExprTs).join(", ")}]`;
+    case "Union":
+      return arrayItems(type["variants"]).map(typeExprTs).join(" | ") || "never";
     case "Effect":
       return effectTypeTs(type, { includeRequirements: true });
     default:
       return "unknown";
   }
+}
+
+function structInlineFieldTs(field: JsonValue): string {
+  if (!isRecord(field) || typeof field["name"] !== "string") return "";
+  const schema = field["schema"];
+  const optional = isRecord(schema) && schema["kind"] === "Optional";
+  const type = optional && isRecord(schema) ? typeExprTs(schema["item"]) : typeExprTs(schema);
+  return `readonly ${safePropertyName(field["name"])}${optional ? "?" : ""}: ${type}`;
+}
+
+function literalUnion(values: JsonValue | undefined): string {
+  const literals = arrayItems(values).map((value) => JSON.stringify(value));
+  return literals.length === 0 ? "never" : literals.join(" | ");
 }
 
 function primitiveTs(name: JsonValue | undefined): string {
@@ -253,6 +358,26 @@ function primitiveTs(name: JsonValue | undefined): string {
 function symbolUnion(value: JsonValue | undefined, empty: string): string {
   const items = arrayItems(value).filter((item): item is string => typeof item === "string");
   return items.length === 0 ? empty : items.map(typeName).join(" | ");
+}
+
+function uniqueBrands(schemas: readonly JsonValue[]): readonly BrandDef[] {
+  const brands = new Map<string, BrandDef>();
+  for (const schema of schemas) {
+    collectBrands(schema, brands);
+  }
+  return [...brands.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function collectBrands(schema: JsonValue | undefined, brands: Map<string, BrandDef>): void {
+  if (Array.isArray(schema)) {
+    for (const item of schema) collectBrands(item, brands);
+    return;
+  }
+  if (!isRecord(schema)) return;
+  if (schema["kind"] === "Brand" && typeof schema["name"] === "string") {
+    brands.set(schema["name"], { name: schema["name"], base: schema["schema"] });
+  }
+  for (const value of Object.values(schema)) collectBrands(value, brands);
 }
 
 function arrayItems(value: JsonValue | undefined): readonly JsonValue[] {
