@@ -5,14 +5,17 @@ import { api } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
+const TENANT = "acme-staffing";
 
 async function flush(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
 async function bootstrap(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
-  await t.mutation(api.flows.setupDemoFlow, {});
+  await t.mutation(api.tenants.ensureDemoTenants, {});
+  await t.mutation(api.flows.setupDemoFlow, { tenantSlug: TENANT });
   await t.mutation(api.forms.defineForm, {
+    tenantSlug: TENANT,
     form: "i9",
     title: "Form I-9",
     fields: [
@@ -34,18 +37,25 @@ async function runOnboarding(
   citizenship: string,
 ) {
   await t.mutation(api.flows.startFlow, {
+    tenantSlug: TENANT,
     flowDefName: "onboarding",
     subject,
     context: { employer: "employer:acme" },
   });
   await flush(t); // parks at the collect step
-  const token = (await t.query(api.flows.listFlows, { subject }))[0].token!;
+  const token = (await t.query(api.flows.listFlows, {
+    tenantSlug: TENANT,
+    subject,
+  }))[0].token!;
   await t.mutation(api.forms.submitCollection, {
     token,
     values: { ssn: "1", citizenship },
   });
   await flush(t); // resumes → branch → ... → done
-  return (await t.query(api.flows.listFlows, { subject }))[0];
+  return (await t.query(api.flows.listFlows, {
+    tenantSlug: TENANT,
+    subject,
+  }))[0];
 }
 
 describe("general flow DAG", () => {
@@ -55,12 +65,16 @@ describe("general flow DAG", () => {
       const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
       await bootstrap(t);
       await t.mutation(api.flows.startFlow, {
+        tenantSlug: TENANT,
         flowDefName: "onboarding",
         subject: "w:park",
         context: { employer: "employer:acme" },
       });
       await flush(t);
-      const run = (await t.query(api.flows.listFlows, { subject: "w:park" }))[0];
+      const run = (await t.query(api.flows.listFlows, {
+        tenantSlug: TENANT,
+        subject: "w:park",
+      }))[0];
       expect(run.status).toBe("waiting");
       expect(run.currentStepId).toBe("i9");
       expect(run.token).toBeTruthy();
@@ -82,7 +96,10 @@ describe("general flow DAG", () => {
       expect(kinds).toContain("action");
       expect(kinds).toContain("notify");
       // The action step recorded its result fact.
-      const entity = await t.query(api.facts.getEntity, { e: "w:alien" });
+      const entity = await t.query(api.facts.getEntity, {
+        tenantSlug: TENANT,
+        e: "w:alien",
+      });
       expect(entity.attributes["everify.status"]).toEqual(["verified"]);
     } finally {
       vi.useRealTimers();
@@ -98,7 +115,10 @@ describe("general flow DAG", () => {
 
       expect(run.status).toBe("completed");
       // No E-Verify action ran on the citizen path.
-      const entity = await t.query(api.facts.getEntity, { e: "w:citizen" });
+      const entity = await t.query(api.facts.getEntity, {
+        tenantSlug: TENANT,
+        e: "w:citizen",
+      });
       expect(entity.attributes["everify.status"]).toBeUndefined();
       expect(run.events.some((e) => e.kind === "notify")).toBe(true);
     } finally {
@@ -110,7 +130,9 @@ describe("general flow DAG", () => {
     vi.useFakeTimers();
     try {
       const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await t.mutation(api.tenants.ensureDemoTenants, {});
       await t.mutation(api.flows.defineFlow, {
+        tenantSlug: TENANT,
         name: "tiny",
         title: "Tiny",
         startStepId: "a",
@@ -121,13 +143,23 @@ describe("general flow DAG", () => {
           { id: "done", type: "done" },
         ],
       });
-      await t.mutation(api.flows.startFlow, { flowDefName: "tiny", subject: "x:1" });
+      await t.mutation(api.flows.startFlow, {
+        tenantSlug: TENANT,
+        flowDefName: "tiny",
+        subject: "x:1",
+      });
       await flush(t);
 
-      const run = (await t.query(api.flows.listFlows, { subject: "x:1" }))[0];
+      const run = (await t.query(api.flows.listFlows, {
+        tenantSlug: TENANT,
+        subject: "x:1",
+      }))[0];
       expect(run.status).toBe("completed");
       // `stage` is cardinality-many here → both asserted values present.
-      const entity = await t.query(api.facts.getEntity, { e: "x:1" });
+      const entity = await t.query(api.facts.getEntity, {
+        tenantSlug: TENANT,
+        e: "x:1",
+      });
       expect((entity.attributes["stage"] as string[]).sort()).toEqual(["one", "x:1"]);
     } finally {
       vi.useRealTimers();

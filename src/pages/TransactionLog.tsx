@@ -3,6 +3,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import EntityPicker from "../EntityPicker";
 import { Card, CardHeader, Button, Mono } from "../ui";
+import { useTenant } from "../tenant";
 
 function toMs(s: string): number | undefined {
   if (!s) return undefined;
@@ -25,26 +26,42 @@ const KIND_TONE: Record<string, string> = {
 };
 
 export default function TransactionLog() {
+  const { selectedTenantSlug } = useTenant();
   const [e, setE] = useState("worker:maria");
   const [txStr, setTxStr] = useState("");
   const [vtStr, setVtStr] = useState("");
   const [includeRetracted, setIncludeRetracted] = useState(false);
   const [includeTombstoned, setIncludeTombstoned] = useState(false);
 
-  const asOf = useQuery(api.facts.entityFactsAsOf, {
-    e,
-    txTime: toMs(txStr),
-    validTime: toMs(vtStr),
-    includeRetracted,
-    includeTombstoned,
-  });
-  const timeline = useQuery(api.facts.entityTimeline, { e, limit: 50 });
+  const asOf = useQuery(
+    api.facts.entityFactsAsOf,
+    selectedTenantSlug
+      ? {
+          e,
+          tenantSlug: selectedTenantSlug,
+          txTime: toMs(txStr),
+          validTime: toMs(vtStr),
+          includeRetracted,
+          includeTombstoned,
+        }
+      : "skip",
+  );
+  const timeline = useQuery(
+    api.facts.entityTimeline,
+    selectedTenantSlug ? { e, tenantSlug: selectedTenantSlug, limit: 50 } : "skip",
+  );
 
   return (
     <div className="space-y-6">
       <Card className="px-5 py-4">
         <div className="flex flex-wrap items-center gap-3">
-          <EntityPicker value={e} onChange={setE} placeholder="entity id" className="w-64" />
+          <EntityPicker
+            tenantSlug={selectedTenantSlug}
+            value={e}
+            onChange={setE}
+            placeholder="entity id"
+            className="w-64"
+          />
         </div>
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="text-[13px]">

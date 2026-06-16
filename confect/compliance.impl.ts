@@ -11,16 +11,20 @@ import api from "./_generated/api";
 import { DatabaseReader } from "./_generated/services";
 import {
   InvalidPlacement,
+  TenantAccessDenied,
   UnsupportedRequirement,
   UnknownWorker,
   type DryRunComplianceResult,
 } from "./compliance.spec";
 import type { FactEvents } from "./tables/FactEvents";
 import type { Rules } from "./tables/Rules";
+import type { Tenants } from "./tables/Tenants";
 import type { Transactions } from "./tables/Transactions";
+import { Auth } from "./_generated/services";
 
 type FactEventDoc = typeof FactEvents.Doc.Type;
 type RuleDoc = typeof Rules.Doc.Type;
+type TenantDoc = typeof Tenants.Doc.Type;
 type TransactionDoc = typeof Transactions.Doc.Type;
 type DryRunResult = typeof DryRunComplianceResult.Type;
 
@@ -138,11 +142,16 @@ function legacyEventFromRow(
 
 function typedError(
   err: unknown,
-): UnknownWorker | InvalidPlacement | UnsupportedRequirement {
+):
+  | UnknownWorker
+  | InvalidPlacement
+  | UnsupportedRequirement
+  | TenantAccessDenied {
   if (
     err instanceof UnknownWorker ||
     err instanceof InvalidPlacement ||
-    err instanceof UnsupportedRequirement
+    err instanceof UnsupportedRequirement ||
+    err instanceof TenantAccessDenied
   ) {
     return err;
   }
@@ -255,21 +264,58 @@ const dryRunWorkerCompliance = FunctionImpl.make(
   api,
   "compliance",
   "dryRunWorkerCompliance",
-  ({ worker, placement }) =>
+  ({ worker, placement, tenantSlug }) =>
     Effect.gen(function* () {
       const reader = yield* DatabaseReader;
+      const tenant =
+        tenantSlug === undefined
+          ? undefined
+          : yield* Effect.gen(function* () {
+              const auth = yield* Auth;
+              const identity = yield* auth.getUserIdentity;
+              const tenantDoc = yield* reader
+                .table("tenants")
+                .get("by_slug", tenantSlug);
+              yield* reader
+                .table("tenantMemberships")
+                .get(
+                  "by_tenant_and_principal",
+                  tenantDoc._id,
+                  identity.tokenIdentifier,
+                );
+              return tenantDoc;
+            }).pipe(
+              Effect.catchAll(() =>
+                Effect.fail(new TenantAccessDenied({ tenantSlug })),
+              ),
+            );
+      const tenantId = tenant?._id;
       const currentAsserts = (e: string, a?: string, limit = 2000) =>
         Effect.gen(function* () {
           const rows: ReadonlyArray<FactEventDoc> =
             a === undefined
-              ? yield* reader
-                  .table("factEvents")
-                  .index("by_e", (q) => q.eq("e", e))
-                  .take(limit)
-              : yield* reader
-                  .table("factEvents")
-                  .index("by_e_a_tx", (q) => q.eq("e", e).eq("a", a))
-                  .take(limit);
+              ? tenantId === undefined
+                ? yield* reader
+                    .table("factEvents")
+                    .index("by_e", (q) => q.eq("e", e))
+                    .take(limit)
+                : yield* reader
+                    .table("factEvents")
+                    .index("by_tenant_and_e", (q) =>
+                      q.eq("tenantId", tenantId).eq("e", e),
+                    )
+                    .take(limit)
+              : tenantId === undefined
+                ? yield* reader
+                    .table("factEvents")
+                    .index("by_e_a_tx", (q) => q.eq("e", e).eq("a", a))
+                    .take(limit)
+                : yield* reader
+                    .table("factEvents")
+                    .index("by_tenant_and_e_a_tx", (q) =>
+                      q.eq("tenantId", tenantId).eq("e", e).eq("a", a),
+                    )
+                    .take(limit);
           const coordTime = Math.max(
             Date.now(),
             ...rows.map((row) => row.txTime),
@@ -323,10 +369,18 @@ const dryRunWorkerCompliance = FunctionImpl.make(
       }
 
       const placements: PlacementContext[] = [];
-      const workerAssertRows = yield* reader
-        .table("factEvents")
-        .index("by_a_tx", (q) => q.eq("a", "worker"))
-        .take(1000);
+      const workerAssertRows =
+        tenantId === undefined
+          ? yield* reader
+              .table("factEvents")
+              .index("by_a_tx", (q) => q.eq("a", "worker"))
+              .take(1000)
+          : yield* reader
+              .table("factEvents")
+              .index("by_tenant_and_a_tx", (q) =>
+                q.eq("tenantId", tenantId).eq("a", "worker"),
+              )
+              .take(1000);
       const placementCandidates = [
         ...new Set(workerAssertRows.filter((r) => sameValue(r.v, worker)).map((r) => r.e)),
       ].sort();
@@ -352,10 +406,18 @@ const dryRunWorkerCompliance = FunctionImpl.make(
         placements.push(hyp);
       }
 
-      const ruleRows = yield* reader
-        .table("rules")
-        .index("by_enabled", (q) => q.eq("enabled", true))
-        .take(1000);
+      const ruleRows =
+        tenantId === undefined
+          ? yield* reader
+              .table("rules")
+              .index("by_enabled", (q) => q.eq("enabled", true))
+              .take(1000)
+          : yield* reader
+              .table("rules")
+              .index("by_tenant_and_enabled", (q) =>
+                q.eq("tenantId", tenantId).eq("enabled", true),
+              )
+              .take(1000);
 
       const requirements: Requirement[] = [];
       for (const rule of ruleRows) {

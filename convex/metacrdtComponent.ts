@@ -15,6 +15,8 @@ import {
 } from "./lib/actionDefs";
 import { attrId, BUILTIN_CARDINALITY } from "./lib/meta";
 import { requireWritePrincipal } from "./lib/writeAuth";
+import { requireTenant, tenantOrLegacyRead } from "./lib/tenantAuth";
+import type { Id } from "./_generated/dataModel";
 
 const hlcValidator = v.object({
   pt: v.number(),
@@ -332,11 +334,20 @@ async function actorContext(ctx: MutationCtx) {
 async function hostCardinalityOf(
   ctx: MutationCtx,
   a: string,
+  tenantId?: Id<"tenants">,
 ): Promise<"one" | "many"> {
-  const row = await ctx.db
-    .query("currentFacts")
-    .withIndex("by_e_a", (q) => q.eq("e", attrId(a)).eq("a", "cardinality"))
-    .first();
+  const row =
+    tenantId === undefined
+      ? await ctx.db
+          .query("currentFacts")
+          .withIndex("by_e_a", (q) => q.eq("e", attrId(a)).eq("a", "cardinality"))
+          .first()
+      : await ctx.db
+          .query("currentFacts")
+          .withIndex("by_tenant_and_e_a", (q) =>
+            q.eq("tenantId", tenantId).eq("e", attrId(a)).eq("a", "cardinality"),
+          )
+          .first();
   if (row) return row.v === "one" ? "one" : "many";
   return BUILTIN_CARDINALITY[a] ?? "many";
 }
@@ -557,6 +568,26 @@ function recordOrEmpty(x: unknown): Record<string, unknown> {
   return x !== null && typeof x === "object" && !Array.isArray(x)
     ? (x as Record<string, unknown>)
     : {};
+}
+
+function contextWithoutReservedTenant(x: unknown): Record<string, unknown> {
+  const context = { ...recordOrEmpty(x) };
+  delete context.__tenantSlug;
+  return context;
+}
+
+async function tenantIdFromStoredContext(
+  ctx: MutationCtx,
+  context: Record<string, unknown>,
+): Promise<Id<"tenants"> | undefined> {
+  const tenantSlug = context.__tenantSlug;
+  if (typeof tenantSlug !== "string" || tenantSlug.trim() === "") return undefined;
+  const tenant = await ctx.db
+    .query("tenants")
+    .withIndex("by_slug", (q) => q.eq("slug", tenantSlug))
+    .unique();
+  if (tenant === null) throw new Error(`tenant ${tenantSlug} not found`);
+  return tenant._id;
 }
 
 function resolveFlowValue(
@@ -871,23 +902,41 @@ export const verifyEvents = query({
     a: v.optional(v.string()),
     limit: v.optional(v.number()),
     requireValid: v.optional(v.boolean()),
+    tenantSlug: v.optional(v.string()),
   },
   returns: v.array(eventSummaryValidator),
   handler: async (ctx, args) => {
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
     const take = Math.max(1, Math.min(args.limit ?? 50, 200));
     const a = args.a;
     const rows =
-      a === undefined
-        ? await ctx.db
-            .query("factEvents")
-            .withIndex("by_e", (q) => q.eq("e", args.e))
-            .order("desc")
-            .take(take)
-        : await ctx.db
-            .query("factEvents")
-            .withIndex("by_e_a_tx", (q) => q.eq("e", args.e).eq("a", a))
-            .order("desc")
-            .take(take);
+      tenant === null
+        ? a === undefined
+          ? await ctx.db
+              .query("factEvents")
+              .withIndex("by_e", (q) => q.eq("e", args.e))
+              .order("desc")
+              .take(take)
+          : await ctx.db
+              .query("factEvents")
+              .withIndex("by_e_a_tx", (q) => q.eq("e", args.e).eq("a", a))
+              .order("desc")
+              .take(take)
+        : a === undefined
+          ? await ctx.db
+              .query("factEvents")
+              .withIndex("by_tenant_and_e", (q) =>
+                q.eq("tenantId", tenant.tenantId).eq("e", args.e),
+              )
+              .order("desc")
+              .take(take)
+          : await ctx.db
+              .query("factEvents")
+              .withIndex("by_tenant_and_e_a_tx", (q) =>
+                q.eq("tenantId", tenant.tenantId).eq("e", args.e).eq("a", a),
+              )
+              .order("desc")
+              .take(take);
 
     const inputs = [];
     for (const row of rows) {
@@ -1310,12 +1359,22 @@ async function runOwnedFlowFromStep(
     actor: OwnedFlowActor;
     startStepId?: string;
     source: string;
+    tenantId?: Id<"tenants">;
   },
 ): Promise<OwnedFlowResult> {
-  const def = await ctx.db
-    .query("flowDefs")
-    .withIndex("by_name", (q) => q.eq("name", args.flowDefName))
-    .first();
+  const tenantId = args.tenantId;
+  const def =
+    tenantId === undefined
+      ? await ctx.db
+          .query("flowDefs")
+          .withIndex("by_name", (q) => q.eq("name", args.flowDefName))
+          .first()
+      : await ctx.db
+          .query("flowDefs")
+          .withIndex("by_tenant_and_name", (q) =>
+            q.eq("tenantId", tenantId).eq("name", args.flowDefName),
+          )
+          .first();
   if (def === null) throw new Error(`unknown flow: ${args.flowDefName}`);
 
   const entity = await loadOwnedEntity(ctx, args.subject);
@@ -1390,7 +1449,7 @@ async function runOwnedFlowFromStep(
           v: value,
           reason: `component-owned flow ${def.name} step ${step.id}`,
           source: args.source,
-          cardinality: await hostCardinalityOf(ctx, attr),
+          cardinality: await hostCardinalityOf(ctx, attr, args.tenantId),
         }),
       );
       asserted.push(result);
@@ -1505,7 +1564,7 @@ async function runOwnedFlowFromStep(
             v: value,
             reason: `component-owned flow ${def.name} action ${step.id}`,
             source: args.source,
-            cardinality: await hostCardinalityOf(ctx, cfg.resultAttr),
+            cardinality: await hostCardinalityOf(ctx, cfg.resultAttr, args.tenantId),
           }),
         );
         asserted.push(result);
@@ -1574,15 +1633,20 @@ export const startOwnedFlow = mutation({
     flowDefName: v.string(),
     subject: v.string(),
     context: v.optional(v.any()),
+    tenantSlug: v.string(),
   },
   returns: startOwnedFlowResultValidator,
   handler: async (ctx, args): Promise<OwnedFlowResult> => {
+    const tenant = await requireTenant(ctx, args.tenantSlug, "editor");
+    const context = contextWithoutReservedTenant(args.context);
+    context.__tenantSlug = tenant.tenantSlug;
     return await runOwnedFlowFromStep(ctx, {
       flowDefName: args.flowDefName,
       subject: args.subject,
-      context: recordOrEmpty(args.context),
+      context,
       actor: await actorContext(ctx),
       source: "metacrdtComponent.startOwnedFlow",
+      tenantId: tenant?.tenantId,
     });
   },
 });
@@ -1599,11 +1663,21 @@ export const wakeOwnedFlow = internalMutation({
     );
     if (run === null || run.status !== "waiting") return null;
     if (run.currentStepId === undefined) return null;
+    const context = recordOrEmpty(run.context);
+    const tenantId = await tenantIdFromStoredContext(ctx, context);
 
-    const def = await ctx.db
-      .query("flowDefs")
-      .withIndex("by_name", (q) => q.eq("name", run.flowDefName))
-      .first();
+    const def =
+      tenantId === undefined
+        ? await ctx.db
+            .query("flowDefs")
+            .withIndex("by_name", (q) => q.eq("name", run.flowDefName))
+            .first()
+        : await ctx.db
+            .query("flowDefs")
+            .withIndex("by_tenant_and_name", (q) =>
+              q.eq("tenantId", tenantId).eq("name", run.flowDefName),
+            )
+            .first();
     const step = def?.steps.find((s) => s.id === run.currentStepId);
     if (step === undefined || step.type !== "wait") return null;
 
@@ -1611,13 +1685,14 @@ export const wakeOwnedFlow = internalMutation({
       runId: args.runId,
       flowDefName: run.flowDefName,
       subject: run.subject,
-      context: recordOrEmpty(run.context),
+      context,
       actor: {
         actorId: "system:component-flow-scheduler",
         actorType: "system",
       },
       startStepId: step.next || "done",
       source: "metacrdtComponent.wakeOwnedFlow",
+      tenantId,
     });
   },
 });
@@ -1649,11 +1724,13 @@ export const runOwnedAction = mutation({
   args: {
     action: v.string(),
     entity: v.string(),
+    tenantSlug: v.string(),
     args: v.optional(v.record(v.string(), v.any())),
   },
   returns: runOwnedActionResultValidator,
   handler: async (ctx, args) => {
-    const def = await loadActionDef(ctx, args.action);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "editor");
+    const def = await loadActionDef(ctx, args.action, tenant.tenantId);
     if (!def) throw new Error(`unknown action: ${args.action}`);
 
     const entity = await ctx.runQuery(components.metacrdt.log.getCurrentEntity, {
@@ -1687,7 +1764,7 @@ export const runOwnedAction = mutation({
             v: value,
             reason: `component-owned action ${args.action} on ${args.entity}`,
             source: "metacrdtComponent.runOwnedAction",
-            cardinality: await hostCardinalityOf(ctx, a),
+            cardinality: await hostCardinalityOf(ctx, a, tenant?.tenantId),
           }),
         ),
       );

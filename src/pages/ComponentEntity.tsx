@@ -5,6 +5,8 @@ import { api } from "../../convex/_generated/api";
 import { ArrowLeft } from "lucide-react";
 import { Button, Card, CardHeader, Chip, Input, Mono, shortId } from "../ui";
 import { useWriteGate } from "../auth";
+import { useTenant } from "../tenant";
+import { ROUTES, tenantPath } from "../navigationModel";
 
 function val(v: unknown): string {
   return typeof v === "string" ? v : JSON.stringify(v);
@@ -14,6 +16,7 @@ export default function ComponentEntity() {
   const { id: raw } = useParams();
   const id = decodeURIComponent(raw ?? "");
   const navigate = useNavigate();
+  const { selectedTenantSlug } = useTenant();
   const [busy, setBusy] = useState<string | null>(null);
   const [actionArgs, setActionArgs] = useState<Record<string, Record<string, unknown>>>({});
   const [actionResults, setActionResults] = useState<
@@ -76,11 +79,21 @@ export default function ComponentEntity() {
   const primaryType = types[0];
   const actions = useQuery(
     api.actions.actionsForType,
-    primaryType ? { type: primaryType } : "skip",
+    primaryType && selectedTenantSlug
+      ? {
+          type: primaryType,
+          tenantSlug: selectedTenantSlug,
+        }
+      : "skip",
   );
   const flows = useQuery(
     api.flows.flowsForType,
-    primaryType ? { type: primaryType } : "skip",
+    primaryType && selectedTenantSlug
+      ? {
+          type: primaryType,
+          tenantSlug: selectedTenantSlug,
+        }
+      : "skip",
   );
   const compliance = useQuery(
     api.metacrdtComponent.ownedCompliancePlan,
@@ -100,12 +113,14 @@ export default function ComponentEntity() {
   }
 
   async function runConfiguredAction(action: NonNullable<typeof actions>[number]) {
+    if (!selectedTenantSlug) return;
     setBusy(`action:${action.name}`);
     try {
       const result = await guardWrite(`Run ${action.label ?? action.name}`, () =>
         runOwnedAction({
           action: action.name,
           entity: id,
+          tenantSlug: selectedTenantSlug,
           args: actionArgs[action.name] ?? {},
         }),
       );
@@ -125,12 +140,14 @@ export default function ComponentEntity() {
   }
 
   async function runConfiguredFlow(flow: NonNullable<typeof flows>[number]) {
+    if (!selectedTenantSlug) return;
     setBusy(`flow:${flow.name}`);
     try {
       const result = await guardWrite(`Run ${flow.title ?? flow.name}`, () =>
         startOwnedFlow({
           flowDefName: flow.name,
           subject: id,
+          tenantSlug: selectedTenantSlug,
           context: { employer: "employer:acme" },
         }),
       );
@@ -656,7 +673,10 @@ export default function ComponentEntity() {
 
       <p className="text-[12px] text-muted">
         Host-owned entities still live under{" "}
-        <Link className="font-medium text-blue-ink hover:underline" to="/entities">
+        <Link
+          className="font-medium text-blue-ink hover:underline"
+          to={tenantPath(selectedTenantSlug, ROUTES.entities)}
+        >
           Entities
         </Link>
         . This route reads the packaged component's own state.

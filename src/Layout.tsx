@@ -26,6 +26,15 @@ import GuidedTour, { tourDismissed } from "./GuidedTour";
 import { Button, Input } from "./ui";
 import { useWriteGate } from "./auth";
 import { authClient } from "./lib/auth-client";
+import { useTenant } from "./tenant";
+import {
+  CONFIGURE_NAV,
+  PAGE_TITLES,
+  ROUTES,
+  splitTenantPath,
+  tenantPath,
+} from "./navigationModel";
+import { TenantSelector } from "./TenantSelector";
 
 type Item = {
   to: string;
@@ -33,6 +42,7 @@ type Item = {
   icon: ReactNode;
   badge?: number;
   soon?: boolean;
+  end?: boolean;
 };
 
 function NavSection({ title, items }: { title: string; items: Item[] }) {
@@ -57,7 +67,7 @@ function NavSection({ title, items }: { title: string; items: Item[] }) {
             ) : (
               <NavLink
                 to={it.to}
-                end={it.to === "/"}
+                end={it.end}
                 className={({ isActive }) =>
                   `flex items-center justify-between rounded-md px-2 py-1.5 text-[13px] transition-colors ${
                     isActive
@@ -84,15 +94,6 @@ function NavSection({ title, items }: { title: string; items: Item[] }) {
   );
 }
 
-const TITLES: Record<string, string> = {
-  "/": "Overview",
-  "/entities": "Entities",
-  "/compliance": "Compliance",
-  "/flows": "Flows",
-  "/data-model": "Data model",
-  "/transactions": "Transaction log",
-};
-
 const ICON = "h-[18px] w-[18px]";
 
 function slug(s: string): string {
@@ -106,6 +107,7 @@ function slug(s: string): string {
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
+  const { route: currentRoute } = splitTenantPath(pathname);
   const navigate = useNavigate();
   const [commandOpen, setCommandOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(() => !tourDismissed());
@@ -117,22 +119,41 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [creating, setCreating] = useState(false);
   const [describeOpen, setDescribeOpen] = useState(false);
   const { isAuthenticated, isLoading, openAuthDialog, guardWrite } = useWriteGate();
+  const {
+    tenants,
+    selectedTenant,
+    selectedTenantSlug,
+    setSelectedTenantSlug,
+    ensureDemoTenant,
+    ensureDemoTenants,
+  } = useTenant();
   const createOwnedEntity = useMutation(api.metacrdtComponent.createOwnedEntity);
-  const summary = useQuery(api.overview.summary, {});
-  const compliance = useQuery(api.compliance.workerCompliance, {
-    worker: "worker:maria",
-  });
-  const defs = useQuery(api.flows.listFlowDefs, {});
+  const summary = useQuery(
+    api.overview.summary,
+    selectedTenantSlug ? { tenantSlug: selectedTenantSlug } : "skip",
+  );
+  const compliance = useQuery(
+    api.compliance.workerCompliance,
+    selectedTenantSlug
+      ? { worker: "worker:maria", tenantSlug: selectedTenantSlug }
+      : "skip",
+  );
+  const defs = useQuery(
+    api.flows.listFlowDefs,
+    selectedTenantSlug ? { tenantSlug: selectedTenantSlug } : "skip",
+  );
   const activity = useQuery(
     api.overview.recentActivity,
-    describeOpen ? { limit: 5 } : "skip",
+    describeOpen && selectedTenantSlug
+      ? { tenantSlug: selectedTenantSlug, limit: 5 }
+      : "skip",
   );
 
   const title =
-    TITLES[pathname] ??
-    (pathname.startsWith("/component/e/")
+    PAGE_TITLES[currentRoute] ??
+    (currentRoute.startsWith("/component/e/")
       ? "Component entity"
-      : pathname.startsWith("/e/")
+      : currentRoute.startsWith("/e/")
         ? "Entity"
         : "Triple Store");
 
@@ -162,7 +183,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       );
       if (created === undefined) return;
       setNewOpen(false);
-      navigate(`/component/e/${encodeURIComponent(e)}`);
+      navigate(tenantPath(selectedTenantSlug, `/component/e/${encodeURIComponent(e)}`));
     } finally {
       setCreating(false);
     }
@@ -226,29 +247,40 @@ export default function Layout({ children }: { children: ReactNode }) {
   }
 
   const workspace: Item[] = [
-    { to: "/", label: "Overview", icon: <LayoutGrid className={ICON} /> },
-    { to: "/entities", label: "Entities", icon: <Boxes className={ICON} /> },
     {
-      to: "/compliance",
+      to: tenantPath(selectedTenantSlug, ROUTES.overview),
+      label: "Overview",
+      icon: <LayoutGrid className={ICON} />,
+      end: true,
+    },
+    {
+      to: tenantPath(selectedTenantSlug, ROUTES.entities),
+      label: "Entities",
+      icon: <Boxes className={ICON} />,
+    },
+    {
+      to: tenantPath(selectedTenantSlug, ROUTES.compliance),
       label: "Compliance",
       icon: <ShieldCheck className={ICON} />,
       badge: compliance?.open.length,
     },
     {
-      to: "/flows",
+      to: tenantPath(selectedTenantSlug, ROUTES.flows),
       label: "Flows",
       icon: <Workflow className={ICON} />,
       badge: defs?.length,
     },
   ];
-  const configure: Item[] = [
-    { to: "/data-model", label: "Data model", icon: <Database className={ICON} /> },
-    {
-      to: "/transactions",
-      label: "Transaction log",
-      icon: <History className={ICON} />,
-    },
-  ];
+  const configureIcon: Record<(typeof CONFIGURE_NAV)[number]["to"], ReactNode> = {
+    [ROUTES.accountConfig]: <Database className={ICON} />,
+    [ROUTES.systemConsole]: <Server className={ICON} />,
+    [ROUTES.transactions]: <History className={ICON} />,
+  };
+  const configure: Item[] = CONFIGURE_NAV.map((item) => ({
+    ...item,
+    to: tenantPath(selectedTenantSlug, item.to),
+    icon: configureIcon[item.to],
+  }));
   const modules: Item[] = [
     { to: "/library", label: "Library", icon: <Library className={ICON} />, soon: true },
     { to: "/integrations", label: "Integrations", icon: <Plug className={ICON} />, soon: true },
@@ -283,6 +315,19 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
 
+        <TenantSelector
+          tenants={tenants}
+          selectedTenantSlug={selectedTenantSlug}
+          isAuthenticated={isAuthenticated}
+          onSelect={setSelectedTenantSlug}
+          onCreateDemoTenant={(kind) =>
+            void guardWrite("Create demo tenant", () => ensureDemoTenant(kind))
+          }
+          onCreateDemoTenants={() =>
+            void guardWrite("Create demo tenants", () => ensureDemoTenants())
+          }
+        />
+
         <nav className="flex-1 overflow-y-auto pb-4">
           <NavSection title="Workspace" items={workspace} />
           <NavSection title="Configure" items={configure} />
@@ -295,7 +340,9 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
           <div className="leading-tight">
             <div className="text-[13px] font-medium">Dana Whitfield</div>
-            <div className="text-[11px] text-brand-muted">Acme Staffing · Ops</div>
+            <div className="text-[11px] text-brand-muted">
+              {selectedTenant?.name ?? "No tenant"} · Ops
+            </div>
           </div>
         </div>
       </aside>

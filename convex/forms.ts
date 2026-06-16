@@ -2,7 +2,8 @@ import { mutation, query, QueryCtx } from "./_generated/server";
 import { components } from "./_generated/api";
 import { v } from "convex/values";
 import { assertInTx, createTransaction, retractInTx } from "./facts";
-import { requireWritePrincipal } from "./lib/writeAuth";
+import { requireTenant, tenantOrLegacyRead } from "./lib/tenantAuth";
+import type { Id } from "./_generated/dataModel";
 import {
   formDefinitionFacts,
   formEntity,
@@ -39,12 +40,14 @@ export const defineForm = mutation({
     form: v.string(),
     title: v.string(),
     fields: v.array(fieldValidator),
+    tenantSlug: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireWritePrincipal(ctx);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "admin");
     const now = Date.now();
     const e = formEntity(args.form);
     const txId = await createTransaction(ctx, {
+      tenantId: tenant.tenantId,
       reason: `define form ${args.form}`,
       now,
     });
@@ -52,7 +55,9 @@ export const defineForm = mutation({
     // Manual cardinality-one for formDef: retract any prior definition.
     const prior = await ctx.db
       .query("currentFacts")
-      .withIndex("by_e_a", (q) => q.eq("e", e).eq("a", "formDef"))
+      .withIndex("by_tenant_and_e_a", (q) =>
+        q.eq("tenantId", tenant.tenantId).eq("e", e).eq("a", "formDef"),
+      )
       .collect();
     for (const row of prior) {
       await retractInTx(ctx, txId, now, row.factId, "form redefined");
@@ -72,11 +77,23 @@ export const defineForm = mutation({
 async function loadFormDef(
   ctx: QueryCtx,
   form: string,
+  tenantId?: Id<"tenants">,
 ): Promise<{ title: string; fields: unknown[] } | null> {
-  const row = await ctx.db
-    .query("currentFacts")
-    .withIndex("by_e_a", (q) => q.eq("e", formEntity(form)).eq("a", "formDef"))
-    .first();
+  const row =
+    tenantId === undefined
+      ? await ctx.db
+          .query("currentFacts")
+          .withIndex("by_e_a", (q) => q.eq("e", formEntity(form)).eq("a", "formDef"))
+          .first()
+      : await ctx.db
+          .query("currentFacts")
+          .withIndex("by_tenant_and_e_a", (q) =>
+            q
+              .eq("tenantId", tenantId)
+              .eq("e", formEntity(form))
+              .eq("a", "formDef"),
+          )
+          .first();
   return row ? (row.v as { title: string; fields: unknown[] }) : null;
 }
 
@@ -95,9 +112,10 @@ async function loadComponentFormDef(
 
 /** A form's field schema (for rendering). */
 export const formFields = query({
-  args: { form: v.string() },
+  args: { form: v.string(), tenantSlug: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    return await loadFormDef(ctx, args.form);
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
+    return await loadFormDef(ctx, args.form, tenant?.tenantId);
   },
 });
 
@@ -124,7 +142,7 @@ export const collectionByToken = query({
     const def =
       run.collectionTarget === "component"
         ? await loadComponentFormDef(ctx, run.form)
-        : await loadFormDef(ctx, run.form);
+        : await loadFormDef(ctx, run.form, run.tenantId);
     return {
       found: true as const,
       status: run.status,
@@ -179,7 +197,7 @@ export const submitCollection = mutation({
     const def =
       run.collectionTarget === "component"
         ? await loadComponentFormDef(ctx, run.form)
-        : await loadFormDef(ctx, run.form);
+        : await loadFormDef(ctx, run.form, run.tenantId);
     let facts;
     try {
       facts = def
@@ -220,6 +238,7 @@ export const submitCollection = mutation({
       }
     } else {
       const txId = await createTransaction(ctx, {
+        tenantId: run.tenantId,
         actorId: run.subject,
         reason: `submit ${run.form}`,
         now,

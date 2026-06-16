@@ -8,7 +8,9 @@ import { valueKey } from "./lib/visibility";
 import { SolvedBinding } from "./lib/engine";
 import {
   eventLogBaseWithDerivedTripleSource,
+  eventLogBaseWithDerivedTripleSourceForTenant,
   eventLogTripleSource,
+  eventLogTripleSourceForTenant,
 } from "./lib/eventLogTripleSource";
 import { waitKeyFromSubmission } from "./lib/workflow";
 import { assertInTx, createTransaction } from "./facts";
@@ -51,6 +53,7 @@ export const processFactChange = internalMutation({
 
     const affected = enabled.filter(
       (r) =>
+        r.tenantId === changedFact?.tenantId &&
         (args.changeKind !== "assert" ||
           changedFact === null ||
           changedFact._creationTime >= r._creationTime) &&
@@ -59,6 +62,7 @@ export const processFactChange = internalMutation({
 
     for (const rule of affected) {
       await ctx.db.insert("ruleInvalidations", {
+        tenantId: rule.tenantId,
         ruleId: rule._id,
         e: args.e,
         causedByFactId: args.factId,
@@ -143,6 +147,7 @@ export const processFactChange = internalMutation({
         const key = waitKeyFromSubmission(args.e, args.a, String(fact.v));
         if (!key) return;
         await ctx.scheduler.runAfter(0, internal.flows.resumeOnSubmission, {
+          tenantId: fact.tenantId,
           subject: key.subject,
           form: key.form,
           scope: key.scope,
@@ -171,7 +176,7 @@ export const recomputeRule = internalMutation({
     const now = Date.now();
     const coord = { txTime: now, validTime: now };
     const solved = await solveWhere(ctx, (rule.where ?? []) as unknown[], coord, {}, {
-      source: eventLogBaseWithDerivedTripleSource,
+      source: eventLogBaseWithDerivedTripleSourceForTenant(rule.tenantId),
     });
 
     const merged = mergeSolved(rule, solved);
@@ -243,7 +248,7 @@ async function recomputeRuleForEntityList(
       (rule.where ?? []) as unknown[],
       coord,
       { [entityVar]: e },
-      { source: eventLogBaseWithDerivedTripleSource },
+      { source: eventLogBaseWithDerivedTripleSourceForTenant(rule.tenantId) },
     );
 
     const merged = mergeSolved(rule, solved);
@@ -288,7 +293,7 @@ export const recomputeTransitiveClosure = internalMutation({
       [["?from", baseAttribute, "?to"]],
       coord,
       {},
-      { source: eventLogTripleSource },
+      { source: eventLogTripleSourceForTenant(rule.tenantId) },
     );
     const adj = new Map<
       string,
@@ -343,6 +348,7 @@ export const recomputeTransitiveClosure = internalMutation({
         });
       } else {
         await ctx.db.insert("derivedFacts", {
+          tenantId: rule.tenantId,
           ruleId: args.ruleId,
           e: pair.from,
           a: closureAttribute,
@@ -391,12 +397,23 @@ export const incrementalClosureAdd = internalMutation({
 
     // predecessors(u): x such that (x --closure--> u) already holds, plus u.
     // Carry each predecessor's path provenance (its x→u source facts).
-    const predRows = await ctx.db
-      .query("derivedFacts")
-      .withIndex("by_a_v", (q) =>
-        q.eq("a", closureAttribute).eq("v", args.u),
-      )
-      .take(LIMITS.maxClauseScan);
+    const predRows =
+      rule.tenantId === undefined
+        ? await ctx.db
+            .query("derivedFacts")
+            .withIndex("by_a_v", (q) =>
+              q.eq("a", closureAttribute).eq("v", args.u),
+            )
+            .take(LIMITS.maxClauseScan)
+        : await ctx.db
+            .query("derivedFacts")
+            .withIndex("by_tenant_and_a_v", (q) =>
+              q
+                .eq("tenantId", rule.tenantId)
+                .eq("a", closureAttribute)
+                .eq("v", args.u),
+            )
+            .take(LIMITS.maxClauseScan);
     const predProv = new Map<
       string,
       { prov: Id<"facts">[]; eventProv: string[]; supportCount: number }
@@ -411,12 +428,21 @@ export const incrementalClosureAdd = internalMutation({
     predProv.set(args.u, { prov: [], eventProv: [], supportCount: 1 });
 
     // successors(w): y such that (w --closure--> y) already holds, plus w.
-    const succRows = await ctx.db
-      .query("derivedFacts")
-      .withIndex("by_e_a", (q) =>
-        q.eq("e", args.w).eq("a", closureAttribute),
-      )
-      .take(LIMITS.maxClauseScan);
+    const succRows =
+      rule.tenantId === undefined
+        ? await ctx.db
+            .query("derivedFacts")
+            .withIndex("by_e_a", (q) => q.eq("e", args.w).eq("a", closureAttribute))
+            .take(LIMITS.maxClauseScan)
+        : await ctx.db
+            .query("derivedFacts")
+            .withIndex("by_tenant_and_e_a", (q) =>
+              q
+                .eq("tenantId", rule.tenantId)
+                .eq("e", args.w)
+                .eq("a", closureAttribute),
+            )
+            .take(LIMITS.maxClauseScan);
     const succProv = new Map<
       string,
       { prov: Id<"facts">[]; eventProv: string[]; supportCount: number }
@@ -433,12 +459,21 @@ export const incrementalClosureAdd = internalMutation({
     let inserted = 0;
     for (const [x, xSupport] of predProv) {
       // Existing closure targets for x, to dedupe in one read per source.
-      const existingRows = await ctx.db
-        .query("derivedFacts")
-        .withIndex("by_e_a", (q) =>
-          q.eq("e", x).eq("a", closureAttribute),
-        )
-        .take(LIMITS.maxClauseScan);
+      const existingRows =
+        rule.tenantId === undefined
+          ? await ctx.db
+              .query("derivedFacts")
+              .withIndex("by_e_a", (q) => q.eq("e", x).eq("a", closureAttribute))
+              .take(LIMITS.maxClauseScan)
+          : await ctx.db
+              .query("derivedFacts")
+              .withIndex("by_tenant_and_e_a", (q) =>
+                q
+                  .eq("tenantId", rule.tenantId)
+                  .eq("e", x)
+                  .eq("a", closureAttribute),
+              )
+              .take(LIMITS.maxClauseScan);
       const existing = new Map<string, Doc<"derivedFacts">>(
         existingRows.map((r) => [String(r.v), r]),
       );
@@ -472,6 +507,7 @@ export const incrementalClosureAdd = internalMutation({
           continue;
         }
         await ctx.db.insert("derivedFacts", {
+          tenantId: rule.tenantId,
           ruleId: args.ruleId,
           e: x,
           a: closureAttribute,
@@ -652,7 +688,7 @@ async function affectedOutputEntitiesForFact(
       validTime: now,
     },
     {},
-    { source: eventLogBaseWithDerivedTripleSource },
+    { source: eventLogBaseWithDerivedTripleSourceForTenant(rule.tenantId) },
   );
   for (const s of solved) {
     const sources = s.sources as unknown as string[];
@@ -748,6 +784,7 @@ async function emitMerged(
   if (rule.emit === undefined) return;
   for (const m of merged.values()) {
     await ctx.db.insert("derivedFacts", {
+      tenantId: rule.tenantId,
       ruleId: rule._id,
       e: m.e,
       a: rule.emit.a,
@@ -779,17 +816,40 @@ async function recordObligationInvalidations(
     const key = `${row.e}\u0000${valueKey(row.v)}`;
     if (next.has(key)) continue;
     const scope = String(row.v);
-    const submission = await ctx.db
-      .query("currentFacts")
-      .withIndex("by_e_a_v", (q) =>
-        q.eq("e", row.e).eq("a", `submitted.${form}`).eq("v", scope),
-      )
-      .first();
+    const submission =
+      rule.tenantId === undefined
+        ? await ctx.db
+            .query("currentFacts")
+            .withIndex("by_e_a_v", (q) =>
+              q.eq("e", row.e).eq("a", `submitted.${form}`).eq("v", scope),
+            )
+            .first()
+        : await ctx.db
+            .query("currentFacts")
+            .withIndex("by_tenant_and_e_a_v", (q) =>
+              q
+                .eq("tenantId", rule.tenantId)
+                .eq("e", row.e)
+                .eq("a", `submitted.${form}`)
+                .eq("v", scope),
+            )
+            .first();
     if (submission === null) continue;
-    const existing = await ctx.db
-      .query("currentFacts")
-      .withIndex("by_e_a", (q) => q.eq("e", row.e).eq("a", invalidationAttr))
-      .collect();
+    const existing =
+      rule.tenantId === undefined
+        ? await ctx.db
+            .query("currentFacts")
+            .withIndex("by_e_a", (q) => q.eq("e", row.e).eq("a", invalidationAttr))
+            .collect()
+        : await ctx.db
+            .query("currentFacts")
+            .withIndex("by_tenant_and_e_a", (q) =>
+              q
+                .eq("tenantId", rule.tenantId)
+                .eq("e", row.e)
+                .eq("a", invalidationAttr),
+            )
+            .collect();
     if (
       existing.some(
         (fact) =>
@@ -802,6 +862,7 @@ async function recordObligationInvalidations(
       continue;
     }
     txId ??= await createTransaction(ctx, {
+      tenantId: rule.tenantId,
       reason: `record invalidated ${form} obligation`,
       source: "materialize.recordObligationInvalidations",
       now,

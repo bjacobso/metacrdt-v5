@@ -2,7 +2,15 @@ import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
-import { requireWritePrincipal } from "./lib/writeAuth";
+import {
+  requireTenant,
+  tenantOrLegacyRead,
+} from "./lib/tenantAuth";
+
+function tenantIdForWrite(tenantId: Id<"tenants"> | undefined): Id<"tenants"> {
+  if (tenantId === undefined) throw new Error("Tenant context required");
+  return tenantId;
+}
 
 /**
  * Define (or replace by name) a Datalog rule whose output is materialized into
@@ -19,16 +27,21 @@ export const defineRule = mutation({
       v.union(v.literal("sync"), v.literal("async"), v.literal("manual")),
     ),
     enabled: v.optional(v.boolean()),
+    tenantSlug: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireWritePrincipal(ctx);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "admin");
+    const tenantId = tenantIdForWrite(tenant.tenantId);
     const now = Date.now();
     const existing = await ctx.db
       .query("rules")
-      .withIndex("by_name", (q) => q.eq("name", args.name))
+      .withIndex("by_tenant_and_name", (q) =>
+        q.eq("tenantId", tenantId).eq("name", args.name),
+      )
       .unique();
 
     const fields = {
+      tenantId,
       name: args.name,
       kind: "datalog" as const,
       where: args.where,
@@ -69,16 +82,21 @@ export const defineTransitiveRule = mutation({
     maxDepth: v.optional(v.number()),
     reflexive: v.optional(v.boolean()),
     enabled: v.optional(v.boolean()),
+    tenantSlug: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireWritePrincipal(ctx);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "admin");
+    const tenantId = tenantIdForWrite(tenant.tenantId);
     const now = Date.now();
     const existing = await ctx.db
       .query("rules")
-      .withIndex("by_name", (q) => q.eq("name", args.name))
+      .withIndex("by_tenant_and_name", (q) =>
+        q.eq("tenantId", tenantId).eq("name", args.name),
+      )
       .unique();
 
     const fields = {
+      tenantId,
       name: args.name,
       kind: "closure" as const,
       closure: {
@@ -111,9 +129,14 @@ export const defineTransitiveRule = mutation({
 });
 
 export const recomputeRule = mutation({
-  args: { ruleId: v.id("rules") },
+  args: { tenantSlug: v.string(), ruleId: v.id("rules") },
   handler: async (ctx, args) => {
-    await requireWritePrincipal(ctx);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "admin");
+    const rule = await ctx.db.get(args.ruleId);
+    if (rule === null) throw new Error(`rule ${args.ruleId} not found`);
+    if (rule.tenantId !== tenant.tenantId) {
+      throw new Error("Tenant access denied");
+    }
     await ctx.scheduler.runAfter(0, internal.materialize.recomputeRule, {
       ruleId: args.ruleId,
     });
@@ -122,9 +145,14 @@ export const recomputeRule = mutation({
 });
 
 export const listRules = query({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db.query("rules").take(200);
+  args: { tenantSlug: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
+    if (tenant === null) return await ctx.db.query("rules").take(200);
+    return await ctx.db
+      .query("rules")
+      .withIndex("by_tenant_and_name", (q) => q.eq("tenantId", tenant.tenantId))
+      .take(200);
   },
 });
 
@@ -135,15 +163,29 @@ export const listRules = query({
  * true, and who/what caused it?".
  */
 export const explainDerived = query({
-  args: { e: v.string(), a: v.optional(v.string()) },
+  args: {
+    e: v.string(),
+    a: v.optional(v.string()),
+    tenantSlug: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
     const derived = (
-      await ctx.db
-        .query("derivedFacts")
-        .withIndex("by_e_a", (q) =>
-          args.a ? q.eq("e", args.e).eq("a", args.a) : q.eq("e", args.e),
-        )
-        .take(200)
+      tenant === null
+        ? await ctx.db
+            .query("derivedFacts")
+            .withIndex("by_e_a", (q) =>
+              args.a ? q.eq("e", args.e).eq("a", args.a) : q.eq("e", args.e),
+            )
+            .take(200)
+        : await ctx.db
+            .query("derivedFacts")
+            .withIndex("by_tenant_and_e_a", (q) =>
+              args.a
+                ? q.eq("tenantId", tenant.tenantId).eq("e", args.e).eq("a", args.a)
+                : q.eq("tenantId", tenant.tenantId).eq("e", args.e),
+            )
+            .take(200)
     ).filter((d) => !d.stale);
 
     const out = [];
@@ -209,12 +251,21 @@ export const explainDerived = query({
 
 /** Current derived facts for an entity (the materialized rule output). */
 export const derivedForEntity = query({
-  args: { e: v.string() },
+  args: { e: v.string(), tenantSlug: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const rows = await ctx.db
-      .query("derivedFacts")
-      .withIndex("by_e_a", (q) => q.eq("e", args.e))
-      .take(500);
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
+    const rows =
+      tenant === null
+        ? await ctx.db
+            .query("derivedFacts")
+            .withIndex("by_e_a", (q) => q.eq("e", args.e))
+            .take(500)
+        : await ctx.db
+            .query("derivedFacts")
+            .withIndex("by_tenant_and_e_a", (q) =>
+              q.eq("tenantId", tenant.tenantId).eq("e", args.e),
+            )
+            .take(500);
     return rows.filter((r) => !r.stale);
   },
 });

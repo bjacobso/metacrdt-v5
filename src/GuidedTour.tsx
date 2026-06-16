@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, ArrowRight, X } from "lucide-react";
 import { Button } from "./ui";
+import { tenantPath, TOUR_STEPS } from "./navigationModel";
+import { useTenant } from "./tenant";
 
 type Step = {
   route: string;
@@ -13,56 +15,7 @@ type Step = {
 
 const STORAGE_KEY = "metacrdt.tour.dismissed";
 
-const STEPS: Step[] = [
-  {
-    route: "/",
-    eyebrow: "1 / 6 · Substrate",
-    title: "Start with the whole account",
-    body:
-      "The Overview page is the buyer-facing proof: types, placements, evidence reuse, obligations, and transactions are all projections over the same fact log.",
-    focus: "Watch the stat cards and compliance table change as facts arrive.",
-  },
-  {
-    route: "/entities",
-    eyebrow: "2 / 6 · Facts become objects",
-    title: "Inspect entities as folded state",
-    body:
-      "Entities are not rows in a bespoke app table. They are current projections of facts, ordered by declared schema, with system/configured/data origins kept visible.",
-    focus: "Open Worker, Placement, or the component-owned entity section.",
-  },
-  {
-    route: "/compliance",
-    eyebrow: "3 / 6 · Rules become obligations",
-    title: "Compliance falls out of rules",
-    body:
-      "Requirements and open tasks are derived facts. Submitting evidence asserts a scoped submission fact; reuse and task clearing are just recomputation.",
-    focus: "Set up staffing, submit a form, then compare required vs open.",
-  },
-  {
-    route: "/flows",
-    eyebrow: "4 / 6 · Effects park and resume",
-    title: "Flows are durable DAGs",
-    body:
-      "Collect steps park with a token, wait steps park on scheduler ticks, and actions assert facts. The event path resumes the run when the world changes.",
-    focus: "Start the onboarding flow for worker:maria and inspect the run timeline.",
-  },
-  {
-    route: "/data-model",
-    eyebrow: "5 / 6 · The machine is visible",
-    title: "Configuration and engine state are inspectable",
-    body:
-      "The Data model route exposes config diffs, system processes, action definitions, Datalog, raw fact assertion, and provenance without leaving the app.",
-    focus: "Run the sample Datalog query or inspect the action registry.",
-  },
-  {
-    route: "/transactions",
-    eyebrow: "6 / 6 · Time is a coordinate",
-    title: "Audit is a first-class read model",
-    body:
-      "The transaction log and bitemporal views show why MetaCRDT is more than current state: history, validity, corrections, and provenance remain queryable.",
-    focus: "Compare as-of reads against the newest transaction stream.",
-  },
-];
+const STEPS: readonly Step[] = TOUR_STEPS;
 
 function dismissed(): boolean {
   try {
@@ -90,12 +43,14 @@ export default function GuidedTour({
   const [idx, setIdx] = useState(0);
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const { selectedTenantSlug } = useTenant();
   const step = STEPS[idx]!;
+  const route = tenantPath(selectedTenantSlug, step.route);
 
   useEffect(() => {
     if (!open) return;
-    if (pathname !== step.route) navigate(step.route);
-  }, [idx, navigate, open, pathname, step.route]);
+    if (pathname !== route) navigate(route);
+  }, [idx, navigate, open, pathname, route]);
 
   if (!open) return null;
 

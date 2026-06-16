@@ -19,6 +19,11 @@ export class UnsupportedRequirement extends Schema.TaggedError<UnsupportedRequir
   },
 ) {}
 
+export class TenantAccessDenied extends Schema.TaggedError<TenantAccessDenied>()(
+  "TenantAccessDenied",
+  { tenantSlug: Schema.String },
+) {}
+
 export const PlacementInput = Schema.Struct({
   employer: Schema.optionalWith(Schema.String, { exact: true }),
   client: Schema.optionalWith(Schema.String, { exact: true }),
@@ -54,10 +59,15 @@ export const compliance = GroupSpec.make("compliance").addFunction(
     name: "dryRunWorkerCompliance",
     args: Schema.Struct({
       worker: Schema.String,
+      tenantSlug: Schema.optionalWith(Schema.String, { exact: true }),
       placement: Schema.optionalWith(PlacementInput, { exact: true }),
     }),
     returns: DryRunComplianceResult,
-    error: Schema.Union(UnknownWorker, InvalidPlacement, UnsupportedRequirement),
+    error: Schema.Union(
+      UnknownWorker,
+      InvalidPlacement,
+      UnsupportedRequirement,
+      TenantAccessDenied,
+    ),
   }),
 );
-

@@ -1,7 +1,11 @@
 import { v } from "convex/values";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { project, runWhere } from "./engine";
-import { eventLogTripleSource } from "./eventLogTripleSource";
+import {
+  eventLogTripleSource,
+  eventLogTripleSourceForTenant,
+} from "./eventLogTripleSource";
+import type { Id } from "../_generated/dataModel";
 
 export type ActionField = {
   name: string;
@@ -49,10 +53,20 @@ export function actionId(name: string): string {
 
 type Ctx = QueryCtx | MutationCtx;
 
-async function currentRows(ctx: Ctx, where: unknown[], select: string[]) {
+async function currentRows(
+  ctx: Ctx,
+  where: unknown[],
+  select: string[],
+  tenantId?: Id<"tenants">,
+) {
   const coord = { txTime: Date.now(), validTime: Date.now() };
   return project(
-    await runWhere(ctx, where, coord, {}, { source: eventLogTripleSource }),
+    await runWhere(ctx, where, coord, {}, {
+      source:
+        tenantId === undefined
+          ? eventLogTripleSource
+          : eventLogTripleSourceForTenant(tenantId),
+    }),
     select,
   );
 }
@@ -60,11 +74,12 @@ async function currentRows(ctx: Ctx, where: unknown[], select: string[]) {
 export async function loadActionDef(
   ctx: Ctx,
   name: string,
+  tenantId?: Id<"tenants">,
 ): Promise<ActionDef | null> {
   const rows = await currentRows(ctx, [[actionId(name), "?a", "?v"]], [
     "?a",
     "?v",
-  ]);
+  ], tenantId);
   if (rows.length === 0) return null;
   const m: Record<string, unknown[]> = {};
   for (const r of rows) (m[String(r.a)] ??= []).push(r.v);
@@ -83,15 +98,18 @@ export async function loadActionDef(
   };
 }
 
-export async function listActionDefs(ctx: Ctx): Promise<ActionDef[]> {
-  const rows = await currentRows(ctx, [["?e", "type", "Action"]], ["?e"]);
+export async function listActionDefs(
+  ctx: Ctx,
+  tenantId?: Id<"tenants">,
+): Promise<ActionDef[]> {
+  const rows = await currentRows(ctx, [["?e", "type", "Action"]], ["?e"], tenantId);
   const seen = new Set<string>();
   const out: ActionDef[] = [];
   for (const row of rows) {
     const e = String(row.e);
     if (seen.has(e) || !e.startsWith("action:")) continue;
     seen.add(e);
-    const def = await loadActionDef(ctx, e.slice("action:".length));
+    const def = await loadActionDef(ctx, e.slice("action:".length), tenantId);
     if (def) out.push(def);
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));

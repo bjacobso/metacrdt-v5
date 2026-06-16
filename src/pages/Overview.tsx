@@ -12,6 +12,8 @@ import {
   CircleSlash,
 } from "lucide-react";
 import { Card, CardHeader, Eyebrow, StatCard, Mono, shortId } from "../ui";
+import { useTenant } from "../tenant";
+import { ROUTES, tenantPath } from "../navigationModel";
 
 const KIND_ICON: Record<string, React.ReactNode> = {
   assert: <PlusCircle className="h-4 w-4 text-green" />,
@@ -33,8 +35,15 @@ function valStr(v: unknown): string {
 }
 
 export default function Overview() {
-  const s = useQuery(api.overview.summary, {});
-  const activity = useQuery(api.overview.recentActivity, { limit: 12 });
+  const { selectedTenant, selectedTenantSlug } = useTenant();
+  const s = useQuery(
+    api.overview.summary,
+    selectedTenantSlug ? { tenantSlug: selectedTenantSlug } : "skip",
+  );
+  const activity = useQuery(
+    api.overview.recentActivity,
+    selectedTenantSlug ? { tenantSlug: selectedTenantSlug, limit: 12 } : "skip",
+  );
 
   const PILLARS = [
     "Fact Convergence",
@@ -72,7 +81,7 @@ export default function Overview() {
       </div>
 
       <div>
-        <Eyebrow>Datarooms · Acme Staffing</Eyebrow>
+        <Eyebrow>Datarooms · {selectedTenant?.name ?? "No tenant"}</Eyebrow>
         <h2 className="mt-1 text-3xl font-semibold tracking-tight text-ink">
           Overview
         </h2>
@@ -119,7 +128,7 @@ export default function Overview() {
             hint="obligations as derived facts"
             right={
               <Link
-                to="/compliance"
+                to={tenantPath(selectedTenantSlug, ROUTES.compliance)}
                 className="text-[13px] font-medium text-blue-ink hover:underline"
               >
                 Open compliance →
@@ -127,7 +136,7 @@ export default function Overview() {
             }
           />
           <div className="p-5">
-            <ComplianceGlance />
+            <ComplianceGlance tenantSlug={selectedTenantSlug} />
           </div>
         </Card>
 
@@ -164,8 +173,11 @@ export default function Overview() {
 }
 
 /** Compact obligations view for the demo worker. */
-function ComplianceGlance() {
-  const c = useQuery(api.compliance.workerCompliance, { worker: "worker:maria" });
+function ComplianceGlance({ tenantSlug }: { tenantSlug: string | null }) {
+  const c = useQuery(
+    api.compliance.workerCompliance,
+    tenantSlug ? { worker: "worker:maria", tenantSlug } : "skip",
+  );
   if (c === undefined) return <p className="text-[13px] text-muted">Loading…</p>;
   if (c.required.length === 0)
     return (

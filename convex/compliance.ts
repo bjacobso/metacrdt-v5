@@ -2,8 +2,8 @@ import { mutation, query, internalMutation } from "./_generated/server";
 import { internal, api } from "./_generated/api";
 import { v } from "convex/values";
 import { assertInTx, createTransaction } from "./facts";
-import { requireWritePrincipal } from "./lib/writeAuth";
 import { obligationsFromEventLog } from "./lib/obligations";
+import { requireTenant, tenantOrLegacyRead } from "./lib/tenantAuth";
 import {
   DAY_MS,
   requirementClauses,
@@ -31,13 +31,14 @@ export const FORMS: FormDef[] = [
  * facts, so they recompute on the relevant fact changes — no rule chaining.
  */
 export const setupComplianceRules = mutation({
-  args: {},
-  handler: async (ctx) => {
-    await requireWritePrincipal(ctx);
+  args: { tenantSlug: v.string() },
+  handler: async (ctx, args) => {
+    await requireTenant(ctx, args.tenantSlug, "admin");
     for (const f of FORMS) {
       const clauses = requirementClauses(f);
 
       await ctx.runMutation(api.rules.defineRule, {
+        tenantSlug: args.tenantSlug,
         name: clauses.requirement.name,
         where: [...clauses.requirement.where],
         emit: clauses.requirement.emit,
@@ -45,6 +46,7 @@ export const setupComplianceRules = mutation({
       });
 
       await ctx.runMutation(api.rules.defineRule, {
+        tenantSlug: args.tenantSlug,
         name: clauses.task.name,
         where: [...clauses.task.where],
         emit: clauses.task.emit,
@@ -57,16 +59,28 @@ export const setupComplianceRules = mutation({
 
 /** Seed the staffing demo domain (Maria placed by Acme across two placements). */
 export const seedStaffingDemo = mutation({
-  args: {},
-  handler: async (ctx) => {
-    await requireWritePrincipal(ctx);
+  args: { tenantSlug: v.string() },
+  handler: async (ctx, args) => {
+    const tenant = await requireTenant(ctx, args.tenantSlug, "editor");
+    const actorId = tenant.principal;
     const now = Date.now();
     const txId = await createTransaction(ctx, {
+      tenantId: tenant.tenantId,
+      actorId,
       reason: "seed staffing demo",
       now,
     });
-    const f = (e: string, a: string, value: unknown) =>
-      assertInTx(ctx, txId, now, { e, a, value });
+    const tenantId = tenant.tenantId;
+    const f = async (e: string, a: string, value: unknown) => {
+      const current = await ctx.db
+        .query("currentFacts")
+        .withIndex("by_tenant_and_e_a", (q) =>
+          q.eq("tenantId", tenantId).eq("e", e).eq("a", a),
+        )
+        .collect();
+      if (current.some((row) => row.v === value)) return null;
+      return assertInTx(ctx, txId, now, { e, a, value });
+    };
 
     // Subjects & scope entities.
     await f("worker:maria", "type", "Worker");
@@ -116,14 +130,17 @@ export const submitForm = mutation({
     form: v.string(),
     scope: v.string(),
     validForDays: v.optional(v.number()),
+    tenantSlug: v.string(),
     actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const actorId = await requireWritePrincipal(ctx);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "editor");
+    const actorId = tenant.principal;
     const now = Date.now();
     const def = FORMS.find((f) => f.form === args.form);
     const days = args.validForDays ?? def?.validityDays;
     const txId = await createTransaction(ctx, {
+      tenantId: tenant.tenantId,
       actorId,
       reason: `submit ${args.form} for ${args.scope}`,
       now,
@@ -163,10 +180,26 @@ export const recomputeCompliance = internalMutation({
 
 /** Manual trigger for the same recompute (handy for demoing expiry). */
 export const recomputeNow = mutation({
-  args: {},
-  handler: async (ctx): Promise<{ scheduled: number }> => {
-    await requireWritePrincipal(ctx);
-    return await ctx.runMutation(internal.compliance.recomputeCompliance, {});
+  args: { tenantSlug: v.string() },
+  handler: async (ctx, args): Promise<{ scheduled: number }> => {
+    const tenant = await requireTenant(ctx, args.tenantSlug, "editor");
+    const rules = await ctx.db
+      .query("rules")
+      .withIndex("by_tenant_and_name", (q) => q.eq("tenantId", tenant.tenantId))
+      .collect();
+    let scheduled = 0;
+    for (const rule of rules) {
+      if (
+        rule.enabled &&
+        (rule.name.startsWith("require.") || rule.name.startsWith("task."))
+      ) {
+        await ctx.scheduler.runAfter(0, internal.materialize.recomputeRule, {
+          ruleId: rule._id,
+        });
+        scheduled++;
+      }
+    }
+    return { scheduled };
   },
 });
 
@@ -178,8 +211,9 @@ export const recomputeNow = mutation({
  * facts that justify it (provenance).
  */
 export const workerCompliance = query({
-  args: { worker: v.string() },
+  args: { worker: v.string(), tenantSlug: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
     const required: { form: string; scope: string }[] = [];
     const open: {
       form: string;
@@ -188,6 +222,7 @@ export const workerCompliance = query({
     }[] = [];
     for (const obligation of await obligationsFromEventLog(ctx, {
       worker: args.worker,
+      tenantId: tenant?.tenantId,
       limit: 500,
     })) {
       if (!obligation.open) {
@@ -206,10 +241,18 @@ export const workerCompliance = query({
       }
     }
     const invalidated = [];
-    const invalidationRows = await ctx.db
-      .query("currentFacts")
-      .withIndex("by_e", (q) => q.eq("e", args.worker))
-      .collect();
+    const invalidationRows =
+      tenant === null
+        ? await ctx.db
+            .query("currentFacts")
+            .withIndex("by_e", (q) => q.eq("e", args.worker))
+            .collect()
+        : await ctx.db
+            .query("currentFacts")
+            .withIndex("by_tenant_and_e", (q) =>
+              q.eq("tenantId", tenant.tenantId).eq("e", args.worker),
+            )
+            .collect();
     for (const row of invalidationRows) {
       if (!row.a.startsWith("obligation.invalidated.")) continue;
       const form = row.a.slice("obligation.invalidated.".length);

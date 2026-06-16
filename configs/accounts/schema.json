@@ -1,0 +1,313 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metacrdt.local/schemas/account-config.schema.json",
+  "title": "MetaCRDT Account Config",
+  "type": "object",
+  "required": ["account"],
+  "properties": {
+    "account": { "$ref": "#/$defs/account" },
+    "attributes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/attribute" },
+      "default": []
+    },
+    "entityTypes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entityType" },
+      "default": []
+    },
+    "forms": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/form" },
+      "default": []
+    },
+    "flows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/flow" },
+      "default": []
+    },
+    "requirements": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/requirement" },
+      "default": []
+    },
+    "actions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/action" },
+      "default": []
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "account": {
+      "type": "object",
+      "required": ["slug", "name"],
+      "properties": {
+        "slug": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["staffing", "legal", "custom"] }
+      },
+      "additionalProperties": false
+    },
+    "attribute": {
+      "type": "object",
+      "required": ["name", "valueType", "cardinality"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "valueType": {
+          "enum": ["string", "number", "boolean", "entityRef", "date", "json"]
+        },
+        "cardinality": { "enum": ["one", "many"] },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "entityType": {
+      "type": "object",
+      "required": ["name", "attributes"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "attributes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "form": {
+      "type": "object",
+      "required": ["form", "title", "fields"],
+      "properties": {
+        "form": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/field" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "field": {
+      "type": "object",
+      "description": "A form field. If name matches a declared account attribute, validator preflight requires a compatible field type: string attributes may use string or select, number uses number, boolean uses boolean, and date uses date. Evidence-only fields that do not match account attributes are not constrained by attribute valueType. defaultValue is validated against the field type before deploy.",
+      "required": ["name", "label", "type"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "type": { "enum": ["string", "number", "boolean", "date", "select"] },
+        "description": { "type": "string" },
+        "required": { "type": "boolean" },
+        "pii": { "type": "boolean" },
+        "options": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "defaultValue": { "$ref": "#/$defs/jsonValue" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "select" } } },
+          "then": { "required": ["options"] },
+          "else": { "not": { "required": ["options"] } }
+        },
+        { "$ref": "#/$defs/formFieldDefaultValueByType" }
+      ],
+      "additionalProperties": false
+    },
+    "flow": {
+      "type": "object",
+      "required": ["name", "subjectType", "startStepId", "steps"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "subjectType": { "type": "string", "minLength": 1 },
+        "startStepId": { "type": "string", "minLength": 1 },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/flowStep" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "flowStep": {
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": {
+          "enum": ["assert", "collect", "notify", "branch", "action", "wait", "done"]
+        },
+        "config": { "$ref": "#/$defs/stepConfig" },
+        "next": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "stepConfig": {
+      "type": "object",
+      "properties": {
+        "form": { "type": "string", "minLength": 1 },
+        "scopeFrom": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "minLength": 1 },
+        "reminderSeconds": { "type": "number" },
+        "escalateSeconds": { "type": "number" },
+        "expireSeconds": { "type": "number" },
+        "where": { "$ref": "#/$defs/jsonValue" },
+        "ifTrue": { "type": "string", "minLength": 1 },
+        "ifFalse": { "type": "string", "minLength": 1 },
+        "subjectVar": { "type": "string", "minLength": 1 },
+        "a": { "type": "string", "minLength": 1 },
+        "v": { "$ref": "#/$defs/jsonValue" },
+        "message": { "type": "string" },
+        "channel": { "type": "string" },
+        "to": { "type": "string" },
+        "template": { "type": "string" },
+        "label": { "type": "string" },
+        "resultAttr": { "type": "string", "minLength": 1 },
+        "resultValue": { "$ref": "#/$defs/jsonValue" },
+        "delaySeconds": { "type": "number" },
+        "seconds": { "type": "number" }
+      },
+      "additionalProperties": true
+    },
+    "requirement": {
+      "type": "object",
+      "required": ["form", "scopeAttr"],
+      "properties": {
+        "form": { "type": "string", "minLength": 1 },
+        "scopeAttr": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "validityDays": { "type": "number" },
+        "guard": {
+          "type": "array",
+          "prefixItems": [
+            { "type": "string", "minLength": 1 },
+            { "$ref": "#/$defs/jsonValue" }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        }
+      },
+      "additionalProperties": false
+    },
+    "action": {
+      "type": "object",
+      "required": ["name", "appliesTo"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "appliesTo": { "type": "string", "minLength": 1 },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/actionField" }
+        },
+        "asserts": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/jsonValue" }
+        },
+        "opensForm": { "$ref": "#/$defs/opensForm" }
+      },
+      "additionalProperties": false
+    },
+    "actionField": {
+      "type": "object",
+      "description": "An action input field. If name matches a declared account attribute, validator preflight requires a compatible input type: string attributes may use string or select, number uses number, boolean uses boolean, and entityRef/date inputs are string-shaped. Action-only inputs that do not match account attributes are not constrained by attribute valueType. defaultValue is validated against the field type before deploy.",
+      "required": ["name", "label", "type"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "type": { "enum": ["string", "number", "boolean", "select"] },
+        "description": { "type": "string" },
+        "required": { "type": "boolean" },
+        "options": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "defaultValue": { "$ref": "#/$defs/jsonValue" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "select" } } },
+          "then": { "required": ["options"] },
+          "else": { "not": { "required": ["options"] } }
+        },
+        { "$ref": "#/$defs/actionFieldDefaultValueByType" }
+      ],
+      "additionalProperties": false
+    },
+    "opensForm": {
+      "type": "object",
+      "required": ["form"],
+      "properties": {
+        "form": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "jsonValue": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/jsonValue" }
+        },
+        {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/jsonValue" }
+        }
+      ]
+    },
+    "formFieldDefaultValueByType": {
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "string" } } },
+          "then": { "properties": { "defaultValue": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "date" } } },
+          "then": { "properties": { "defaultValue": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "select" } } },
+          "then": { "properties": { "defaultValue": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "number" } } },
+          "then": { "properties": { "defaultValue": { "type": "number" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "boolean" } } },
+          "then": { "properties": { "defaultValue": { "type": "boolean" } } }
+        }
+      ]
+    },
+    "actionFieldDefaultValueByType": {
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "string" } } },
+          "then": { "properties": { "defaultValue": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "select" } } },
+          "then": { "properties": { "defaultValue": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "number" } } },
+          "then": { "properties": { "defaultValue": { "type": "number" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "boolean" } } },
+          "then": { "properties": { "defaultValue": { "type": "boolean" } } }
+        }
+      ]
+    }
+  }
+}

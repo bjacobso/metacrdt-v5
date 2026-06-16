@@ -5,6 +5,9 @@ import { api } from "../../convex/_generated/api";
 import { ChevronRight, ChevronDown } from "lucide-react";
 import { Card, Button, Mono, shortId } from "../ui";
 import { useWriteGate } from "../auth";
+import { useTenant } from "../tenant";
+import { tenantDemoProfile } from "../tenantDemoProfile";
+import { tenantPath } from "../navigationModel";
 import { ViewRenderer, type ViewRenderContext } from "../views/ViewRenderer";
 import {
   buildEntitiesViewSpec,
@@ -18,24 +21,32 @@ function displayValue(v: unknown): string {
 
 export default function Entities() {
   const navigate = useNavigate();
-  const types = useQuery(api.entities.listEntityTypes, {});
+  const { selectedTenant, selectedTenantSlug } = useTenant();
+  const types = useQuery(
+    api.entities.listEntityTypes,
+    selectedTenantSlug ? { tenantSlug: selectedTenantSlug } : "skip",
+  );
   const [type, setType] = useState<string | null>(null);
   const [showSystem, setShowSystem] = useState(false);
   const setupStaffing = useMutation(api.appconfig.setupStaffing);
+  const setupLegal = useMutation(api.appconfig.setupLegal);
   const [busy, setBusy] = useState(false);
   const { guardWrite } = useWriteGate();
+  const demoProfile = tenantDemoProfile(selectedTenant?.kind);
 
   const schema = useQuery(
     api.attributes.typeSchemaAsOf,
-    type ? { type } : "skip",
+    type && selectedTenantSlug ? { type, tenantSlug: selectedTenantSlug } : "skip",
   );
   const entities = useQuery(
     api.entities.queryEntities,
-    type ? { type, pageSize: 50 } : "skip",
+    type && selectedTenantSlug
+      ? { type, tenantSlug: selectedTenantSlug, pageSize: 50 }
+      : "skip",
   );
   const componentEntities = useQuery(
     api.metacrdtComponent.listOwnedCurrentEntities,
-    type ? { type, limit: 50 } : { limit: 50 },
+    "skip",
   );
 
   const userTypes = (types ?? []).filter((t) => t.origin !== "system");
@@ -63,13 +74,19 @@ export default function Entities() {
         page: entities ? flattenEntityRows(entities.page as RawEntityRow[], columnNames) : [],
       },
     },
-    onRowActivate: (row) => navigate(`/e/${encodeURIComponent(String(row["id"]))}`),
+    onRowActivate: (row) =>
+      navigate(tenantPath(selectedTenantSlug, `/e/${encodeURIComponent(String(row["id"]))}`)),
   };
 
   async function bootstrap() {
+    if (!selectedTenantSlug) return;
     setBusy(true);
     try {
-      await guardWrite("Set up staffing demo", () => setupStaffing({}));
+      await guardWrite(`Set up ${demoProfile.setupLabel}`, () =>
+        demoProfile.setupAction === "setupLegal"
+          ? setupLegal({ tenantSlug: selectedTenantSlug })
+          : setupStaffing({ tenantSlug: selectedTenantSlug }),
+      );
     } finally {
       setBusy(false);
     }
@@ -148,12 +165,12 @@ export default function Entities() {
           <Card className="p-6">
             <h2 className="text-lg font-semibold text-ink">No data yet</h2>
             <p className="mt-1 max-w-prose text-[14px] text-muted">
-              Install the staffing blueprint (config-as-code) to define the entity
-              types, forms, flows, compliance rules, and actions — then seed a demo.
+              Install the {demoProfile.setupLabel} account configuration to define the entity
+              types, forms, flows, requirements, and actions — then seed demo data.
             </p>
             <div className="mt-4">
               <Button variant="primary" onClick={bootstrap} disabled={busy}>
-                {busy ? "Installing…" : "Set up staffing demo"}
+                {busy ? "Installing…" : `Set up ${demoProfile.setupLabel}`}
               </Button>
             </div>
           </Card>
@@ -204,7 +221,12 @@ export default function Entities() {
                     <tr
                       key={e.e}
                       onClick={() =>
-                        navigate(`/component/e/${encodeURIComponent(e.e)}`)
+                        navigate(
+                          tenantPath(
+                            selectedTenantSlug,
+                            `/component/e/${encodeURIComponent(e.e)}`,
+                          ),
+                        )
                       }
                       className="cursor-pointer hover:bg-line-soft"
                     >

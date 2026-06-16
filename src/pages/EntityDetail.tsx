@@ -14,6 +14,8 @@ import {
   shortId,
 } from "../ui";
 import { useWriteGate } from "../auth";
+import { useTenant } from "../tenant";
+import { tenantPath } from "../navigationModel";
 
 function val(v: unknown): string {
   return typeof v === "string" ? v : JSON.stringify(v);
@@ -23,11 +25,17 @@ export default function EntityDetail() {
   const { id: raw } = useParams();
   const id = decodeURIComponent(raw ?? "");
   const navigate = useNavigate();
-  const detail = useQuery(api.entities.entityDetail, { e: id });
+  const { selectedTenantSlug } = useTenant();
+  const detail = useQuery(
+    api.entities.entityDetail,
+    selectedTenantSlug ? { e: id, tenantSlug: selectedTenantSlug } : "skip",
+  );
   const primaryType = detail?.types[0];
   const schema = useQuery(
     api.attributes.typeSchemaAsOf,
-    primaryType ? { type: primaryType } : "skip",
+    primaryType && selectedTenantSlug
+      ? { type: primaryType, tenantSlug: selectedTenantSlug }
+      : "skip",
   );
   const startFlow = useMutation(api.flows.startFlow);
   const runAction = useMutation(api.actions.runAction);
@@ -86,11 +94,13 @@ export default function EntityDetail() {
   async function runConfiguredAction(
     action: NonNullable<typeof detail>["actions"][number],
   ) {
+    if (!selectedTenantSlug) return;
     const res = await run(`action:${action.name}`, () =>
       runAction({
         action: action.name,
         entity: id,
         args: actionArgs[action.name] ?? {},
+        tenantSlug: selectedTenantSlug,
       }),
     );
     if (res === undefined) return;
@@ -192,16 +202,18 @@ export default function EntityDetail() {
                 </div>
                 <Button
                   variant="primary"
-                  disabled={busy === `flow:${f.name}`}
-                  onClick={() =>
-                    run(`flow:${f.name}`, () =>
+                  disabled={!selectedTenantSlug || busy === `flow:${f.name}`}
+                  onClick={() => {
+                    if (!selectedTenantSlug) return;
+                    void run(`flow:${f.name}`, () =>
                       startFlow({
                         flowDefName: f.name,
                         subject: id,
                         context: { employer },
+                        tenantSlug: selectedTenantSlug,
                       }),
-                    )
-                  }
+                    );
+                  }}
                 >
                   <Play className="h-3.5 w-3.5" /> Run
                 </Button>
@@ -292,7 +304,7 @@ export default function EntityDetail() {
                   )}
                 </div>
                 <Button
-                  disabled={busy === `action:${a.name}`}
+                  disabled={!selectedTenantSlug || busy === `action:${a.name}`}
                   onClick={() => runConfiguredAction(a)}
                 >
                   Run
@@ -340,12 +352,21 @@ export default function EntityDetail() {
                   <td className="px-5 py-2.5 text-right">
                     <Button
                       variant="collect"
-                      disabled={busy === `submit:${o.form}:${o.scope}`}
-                      onClick={() =>
-                        run(`submit:${o.form}:${o.scope}`, () =>
-                          submitForm({ worker: id, form: o.form, scope: o.scope }),
-                        )
+                      disabled={
+                        !selectedTenantSlug ||
+                        busy === `submit:${o.form}:${o.scope}`
                       }
+                      onClick={() => {
+                        if (!selectedTenantSlug) return;
+                        void run(`submit:${o.form}:${o.scope}`, () =>
+                          submitForm({
+                            worker: id,
+                            form: o.form,
+                            scope: o.scope,
+                            tenantSlug: selectedTenantSlug,
+                          }),
+                        );
+                      }}
                     >
                       Submit {o.form}
                     </Button>
@@ -371,17 +392,31 @@ export default function EntityDetail() {
                     <span className="ml-auto flex items-center gap-2">
                       <Button
                         variant="collect"
-                        onClick={() =>
-                          submitForm({ worker: id, form: r.form!, scope: r.scope! })
-                        }
+                        disabled={!selectedTenantSlug}
+                        onClick={() => {
+                          if (!selectedTenantSlug) return;
+                          submitForm({
+                            worker: id,
+                            form: r.form!,
+                            scope: r.scope!,
+                            tenantSlug: selectedTenantSlug,
+                          });
+                        }}
                       >
                         Submit
                       </Button>
                       <Button
                         variant="ghost"
-                        onClick={() =>
-                          run("Cancel flow", () => cancelFlow({ runId: r._id }))
-                        }
+                        disabled={!selectedTenantSlug}
+                        onClick={() => {
+                          if (!selectedTenantSlug) return;
+                          void run("Cancel flow", () =>
+                            cancelFlow({
+                              runId: r._id,
+                              tenantSlug: selectedTenantSlug,
+                            }),
+                          );
+                        }}
                       >
                         Cancel
                       </Button>
@@ -414,7 +449,7 @@ export default function EntityDetail() {
             {linked.map((ref) => (
               <Link
                 key={ref}
-                to={`/e/${encodeURIComponent(ref)}`}
+                to={tenantPath(selectedTenantSlug, `/e/${encodeURIComponent(ref)}`)}
                 className="rounded-full border border-line bg-surface px-2.5 py-1 font-mono text-[12px] text-ink-2 hover:bg-brand hover:text-white"
               >
                 {ref}

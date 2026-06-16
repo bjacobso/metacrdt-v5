@@ -1,6 +1,6 @@
 import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
-import { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { isVisible } from "./lib/visibility";
 import {
   allMetaAttributeFacts,
@@ -13,7 +13,10 @@ import {
   shapeAttributeDefinition,
 } from "./lib/meta";
 import { assertInTx, createTransaction, retractInTx } from "./facts";
-import { requireWritePrincipal } from "./lib/writeAuth";
+import {
+  requireTenant,
+  tenantOrLegacyRead,
+} from "./lib/tenantAuth";
 
 // Schema-as-facts: attribute definitions, entity-type definitions, and
 // type→attribute membership are all bitemporal triples. Nothing here writes to
@@ -28,22 +31,36 @@ const valueTypeValidator = v.union(
   v.literal("json"),
 );
 
-async function currentRows(ctx: QueryCtx | MutationCtx, e: string) {
-  return await ctx.db
-    .query("currentFacts")
-    .withIndex("by_e", (q) => q.eq("e", e))
-    .collect();
+async function currentRows(
+  ctx: QueryCtx | MutationCtx,
+  e: string,
+  tenantId?: Id<"tenants">,
+) {
+  if (tenantId !== undefined) {
+    return await ctx.db
+      .query("currentFacts")
+      .withIndex("by_tenant_and_e", (q) => q.eq("tenantId", tenantId).eq("e", e))
+      .collect();
+  }
+  return await ctx.db.query("currentFacts").withIndex("by_e", (q) => q.eq("e", e)).collect();
 }
 
 async function visibleRowsAsOf(
   ctx: QueryCtx,
   e: string,
   coord: { txTime: number; validTime: number },
+  tenantId?: Id<"tenants">,
 ): Promise<Doc<"facts">[]> {
-  const rows = await ctx.db
-    .query("facts")
-    .withIndex("by_e", (q) => q.eq("e", e))
-    .take(2000);
+  const rows =
+    tenantId === undefined
+      ? await ctx.db
+          .query("facts")
+          .withIndex("by_e", (q) => q.eq("e", e))
+          .take(2000)
+      : await ctx.db
+          .query("facts")
+          .withIndex("by_tenant_and_e", (q) => q.eq("tenantId", tenantId).eq("e", e))
+          .take(2000);
   return rows.filter((r) => isVisible(r, coord));
 }
 
@@ -65,11 +82,13 @@ export const defineAttribute = mutation({
     materialized: v.optional(v.boolean()),
     inverseAttribute: v.optional(v.string()),
     description: v.optional(v.string()),
+    tenantSlug: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireWritePrincipal(ctx);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "admin");
     const now = Date.now();
     const txId = await createTransaction(ctx, {
+      tenantId: tenant.tenantId,
       reason: `define attribute ${args.name}`,
       now,
     });
@@ -84,16 +103,21 @@ export const defineAttribute = mutation({
 
 /** Retire an attribute definition by retracting its current schema facts. */
 export const retireAttribute = mutation({
-  args: { name: v.string(), reason: v.optional(v.string()) },
+  args: {
+    name: v.string(),
+    reason: v.optional(v.string()),
+    tenantSlug: v.string(),
+  },
   handler: async (ctx, args) => {
-    await requireWritePrincipal(ctx);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "admin");
     const now = Date.now();
     const txId = await createTransaction(ctx, {
+      tenantId: tenant.tenantId,
       reason: args.reason ?? `retire attribute ${args.name}`,
       now,
     });
     const e = attrId(args.name);
-    const rows = await currentRows(ctx, e);
+    const rows = await currentRows(ctx, e, tenant.tenantId);
     for (const row of rows) {
       await retractInTx(ctx, txId, now, row.factId, "attribute retired");
     }
@@ -110,11 +134,13 @@ export const defineType = mutation({
     name: v.string(),
     attributes: v.optional(v.array(v.string())),
     description: v.optional(v.string()),
+    tenantSlug: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireWritePrincipal(ctx);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "admin");
     const now = Date.now();
     const txId = await createTransaction(ctx, {
+      tenantId: tenant.tenantId,
       reason: `define type ${args.name}`,
       now,
     });
@@ -128,11 +154,12 @@ export const defineType = mutation({
 
 /** Install the meta-attributes as self-describing schema facts. */
 export const bootstrapSchema = mutation({
-  args: {},
-  handler: async (ctx) => {
-    await requireWritePrincipal(ctx);
+  args: { tenantSlug: v.string() },
+  handler: async (ctx, args) => {
+    const tenant = await requireTenant(ctx, args.tenantSlug, "admin");
     const now = Date.now();
     const txId = await createTransaction(ctx, {
+      tenantId: tenant.tenantId,
       reason: "bootstrap meta-schema",
       now,
     });
@@ -152,9 +179,10 @@ function shapeAttribute(name: string, rows: { a: string; v: unknown }[]) {
 
 /** Current definition of an attribute, reconstructed from facts. */
 export const getAttribute = query({
-  args: { name: v.string() },
+  args: { name: v.string(), tenantSlug: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const rows = await currentRows(ctx, attrId(args.name));
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
+    const rows = await currentRows(ctx, attrId(args.name), tenant?.tenantId);
     if (rows.length === 0) return null;
     return shapeAttribute(args.name, rows);
   },
@@ -166,13 +194,20 @@ export const attributeAsOf = query({
     name: v.string(),
     txTime: v.optional(v.number()),
     validTime: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
     const coord = {
       txTime: args.txTime ?? Date.now(),
       validTime: args.validTime ?? Date.now(),
     };
-    const rows = await visibleRowsAsOf(ctx, attrId(args.name), coord);
+    const rows = await visibleRowsAsOf(
+      ctx,
+      attrId(args.name),
+      coord,
+      tenant?.tenantId,
+    );
     if (rows.length === 0) return { name: args.name, coord, exists: false };
     return {
       ...shapeAttribute(args.name, rows),
@@ -184,17 +219,29 @@ export const attributeAsOf = query({
 
 /** All currently-defined attributes. */
 export const listAttributes = query({
-  args: {},
-  handler: async (ctx) => {
-    const defs = await ctx.db
-      .query("currentFacts")
-      .withIndex("by_a_v", (q) =>
-        q.eq("a", "type").eq("v", META.attributeType),
-      )
-      .take(1000);
+  args: { tenantSlug: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
+    const defs =
+      tenant === null
+        ? await ctx.db
+            .query("currentFacts")
+            .withIndex("by_a_v", (q) =>
+              q.eq("a", "type").eq("v", META.attributeType),
+            )
+            .take(1000)
+        : await ctx.db
+            .query("currentFacts")
+            .withIndex("by_tenant_and_a_v", (q) =>
+              q
+                .eq("tenantId", tenant.tenantId)
+                .eq("a", "type")
+                .eq("v", META.attributeType),
+            )
+            .take(1000);
     const out = [];
     for (const d of defs) {
-      const rows = await currentRows(ctx, d.e);
+      const rows = await currentRows(ctx, d.e, tenant?.tenantId);
       out.push(shapeAttribute(attrNameOf(d.e), rows));
     }
     return out.sort((a, b) => a.name.localeCompare(b.name));
@@ -207,13 +254,27 @@ export const listAttributes = query({
  * / redefined, and to what".
  */
 export const attributeLifecycle = query({
-  args: { name: v.string(), limit: v.optional(v.number()) },
+  args: {
+    name: v.string(),
+    limit: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
-    const events = await ctx.db
-      .query("factEvents")
-      .withIndex("by_e", (q) => q.eq("e", attrId(args.name)))
-      .order("desc")
-      .take(Math.min(args.limit ?? 100, 500));
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
+    const events =
+      tenant === null
+        ? await ctx.db
+            .query("factEvents")
+            .withIndex("by_e", (q) => q.eq("e", attrId(args.name)))
+            .order("desc")
+            .take(Math.min(args.limit ?? 100, 500))
+        : await ctx.db
+            .query("factEvents")
+            .withIndex("by_tenant_and_e", (q) =>
+              q.eq("tenantId", tenant.tenantId).eq("e", attrId(args.name)),
+            )
+            .order("desc")
+            .take(Math.min(args.limit ?? 100, 500));
     return events.map((e) => ({
       kind: e.kind,
       attribute: e.a,
@@ -234,20 +295,32 @@ export const typeSchemaAsOf = query({
     type: v.string(),
     txTime: v.optional(v.number()),
     validTime: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
     const coord = {
       txTime: args.txTime ?? Date.now(),
       validTime: args.validTime ?? Date.now(),
     };
-    const rows = await visibleRowsAsOf(ctx, typeId(args.type), coord);
+    const rows = await visibleRowsAsOf(
+      ctx,
+      typeId(args.type),
+      coord,
+      tenant?.tenantId,
+    );
     const attributes = rows
       .filter((r) => r.a === "hasAttribute")
       .map((r) => attrNameOf(String(r.v)))
       .sort();
     const columns = [];
     for (const name of attributes) {
-      const attrRows = await visibleRowsAsOf(ctx, attrId(name), coord);
+      const attrRows = await visibleRowsAsOf(
+        ctx,
+        attrId(name),
+        coord,
+        tenant?.tenantId,
+      );
       columns.push({
         ...shapeAttribute(name, attrRows),
         declared: attrRows.length > 0,

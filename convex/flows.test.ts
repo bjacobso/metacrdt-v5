@@ -5,32 +5,42 @@ import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
+const TENANT = "acme-staffing";
 
 describe("collect-step flow runner", () => {
   test("a submission resumes the waiting run to completed", async () => {
     vi.useFakeTimers();
     try {
       const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await t.mutation(api.tenants.ensureDemoTenants, {});
       const { runId } = await t.mutation(api.flows.startCollect, {
+        tenantSlug: TENANT,
         subject: "worker:maria",
         form: "i9",
         scope: "employer:acme",
       });
 
-      let flows = await t.query(api.flows.listFlows, { subject: "worker:maria" });
+      let flows = await t.query(api.flows.listFlows, {
+        tenantSlug: TENANT,
+        subject: "worker:maria",
+      });
       expect(flows[0].status).toBe("waiting");
       expect(flows[0].events.some((e) => e.kind === "issued")).toBe(true);
 
       // Submitting the form asserts the fact; the event path resumes the run.
       // (Reminder/escalate ticks also fire here but no-op once completed.)
       await t.mutation(api.compliance.submitForm, {
+        tenantSlug: TENANT,
         worker: "worker:maria",
         form: "i9",
         scope: "employer:acme",
       });
       await t.finishAllScheduledFunctions(vi.runAllTimers);
 
-      flows = await t.query(api.flows.listFlows, { subject: "worker:maria" });
+      flows = await t.query(api.flows.listFlows, {
+        tenantSlug: TENANT,
+        subject: "worker:maria",
+      });
       const run = flows.find((f) => f._id === runId)!;
       expect(run.status).toBe("completed");
       expect(run.events.some((e) => e.kind === "completed")).toBe(true);
@@ -41,12 +51,15 @@ describe("collect-step flow runner", () => {
 
   test("startCollect does not double-issue for the same target", async () => {
     const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await t.mutation(api.tenants.ensureDemoTenants, {});
     const a = await t.mutation(api.flows.startCollect, {
+      tenantSlug: TENANT,
       subject: "w:1",
       form: "i9",
       scope: "e:1",
     });
     const b = await t.mutation(api.flows.startCollect, {
+      tenantSlug: TENANT,
       subject: "w:1",
       form: "i9",
       scope: "e:1",
@@ -57,13 +70,16 @@ describe("collect-step flow runner", () => {
 
   test("startCollect reissues when the prior waiting token is expired", async () => {
     const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await t.mutation(api.tenants.ensureDemoTenants, {});
     const a = await t.mutation(api.flows.startCollect, {
+      tenantSlug: TENANT,
       subject: "w:expired",
       form: "i9",
       scope: "e:1",
       expireSeconds: 0,
     });
     const b = await t.mutation(api.flows.startCollect, {
+      tenantSlug: TENANT,
       subject: "w:expired",
       form: "i9",
       scope: "e:1",
@@ -72,11 +88,35 @@ describe("collect-step flow runner", () => {
     expect(b.runId).not.toBe(a.runId);
   });
 
+  test("cancelFlow requires explicit tenant context", async () => {
+    const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+    await t.mutation(api.tenants.ensureDemoTenants, {});
+    const { runId } = await t.mutation(api.flows.startCollect, {
+      tenantSlug: TENANT,
+      subject: "w:cancel",
+      form: "i9",
+      scope: "e:1",
+    });
+
+    await expect(
+      t.mutation(api.flows.cancelFlow, { runId } as never),
+    ).rejects.toThrow(/Missing required field `tenantSlug`/);
+
+    await t.mutation(api.flows.cancelFlow, { runId, tenantSlug: TENANT });
+    const flows = await t.query(api.flows.listFlows, {
+      tenantSlug: TENANT,
+      subject: "w:cancel",
+    });
+    expect(flows.find((flow) => flow._id === runId)?.status).toBe("cancelled");
+  });
+
   test("timer ticks fire reminder then escalation while waiting", async () => {
     vi.useFakeTimers();
     try {
       const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await t.mutation(api.tenants.ensureDemoTenants, {});
       await t.mutation(api.flows.startCollect, {
+        tenantSlug: TENANT,
         subject: "w:2",
         form: "handbook",
         scope: "c:1",
@@ -86,7 +126,10 @@ describe("collect-step flow runner", () => {
       // Advance through all timers (no submission → run stays waiting).
       await t.finishAllScheduledFunctions(vi.runAllTimers);
 
-      const flows = await t.query(api.flows.listFlows, { subject: "w:2" });
+      const flows = await t.query(api.flows.listFlows, {
+        tenantSlug: TENANT,
+        subject: "w:2",
+      });
       const kinds = flows[0].events.map((e) => e.kind);
       expect(kinds).toContain("reminder");
       expect(kinds).toContain("escalated");
@@ -100,7 +143,9 @@ describe("collect-step flow runner", () => {
     vi.useFakeTimers();
     try {
       const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await t.mutation(api.tenants.ensureDemoTenants, {});
       const { runId } = await t.mutation(api.flows.startCollect, {
+        tenantSlug: TENANT,
         subject: "w:3",
         form: "i9",
         scope: "e:9",
@@ -109,7 +154,10 @@ describe("collect-step flow runner", () => {
         expireSeconds: 3,
       });
       await t.finishAllScheduledFunctions(vi.runAllTimers);
-      const flows = await t.query(api.flows.listFlows, { subject: "w:3" });
+      const flows = await t.query(api.flows.listFlows, {
+        tenantSlug: TENANT,
+        subject: "w:3",
+      });
       expect(flows.find((f) => f._id === runId)!.status).toBe("expired");
     } finally {
       vi.useRealTimers();
@@ -120,8 +168,9 @@ describe("collect-step flow runner", () => {
     vi.useFakeTimers();
     try {
       const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
-      await t.mutation(api.compliance.setupComplianceRules, {});
-      await t.mutation(api.compliance.seedStaffingDemo, {});
+      await t.mutation(api.tenants.ensureDemoTenants, {});
+      await t.mutation(api.compliance.setupComplianceRules, { tenantSlug: TENANT });
+      await t.mutation(api.compliance.seedStaffingDemo, { tenantSlug: TENANT });
       await t.finishAllScheduledFunctions(vi.runAllTimers);
       await t.run(async (ctx) => {
         const rows = await ctx.db.query("derivedFacts").collect();
@@ -129,10 +178,14 @@ describe("collect-step flow runner", () => {
       });
 
       const { issued } = await t.mutation(api.flows.issueAllOpen, {
+        tenantSlug: TENANT,
         subject: "worker:maria",
       });
       expect(issued).toBe(5); // i9, handbook×2, forklift, venue_disclosure
-      const flows = await t.query(api.flows.listFlows, { subject: "worker:maria" });
+      const flows = await t.query(api.flows.listFlows, {
+        tenantSlug: TENANT,
+        subject: "worker:maria",
+      });
       expect(flows.filter((f) => f.status === "waiting").length).toBe(5);
     } finally {
       vi.useRealTimers();

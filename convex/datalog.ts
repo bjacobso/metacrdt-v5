@@ -13,8 +13,11 @@ import {
 } from "./lib/engine";
 import {
   eventLogBaseWithDerivedTripleSource,
+  eventLogBaseWithDerivedTripleSourceForTenant,
   eventLogTripleSource,
+  eventLogTripleSourceForTenant,
 } from "./lib/eventLogTripleSource";
+import { tenantOrLegacyRead } from "./lib/tenantAuth";
 
 // A clause is a [e, a, v] triple, a [term, op, term] comparison,
 // { compute: [op, ...args], as?: term } deterministic computed predicate,
@@ -22,6 +25,22 @@ import {
 // so clauses are heterogeneous (array | object).
 const whereValidator = v.array(v.any());
 const emitValidator = v.object({ e: v.string(), a: v.string(), v: v.any() });
+
+async function tripleSource(
+  ctx: Parameters<typeof runWhere>[0],
+  tenantSlug: string | undefined,
+  includeDerived: boolean,
+) {
+  const tenant = await tenantOrLegacyRead(ctx, tenantSlug);
+  if (tenant === null) {
+    return includeDerived
+      ? eventLogBaseWithDerivedTripleSource
+      : eventLogTripleSource;
+  }
+  return includeDerived
+    ? eventLogBaseWithDerivedTripleSourceForTenant(tenant.tenantId)
+    : eventLogTripleSourceForTenant(tenant.tenantId);
+}
 
 /**
  * Bounded, non-recursive Datalog over base facts folded from protocol-shaped
@@ -57,6 +76,7 @@ export const datalog = query({
     select: v.array(v.string()),
     txTime: v.optional(v.number()),
     validTime: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const coord = {
@@ -65,7 +85,7 @@ export const datalog = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
-      source: eventLogBaseWithDerivedTripleSource,
+      source: await tripleSource(ctx, args.tenantSlug, true),
     });
     const rows = project(bindings, args.select);
     if (rows.length > LIMITS.maxResultRows) {
@@ -89,6 +109,7 @@ export const datalogFromEventLog = query({
     select: v.array(v.string()),
     txTime: v.optional(v.number()),
     validTime: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const coord = {
@@ -97,7 +118,7 @@ export const datalogFromEventLog = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
-      source: eventLogTripleSource,
+      source: await tripleSource(ctx, args.tenantSlug, false),
     });
     const rows = project(bindings, args.select);
     if (rows.length > LIMITS.maxResultRows) {
@@ -120,6 +141,7 @@ export const datalogFromEventLogWithDerived = query({
     select: v.array(v.string()),
     txTime: v.optional(v.number()),
     validTime: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const coord = {
@@ -128,7 +150,7 @@ export const datalogFromEventLogWithDerived = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
-      source: eventLogBaseWithDerivedTripleSource,
+      source: await tripleSource(ctx, args.tenantSlug, true),
     });
     const rows = project(bindings, args.select);
     if (rows.length > LIMITS.maxResultRows) {
@@ -153,6 +175,7 @@ export const datalogPage = query({
     paginationOpts: paginationOptsValidator,
     txTime: v.optional(v.number()),
     validTime: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const coord = {
@@ -161,7 +184,7 @@ export const datalogPage = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
-      source: eventLogBaseWithDerivedTripleSource,
+      source: await tripleSource(ctx, args.tenantSlug, true),
     });
     return paginateRows(project(bindings, args.select), args.paginationOpts);
   },
@@ -175,6 +198,7 @@ export const datalogPageFromEventLog = query({
     paginationOpts: paginationOptsValidator,
     txTime: v.optional(v.number()),
     validTime: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const coord = {
@@ -183,7 +207,7 @@ export const datalogPageFromEventLog = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
-      source: eventLogTripleSource,
+      source: await tripleSource(ctx, args.tenantSlug, false),
     });
     return paginateRows(project(bindings, args.select), args.paginationOpts);
   },
@@ -201,6 +225,7 @@ export const datalogPageFromEventLogWithDerived = query({
     paginationOpts: paginationOptsValidator,
     txTime: v.optional(v.number()),
     validTime: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const coord = {
@@ -209,7 +234,7 @@ export const datalogPageFromEventLogWithDerived = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
-      source: eventLogBaseWithDerivedTripleSource,
+      source: await tripleSource(ctx, args.tenantSlug, true),
     });
     return paginateRows(project(bindings, args.select), args.paginationOpts);
   },
@@ -249,6 +274,7 @@ export const aggregate = query({
     ),
     txTime: v.optional(v.number()),
     validTime: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const coord = {
@@ -257,7 +283,7 @@ export const aggregate = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
-      source: eventLogBaseWithDerivedTripleSource,
+      source: await tripleSource(ctx, args.tenantSlug, true),
     });
     const rows = aggregateBindings(bindings, args.groupBy ?? [], args.aggregates);
     if (rows.length > LIMITS.maxResultRows) {
@@ -290,6 +316,7 @@ export const aggregateFromEventLog = query({
     ),
     txTime: v.optional(v.number()),
     validTime: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const coord = {
@@ -298,7 +325,7 @@ export const aggregateFromEventLog = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
-      source: eventLogTripleSource,
+      source: await tripleSource(ctx, args.tenantSlug, false),
     });
     const rows = aggregateBindings(bindings, args.groupBy ?? [], args.aggregates);
     if (rows.length > LIMITS.maxResultRows) {
@@ -334,6 +361,7 @@ export const aggregateFromEventLogWithDerived = query({
     ),
     txTime: v.optional(v.number()),
     validTime: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const coord = {
@@ -342,7 +370,7 @@ export const aggregateFromEventLogWithDerived = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
-      source: eventLogBaseWithDerivedTripleSource,
+      source: await tripleSource(ctx, args.tenantSlug, true),
     });
     const rows = aggregateBindings(bindings, args.groupBy ?? [], args.aggregates);
     if (rows.length > LIMITS.maxResultRows) {
@@ -376,6 +404,7 @@ export const aggregatePage = query({
     paginationOpts: paginationOptsValidator,
     txTime: v.optional(v.number()),
     validTime: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const coord = {
@@ -384,7 +413,7 @@ export const aggregatePage = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
-      source: eventLogBaseWithDerivedTripleSource,
+      source: await tripleSource(ctx, args.tenantSlug, true),
     });
     return paginateRows(
       aggregateBindings(bindings, args.groupBy ?? [], args.aggregates),
@@ -415,6 +444,7 @@ export const aggregatePageFromEventLogWithDerived = query({
     paginationOpts: paginationOptsValidator,
     txTime: v.optional(v.number()),
     validTime: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const coord = {
@@ -423,7 +453,7 @@ export const aggregatePageFromEventLogWithDerived = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
-      source: eventLogBaseWithDerivedTripleSource,
+      source: await tripleSource(ctx, args.tenantSlug, true),
     });
     return paginateRows(
       aggregateBindings(bindings, args.groupBy ?? [], args.aggregates),
@@ -454,6 +484,7 @@ export const aggregatePageFromEventLog = query({
     paginationOpts: paginationOptsValidator,
     txTime: v.optional(v.number()),
     validTime: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const coord = {
@@ -462,7 +493,7 @@ export const aggregatePageFromEventLog = query({
     };
     const bindings = await runWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
-      source: eventLogTripleSource,
+      source: await tripleSource(ctx, args.tenantSlug, false),
     });
     return paginateRows(
       aggregateBindings(bindings, args.groupBy ?? [], args.aggregates),
@@ -483,6 +514,7 @@ export const deriveFromEventLog = query({
     emit: emitValidator,
     txTime: v.optional(v.number()),
     validTime: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const coord = {
@@ -491,7 +523,7 @@ export const deriveFromEventLog = query({
     };
     const solved = await solveWhere(ctx, args.where, coord, {}, {
       enforceReadAuth: true,
-      source: eventLogTripleSource,
+      source: await tripleSource(ctx, args.tenantSlug, false),
     });
     const rows = derivedRowsFromBindings(
       solved.map((s) => s.binding),

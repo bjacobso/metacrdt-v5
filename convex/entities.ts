@@ -4,29 +4,58 @@ import { v } from "convex/values";
 import { COMPARISON_OPS, project, runWhere } from "./lib/engine";
 import {
   eventLogBaseWithDerivedTripleSource,
+  eventLogBaseWithDerivedTripleSourceForTenant,
   eventLogTripleSource,
+  eventLogTripleSourceForTenant,
 } from "./lib/eventLogTripleSource";
 import { listActionDefs } from "./lib/actionDefs";
 import { META, typeNameOf } from "./lib/meta";
 import { obligationsFromEventLog } from "./lib/obligations";
 import { Origin, entityOrigin, isSystemEntity, typeOrigin } from "./lib/origin";
 import { redactAttributeMap, type DeniedAttribute } from "./lib/readAuth";
+import { requireLegacyGlobalRead, requireTenant } from "./lib/tenantAuth";
+import type { Id } from "./_generated/dataModel";
 
 // The attribute that designates an entity's type (the "table" it belongs to).
 const TYPE_ATTR = "type";
 const SAMPLE = 1000;
 
+async function readTenantOrLegacy(ctx: QueryCtx, tenantSlug?: string) {
+  if (tenantSlug === undefined) {
+    await requireLegacyGlobalRead(ctx);
+    return null;
+  }
+  return await requireTenant(ctx, tenantSlug);
+}
+
 /** The set of formally-declared type names (type:<Name> registry entities). */
-async function configuredTypeNames(ctx: QueryCtx): Promise<Set<string>> {
-  const rows = await projectCurrent(ctx, [["?e", TYPE_ATTR, META.entityType]], [
-    "?e",
-  ]);
+async function configuredTypeNames(
+  ctx: QueryCtx,
+  tenantId?: Id<"tenants">,
+): Promise<Set<string>> {
+  const rows = await projectCurrent(
+    ctx,
+    [["?e", TYPE_ATTR, META.entityType]],
+    ["?e"],
+    undefined,
+    tenantId,
+  );
   return new Set(rows.map((r) => typeNameOf(String(r.e))));
 }
 
 /** All `type` values currently asserted on an entity. */
-async function typesOf(ctx: QueryCtx, e: string): Promise<string[]> {
-  const rows = await projectCurrent(ctx, [[e, TYPE_ATTR, "?type"]], ["?type"]);
+async function typesOf(
+  ctx: QueryCtx,
+  e: string,
+  tenantId?: Id<"tenants">,
+): Promise<string[]> {
+  const rows = await projectCurrent(
+    ctx,
+    [[e, TYPE_ATTR, "?type"]],
+    ["?type"],
+    undefined,
+    tenantId,
+  );
   return [...new Set(rows.map((r) => String(r.type)))].sort();
 }
 
@@ -56,9 +85,15 @@ async function projectCurrent(
     txTime: Date.now(),
     validTime: Date.now(),
   },
+  tenantId?: Id<"tenants">,
 ) {
   return project(
-    await runWhere(ctx, where, coord, {}, { source: eventLogTripleSource }),
+    await runWhere(ctx, where, coord, {}, {
+      source:
+        tenantId === undefined
+          ? eventLogTripleSource
+          : eventLogTripleSourceForTenant(tenantId),
+    }),
     select,
   );
 }
@@ -68,8 +103,9 @@ async function currentValues(
   e: string,
   a: string,
   coord?: { txTime: number; validTime: number },
+  tenantId?: Id<"tenants">,
 ): Promise<unknown[]> {
-  const rows = await projectCurrent(ctx, [[e, a, "?v"]], ["?v"], coord);
+  const rows = await projectCurrent(ctx, [[e, a, "?v"]], ["?v"], coord, tenantId);
   return rows.map((row) => row.v);
 }
 
@@ -81,11 +117,18 @@ async function loadAttributes(
     txTime: Date.now(),
     validTime: Date.now(),
   },
+  tenantId?: Id<"tenants">,
 ): Promise<{
   attributes: Record<string, unknown[]>;
   denied: DeniedAttribute[];
 }> {
-  const rows = await projectCurrent(ctx, [[e, "?a", "?v"]], ["?a", "?v"], coord);
+  const rows = await projectCurrent(
+    ctx,
+    [[e, "?a", "?v"]],
+    ["?a", "?v"],
+    coord,
+    tenantId,
+  );
   const attrs: Record<string, unknown[]> = {};
   for (const r of rows) (attrs[String(r.a)] ??= []).push(r.v);
   return await redactAttributeMap(ctx, e, attrs);
@@ -98,12 +141,18 @@ async function loadAttributes(
  * tagged "system" so the UI can tuck them behind a "show system" affordance.
  */
 export const listEntityTypes = query({
-  args: {},
-  handler: async (ctx) => {
-    const rows = (await projectCurrent(ctx, [["?e", TYPE_ATTR, "?type"]], [
-      "?e",
-      "?type",
-    ])).slice(0, SAMPLE);
+  args: { tenantSlug: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const tenant = await readTenantOrLegacy(ctx, args.tenantSlug);
+    const rows = (
+      await projectCurrent(
+        ctx,
+        [["?e", TYPE_ATTR, "?type"]],
+        ["?e", "?type"],
+        undefined,
+        tenant?.tenantId,
+      )
+    ).slice(0, SAMPLE);
     const counts = new Map<string, number>();
     const seen = new Set<string>();
     for (const r of rows) {
@@ -114,7 +163,7 @@ export const listEntityTypes = query({
       counts.set(t, (counts.get(t) ?? 0) + 1);
     }
 
-    const configured = await configuredTypeNames(ctx);
+    const configured = await configuredTypeNames(ctx, tenant?.tenantId);
     // Include declared-but-empty configured types.
     for (const name of configured) if (!counts.has(name)) counts.set(name, 0);
 
@@ -140,8 +189,10 @@ export const listEntities = query({
     origin: v.optional(
       v.union(v.literal("data"), v.literal("system"), v.literal("all")),
     ),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const tenant = await readTenantOrLegacy(ctx, args.tenantSlug);
     const cap = Math.min(args.limit ?? 500, 1000);
     const want = args.origin ?? "all";
     const coord = { txTime: Date.now(), validTime: Date.now() };
@@ -153,6 +204,7 @@ export const listEntities = query({
           : [["?e", TYPE_ATTR, "?type"]],
         args.type ? ["?e"] : ["?e", "?type"],
         coord,
+        tenant?.tenantId,
       )
     ).slice(0, cap);
 
@@ -167,12 +219,12 @@ export const listEntities = query({
           ? [args.type]
           : "type" in r
             ? [String(r.type)]
-            : await typesOf(ctx, id);
+            : await typesOf(ctx, id, tenant?.tenantId);
       const type = types[0] ?? "";
       const sys = isSystemEntity(id, types);
       if (want === "data" && sys) continue;
       if (want === "system" && !sys) continue;
-      const name = (await currentValues(ctx, id, "name", coord))[0];
+      const name = (await currentValues(ctx, id, "name", coord, tenant?.tenantId))[0];
       out.push({
         id,
         name: name !== undefined ? String(name) : undefined,
@@ -195,16 +247,30 @@ export const listEntities = query({
  * Everything is computed from type + config — nothing per-entity is hand-wired.
  */
 export const entityDetail = query({
-  args: { e: v.string() },
+  args: { e: v.string(), tenantSlug: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    const tenant = await readTenantOrLegacy(ctx, args.tenantSlug);
     const e = args.e;
-    const { attributes, denied } = await loadAttributes(ctx, e);
+    const { attributes, denied } = await loadAttributes(
+      ctx,
+      e,
+      undefined,
+      tenant?.tenantId,
+    );
     const types = (attributes[TYPE_ATTR] ?? []).map(String);
     const origin = entityOrigin(e, types);
     const name = (attributes["name"] ?? [])[0];
 
     // Flows runnable on this entity (subjectType ∈ its types).
-    const allDefs = await ctx.db.query("flowDefs").take(50);
+    const allDefs =
+      tenant === null
+        ? await ctx.db.query("flowDefs").take(50)
+        : await ctx.db
+            .query("flowDefs")
+            .withIndex("by_tenant_and_name", (q) =>
+              q.eq("tenantId", tenant.tenantId),
+            )
+            .take(50);
     const flows = allDefs
       .filter((d) => d.subjectType && types.includes(d.subjectType))
       .map((d) => ({
@@ -214,16 +280,25 @@ export const entityDetail = query({
       }));
 
     // Actions runnable on this entity (appliesTo ∈ its types).
-    const actions = (await listActionDefs(ctx)).filter(
+    const actions = (await listActionDefs(ctx, tenant?.tenantId)).filter(
       (def) => def.appliesTo !== undefined && types.includes(def.appliesTo),
     );
 
     // This entity's flow runs (most recent first).
-    const runDocs = await ctx.db
-      .query("flowRuns")
-      .withIndex("by_subject", (q) => q.eq("subject", e))
-      .order("desc")
-      .take(20);
+    const runDocs =
+      tenant === null
+        ? await ctx.db
+            .query("flowRuns")
+            .withIndex("by_subject", (q) => q.eq("subject", e))
+            .order("desc")
+            .take(20)
+        : await ctx.db
+            .query("flowRuns")
+            .withIndex("by_tenant_and_subject", (q) =>
+              q.eq("tenantId", tenant.tenantId).eq("subject", e),
+            )
+            .order("desc")
+            .take(20);
     const runs = runDocs.map((r) => ({
       _id: r._id,
       flowDefName: r.flowDefName ?? r.flowName,
@@ -237,7 +312,11 @@ export const entityDetail = query({
 
     // Open obligations (requires./task. rule outputs derived from factEvents).
     const obligations = (
-      await obligationsFromEventLog(ctx, { worker: e, limit: 500 })
+      await obligationsFromEventLog(ctx, {
+        worker: e,
+        tenantId: tenant?.tenantId,
+        limit: 500,
+      })
     ).map((o) => ({
       form: o.form,
       scope: o.scope,
@@ -261,14 +340,27 @@ export const entityDetail = query({
 
 /** Discover the attribute columns present on entities of a given type. */
 export const typeAttributes = query({
-  args: { type: v.string() },
+  args: { type: v.string(), tenantSlug: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const members = (await projectCurrent(ctx, [["?e", TYPE_ATTR, args.type]], [
-      "?e",
-    ])).slice(0, 200);
+    const tenant = await readTenantOrLegacy(ctx, args.tenantSlug);
+    const members = (
+      await projectCurrent(
+        ctx,
+        [["?e", TYPE_ATTR, args.type]],
+        ["?e"],
+        undefined,
+        tenant?.tenantId,
+      )
+    ).slice(0, 200);
     const attrs = new Set<string>();
     for (const m of members) {
-      const rows = await projectCurrent(ctx, [[String(m.e), "?a", "?v"]], ["?a"]);
+      const rows = await projectCurrent(
+        ctx,
+        [[String(m.e), "?a", "?v"]],
+        ["?a"],
+        undefined,
+        tenant?.tenantId,
+      );
       for (const r of rows) attrs.add(String(r.a));
     }
     attrs.delete(TYPE_ATTR);
@@ -300,8 +392,10 @@ export const queryEntities = query({
     ),
     cursor: v.optional(v.string()),
     pageSize: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const tenant = await readTenantOrLegacy(ctx, args.tenantSlug);
     const pageSize = Math.min(Math.max(args.pageSize ?? 25, 1), 100);
     const offset = args.cursor ? Math.max(parseInt(args.cursor, 10) || 0, 0) : 0;
 
@@ -324,7 +418,10 @@ export const queryEntities = query({
     const coord = { txTime: Date.now(), validTime: Date.now() };
     const bindings = await runWhere(ctx, where, coord, {}, {
       enforceReadAuth: true,
-      source: eventLogBaseWithDerivedTripleSource,
+      source:
+        tenant?.tenantId === undefined
+          ? eventLogBaseWithDerivedTripleSource
+          : eventLogBaseWithDerivedTripleSourceForTenant(tenant.tenantId),
     });
     let ids = [...new Set(project(bindings, ["?e"]).map((r) => String(r.e)))];
 
@@ -335,7 +432,10 @@ export const queryEntities = query({
       const sortRows = project(
         await runWhere(ctx, [["?e", args.sort.attribute, "?v"]], coord, {}, {
           enforceReadAuth: true,
-          source: eventLogTripleSource,
+          source:
+            tenant?.tenantId === undefined
+              ? eventLogTripleSource
+              : eventLogTripleSourceForTenant(tenant.tenantId),
         }),
         ["?e", "?v"],
       );
@@ -364,7 +464,7 @@ export const queryEntities = query({
     const page = await Promise.all(
       pageIds.map(async (id) => ({
         id,
-        ...(await loadAttributes(ctx, id, coord)),
+        ...(await loadAttributes(ctx, id, coord, tenant?.tenantId)),
       })),
     );
 

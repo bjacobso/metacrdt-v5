@@ -57,9 +57,38 @@ async function protocolEventsForRows(
 async function fetchCandidateFactEvents(
   ctx: Parameters<TripleSource>[0],
   input: PatternInput,
+  tenantId?: Id<"tenants">,
 ): Promise<Doc<"factEvents">[]> {
   const { eConst, aConst } = input;
   const n = LIMITS.maxClauseScan;
+  if (tenantId !== undefined) {
+    if (eConst !== undefined && aConst !== undefined) {
+      return await ctx.db
+        .query("factEvents")
+        .withIndex("by_tenant_and_e_a_tx", (q) =>
+          q
+            .eq("tenantId", tenantId)
+            .eq("e", String(eConst))
+            .eq("a", String(aConst)),
+        )
+        .take(n);
+    }
+    if (eConst !== undefined) {
+      return await ctx.db
+        .query("factEvents")
+        .withIndex("by_tenant_and_e", (q) =>
+          q.eq("tenantId", tenantId).eq("e", String(eConst)),
+        )
+        .take(n);
+    }
+    if (aConst !== undefined) {
+      const rows = await ctx.db
+        .query("factEvents")
+        .withIndex("by_a_tx", (q) => q.eq("a", String(aConst)))
+        .take(n);
+      return rows.filter((row) => row.tenantId === tenantId);
+    }
+  }
   if (eConst !== undefined && aConst !== undefined) {
     return await ctx.db
       .query("factEvents")
@@ -97,7 +126,14 @@ export const eventLogTripleSource: TripleSource = async (
   coord,
   readFilter,
 ) => {
-  const rows = await fetchCandidateFactEvents(ctx, input);
+  return await eventLogTripleSourceForTenant()(ctx, input, coord, readFilter);
+};
+
+export function eventLogTripleSourceForTenant(
+  tenantId?: Id<"tenants">,
+): TripleSource {
+  return async (ctx, input, coord, readFilter) => {
+  const rows = await fetchCandidateFactEvents(ctx, input, tenantId);
   const eventRows = await protocolEventsForRows(ctx, rows);
   const events = eventRows.map(({ ev }) => ev);
   const log = fromEvents(events);
@@ -142,14 +178,53 @@ export const eventLogTripleSource: TripleSource = async (
     }
   }
   return out;
-};
+  };
+}
 
 async function derivedTriplesForInput(
   ctx: Parameters<TripleSource>[0],
   input: PatternInput,
+  tenantId?: Id<"tenants">,
 ): Promise<Doc<"derivedFacts">[]> {
   const { eConst, aConst, vConst, vIsConst } = input;
   const n = LIMITS.maxClauseScan;
+  if (tenantId !== undefined) {
+    if (eConst !== undefined && aConst !== undefined) {
+      return await ctx.db
+        .query("derivedFacts")
+        .withIndex("by_tenant_and_e_a", (q) =>
+          q
+            .eq("tenantId", tenantId)
+            .eq("e", String(eConst))
+            .eq("a", String(aConst)),
+        )
+        .take(n);
+    }
+    if (aConst !== undefined && vIsConst) {
+      return await ctx.db
+        .query("derivedFacts")
+        .withIndex("by_tenant_and_a_v", (q) =>
+          q.eq("tenantId", tenantId).eq("a", String(aConst)).eq("v", vConst),
+        )
+        .take(n);
+    }
+    if (aConst !== undefined) {
+      return await ctx.db
+        .query("derivedFacts")
+        .withIndex("by_tenant_and_a", (q) =>
+          q.eq("tenantId", tenantId).eq("a", String(aConst)),
+        )
+        .take(n);
+    }
+    if (eConst !== undefined) {
+      return await ctx.db
+        .query("derivedFacts")
+        .withIndex("by_tenant_and_e", (q) =>
+          q.eq("tenantId", tenantId).eq("e", String(eConst)),
+        )
+        .take(n);
+    }
+  }
   if (eConst !== undefined && aConst !== undefined) {
     return await ctx.db
       .query("derivedFacts")
@@ -193,8 +268,25 @@ export const eventLogBaseWithDerivedTripleSource: TripleSource = async (
   coord,
   readFilter,
 ) => {
-  const base = await eventLogTripleSource(ctx, input, coord, readFilter);
-  const derivedRows = await derivedTriplesForInput(ctx, input);
+  return await eventLogBaseWithDerivedTripleSourceForTenant()(
+    ctx,
+    input,
+    coord,
+    readFilter,
+  );
+};
+
+export function eventLogBaseWithDerivedTripleSourceForTenant(
+  tenantId?: Id<"tenants">,
+): TripleSource {
+  return async (ctx, input, coord, readFilter) => {
+  const base = await eventLogTripleSourceForTenant(tenantId)(
+    ctx,
+    input,
+    coord,
+    readFilter,
+  );
+  const derivedRows = await derivedTriplesForInput(ctx, input, tenantId);
   const derived: Triple[] = [];
   for (const row of derivedRows) {
     if (row.stale === true) continue;
@@ -218,4 +310,5 @@ export const eventLogBaseWithDerivedTripleSource: TripleSource = async (
     });
   }
   return [...base, ...derived];
-};
+  };
+}

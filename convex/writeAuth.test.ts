@@ -14,6 +14,7 @@ describe("write authorization", () => {
 
     await expect(
       t.mutation(api.facts.assertFact, {
+        tenantSlug: "acme-staffing",
         e: "worker:anon",
         a: "type",
         value: "Worker",
@@ -21,7 +22,7 @@ describe("write authorization", () => {
     ).rejects.toThrow(/Not authenticated/);
 
     await expect(
-      t.mutation(api.appconfig.setupStaffing, {}),
+      t.mutation(api.appconfig.setupStaffing, { tenantSlug: "acme-staffing" }),
     ).rejects.toThrow(/Not authenticated/);
   });
 
@@ -29,8 +30,10 @@ describe("write authorization", () => {
     const t = convexTest(schema, modules).withIdentity({
       tokenIdentifier: "user:writer",
     });
+    await t.mutation(api.tenants.ensureDemoTenants, {});
 
     await t.mutation(api.facts.assertFact, {
+      tenantSlug: "acme-staffing",
       e: "worker:writer",
       a: "type",
       value: "Worker",
@@ -38,6 +41,7 @@ describe("write authorization", () => {
     });
 
     const asOf = await t.query(api.facts.entityFactsAsOf, {
+      tenantSlug: "acme-staffing",
       e: "worker:writer",
     });
     expect(asOf.facts.find((f) => f.a === "type")?.actor).toBe("user:writer");
@@ -60,18 +64,22 @@ describe("write authorization", () => {
     try {
       const t = convexTest(schema, modules);
       const writer = t.withIdentity({ tokenIdentifier: "user:issuer" });
+      await writer.mutation(api.tenants.ensureDemoTenants, {});
 
       await writer.mutation(api.forms.defineForm, {
+        tenantSlug: "acme-staffing",
         form: "i9",
         title: "Form I-9",
         fields: [{ name: "dob", label: "DOB", type: "date" }],
       });
       await writer.mutation(api.flows.startCollect, {
+        tenantSlug: "acme-staffing",
         subject: "worker:collect-auth",
         form: "i9",
         scope: "employer:acme",
       });
-      const flows = await t.query(api.flows.listFlows, {
+      const flows = await writer.query(api.flows.listFlows, {
+        tenantSlug: "acme-staffing",
         subject: "worker:collect-auth",
       });
       const token = flows[0].token!;
@@ -83,7 +91,8 @@ describe("write authorization", () => {
       expect(result).toEqual({ ok: true });
 
       await t.finishAllScheduledFunctions(vi.runAllTimers);
-      const entity = await t.query(api.facts.getEntity, {
+      const entity = await writer.query(api.facts.getEntity, {
+        tenantSlug: "acme-staffing",
         e: "worker:collect-auth",
       });
       expect(entity.attributes["i9/dob"]).toEqual(["1990-01-01"]);

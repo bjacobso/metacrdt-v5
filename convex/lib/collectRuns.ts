@@ -13,6 +13,7 @@ import { COLLECT_TOKEN_TTL_MS, isLiveToken } from "./collect";
 export async function issueActionCollectRun(
   ctx: MutationCtx,
   args: {
+    tenantId: Id<"tenants">;
     subject: string;
     form: string;
     scope: string;
@@ -27,8 +28,12 @@ export async function issueActionCollectRun(
   const collectionTarget = args.collectionTarget ?? "host";
   const existing = await ctx.db
     .query("flowRuns")
-    .withIndex("by_target", (q) =>
-      q.eq("subject", args.subject).eq("form", args.form).eq("scope", args.scope),
+    .withIndex("by_tenant_and_target", (q) =>
+      q
+        .eq("tenantId", args.tenantId)
+        .eq("subject", args.subject)
+        .eq("form", args.form)
+        .eq("scope", args.scope),
     )
     .collect();
   const now = Date.now();
@@ -44,6 +49,7 @@ export async function issueActionCollectRun(
 
   const token = crypto.randomUUID();
   const runId = await ctx.db.insert("flowRuns", {
+    tenantId: args.tenantId,
     flowName: "collect",
     subject: args.subject,
     form: args.form,
@@ -57,6 +63,7 @@ export async function issueActionCollectRun(
     collectionTarget,
   });
   await ctx.db.insert("flowEvents", {
+    tenantId: args.tenantId,
     runId,
     ts: now,
     kind: "issued",

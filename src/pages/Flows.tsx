@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import EntityPicker from "../EntityPicker";
 import { Card, CardHeader, Button, Chip, StatusBadge, Mono, shortId } from "../ui";
 import { useWriteGate } from "../auth";
+import { useTenant } from "../tenant";
+import { tenantDemoProfile } from "../tenantDemoProfile";
 
 function fmt(ms: number): string {
   return new Date(ms).toLocaleTimeString();
@@ -38,23 +40,48 @@ function StepGraph({ steps }: { steps: { id: string; type: string }[] }) {
 }
 
 export default function Flows() {
-  const [subject, setSubject] = useState("worker:maria");
+  const { selectedTenant, selectedTenantSlug } = useTenant();
+  const demoProfile = tenantDemoProfile(selectedTenant?.kind);
+  const isLegalTenant = demoProfile.kind === "legal";
+  const installLabel = demoProfile.installLabel;
+  const emptyDefsCopy = isLegalTenant
+    ? "None yet - install legal workflows to define matter intake via config-as-code."
+    : "None yet - install staffing blueprint to define some via config-as-code.";
+  const [subject, setSubject] = useState(demoProfile.subject);
   const [filter, setFilter] = useState("");
-  const flows = useQuery(api.flows.listFlows, filter ? { subject: filter } : {});
-  const defs = useQuery(api.flows.listFlowDefs, {});
+  const flows = useQuery(
+    api.flows.listFlows,
+    selectedTenantSlug
+      ? { tenantSlug: selectedTenantSlug, ...(filter ? { subject: filter } : {}) }
+      : "skip",
+  );
+  const defs = useQuery(
+    api.flows.listFlowDefs,
+    selectedTenantSlug ? { tenantSlug: selectedTenantSlug } : "skip",
+  );
 
   const issueAll = useMutation(api.flows.issueAllOpen);
   const submitForm = useMutation(api.compliance.submitForm);
   const cancelFlow = useMutation(api.flows.cancelFlow);
   const startFlow = useMutation(api.flows.startFlow);
   const setupStaffing = useMutation(api.appconfig.setupStaffing);
+  const setupLegal = useMutation(api.appconfig.setupLegal);
   const [busy, setBusy] = useState(false);
   const { guardWrite } = useWriteGate();
 
+  useEffect(() => {
+    setSubject(demoProfile.subject);
+  }, [demoProfile.subject]);
+
   async function installBlueprint() {
+    if (!selectedTenantSlug) return;
     setBusy(true);
     try {
-      await guardWrite("Install staffing blueprint", () => setupStaffing({}));
+      await guardWrite(installLabel, () =>
+        demoProfile.setupAction === "setupLegal"
+          ? setupLegal({ tenantSlug: selectedTenantSlug })
+          : setupStaffing({ tenantSlug: selectedTenantSlug }),
+      );
     } finally {
       setBusy(false);
     }
@@ -65,33 +92,38 @@ export default function Flows() {
       <Card className="px-5 py-4">
         <div className="flex flex-wrap items-center gap-3">
           <EntityPicker
-            type="Worker"
+            type={demoProfile.entityType}
+            tenantSlug={selectedTenantSlug}
             value={subject}
             onChange={setSubject}
-            placeholder="subject (worker)"
+            placeholder={`subject (${demoProfile.entityType.toLowerCase()})`}
             className="w-56"
           />
-          <Button
-            onClick={() =>
-              guardWrite("Issue collect flows", () => issueAll({ subject }))
-            }
-          >
-            Issue collect flows for open obligations
-          </Button>
+          {!isLegalTenant && (
+            <Button
+              onClick={() =>
+                selectedTenantSlug
+                  ? guardWrite("Issue collect flows", () =>
+                      issueAll({ subject, tenantSlug: selectedTenantSlug }),
+                    )
+                  : undefined
+              }
+            >
+              Issue collect flows for open obligations
+            </Button>
+          )}
           <Button
             variant="ghost"
             disabled={busy}
             onClick={installBlueprint}
           >
-            {busy ? "Installing…" : "Install staffing blueprint"}
+            {busy ? "Installing…" : installLabel}
           </Button>
         </div>
         <p className="mt-3 max-w-3xl text-[13px] text-muted">
-          A <span className="font-medium text-ink">collect</span> flow issues →
-          parks (<span className="italic">waiting</span>) → resumes on the matching
-          submission fact → completes. A <span className="font-medium text-ink">DAG</span>{" "}
-          chains typed steps; parking steps resume via the event path, scheduler
-          ticks, or an action callback.
+          <span className="font-medium text-ink">Collect</span> steps issue and
+          park until the matching submission fact arrives. DAG workflow steps can
+          also branch, wait, notify, assert facts, or park for an action callback.
         </p>
       </Card>
 
@@ -104,7 +136,7 @@ export default function Flows() {
           <p className="px-5 py-4 text-[13px] text-muted">Loading…</p>
         ) : defs.length === 0 ? (
           <p className="px-5 py-4 text-[13px] text-muted">
-            None yet — “Install staffing blueprint” to define some via config-as-code.
+            {emptyDefsCopy}
           </p>
         ) : (
           <ul className="divide-y divide-line-soft">
@@ -117,15 +149,18 @@ export default function Flows() {
                   <Chip tone="configured">{d.origin}</Chip>
                   <Button
                     className="ml-auto"
-                    onClick={() =>
-                      guardWrite(`Start ${d.name}`, () =>
+                    disabled={!selectedTenantSlug}
+                    onClick={() => {
+                      if (!selectedTenantSlug) return;
+                      void guardWrite(`Start ${d.name}`, () =>
                         startFlow({
-                        flowDefName: d.name,
-                        subject,
-                        context: { employer: "employer:acme" },
+                          flowDefName: d.name,
+                          subject,
+                          context: demoProfile.flowStartContext,
+                          tenantSlug: selectedTenantSlug,
                         }),
-                      )
-                    }
+                      );
+                    }}
                   >
                     Start for {shortId(subject)}
                   </Button>
@@ -144,6 +179,7 @@ export default function Flows() {
           right={
             <div className="flex items-center gap-2">
               <EntityPicker
+                tenantSlug={selectedTenantSlug}
                 value={filter}
                 onChange={setFilter}
                 placeholder="filter by subject"
@@ -184,23 +220,33 @@ export default function Flows() {
                     <span className="ml-auto flex items-center gap-2">
                       <Button
                         variant="collect"
-                        onClick={() =>
-                          guardWrite(`Submit ${f.form}`, () =>
+                        disabled={!selectedTenantSlug}
+                        onClick={() => {
+                          if (!selectedTenantSlug) return;
+                          void guardWrite(`Submit ${f.form}`, () =>
                             submitForm({
                               worker: f.subject,
                               form: f.form!,
                               scope: f.scope!,
+                              tenantSlug: selectedTenantSlug,
                             }),
-                          )
-                        }
+                          );
+                        }}
                       >
                         Submit
                       </Button>
                       <Button
                         variant="ghost"
-                        onClick={() =>
-                          guardWrite("Cancel flow", () => cancelFlow({ runId: f._id }))
-                        }
+                        disabled={!selectedTenantSlug}
+                        onClick={() => {
+                          if (!selectedTenantSlug) return;
+                          void guardWrite("Cancel flow", () =>
+                            cancelFlow({
+                              runId: f._id,
+                              tenantSlug: selectedTenantSlug,
+                            }),
+                          );
+                        }}
                       >
                         Cancel
                       </Button>

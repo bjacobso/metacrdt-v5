@@ -116,6 +116,70 @@ describe("Confect compliance planner", () => {
     }
   });
 
+  test("tenant-scoped dry-run reads only the selected tenant", async () => {
+    vi.useFakeTimers();
+    try {
+      const base = convexTest(schema, modules);
+      const t = base.withIdentity({ tokenIdentifier: "user:tenant-planner" });
+      await t.mutation(api.tenants.ensureDemoTenants, {});
+      await t.mutation(api.appconfig.setupStaffing, {
+        tenantSlug: "acme-staffing",
+      });
+      await flush(t);
+      await t.mutation(api.compliance.submitForm, {
+        tenantSlug: "acme-staffing",
+        worker: "worker:maria",
+        form: "i9",
+        scope: "employer:acme",
+      });
+      await flush(t);
+
+      const staffing = await t.query(api.complianceConfect.dryRunWorkerCompliance, {
+        tenantSlug: "acme-staffing",
+        worker: "worker:maria",
+        placement: {
+          employer: "employer:acme",
+          client: "client:globex",
+          job: "job:forklift1",
+          venue: "venue:stadium7",
+        },
+      });
+      expect(staffing.summary).toEqual({ reuse: 1, collect: 4, total: 5 });
+      expect(byKey(staffing.items).get("i9@employer:acme")?.decision).toBe(
+        "reuse",
+      );
+
+      await expect(
+        t.query(api.complianceConfect.dryRunWorkerCompliance, {
+          tenantSlug: "legal-workflows",
+          worker: "worker:maria",
+        }),
+      ).rejects.toMatchObject({
+        data: {
+          _tag: "UnknownWorker",
+          worker: "worker:maria",
+        },
+      });
+
+      await expect(
+        base.withIdentity({ tokenIdentifier: "user:outsider" }).query(
+          api.complianceConfect.dryRunWorkerCompliance,
+          {
+            tenantSlug: "acme-staffing",
+            worker: "worker:maria",
+          },
+        ),
+      ).rejects.toMatchObject({
+        data: {
+          _tag: "TenantAccessDenied",
+          tenantSlug: "acme-staffing",
+        },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("hypothetical non-forklift placement omits the forklift requirement", async () => {
     vi.useFakeTimers();
     try {

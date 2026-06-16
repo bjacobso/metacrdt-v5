@@ -9,9 +9,13 @@ import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { runWhere } from "./lib/engine";
+import { eventLogBaseWithDerivedTripleSourceForTenant } from "./lib/eventLogTripleSource";
 import { assertInTx, createTransaction, retractInTx } from "./facts";
 import { obligationsFromEventLog } from "./lib/obligations";
-import { requireWritePrincipal } from "./lib/writeAuth";
+import {
+  requireTenant,
+  tenantOrLegacyRead,
+} from "./lib/tenantAuth";
 import {
   COLLECT_TOKEN_TTL_MS,
   isLiveToken,
@@ -38,6 +42,11 @@ const DEFAULTS = { reminderSeconds: 10, escalateSeconds: 30 };
 
 type FlowRunStatus = Doc<"flowRuns">["status"];
 
+function tenantIdForWrite(tenantId: Id<"tenants"> | undefined): Id<"tenants"> {
+  if (tenantId === undefined) throw new Error("Tenant context required");
+  return tenantId;
+}
+
 function tokenExpiresAt(now: number, expireSeconds?: number): number {
   return expireSeconds === undefined
     ? now + COLLECT_TOKEN_TTL_MS
@@ -50,7 +59,15 @@ async function log(
   kind: string,
   message?: string,
 ): Promise<void> {
-  await ctx.db.insert("flowEvents", { runId, ts: Date.now(), kind, message });
+  const run = await ctx.db.get(runId);
+  if (run === null) throw new Error(`flow run ${runId} not found`);
+  await ctx.db.insert("flowEvents", {
+    tenantId: run.tenantId,
+    runId,
+    ts: Date.now(),
+    kind,
+    message,
+  });
 }
 
 async function recordFlowRunStatus(
@@ -60,7 +77,11 @@ async function recordFlowRunStatus(
   now: number,
   reason: string,
 ): Promise<void> {
+  const run = await ctx.db.get(runId);
+  if (run === null) throw new Error(`flow run ${runId} not found`);
+  const tenantId = run.tenantId;
   const txId = await createTransaction(ctx, {
+    tenantId,
     actorId: "system:flows",
     actorType: "system",
     reason,
@@ -70,7 +91,9 @@ async function recordFlowRunStatus(
   const entity = flowRunEntity(runId);
   const current = await ctx.db
     .query("currentFacts")
-    .withIndex("by_e_a", (q) => q.eq("e", entity).eq("a", FLOW_RUN_STATUS_ATTR))
+    .withIndex("by_tenant_and_e_a", (q) =>
+      q.eq("tenantId", tenantId).eq("e", entity).eq("a", FLOW_RUN_STATUS_ATTR),
+    )
     .collect();
   for (const row of current) {
     await retractInTx(ctx, txId, now, row.factId, reason);
@@ -93,14 +116,20 @@ export const startCollect = mutation({
     reminderSeconds: v.optional(v.number()),
     escalateSeconds: v.optional(v.number()),
     expireSeconds: v.optional(v.number()),
+    tenantSlug: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireWritePrincipal(ctx);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "editor");
+    const tenantId = tenantIdForWrite(tenant.tenantId);
     // Don't double-issue: reuse an existing live run for the same target.
     const existing = await ctx.db
       .query("flowRuns")
-      .withIndex("by_target", (q) =>
-        q.eq("subject", args.subject).eq("form", args.form).eq("scope", args.scope),
+      .withIndex("by_tenant_and_target", (q) =>
+        q
+          .eq("tenantId", tenantId)
+          .eq("subject", args.subject)
+          .eq("form", args.form)
+          .eq("scope", args.scope),
       )
       .collect();
     const now = Date.now();
@@ -110,6 +139,7 @@ export const startCollect = mutation({
     const reminderSeconds = args.reminderSeconds ?? DEFAULTS.reminderSeconds;
     const escalateSeconds = args.escalateSeconds ?? DEFAULTS.escalateSeconds;
     const runId = await ctx.db.insert("flowRuns", {
+      tenantId,
       flowName: "collect",
       subject: args.subject,
       form: args.form,
@@ -148,18 +178,28 @@ export const startCollect = mutation({
 
 /** Issue collect flows for every currently-open obligation of a worker. */
 export const issueAllOpen = mutation({
-  args: { subject: v.string() },
+  args: { subject: v.string(), tenantSlug: v.string() },
   handler: async (ctx, args): Promise<{ issued: number }> => {
-    await requireWritePrincipal(ctx);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "editor");
+    const tenantId = tenantIdForWrite(tenant.tenantId);
     const openTasks = (
-      await obligationsFromEventLog(ctx, { worker: args.subject, limit: 500 })
+      await obligationsFromEventLog(ctx, {
+        worker: args.subject,
+        tenantId,
+        limit: 500,
+      })
     ).filter((o) => o.open);
 
     let issued = 0;
     for (const task of openTasks) {
       const res: { reused: boolean } = await ctx.runMutation(
         internal.flows.startCollectInternal,
-        { subject: args.subject, form: task.form, scope: task.scope },
+        {
+          tenantId,
+          subject: args.subject,
+          form: task.form,
+          scope: task.scope,
+        },
       );
       if (!res.reused) issued++;
     }
@@ -169,12 +209,21 @@ export const issueAllOpen = mutation({
 
 // Internal twin of startCollect so issueAllOpen can call it within the tx.
 export const startCollectInternal = internalMutation({
-  args: { subject: v.string(), form: v.string(), scope: v.string() },
+  args: {
+    tenantId: v.id("tenants"),
+    subject: v.string(),
+    form: v.string(),
+    scope: v.string(),
+  },
   handler: async (ctx, args): Promise<{ runId: Id<"flowRuns">; reused: boolean }> => {
     const existing = await ctx.db
       .query("flowRuns")
-      .withIndex("by_target", (q) =>
-        q.eq("subject", args.subject).eq("form", args.form).eq("scope", args.scope),
+      .withIndex("by_tenant_and_target", (q) =>
+        q
+          .eq("tenantId", args.tenantId)
+          .eq("subject", args.subject)
+          .eq("form", args.form)
+          .eq("scope", args.scope),
       )
       .collect();
     const now = Date.now();
@@ -182,6 +231,7 @@ export const startCollectInternal = internalMutation({
     if (live) return { runId: live._id, reused: true };
 
     const runId = await ctx.db.insert("flowRuns", {
+      tenantId: args.tenantId,
       flowName: "collect",
       subject: args.subject,
       form: args.form,
@@ -242,12 +292,21 @@ export const tick = internalMutation({
  * matching submission fact arrives. Scheduled from the fact-change event path.
  */
 export const resumeOnSubmission = internalMutation({
-  args: { subject: v.string(), form: v.string(), scope: v.string() },
+  args: {
+    tenantId: v.id("tenants"),
+    subject: v.string(),
+    form: v.string(),
+    scope: v.string(),
+  },
   handler: async (ctx, args) => {
     const runs = await ctx.db
       .query("flowRuns")
-      .withIndex("by_target", (q) =>
-        q.eq("subject", args.subject).eq("form", args.form).eq("scope", args.scope),
+      .withIndex("by_tenant_and_target", (q) =>
+        q
+          .eq("tenantId", args.tenantId)
+          .eq("subject", args.subject)
+          .eq("form", args.form)
+          .eq("scope", args.scope),
       )
       .collect();
     const now = Date.now();
@@ -272,11 +331,14 @@ export const resumeOnSubmission = internalMutation({
 });
 
 export const cancelFlow = mutation({
-  args: { runId: v.id("flowRuns") },
+  args: { runId: v.id("flowRuns"), tenantSlug: v.string() },
   handler: async (ctx, args) => {
-    await requireWritePrincipal(ctx);
     const run = await ctx.db.get("flowRuns", args.runId);
     if (!run || run.status !== "waiting") return;
+    const tenant = await requireTenant(ctx, args.tenantSlug, "editor");
+    if (run.tenantId !== tenant.tenantId) {
+      throw new Error("Tenant access denied");
+    }
     const now = Date.now();
     await ctx.db.patch("flowRuns", run._id, {
       status: "cancelled",
@@ -292,23 +354,50 @@ export const cancelFlow = mutation({
 
 /** Flow runs (optionally for one subject), each with its event timeline. */
 export const listFlows = query({
-  args: { subject: v.optional(v.string()) },
+  args: { subject: v.optional(v.string()), tenantSlug: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const runs = args.subject
-      ? await ctx.db
-          .query("flowRuns")
-          .withIndex("by_subject", (q) => q.eq("subject", args.subject!))
-          .order("desc")
-          .take(100)
-      : await ctx.db.query("flowRuns").order("desc").take(100);
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
+    const runs =
+      tenant === null
+        ? args.subject
+          ? await ctx.db
+              .query("flowRuns")
+              .withIndex("by_subject", (q) => q.eq("subject", args.subject!))
+              .order("desc")
+              .take(100)
+          : await ctx.db.query("flowRuns").order("desc").take(100)
+        : args.subject
+          ? await ctx.db
+              .query("flowRuns")
+              .withIndex("by_tenant_and_subject", (q) =>
+                q.eq("tenantId", tenant.tenantId).eq("subject", args.subject!),
+              )
+              .order("desc")
+              .take(100)
+          : await ctx.db
+              .query("flowRuns")
+              .withIndex("by_tenant_and_status", (q) =>
+                q.eq("tenantId", tenant.tenantId),
+              )
+              .order("desc")
+              .take(100);
 
     const out = [];
     for (const run of runs) {
-      const events = await ctx.db
-        .query("flowEvents")
-        .withIndex("by_run", (q) => q.eq("runId", run._id))
-        .order("desc")
-        .take(50);
+      const events =
+        tenant === null
+          ? await ctx.db
+              .query("flowEvents")
+              .withIndex("by_run", (q) => q.eq("runId", run._id))
+              .order("desc")
+              .take(50)
+          : await ctx.db
+              .query("flowEvents")
+              .withIndex("by_tenant_and_run", (q) =>
+                q.eq("tenantId", tenant.tenantId).eq("runId", run._id),
+              )
+              .order("desc")
+              .take(50);
       out.push({
         _id: run._id,
         flowName: run.flowName,
@@ -330,20 +419,38 @@ export const listFlows = query({
 });
 
 export const getFlowDef = query({
-  args: { name: v.string() },
+  args: { name: v.string(), tenantSlug: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
+    if (tenant === null) {
+      return await ctx.db
+        .query("flowDefs")
+        .withIndex("by_name", (q) => q.eq("name", args.name))
+        .first();
+    }
     return await ctx.db
       .query("flowDefs")
-      .withIndex("by_name", (q) => q.eq("name", args.name))
+      .withIndex("by_tenant_and_name", (q) =>
+        q.eq("tenantId", tenant.tenantId).eq("name", args.name),
+      )
       .first();
   },
 });
 
 /** All flow definitions (for listing / starting), origin-tagged. */
 export const listFlowDefs = query({
-  args: {},
-  handler: async (ctx) => {
-    const defs = await ctx.db.query("flowDefs").take(50);
+  args: { tenantSlug: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
+    const defs =
+      tenant === null
+        ? await ctx.db.query("flowDefs").take(50)
+        : await ctx.db
+            .query("flowDefs")
+            .withIndex("by_tenant_and_name", (q) =>
+              q.eq("tenantId", tenant.tenantId),
+            )
+            .take(50);
     return defs.map((d) => ({
       _id: d._id,
       name: d.name,
@@ -358,9 +465,18 @@ export const listFlowDefs = query({
 
 /** Flow definitions runnable on a given entity type (by subjectType). */
 export const flowsForType = query({
-  args: { type: v.string() },
+  args: { type: v.string(), tenantSlug: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const defs = await ctx.db.query("flowDefs").take(50);
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
+    const defs =
+      tenant === null
+        ? await ctx.db.query("flowDefs").take(50)
+        : await ctx.db
+            .query("flowDefs")
+            .withIndex("by_tenant_and_name", (q) =>
+              q.eq("tenantId", tenant.tenantId),
+            )
+            .take(50);
     return defs
       .filter((d) => d.subjectType === args.type)
       .map((d) => ({
@@ -396,12 +512,20 @@ async function resumeToNext(
   run: Doc<"flowRuns">,
   now: number,
 ): Promise<void> {
-  const def = run.flowDefName
-    ? await ctx.db
-        .query("flowDefs")
-        .withIndex("by_name", (q) => q.eq("name", run.flowDefName!))
-        .first()
-    : null;
+  const def =
+    run.flowDefName === undefined
+      ? null
+      : run.tenantId === undefined
+        ? await ctx.db
+            .query("flowDefs")
+            .withIndex("by_name", (q) => q.eq("name", run.flowDefName!))
+            .first()
+        : await ctx.db
+            .query("flowDefs")
+            .withIndex("by_tenant_and_name", (q) =>
+              q.eq("tenantId", run.tenantId).eq("name", run.flowDefName!),
+            )
+            .first();
   const step = def?.steps.find((s) => s.id === run.currentStepId);
   const next = step?.next ?? "";
   await ctx.db.patch("flowRuns", run._id, {
@@ -428,9 +552,11 @@ export const defineFlow = mutation({
         next: v.optional(v.string()),
       }),
     ),
+    tenantSlug: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireWritePrincipal(ctx);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "admin");
+    const tenantId = tenantIdForWrite(tenant.tenantId);
     const validation = validateFlowDef(args as FlowDef);
     if (!validation.ok) {
       throw new Error(
@@ -439,9 +565,12 @@ export const defineFlow = mutation({
     }
     const existing = await ctx.db
       .query("flowDefs")
-      .withIndex("by_name", (q) => q.eq("name", args.name))
+      .withIndex("by_tenant_and_name", (q) =>
+        q.eq("tenantId", tenantId).eq("name", args.name),
+      )
       .first();
     const fields = {
+      tenantId,
       name: args.name,
       title: args.title,
       subjectType: args.subjectType,
@@ -466,16 +595,21 @@ export const startFlow = mutation({
     flowDefName: v.string(),
     subject: v.string(),
     context: v.optional(v.any()),
+    tenantSlug: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireWritePrincipal(ctx);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "editor");
+    const tenantId = tenantIdForWrite(tenant.tenantId);
     const def = await ctx.db
       .query("flowDefs")
-      .withIndex("by_name", (q) => q.eq("name", args.flowDefName))
+      .withIndex("by_tenant_and_name", (q) =>
+        q.eq("tenantId", tenantId).eq("name", args.flowDefName),
+      )
       .first();
     if (!def) throw new Error(`unknown flow: ${args.flowDefName}`);
     const now = Date.now();
     const runId = await ctx.db.insert("flowRuns", {
+      tenantId,
       flowName: args.flowDefName,
       flowDefName: args.flowDefName,
       subject: args.subject,
@@ -553,14 +687,20 @@ export const advanceFlow = internalMutation({
     if (!run || !run.flowDefName || run.status !== "running") return;
     const def = await ctx.db
       .query("flowDefs")
-      .withIndex("by_name", (q) => q.eq("name", run.flowDefName!))
+      .withIndex("by_tenant_and_name", (q) =>
+        q.eq("tenantId", run.tenantId).eq("name", run.flowDefName!),
+      )
       .first();
     if (!def) return;
 
     const now = Date.now();
     let txId: Id<"transactions"> | null = null;
     const getTx = async () =>
-      (txId ??= await createTransaction(ctx, { reason: `flow ${def.name}`, now }));
+      (txId ??= await createTransaction(ctx, {
+        tenantId: run.tenantId,
+        reason: `flow ${def.name}`,
+        now,
+      }));
     const flowDef = flowDefFromDoc(def);
     let runState = flowRunFromDoc(run);
     const branchResults: Record<string, boolean> = {};
@@ -635,6 +775,7 @@ export const advanceFlow = internalMutation({
           [...branchIntent.where],
           { txTime: now, validTime: now },
           { [branchIntent.subjectVar]: run.subject },
+          { source: eventLogBaseWithDerivedTripleSourceForTenant(run.tenantId) },
         );
         branchResults[branchIntent.stepId] = bindings.length > 0;
         continue;
@@ -673,15 +814,21 @@ export const resumeAction = internalMutation({
   handler: async (ctx, args) => {
     const run = await ctx.db.get("flowRuns", args.runId);
     if (!run || run.status !== "waiting" || !run.flowDefName) return;
-    const def = await ctx.db
+    const flowDef = await ctx.db
       .query("flowDefs")
-      .withIndex("by_name", (q) => q.eq("name", run.flowDefName!))
+      .withIndex("by_tenant_and_name", (q) =>
+        q.eq("tenantId", run.tenantId).eq("name", run.flowDefName!),
+      )
       .first();
-    const step = def?.steps.find((s) => s.id === run.currentStepId);
+    const step = flowDef?.steps.find((s) => s.id === run.currentStepId);
     const now = Date.now();
     const cfg = (step?.config ?? {}) as Record<string, unknown>;
     if (cfg.resultAttr) {
-      const txId = await createTransaction(ctx, { reason: "action result", now });
+      const txId = await createTransaction(ctx, {
+        tenantId: run.tenantId,
+        reason: "action result",
+        now,
+      });
       await assertInTx(ctx, txId, now, {
         e: run.subject,
         a: String(cfg.resultAttr),
@@ -695,19 +842,23 @@ export const resumeAction = internalMutation({
 
 /** Install the demo onboarding flow: collect I-9 → branch → E-Verify → welcome. */
 export const setupDemoFlow = mutation({
-  args: {},
-  handler: async (ctx): Promise<{ flowDefId: Id<"flowDefs"> }> => {
-    await requireWritePrincipal(ctx);
-    return await ctx.runMutation(internal.flows.defineOnboarding, {});
+  args: { tenantSlug: v.string() },
+  handler: async (ctx, args): Promise<{ flowDefId: Id<"flowDefs"> }> => {
+    const tenant = await requireTenant(ctx, args.tenantSlug, "admin");
+    return await ctx.runMutation(internal.flows.defineOnboarding, {
+      tenantId: tenantIdForWrite(tenant.tenantId),
+    });
   },
 });
 
 export const defineOnboarding = internalMutation({
-  args: {},
-  handler: async (ctx): Promise<{ flowDefId: Id<"flowDefs"> }> => {
+  args: { tenantId: v.id("tenants") },
+  handler: async (ctx, args): Promise<{ flowDefId: Id<"flowDefs"> }> => {
     const existing = await ctx.db
       .query("flowDefs")
-      .withIndex("by_name", (q) => q.eq("name", "onboarding"))
+      .withIndex("by_tenant_and_name", (q) =>
+        q.eq("tenantId", args.tenantId).eq("name", "onboarding"),
+      )
       .first();
     const steps = [
       { id: "i9", type: "collect" as const, config: { form: "i9", scopeFrom: "employer" }, next: "branch" },
@@ -730,6 +881,7 @@ export const defineOnboarding = internalMutation({
       { id: "done", type: "done" as const },
     ];
     const fields = {
+      tenantId: args.tenantId,
       name: "onboarding",
       title: "Worker onboarding",
       subjectType: "Worker",

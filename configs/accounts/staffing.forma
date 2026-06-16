@@ -1,0 +1,48 @@
+(tenant "acme-staffing" "Acme Staffing" "staffing")
+(entity "Worker" "A staffed worker."
+  (attr "name")
+  (attr "worker.status" "string" "Worker employment status.")
+  (attr "everify.status" "string" "E-Verify workflow status.")
+  (attr "i9/citizenship" "string" "I-9 citizenship status.")
+  (flow "onboarding" "Worker onboarding"
+    (start "i9")
+    (collect "i9" "i9" "employer" (next "branch"))
+    (branch "branch" [["?s" "i9/citizenship" "authorized_alien"]] "everify" "welcome")
+    (action "everify" "E-Verify check" "everify.status" "verified" (next "welcome"))
+    (notify "welcome" "Welcome aboard!" (next "done"))
+    (done)
+  )
+  (action "terminate" "Terminate worker" (assert "worker.status" "terminated"))
+  (action "reactivate" "Reactivate worker" (assert "worker.status" "active"))
+)
+(entity "Employer" ["name"] "A staffing agency / employer of record.")
+(entity "Client" ["name"] "A client site a worker is placed at.")
+(entity "Job" "A job role."
+  (attr "name")
+  (attr "role" "string" "Job role.")
+)
+(entity "Venue" ["name"] "A physical venue.")
+(entity "Placement" "A worker placed by an employer at a client/job/venue."
+  (attr "worker" "entityRef" "The worker on a placement.")
+  (attr "employer" "entityRef" "The employer on a placement.")
+  (attr "client" "entityRef" "The client on a placement.")
+  (attr "job" "entityRef" "The job on a placement.")
+  (attr "venue" "entityRef" "The venue on a placement.")
+)
+(form "i9" "Form I-9"
+  (field "ssn" "string" "SSN" (required) (pii))
+  (field "citizenship" "select" "Citizenship" ["citizen" "permanent_resident" "authorized_alien"] (required))
+  (requires "employer" 1095)
+)
+(form "handbook" "Employee Handbook Acknowledgement"
+  (field "acknowledged" "boolean" "I acknowledge" (required))
+  (requires "client")
+)
+(form "forklift" "Forklift Certification"
+  (field "acknowledged" "boolean" "I acknowledge" (required))
+  (requires "job" (when "role" "forklift"))
+)
+(form "venue_disclosure" "Venue Disclosure"
+  (field "acknowledged" "boolean" "I acknowledge" (required))
+  (requires "venue")
+)

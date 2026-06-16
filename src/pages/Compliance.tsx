@@ -4,15 +4,23 @@ import { api } from "../../convex/_generated/api";
 import EntityPicker from "../EntityPicker";
 import { Card, CardHeader, Button, Mono, shortId } from "../ui";
 import { useWriteGate } from "../auth";
+import { useTenant } from "../tenant";
+import { tenantDemoProfile } from "../tenantDemoProfile";
 
 export default function Compliance() {
+  const { selectedTenant, selectedTenantSlug } = useTenant();
+  const demoProfile = tenantDemoProfile(selectedTenant?.kind);
+  const isStaffingTenant = demoProfile.kind === "staffing";
   const [worker, setWorker] = useState("worker:maria");
   const [employer, setEmployer] = useState("employer:acme");
   const [client, setClient] = useState("client:globex");
   const [job, setJob] = useState("job:forklift1");
   const [venue, setVenue] = useState("venue:stadium7");
   const [busy, setBusy] = useState(false);
-  const compliance = useQuery(api.compliance.workerCompliance, { worker });
+  const compliance = useQuery(
+    api.compliance.workerCompliance,
+    selectedTenantSlug ? { worker, tenantSlug: selectedTenantSlug } : "skip",
+  );
   const dryPlacement = Object.fromEntries(
     Object.entries({ employer, client, job, venue }).filter(([, v]) => v !== ""),
   ) as {
@@ -22,9 +30,10 @@ export default function Compliance() {
     venue?: string;
   };
   const dryRunArgs =
-    compliance !== undefined && compliance.required.length > 0
+    selectedTenantSlug && compliance !== undefined && compliance.required.length > 0
       ? {
           worker,
+          tenantSlug: selectedTenantSlug,
           ...(Object.keys(dryPlacement).length > 0
             ? { placement: dryPlacement }
             : {}),
@@ -32,35 +41,75 @@ export default function Compliance() {
       : "skip";
   const dryRun = useQuery(api.complianceConfect.dryRunWorkerCompliance, dryRunArgs);
   const setupStaffing = useMutation(api.appconfig.setupStaffing);
+  const setupLegal = useMutation(api.appconfig.setupLegal);
   const submitForm = useMutation(api.compliance.submitForm);
   const { guardWrite } = useWriteGate();
 
   async function bootstrap() {
+    if (!selectedTenantSlug) return;
     setBusy(true);
     try {
-      await guardWrite("Seed staffing blueprint", () => setupStaffing({}));
+      await guardWrite(
+        `Set up ${demoProfile.setupLabel}`,
+        () =>
+          demoProfile.setupAction === "setupStaffing"
+            ? setupStaffing({ tenantSlug: selectedTenantSlug })
+            : setupLegal({ tenantSlug: selectedTenantSlug }),
+      );
     } finally {
       setBusy(false);
     }
   }
 
   async function submitRequirement(form: string, scope: string) {
-    await guardWrite(`Submit ${form}`, () => submitForm({ worker, form, scope }));
+    if (!selectedTenantSlug) return;
+    await guardWrite(`Submit ${form}`, () =>
+      submitForm({ worker, form, scope, tenantSlug: selectedTenantSlug }),
+    );
   }
 
   return (
     <div className="space-y-6">
+      {!isStaffingTenant && (
+        <Card className="px-5 py-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div>
+              <h2 className="text-[15px] font-semibold text-ink">
+                Legal workflow tenant
+              </h2>
+              <p className="mt-1 max-w-2xl text-[13px] text-muted">
+                This compliance console is tuned for staffing obligations over
+                workers and placements. Legal tenants use Matter workflows in
+                the Flows workspace.
+              </p>
+            </div>
+            <Button
+              className="ml-auto"
+              variant="primary"
+              onClick={bootstrap}
+              disabled={busy}
+            >
+              {busy ? "Installing…" : "Set up legal workflows"}
+            </Button>
+          </div>
+        </Card>
+      )}
       <Card className="px-5 py-4">
         <div className="flex flex-wrap items-center gap-3">
           <EntityPicker
             type="Worker"
+            tenantSlug={selectedTenantSlug}
             value={worker}
             onChange={setWorker}
             placeholder="worker id"
             className="w-64"
           />
           <Button variant="primary" onClick={bootstrap} disabled={busy}>
-            {busy ? "Installing…" : "Seed staffing blueprint"}
+              {busy
+                ? "Installing…"
+                : isStaffingTenant
+                  ? "Seed staffing blueprint"
+                  : `Set up ${demoProfile.setupLabel}`}
           </Button>
           <span className="ml-auto text-[13px] text-muted">
             {compliance
@@ -83,6 +132,7 @@ export default function Compliance() {
             Employer
             <EntityPicker
               type="Employer"
+              tenantSlug={selectedTenantSlug}
               value={employer}
               onChange={setEmployer}
               className="mt-1 w-full"
@@ -92,6 +142,7 @@ export default function Compliance() {
             Client
             <EntityPicker
               type="Client"
+              tenantSlug={selectedTenantSlug}
               value={client}
               onChange={setClient}
               className="mt-1 w-full"
@@ -101,6 +152,7 @@ export default function Compliance() {
             Job
             <EntityPicker
               type="Job"
+              tenantSlug={selectedTenantSlug}
               value={job}
               onChange={setJob}
               className="mt-1 w-full"
@@ -110,6 +162,7 @@ export default function Compliance() {
             Venue
             <EntityPicker
               type="Venue"
+              tenantSlug={selectedTenantSlug}
               value={venue}
               onChange={setVenue}
               className="mt-1 w-full"
@@ -120,7 +173,9 @@ export default function Compliance() {
           <p className="px-5 py-4 text-[13px] text-muted">Loading…</p>
         ) : compliance.required.length === 0 ? (
           <p className="px-5 py-4 text-[13px] text-muted">
-            Seed the staffing blueprint to preview collection vs reuse.
+            {isStaffingTenant
+              ? "Seed the staffing blueprint to preview collection vs reuse."
+              : "Use Flows to start and review legal matter workflows."}
           </p>
         ) : dryRun === undefined ? (
           <p className="px-5 py-4 text-[13px] text-muted">Planning…</p>
@@ -217,7 +272,9 @@ export default function Compliance() {
           <p className="px-5 py-4 text-[13px] text-muted">…</p>
         ) : compliance.required.length === 0 ? (
           <p className="px-5 py-4 text-[13px] text-muted">
-            No requirements — seed the demo above.
+            {isStaffingTenant
+              ? "No requirements - seed the demo above."
+              : "No staffing requirements for this tenant."}
           </p>
         ) : (
           <table className="w-full text-[13px]">

@@ -104,7 +104,8 @@ Run tests:
 ```bash
 pnpm test          # build packages, then run the Convex backend suite
 pnpm test:packages # all @metacrdt/* package tests through Turbo
-pnpm test:all      # package tests, then root backend tests
+pnpm check:account-config # validate checked-in account config sources
+pnpm test:all      # package tests, account config source checks, then root backend tests
 ```
 
 Build:
@@ -121,6 +122,40 @@ Typecheck:
 ```bash
 pnpm typecheck
 ```
+
+Account config-as-code:
+
+```bash
+pnpm account-config check-sources --output yaml
+pnpm account-config graph --output yaml configs/accounts/staffing.forma > account.graph.yaml
+pnpm account-config graph --output mermaid configs/accounts/staffing.forma
+pnpm account-config validate-forma --output yaml configs/accounts/staffing.forma
+pnpm account-config from-forma --output yaml configs/accounts/staffing.forma > configs/accounts/staffing.from-forma.yaml
+pnpm account-config normalize-forma --check --output yaml configs/accounts/staffing.forma
+pnpm account-config dump --output yaml configs/accounts/staffing.forma > account.deploy.yaml
+pnpm account-config diff-deploy --output yaml configs/accounts/staffing.forma
+pnpm account-config draft-save --tenant acme-staffing --name main --review-note "checked-in staffing source" --output yaml configs/accounts/staffing.forma
+pnpm account-config plan-deploy --tenant acme-staffing --draft main --output yaml configs/accounts/staffing.forma
+pnpm account-config review-deploy --tenant acme-staffing --plan <planId> --output yaml
+pnpm account-config approve-deploy --tenant acme-staffing --plan <planId> --output yaml
+pnpm account-config apply-deploy --tenant acme-staffing --plan <planId> --output yaml
+pnpm account-config deploy-current --tenant acme-staffing --output yaml
+pnpm account-config export --tenant acme-staffing --output yaml > configs/accounts/staffing.export.yaml
+pnpm account-config rollback-deploy --tenant acme-staffing --plan <appliedPlanId> --output yaml
+pnpm account-config draft-list --tenant acme-staffing --limit 10 --output yaml
+pnpm account-config draft-export --tenant acme-staffing --name main > configs/accounts/staffing.forma
+```
+
+This is a Terraform-like workflow in product shape only: Forma/JSON/YAML source
+is validated, elaborated into the native account deploy artifact, planned,
+reviewed, approved, applied, and tracked by the Convex runtime. It is not a
+Terraform provider or HCL surface.
+
+Repeat the same command shape for the legal tenant by swapping
+`acme-staffing`/`configs/accounts/staffing.forma` for
+`legal-workflows`/`configs/accounts/legal-workflows.forma`. The minimal proof
+suite covers both tenants on fresh data and verifies that re-planning an already
+active source produces an idempotent no-change deployment plan.
 
 Deploy notes are tracked in `TODO.md`. In short: `pnpm exec convex dev --once`
 pushes functions to the dev deployment, and `pnpm exec static-hosting upload`

@@ -1,0 +1,27 @@
+(tenant "legal-workflows" "Legal Workflows" "legal")
+(entity "Matter" "A legal matter."
+  (attr "name")
+  (attr "matter.status" "string" "Current matter lifecycle state.")
+  (attr "practice.area" "string" "Legal practice area.")
+  (attr "client" "entityRef" "Client associated with the matter.")
+  (attr "responsible.attorney" "entityRef" "Attorney responsible for the matter.")
+  (flow "matter_intake" "Matter intake"
+    (start "conflict")
+    (collect "conflict" "conflict_check" "client" (next "engagement"))
+    (collect "engagement" "engagement_letter" "client" (next "open"))
+    (assert "open" "matter.status" "open" (next "done"))
+    (done)
+  )
+  (action "close_matter" "Close matter" (assert "matter.status" "closed"))
+)
+(entity "Client" ["name"] "A legal client.")
+(entity "Attorney" ["name"] "A firm attorney.")
+(form "conflict_check" "Conflict Check"
+  (field "cleared" "boolean" "Conflict cleared" (required))
+  (field "notes" "string" "Notes")
+  (requires "client")
+)
+(form "engagement_letter" "Engagement Letter"
+  (field "signed" "boolean" "Signed" (required))
+  (requires "client")
+)

@@ -7,23 +7,31 @@ import metacrdtSchema from "../packages/convex/src/component/schema";
 
 const modules = import.meta.glob("./**/*.ts");
 const metacrdtModules = import.meta.glob("../packages/convex/src/component/**/*.ts");
+const TENANT = "component-test";
 
 async function flush(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
-function mountedTest() {
+async function mountedTest() {
   const t = convexTest(schema, modules);
   t.registerComponent("metacrdt", metacrdtSchema, metacrdtModules);
-  return t.withIdentity({ tokenIdentifier: "system" });
+  const withIdentity = t.withIdentity({ tokenIdentifier: "system" });
+  await withIdentity.mutation(api.tenants.createTenant, {
+    slug: TENANT,
+    name: "Component Test",
+    kind: "custom",
+  });
+  return withIdentity;
 }
 
 describe("@metacrdt/convex mounted component wrapper", () => {
   test("summarizes host factEvents through the installed component", async () => {
     vi.useFakeTimers();
     try {
-      const t = mountedTest();
+      const t = await mountedTest();
       await t.mutation(api.facts.assertFact, {
+        tenantSlug: TENANT,
         e: "component:worker",
         a: "worker.status",
         value: "active",
@@ -32,9 +40,16 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       await flush(t);
 
       const summaries = await t.query(api.metacrdtComponent.verifyEvents, {
+        tenantSlug: TENANT,
         e: "component:worker",
         requireValid: true,
       });
+      await expect(
+        t.query(api.metacrdtComponent.verifyEvents, {
+          e: "component:worker",
+          requireValid: true,
+        }),
+      ).rejects.toThrow(/Tenant context required/);
 
       expect(summaries).toHaveLength(1);
       expect(summaries[0]).toMatchObject({
@@ -52,7 +67,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("appends and lists component-owned protocol events through app wrappers", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     const asserted = await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
       e: "component-owned:worker",
@@ -97,7 +112,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("lists component-owned current projection through app wrapper", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     const asserted = await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
       e: "component-current:worker",
@@ -123,7 +138,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("reads component-owned current entity through app wrapper", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
       e: "component-entity:worker",
@@ -149,7 +164,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("creates a component-owned entity through app wrapper", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     const created = await t.mutation(api.metacrdtComponent.createOwnedEntity, {
       e: "component-created:worker",
@@ -178,7 +193,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("lists component-owned current entities through app wrapper", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     await t.mutation(api.metacrdtComponent.createOwnedEntity, {
       e: "component-list:worker-a",
@@ -222,7 +237,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("runs a component-owned assert flow without host flowRuns", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     await t.mutation(api.metacrdtComponent.createOwnedEntity, {
       e: "owned-flow:worker",
@@ -230,6 +245,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       name: "Owned Flow Worker",
     });
     await t.mutation(api.flows.defineFlow, {
+      tenantSlug: TENANT,
       name: "owned_tiny",
       title: "Owned tiny",
       subjectType: "Worker",
@@ -246,6 +262,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     });
 
     const result = await t.mutation(api.metacrdtComponent.startOwnedFlow, {
+      tenantSlug: TENANT,
       flowDefName: "owned_tiny",
       subject: "owned-flow:worker",
     });
@@ -268,6 +285,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     );
 
     const hostRuns = await t.query(api.flows.listFlows, {
+      tenantSlug: TENANT,
       subject: "owned-flow:worker",
     });
     expect(hostRuns).toEqual([]);
@@ -290,7 +308,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("parks a component-owned collect flow, then resumes from submitted facts", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     await t.mutation(api.metacrdtComponent.createOwnedEntity, {
       e: "owned-flow:alien",
@@ -311,6 +329,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       ],
     });
     await t.mutation(api.flows.defineFlow, {
+      tenantSlug: TENANT,
       name: "owned_collect_branch",
       title: "Owned collect branch",
       subjectType: "Worker",
@@ -345,6 +364,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     });
 
     const first = await t.mutation(api.metacrdtComponent.startOwnedFlow, {
+      tenantSlug: TENANT,
       flowDefName: "owned_collect_branch",
       subject: "owned-flow:alien",
       context: { employer: "employer:acme" },
@@ -368,6 +388,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     expect(submitted).toEqual({ ok: true });
 
     const resumed = await t.mutation(api.metacrdtComponent.startOwnedFlow, {
+      tenantSlug: TENANT,
       flowDefName: "owned_collect_branch",
       subject: "owned-flow:alien",
       context: { employer: "employer:acme" },
@@ -406,6 +427,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     );
 
     const hostRuns = await t.query(api.flows.listFlows, {
+      tenantSlug: TENANT,
       subject: "owned-flow:alien",
     });
     expect(hostRuns).toEqual([]);
@@ -432,7 +454,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   test("parks a component-owned wait flow and scheduled wake resumes the same run", async () => {
     vi.useFakeTimers();
     try {
-      const t = mountedTest();
+      const t = await mountedTest();
 
       await t.mutation(api.metacrdtComponent.createOwnedEntity, {
         e: "owned-flow:waiter",
@@ -440,6 +462,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
         name: "Owned Flow Waiter",
       });
       await t.mutation(api.flows.defineFlow, {
+      tenantSlug: TENANT,
         name: "owned_wait_then_assert",
         title: "Owned wait then assert",
         subjectType: "Worker",
@@ -462,6 +485,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       });
 
       const first = await t.mutation(api.metacrdtComponent.startOwnedFlow, {
+        tenantSlug: TENANT,
         flowDefName: "owned_wait_then_assert",
         subject: "owned-flow:waiter",
       });
@@ -500,6 +524,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       );
 
       const hostRuns = await t.query(api.flows.listFlows, {
+      tenantSlug: TENANT,
         subject: "owned-flow:waiter",
       });
       expect(hostRuns).toEqual([]);
@@ -509,7 +534,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("sets component-owned worker status through app wrapper", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     await t.mutation(api.metacrdtComponent.createOwnedEntity, {
       e: "component-status:worker",
@@ -548,14 +573,16 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("runs configured actions against component-owned entities", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     await t.mutation(api.attributes.defineAttribute, {
+      tenantSlug: TENANT,
       name: "worker.status",
       valueType: "string",
       cardinality: "one",
     });
     await t.mutation(api.actions.defineAction, {
+      tenantSlug: TENANT,
       name: "owned_set_status",
       label: "Set owned worker status",
       appliesTo: "Worker",
@@ -577,6 +604,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     });
 
     const result = await t.mutation(api.metacrdtComponent.runOwnedAction, {
+      tenantSlug: TENANT,
       action: "owned_set_status",
       entity: "component-action:worker",
       args: { status: "terminated" },
@@ -614,9 +642,10 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("component-owned actions enforce appliesTo", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     await t.mutation(api.actions.defineAction, {
+      tenantSlug: TENANT,
       name: "owned_worker_only",
       appliesTo: "Worker",
       asserts: { "worker.status": "terminated" },
@@ -629,6 +658,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
 
     await expect(
       t.mutation(api.metacrdtComponent.runOwnedAction, {
+        tenantSlug: TENANT,
         action: "owned_worker_only",
         entity: "component-action:client",
       }),
@@ -636,7 +666,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("component-owned actions can open component-owned collection forms", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     await t.mutation(api.metacrdtComponent.defineOwnedForm, {
       form: "owned_i9",
@@ -651,6 +681,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       ],
     });
     await t.mutation(api.actions.defineAction, {
+      tenantSlug: TENANT,
       name: "owned_collect_i9",
       label: "Collect owned I-9",
       appliesTo: "Worker",
@@ -664,12 +695,14 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     });
 
     const host = await t.mutation(api.actions.runAction, {
+      tenantSlug: TENANT,
       action: "owned_collect_i9",
       entity: "component-collect:worker",
     });
     expect(host.collect?.reused).toBe(false);
 
     const first = await t.mutation(api.metacrdtComponent.runOwnedAction, {
+      tenantSlug: TENANT,
       action: "owned_collect_i9",
       entity: "component-collect:worker",
     });
@@ -701,6 +734,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     });
 
     const second = await t.mutation(api.metacrdtComponent.runOwnedAction, {
+      tenantSlug: TENANT,
       action: "owned_collect_i9",
       entity: "component-collect:worker",
     });
@@ -740,6 +774,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
     );
 
     const hostEntity = await t.query(api.facts.getEntity, {
+      tenantSlug: TENANT,
       e: "component-collect:worker",
     });
     expect(hostEntity.attributes["submitted.owned_i9"]).toBeUndefined();
@@ -749,7 +784,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   test("component-owned collection tokens can expire before submission", async () => {
     vi.useFakeTimers();
     try {
-      const t = mountedTest();
+      const t = await mountedTest();
 
       await t.mutation(api.metacrdtComponent.defineOwnedForm, {
         form: "owned_expiring",
@@ -757,6 +792,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
         fields: [{ name: "field", label: "Field", type: "string" }],
       });
       await t.mutation(api.actions.defineAction, {
+      tenantSlug: TENANT,
         name: "owned_expiring_collect",
         appliesTo: "Worker",
         asserts: {},
@@ -769,6 +805,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       });
 
       const result = await t.mutation(api.metacrdtComponent.runOwnedAction, {
+        tenantSlug: TENANT,
         action: "owned_expiring_collect",
         entity: "component-expire:worker",
       });
@@ -791,7 +828,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("starts and lists standalone component-owned collect runs", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     await t.mutation(api.metacrdtComponent.defineOwnedForm, {
       form: "owned_badge",
@@ -885,7 +922,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   test("component-owned collection timers remind, escalate, expire, and no-op after submit", async () => {
     vi.useFakeTimers();
     try {
-      const t = mountedTest();
+      const t = await mountedTest();
 
       await t.mutation(api.metacrdtComponent.defineOwnedForm, {
         form: "owned_timer",
@@ -980,9 +1017,10 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("plans component-owned compliance and issues missing collection runs", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     await t.mutation(api.rules.defineRule, {
+      tenantSlug: TENANT,
       name: "require.owned_i9",
       where: [
         ["?p", "type", "Placement"],
@@ -994,6 +1032,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       materialization: "manual",
     });
     await t.mutation(api.rules.defineRule, {
+      tenantSlug: TENANT,
       name: "require.owned_handbook",
       where: [
         ["?p", "type", "Placement"],
@@ -1133,9 +1172,10 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("component-owned compliance reports unsupported requirement shapes", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     await t.mutation(api.rules.defineRule, {
+      tenantSlug: TENANT,
       name: "require.bad_component_shape",
       where: [["?x", "type", "Worker"]],
       emit: { e: "?w", a: "requires.bad_component_shape", v: "?s" },
@@ -1167,9 +1207,10 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("materializes component-owned compliance requirements and retracts stale tasks", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     await t.mutation(api.rules.defineRule, {
+      tenantSlug: TENANT,
       name: "require.materialized_i9",
       where: [
         ["?p", "type", "Placement"],
@@ -1181,6 +1222,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
       materialization: "manual",
     });
     await t.mutation(api.rules.defineRule, {
+      tenantSlug: TENANT,
       name: "require.materialized_handbook",
       where: [
         ["?p", "type", "Placement"],
@@ -1315,7 +1357,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("component-owned missing current entity returns null", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     expect(
       await t.query(api.metacrdtComponent.getOwnedCurrentEntity, {
@@ -1325,7 +1367,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("passes component-owned cardinality-one writes through app wrapper", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
       e: "component-cardinality:worker",
@@ -1365,7 +1407,7 @@ describe("@metacrdt/convex mounted component wrapper", () => {
   });
 
   test("rebuilds component-owned projections through app wrapper", async () => {
-    const t = mountedTest();
+    const t = await mountedTest();
 
     await t.mutation(api.metacrdtComponent.appendOwnedAssert, {
       e: "component-rebuild:worker",

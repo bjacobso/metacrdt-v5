@@ -1,7 +1,10 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { LIMITS, solveWhere, type Binding } from "./engine";
-import { eventLogTripleSource } from "./eventLogTripleSource";
+import {
+  eventLogTripleSource,
+  eventLogTripleSourceForTenant,
+} from "./eventLogTripleSource";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -38,12 +41,17 @@ function mergeIds<T extends string>(a: T[], b: T[]): T[] {
 
 export async function enabledComplianceRules(
   ctx: Ctx,
+  tenantId?: Id<"tenants">,
 ): Promise<Doc<"rules">[]> {
   const enabled = await ctx.db
     .query("rules")
     .withIndex("by_enabled", (q) => q.eq("enabled", true))
     .take(500);
-  return enabled.filter(isComplianceRule);
+  return enabled.filter(
+    (rule) =>
+      isComplianceRule(rule) &&
+      (tenantId === undefined ? true : rule.tenantId === tenantId),
+  );
 }
 
 /**
@@ -58,16 +66,21 @@ export async function obligationsFromEventLog(
   ctx: Ctx,
   args: {
     rules?: Doc<"rules">[];
+    tenantId?: Id<"tenants">;
     worker?: string;
     now?: number;
     limit?: number;
   } = {},
 ): Promise<Obligation[]> {
-  const rules = args.rules ?? (await enabledComplianceRules(ctx));
+  const rules = args.rules ?? (await enabledComplianceRules(ctx, args.tenantId));
   const now = args.now ?? Date.now();
   const limit = args.limit ?? LIMITS.maxResultRows;
   const coord = { txTime: now, validTime: now };
   const byKey = new Map<string, Obligation>();
+  const source =
+    args.tenantId === undefined
+      ? eventLogTripleSource
+      : eventLogTripleSourceForTenant(args.tenantId);
 
   for (const rule of rules) {
     if (rule.emit === undefined || !isObligationAttr(rule.emit.a)) continue;
@@ -76,7 +89,7 @@ export async function obligationsFromEventLog(
       (rule.where ?? []) as unknown[],
       coord,
       {},
-      { source: eventLogTripleSource },
+      { source },
     );
     for (const solution of solved) {
       const rawE = resolveEmitTerm(rule.emit.e, solution.binding);

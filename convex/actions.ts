@@ -11,7 +11,14 @@ import {
   resolveActionValue,
 } from "./lib/actionDefs";
 import { issueActionCollectRun } from "./lib/collectRuns";
-import { requireWritePrincipal } from "./lib/writeAuth";
+import { requireTenant, tenantOrLegacyRead } from "./lib/tenantAuth";
+
+function tenantIdForWrite(
+  tenantId: Awaited<ReturnType<typeof requireTenant>>["tenantId"] | undefined,
+) {
+  if (tenantId === undefined) throw new Error("Tenant context required");
+  return tenantId;
+}
 
 // Actions: the synchronous, one-transaction cousin of a Flow. Where a flow is a
 // parked multi-step graph, an action is "assert these facts on this entity, now"
@@ -36,13 +43,15 @@ export const defineAction = mutation({
     asserts: v.any(), // Record<attribute, value>
     fields: v.optional(v.array(actionFieldValidator)),
     opensForm: v.optional(opensFormValidator),
+    tenantSlug: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireWritePrincipal(ctx);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "admin");
     const now = Date.now();
     const e = actionId(args.name);
     const txId = await createTransaction(ctx, {
       actorId: "config",
+      tenantId: tenant.tenantId,
       reason: `define action ${args.name}`,
       now,
     });
@@ -64,17 +73,21 @@ export const runAction = mutation({
   args: {
     action: v.string(),
     entity: v.string(),
+    tenantSlug: v.string(),
     actorId: v.optional(v.string()),
     args: v.optional(v.record(v.string(), v.any())),
   },
   handler: async (ctx, args) => {
-    const actorId = await requireWritePrincipal(ctx);
-    const def = await loadActionDef(ctx, args.action);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "editor");
+    const actorId = tenant.principal;
+    const tenantId = tenantIdForWrite(tenant.tenantId);
+    const def = await loadActionDef(ctx, args.action, tenant.tenantId);
     if (!def) throw new Error(`unknown action: ${args.action}`);
     const now = Date.now();
     const txId = await createTransaction(ctx, {
       actorId,
       actorType: "user",
+      tenantId,
       reason: `action ${args.action} on ${args.entity}`,
       now,
     });
@@ -88,6 +101,7 @@ export const runAction = mutation({
     const collect =
       def.opensForm !== undefined
         ? await issueActionCollectRun(ctx, {
+            tenantId,
             subject: args.entity,
             form: resolveActionString(
               "form",
@@ -111,16 +125,20 @@ export const runAction = mutation({
 
 /** Actions runnable on a given entity type. */
 export const actionsForType = query({
-  args: { type: v.string() },
+  args: { type: v.string(), tenantSlug: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    return (await listActionDefs(ctx)).filter((def) => def.appliesTo === args.type);
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
+    return (await listActionDefs(ctx, tenant?.tenantId)).filter(
+      (def) => def.appliesTo === args.type,
+    );
   },
 });
 
 /** All action definitions (for the System view). */
 export const listActions = query({
-  args: {},
-  handler: async (ctx) => {
-    return await listActionDefs(ctx);
+  args: { tenantSlug: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
+    return await listActionDefs(ctx, tenant?.tenantId);
   },
 });

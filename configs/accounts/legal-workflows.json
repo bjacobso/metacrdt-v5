@@ -1,0 +1,142 @@
+{
+  "account": {
+    "slug": "legal-workflows",
+    "name": "Legal Workflows",
+    "kind": "legal"
+  },
+  "attributes": [
+    {
+      "name": "matter.status",
+      "valueType": "string",
+      "cardinality": "one",
+      "description": "Current matter lifecycle state."
+    },
+    {
+      "name": "practice.area",
+      "valueType": "string",
+      "cardinality": "one",
+      "description": "Legal practice area."
+    },
+    {
+      "name": "client",
+      "valueType": "entityRef",
+      "cardinality": "one",
+      "description": "Client associated with the matter."
+    },
+    {
+      "name": "responsible.attorney",
+      "valueType": "entityRef",
+      "cardinality": "one",
+      "description": "Attorney responsible for the matter."
+    }
+  ],
+  "entityTypes": [
+    {
+      "name": "Matter",
+      "attributes": ["name", "matter.status", "practice.area", "client", "responsible.attorney"],
+      "description": "A legal matter."
+    },
+    {
+      "name": "Client",
+      "attributes": ["name"],
+      "description": "A legal client."
+    },
+    {
+      "name": "Attorney",
+      "attributes": ["name"],
+      "description": "A firm attorney."
+    }
+  ],
+  "forms": [
+    {
+      "form": "conflict_check",
+      "title": "Conflict Check",
+      "fields": [
+        {
+          "name": "cleared",
+          "label": "Conflict cleared",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "name": "notes",
+          "label": "Notes",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "form": "engagement_letter",
+      "title": "Engagement Letter",
+      "fields": [
+        {
+          "name": "signed",
+          "label": "Signed",
+          "type": "boolean",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "matter_intake",
+      "title": "Matter intake",
+      "subjectType": "Matter",
+      "startStepId": "conflict",
+      "steps": [
+        {
+          "id": "conflict",
+          "type": "collect",
+          "config": {
+            "form": "conflict_check",
+            "scopeFrom": "client"
+          },
+          "next": "engagement"
+        },
+        {
+          "id": "engagement",
+          "type": "collect",
+          "config": {
+            "form": "engagement_letter",
+            "scopeFrom": "client"
+          },
+          "next": "open"
+        },
+        {
+          "id": "open",
+          "type": "assert",
+          "config": {
+            "a": "matter.status",
+            "v": "open"
+          },
+          "next": "done"
+        },
+        {
+          "id": "done",
+          "type": "done"
+        }
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "form": "conflict_check",
+      "scopeAttr": "client"
+    },
+    {
+      "form": "engagement_letter",
+      "scopeAttr": "client"
+    }
+  ],
+  "actions": [
+    {
+      "name": "close_matter",
+      "label": "Close matter",
+      "appliesTo": "Matter",
+      "asserts": {
+        "matter.status": "closed"
+      }
+    }
+  ]
+}

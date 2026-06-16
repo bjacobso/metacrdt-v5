@@ -7,18 +7,25 @@ import { api } from "../convex/_generated/api";
  */
 export default function EntityPicker({
   type,
+  tenantSlug,
   value,
   onChange,
   placeholder,
   className = "",
 }: {
   type?: string;
+  tenantSlug?: string | null;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   className?: string;
 }) {
-  const options = useQuery(api.entities.listEntities, type ? { type } : {});
+  const options = useQuery(
+    api.entities.listEntities,
+    tenantSlug
+      ? { ...(type ? { type } : {}), tenantSlug, origin: "data" }
+      : "skip",
+  );
   const listId = `entopts-${type ?? "all"}`;
   return (
     <>

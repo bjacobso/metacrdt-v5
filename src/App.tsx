@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Routes, Route, Outlet } from "react-router-dom";
+import { Routes, Route, Outlet, Navigate } from "react-router-dom";
 import { useQuery_experimental as useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import Layout from "./Layout";
@@ -10,8 +10,11 @@ import ComponentEntity from "./pages/ComponentEntity";
 import Compliance from "./pages/Compliance";
 import Flows from "./pages/Flows";
 import TransactionLog from "./pages/TransactionLog";
-import DataModel from "./pages/DataModel";
+import SystemConsole from "./pages/SystemConsole";
 import Collect from "./pages/Collect";
+import AccountConfig from "./pages/AccountConfig";
+import { TenantProvider } from "./tenant";
+import { ROUTES } from "./navigationModel";
 
 function useSafeDeploymentUpdates() {
   const deployment = useQuery({
@@ -70,10 +73,12 @@ function DeployBanner() {
 
 function Shell() {
   return (
-    <Layout>
-      <DeployBanner />
-      <Outlet />
-    </Layout>
+    <TenantProvider>
+      <Layout>
+        <DeployBanner />
+        <Outlet />
+      </Layout>
+    </TenantProvider>
   );
 }
 
@@ -84,13 +89,34 @@ export default function App() {
       <Route path="/collect" element={<Collect />} />
       <Route element={<Shell />}>
         <Route path="/" element={<Overview />} />
-        <Route path="/entities" element={<Entities />} />
+        <Route path={ROUTES.entities} element={<Entities />} />
         <Route path="/e/:id" element={<EntityDetail />} />
         <Route path="/component/e/:id" element={<ComponentEntity />} />
-        <Route path="/compliance" element={<Compliance />} />
-        <Route path="/flows" element={<Flows />} />
-        <Route path="/transactions" element={<TransactionLog />} />
-        <Route path="/data-model" element={<DataModel />} />
+        <Route path={ROUTES.compliance} element={<Compliance />} />
+        <Route path={ROUTES.flows} element={<Flows />} />
+        <Route path={ROUTES.accountConfig} element={<AccountConfig />} />
+        <Route path={ROUTES.systemConsole} element={<SystemConsole />} />
+        <Route path={ROUTES.transactions} element={<TransactionLog />} />
+        <Route
+          path={ROUTES.legacyDataModel}
+          element={<Navigate to={ROUTES.systemConsole} replace />}
+        />
+        <Route path="*" element={<Overview />} />
+      </Route>
+      <Route path="/t/:tenantSlug" element={<Shell />}>
+        <Route index element={<Overview />} />
+        <Route path="entities" element={<Entities />} />
+        <Route path="e/:id" element={<EntityDetail />} />
+        <Route path="component/e/:id" element={<ComponentEntity />} />
+        <Route path="compliance" element={<Compliance />} />
+        <Route path="flows" element={<Flows />} />
+        <Route path="config" element={<AccountConfig />} />
+        <Route path="system" element={<SystemConsole />} />
+        <Route path="transactions" element={<TransactionLog />} />
+        <Route
+          path="data-model"
+          element={<Navigate to="../system" replace />}
+        />
         <Route path="*" element={<Overview />} />
       </Route>
     </Routes>

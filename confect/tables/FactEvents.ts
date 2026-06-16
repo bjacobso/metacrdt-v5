@@ -2,6 +2,7 @@ import { GenericId } from "@confect/core";
 import { Table } from "@confect/server";
 import { Schema } from "effect";
 
+import { TenantId } from "./Tenants";
 import { TransactionId } from "./Transactions";
 
 export const Hlc = Schema.Struct({
@@ -21,6 +22,7 @@ export const FactEventKind = Schema.Literal(
 export const FactEvents = Table.make(
   "factEvents",
   Schema.Struct({
+    tenantId: Schema.optionalWith(TenantId, { exact: true }),
     txId: TransactionId,
     txTime: Schema.Number,
     eventId: Schema.optionalWith(Schema.String, { exact: true }),
@@ -43,7 +45,11 @@ export const FactEvents = Table.make(
   }),
 )
   .index("by_tx", ["txId"])
+  .index("by_tenant_and_tx", ["tenantId", "txId"])
   .index("by_eventId", ["eventId"])
   .index("by_e", ["e"])
+  .index("by_tenant_and_e", ["tenantId", "e"])
   .index("by_e_a_tx", ["e", "a", "txTime"])
-  .index("by_a_tx", ["a", "txTime"]);
+  .index("by_tenant_and_e_a_tx", ["tenantId", "e", "a", "txTime"])
+  .index("by_a_tx", ["a", "txTime"])
+  .index("by_tenant_and_a_tx", ["tenantId", "a", "txTime"]);

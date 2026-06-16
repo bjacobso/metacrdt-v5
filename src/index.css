@@ -67,3 +67,24 @@ body {
 .tnum {
   font-variant-numeric: tabular-nums;
 }
+
+.cm-account-attribute {
+  color: #86efac;
+}
+
+.cm-account-entity {
+  color: #7dd3fc;
+  font-weight: 600;
+}
+
+.cm-account-form {
+  color: #fbbf24;
+}
+
+.cm-account-flow {
+  color: #c084fc;
+}
+
+.cm-account-action {
+  color: #f472b6;
+}

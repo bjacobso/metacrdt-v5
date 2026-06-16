@@ -9,10 +9,13 @@ import {
   LayoutGrid,
   Route,
   Search,
+  Server,
   ShieldCheck,
   Workflow,
 } from "lucide-react";
 import { api } from "../convex/_generated/api";
+import { ROUTES, tenantPath } from "./navigationModel";
+import { useTenant } from "./tenant";
 import { Mono, shortId } from "./ui";
 
 type Command = {
@@ -65,13 +68,22 @@ const NAV_COMMANDS: Command[] = [
     keywords: "workflow runs dag",
   },
   {
-    id: "nav:data-model",
-    label: "Data model",
-    hint: "Configured manifest and system processes",
+    id: "nav:account-config",
+    label: "Account Config",
+    hint: "Tenant configuration, plan, apply, and export",
     group: "Navigate",
     icon: <Database className={ICON} />,
-    to: "/data-model",
-    keywords: "schema config system",
+    to: ROUTES.accountConfig,
+    keywords: "schema config tenant yaml json forma deploy",
+  },
+  {
+    id: "nav:system-console",
+    label: "System Console",
+    hint: "System processes and engine tools",
+    group: "Navigate",
+    icon: <Server className={ICON} />,
+    to: ROUTES.systemConsole,
+    keywords: "system engine datalog raw assertions",
   },
   {
     id: "nav:transactions",
@@ -79,7 +91,7 @@ const NAV_COMMANDS: Command[] = [
     hint: "Bitemporal event history",
     group: "Navigate",
     icon: <History className={ICON} />,
-    to: "/transactions",
+    to: ROUTES.transactions,
     keywords: "history time travel events",
   },
 ];
@@ -96,14 +108,23 @@ export default function CommandMenu({
   onClose: () => void;
 }) {
   const navigate = useNavigate();
+  const { selectedTenantSlug } = useTenant();
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
   const entities = useQuery(
     api.entities.listEntities,
-    open ? { origin: "all", limit: 200 } : "skip",
+    open && selectedTenantSlug
+      ? { tenantSlug: selectedTenantSlug, origin: "all", limit: 200 }
+      : "skip",
   );
-  const types = useQuery(api.entities.listEntityTypes, open ? {} : "skip");
-  const flows = useQuery(api.flows.listFlowDefs, open ? {} : "skip");
+  const types = useQuery(
+    api.entities.listEntityTypes,
+    open && selectedTenantSlug ? { tenantSlug: selectedTenantSlug } : "skip",
+  );
+  const flows = useQuery(
+    api.flows.listFlowDefs,
+    open && selectedTenantSlug ? { tenantSlug: selectedTenantSlug } : "skip",
+  );
 
   useEffect(() => {
     if (open) {
@@ -119,7 +140,7 @@ export default function CommandMenu({
       hint: e.id,
       group: "Entities",
       icon: <FileText className={ICON} />,
-      to: `/e/${encodeURIComponent(e.id)}`,
+      to: tenantPath(selectedTenantSlug, `/e/${encodeURIComponent(e.id)}`),
       keywords: `${e.type} ${e.origin}`,
     }));
     const typeCommands: Command[] = (types ?? []).map((t) => ({
@@ -128,7 +149,7 @@ export default function CommandMenu({
       hint: `${t.count} entities · ${t.origin}`,
       group: "Types",
       icon: <Boxes className={ICON} />,
-      to: "/entities",
+      to: tenantPath(selectedTenantSlug, ROUTES.entities),
       keywords: `${t.origin} schema data`,
     }));
     const flowCommands: Command[] = (flows ?? []).map((f) => ({
@@ -137,11 +158,19 @@ export default function CommandMenu({
       hint: f.name,
       group: "Flows",
       icon: <Route className={ICON} />,
-      to: "/flows",
+      to: tenantPath(selectedTenantSlug, ROUTES.flows),
       keywords: `${f.subjectType ?? ""} ${f.origin} workflow dag`,
     }));
-    return [...NAV_COMMANDS, ...entityCommands, ...typeCommands, ...flowCommands];
-  }, [entities, flows, types]);
+    return [
+      ...NAV_COMMANDS.map((command) => ({
+        ...command,
+        to: tenantPath(selectedTenantSlug, command.to),
+      })),
+      ...entityCommands,
+      ...typeCommands,
+      ...flowCommands,
+    ];
+  }, [entities, flows, selectedTenantSlug, types]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();

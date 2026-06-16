@@ -3,6 +3,9 @@ import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { eventLogTripleSource } from "./lib/eventLogTripleSource";
 import { project, runWhere } from "./lib/engine";
+import type { Id } from "./_generated/dataModel";
+import { configEntity } from "./appconfig";
+import { tenantOrLegacyRead } from "./lib/tenantAuth";
 
 type ConfigKind =
   | "attribute"
@@ -25,7 +28,6 @@ type ConfigEvent = {
   reason: string | undefined;
 };
 
-const CONFIG_ENTITY = "config:default";
 const OWN_ATTR: Record<ConfigKind, string> = {
   attribute: "owns.attribute",
   entityType: "owns.entityType",
@@ -36,6 +38,14 @@ const OWN_ATTR: Record<ConfigKind, string> = {
 };
 const ATTR_KIND = new Map(
   Object.entries(OWN_ATTR).map(([kind, attr]) => [attr, kind as ConfigKind]),
+);
+const configKindValidator = v.union(
+  v.literal("attribute"),
+  v.literal("entityType"),
+  v.literal("form"),
+  v.literal("flow"),
+  v.literal("requirement"),
+  v.literal("action"),
 );
 
 function itemKey(i: ConfigItem): string {
@@ -56,12 +66,14 @@ function sorted(items: Iterable<ConfigItem>): ConfigItem[] {
 async function manifestSnapshot(
   ctx: QueryCtx,
   txTime: number,
+  tenantId?: Id<"tenants">,
 ): Promise<Set<string>> {
   const coord = { txTime, validTime: txTime };
+  const entity = configEntity(tenantId);
   const rows = project(
     await runWhere(
       ctx,
-      [[CONFIG_ENTITY, "?a", "?v"]],
+      [[entity, "?a", "?v"]],
       coord,
       {},
       { source: eventLogTripleSource },
@@ -77,11 +89,23 @@ async function manifestSnapshot(
   return out;
 }
 
-async function directEvents(ctx: QueryCtx, tx: Doc<"transactions">) {
-  const events = await ctx.db
-    .query("factEvents")
-    .withIndex("by_tx", (q) => q.eq("txId", tx._id))
-    .take(500);
+async function directEvents(
+  ctx: QueryCtx,
+  tx: Doc<"transactions">,
+  tenantId?: Id<"tenants">,
+) {
+  const events =
+    tenantId === undefined
+      ? await ctx.db
+          .query("factEvents")
+          .withIndex("by_tx", (q) => q.eq("txId", tx._id))
+          .take(500)
+      : await ctx.db
+          .query("factEvents")
+          .withIndex("by_tenant_and_tx", (q) =>
+            q.eq("tenantId", tenantId).eq("txId", tx._id),
+          )
+          .take(500);
   return events
     .map((ev) => ({
       kind: ev.kind,
@@ -134,26 +158,49 @@ function counts(keys: Set<string>): Record<ConfigKind, number> {
  * avoids reporting idempotent re-assertions as additions.
  */
 export const history = query({
-  args: { limit: v.optional(v.number()) },
+  args: {
+    limit: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
+    changedKind: v.optional(configKindValidator),
+    changesOnly: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
+    const tenantId = tenant?.tenantId;
     const limit = Math.min(args.limit ?? 20, 100);
-    const txs = await ctx.db
-      .query("transactions")
-      .withIndex("by_actor", (q) => q.eq("actorId", "config"))
-      .order("desc")
-      .take(limit);
+    const scanLimit =
+      args.changedKind !== undefined || args.changesOnly === true
+        ? Math.max(limit, 100)
+        : limit;
+    const txs =
+      tenantId === undefined
+        ? await ctx.db
+            .query("transactions")
+            .withIndex("by_actor", (q) => q.eq("actorId", "config"))
+            .order("desc")
+            .take(scanLimit)
+        : await ctx.db
+            .query("transactions")
+            .withIndex("by_tenant_and_actor", (q) =>
+              q.eq("tenantId", tenantId).eq("actorId", "config"),
+            )
+            .order("desc")
+            .take(scanLimit);
 
     const out = [];
     for (const tx of txs) {
-      const before = await manifestSnapshot(ctx, tx.txTime - 0.001);
-      const after = await manifestSnapshot(ctx, tx.txTime);
+      const before = await manifestSnapshot(ctx, tx.txTime - 0.001, tenantId);
+      const after = await manifestSnapshot(ctx, tx.txTime, tenantId);
       const added = [...after]
         .filter((key) => !before.has(key))
         .map(fromKey);
       const removed = [...before]
         .filter((key) => !after.has(key))
         .map(fromKey);
-      const events = await directEvents(ctx, tx);
+      const events = await directEvents(ctx, tx, tenantId);
+      const kinds = changedKinds(added, removed);
+      if (args.changesOnly === true && added.length + removed.length === 0) continue;
+      if (args.changedKind !== undefined && !kinds.includes(args.changedKind)) continue;
       out.push({
         txId: tx._id,
         txTime: tx.txTime,
@@ -161,12 +208,13 @@ export const history = query({
         reason: tx.reason,
         added: sorted(added),
         removed: sorted(removed),
-        changedKinds: changedKinds(added, removed),
+        changedKinds: kinds,
         totalManifestChanges: added.length + removed.length,
         afterCounts: counts(after),
         eventCounts: eventCounts(events),
         events,
       });
+      if (out.length >= limit) break;
     }
     return out;
   },
@@ -174,9 +222,10 @@ export const history = query({
 
 /** Current configured-artifact manifest, grouped by kind. */
 export const currentManifest = query({
-  args: {},
-  handler: async (ctx) => {
-    const snap = await manifestSnapshot(ctx, Date.now());
+  args: { tenantSlug: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const tenant = await tenantOrLegacyRead(ctx, args.tenantSlug);
+    const snap = await manifestSnapshot(ctx, Date.now(), tenant?.tenantId);
     const grouped: Record<ConfigKind, string[]> = {
       attribute: [],
       entityType: [],

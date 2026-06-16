@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as accountConfigDrafts from "../accountConfigDrafts.js";
+import type * as accountDeploy from "../accountDeploy.js";
 import type * as actions from "../actions.js";
 import type * as appconfig from "../appconfig.js";
 import type * as attributes from "../attributes.js";
@@ -33,6 +35,7 @@ import type * as lib_meta from "../lib/meta.js";
 import type * as lib_obligations from "../lib/obligations.js";
 import type * as lib_origin from "../lib/origin.js";
 import type * as lib_readAuth from "../lib/readAuth.js";
+import type * as lib_tenantAuth from "../lib/tenantAuth.js";
 import type * as lib_visibility from "../lib/visibility.js";
 import type * as lib_workflow from "../lib/workflow.js";
 import type * as lib_writeAuth from "../lib/writeAuth.js";
@@ -44,6 +47,8 @@ import type * as rebuild from "../rebuild.js";
 import type * as rules from "../rules.js";
 import type * as staticHosting from "../staticHosting.js";
 import type * as system from "../system.js";
+import type * as tenantMigration from "../tenantMigration.js";
+import type * as tenants from "../tenants.js";
 
 import type {
   ApiFromModules,
@@ -52,6 +57,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  accountConfigDrafts: typeof accountConfigDrafts;
+  accountDeploy: typeof accountDeploy;
   actions: typeof actions;
   appconfig: typeof appconfig;
   attributes: typeof attributes;
@@ -77,6 +84,7 @@ declare const fullApi: ApiFromModules<{
   "lib/obligations": typeof lib_obligations;
   "lib/origin": typeof lib_origin;
   "lib/readAuth": typeof lib_readAuth;
+  "lib/tenantAuth": typeof lib_tenantAuth;
   "lib/visibility": typeof lib_visibility;
   "lib/workflow": typeof lib_workflow;
   "lib/writeAuth": typeof lib_writeAuth;
@@ -88,6 +96,8 @@ declare const fullApi: ApiFromModules<{
   rules: typeof rules;
   staticHosting: typeof staticHosting;
   system: typeof system;
+  tenantMigration: typeof tenantMigration;
+  tenants: typeof tenants;
 }>;
 
 /**

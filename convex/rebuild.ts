@@ -103,6 +103,7 @@ export const rebuildProjections = internalMutation({
     for (const f of facts) {
       if (!isVisible(f, coord)) continue;
       await ctx.db.insert("currentFacts", {
+        tenantId: f.tenantId,
         e: f.e,
         a: f.a,
         v: f.v,

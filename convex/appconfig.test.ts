@@ -6,13 +6,61 @@ import { STAFFING_BLUEPRINT } from "./appconfig";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
+const TEST_TENANT_SLUG = "acme-staffing";
+type TestClient = ReturnType<ReturnType<typeof convexTest>["withIdentity"]>;
 
-async function flush(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
+async function flush(t: TestClient) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
-async function setup(t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>) {
-  await t.mutation(api.appconfig.setupStaffing, {});
+function shouldRetryWithTenant(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("Missing required field `tenantSlug`") ||
+    message.includes("Tenant context required");
+}
+
+function withDefaultTenant(args: unknown): unknown {
+  if (args !== null && typeof args === "object" && !Array.isArray(args)) {
+    const row = args as Record<string, unknown>;
+    if (row.tenantSlug === undefined) {
+      return { tenantSlug: TEST_TENANT_SLUG, ...row };
+    }
+  }
+  return args;
+}
+
+function installDefaultTenant(t: TestClient) {
+  const client = t as TestClient & { __defaultTenantInstalled?: boolean };
+  if (client.__defaultTenantInstalled === true) return;
+  client.__defaultTenantInstalled = true;
+  const query = client.query.bind(client);
+  const mutation = client.mutation.bind(client);
+  client.query = (async (fn, args) => {
+    try {
+      return await query(fn, args);
+    } catch (error) {
+      if (!shouldRetryWithTenant(error)) throw error;
+      return await query(fn, withDefaultTenant(args));
+    }
+  }) as typeof client.query;
+  client.mutation = (async (fn, args) => {
+    try {
+      return await mutation(fn, args);
+    } catch (error) {
+      if (!shouldRetryWithTenant(error)) throw error;
+      return await mutation(fn, withDefaultTenant(args));
+    }
+  }) as typeof client.mutation;
+}
+
+async function setup(t: TestClient) {
+  await t.mutation(api.tenants.createTenant, {
+    slug: TEST_TENANT_SLUG,
+    name: "Acme Staffing",
+    kind: "staffing",
+  });
+  installDefaultTenant(t);
+  await t.mutation(api.appconfig.setupStaffing, { tenantSlug: TEST_TENANT_SLUG });
   await flush(t);
 }
 
@@ -209,6 +257,197 @@ describe("config-as-code + origin + entity detail", () => {
     }
   });
 
+  test("applyConfig accepts actions that open forms without asserts", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await setup(t);
+
+      await t.mutation(api.appconfig.applyConfig, {
+        config: {
+          actions: [
+            {
+              name: "request_i9",
+              label: "Request I-9",
+              appliesTo: "Worker",
+              opensForm: { form: "i9", scope: "employer" },
+            },
+          ],
+        },
+      });
+      await flush(t);
+
+      const acts = await t.query(api.actions.actionsForType, { type: "Worker" });
+      expect(acts.find((a) => a.name === "request_i9")).toMatchObject({
+        label: "Request I-9",
+        asserts: {},
+        opensForm: { form: "i9", scope: "employer" },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("planConfig and applyConfig reject invalid flow step configs", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await setup(t);
+
+      const config = {
+        flows: [
+          {
+            name: "bad_flow",
+            subjectType: "Worker",
+            startStepId: "route",
+            steps: [
+              {
+                id: "route",
+                type: "branch",
+                config: { ifTrue: "missing_step", ifFalse: "done", subjectVar: 1 },
+              },
+              {
+                id: "collect",
+                type: "collect",
+                config: {
+                  form: "missing_form",
+                  scopeFrom: "missing.scope",
+                  reminderSeconds: "soon",
+                },
+              },
+              { id: "assert", type: "assert", config: { a: "missing.attr", v: "x" } },
+              {
+                id: "action",
+                type: "action",
+                config: { resultAttr: "missing.attr", delaySeconds: "later" },
+              },
+              {
+                id: "notify",
+                type: "notify",
+                config: {
+                  message: 1,
+                  channel: 2,
+                  to: false,
+                  template: [],
+                  delaySeconds: "later",
+                },
+              },
+              { id: "wait", type: "wait", config: { seconds: "soon" } },
+              { id: "mystery", type: "unknown" },
+              { id: "done", type: "done" },
+            ],
+          },
+        ],
+      };
+
+      const plan = await t.query(api.appconfig.planConfig, { config });
+      expect(plan.valid).toBe(false);
+      expect(plan.errors).toEqual(
+        expect.arrayContaining([
+          "flow bad_flow step route ifTrue references unknown step missing_step",
+          "flow bad_flow step route subjectVar must be a string",
+          "flow bad_flow step collect collects unknown form missing_form",
+          "flow bad_flow step collect scopeFrom references unknown attribute missing.scope",
+          "flow bad_flow step collect reminderSeconds must be a number",
+          "flow bad_flow step assert asserts unknown attribute missing.attr",
+          "flow bad_flow step action resultAttr references unknown attribute missing.attr",
+          "flow bad_flow step action delaySeconds must be a number",
+          "flow bad_flow step notify notify message must be a string",
+          "flow bad_flow step notify channel must be a string",
+          "flow bad_flow step notify to must be a string",
+          "flow bad_flow step notify template must be a string",
+          "flow bad_flow step notify delaySeconds must be a number",
+          "flow bad_flow step wait seconds must be a number",
+          "flow bad_flow step mystery has invalid type",
+        ]),
+      );
+
+      await expect(
+        t.mutation(api.appconfig.applyConfig, { config }),
+      ).rejects.toThrow(/flow bad_flow step collect collects unknown form missing_form/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("planConfig and applyConfig reject invalid requirements and action form scopes", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await setup(t);
+
+      const config = {
+        attributes: [
+          { name: "worker.status", valueType: "string", cardinality: "one", description: 1 },
+        ],
+        entityTypes: [
+          { name: "Worker", attributes: ["worker.status"], description: false },
+        ],
+        forms: [
+          {
+            form: "i9",
+            title: "Form I-9",
+            description: 1,
+            fields: [{ name: "ssn", label: "SSN", type: "string" }],
+          },
+        ],
+        flows: [
+          {
+            name: "onboarding",
+            subjectType: "Worker",
+            startStepId: "done",
+            description: false,
+            steps: [{ id: "done", type: "done" }],
+          },
+        ],
+        requirements: [
+          { form: "i9", scopeAttr: "employer", validityDays: "soon", description: 1 },
+          { form: "i9", scopeAttr: "missing.scope" },
+        ],
+        actions: [
+          {
+            name: "bad_attr_scope",
+            appliesTo: "Worker",
+            description: false,
+            fields: [{ name: "scope", label: "Scope", type: "string" }],
+            opensForm: { form: "i9", scope: "missing.scope" },
+            asserts: {},
+          },
+          {
+            name: "bad_arg_scope",
+            appliesTo: "Worker",
+            fields: [{ name: "scope", label: "Scope", type: "string" }],
+            opensForm: { form: "i9", scope: "$arg.missing" },
+            asserts: {},
+          },
+        ],
+      };
+
+      const plan = await t.query(api.appconfig.planConfig, { config });
+      expect(plan.valid).toBe(false);
+      expect(plan.errors).toEqual(
+        expect.arrayContaining([
+          "attribute worker.status description must be a string",
+          "entityType Worker description must be a string",
+          "form i9 description must be a string",
+          "flow onboarding description must be a string",
+          "requirement i9 validityDays must be a number",
+          "requirement i9 description must be a string",
+          "requirement i9 references unknown scopeAttr missing.scope",
+          "action bad_attr_scope description must be a string",
+          "action bad_attr_scope opensForm scope references unknown attribute missing.scope",
+          "action bad_arg_scope opensForm scope references unknown action field missing",
+        ]),
+      );
+
+      await expect(
+        t.mutation(api.appconfig.applyConfig, { config }),
+      ).rejects.toThrow(/action bad_arg_scope opensForm scope references unknown action field missing/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("action registry reads survive a wiped currentFacts projection", async () => {
     vi.useFakeTimers();
     try {
@@ -308,6 +547,124 @@ describe("config-as-code + origin + entity detail", () => {
     }
   });
 
+  test("runAction uses configured action field defaults", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await setup(t);
+
+      await t.mutation(api.appconfig.applyConfig, {
+        config: {
+          actions: [
+            {
+              name: "default_status",
+              label: "Default worker status",
+              appliesTo: "Worker",
+              fields: [
+                {
+                  name: "status",
+                  label: "Status",
+                  type: "select",
+                  options: ["active", "terminated"],
+                  defaultValue: "terminated",
+                },
+              ],
+              asserts: { "worker.status": "$arg.status" },
+            },
+          ],
+        },
+      });
+      await flush(t);
+
+      const actions = await t.query(api.actions.actionsForType, { type: "Worker" });
+      expect(actions.find((a) => a.name === "default_status")?.fields).toEqual([
+        {
+          name: "status",
+          label: "Status",
+          type: "select",
+          options: ["active", "terminated"],
+          defaultValue: "terminated",
+        },
+      ]);
+
+      await t.mutation(api.actions.runAction, {
+        action: "default_status",
+        entity: "worker:maria",
+        args: {},
+      });
+      await flush(t);
+
+      const e = await t.query(api.facts.getEntity, { e: "worker:maria" });
+      expect(e.attributes["worker.status"]).toEqual(["terminated"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("applyConfig rejects invalid action field definitions", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules).withIdentity({ tokenIdentifier: "system" });
+      await setup(t);
+
+      await expect(
+        t.mutation(api.appconfig.applyConfig, {
+          config: {
+            forms: [
+              {
+                form: "bad_form_fields",
+                title: "Bad form fields",
+                fields: [
+                  {
+                    name: "notes",
+                    type: "string",
+                    label: "Notes",
+                    description: 1,
+                  },
+                ],
+              },
+            ],
+            actions: [
+              {
+                name: "bad_action_fields",
+                appliesTo: "Worker",
+                fields: [
+                  { name: "status", type: "date", label: "Status" },
+                  { name: "reason", type: "select", label: "Reason", options: [] },
+                  {
+                    name: "private",
+                    type: "string",
+                    label: "Private",
+                    pii: true,
+                  },
+                  {
+                    name: "choice",
+                    type: "select",
+                    label: "Choice",
+                    options: ["ok"],
+                    defaultValue: "missing",
+                  },
+                  {
+                    name: "help",
+                    type: "string",
+                    label: "Help",
+                    description: false,
+                  },
+                ],
+                opensForm: { form: "i9", scope: "$arg.missing" },
+                asserts: {},
+              },
+            ],
+          },
+        }),
+      ).rejects.toThrow(
+        /form bad_form_fields field notes description must be a string.*action bad_action_fields field status has invalid type.*action bad_action_fields field reason select field must define non-empty options.*action bad_action_fields field private pii is only valid for form fields.*action bad_action_fields field choice defaultValue must be one of its options.*action bad_action_fields field help description must be a string.*action bad_action_fields opensForm scope references unknown action field missing/,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("runAction rejects unknown arg placeholders", async () => {
     vi.useFakeTimers();
     try {
@@ -320,7 +677,7 @@ describe("config-as-code + origin + entity detail", () => {
             {
               name: "bad_placeholder",
               appliesTo: "Worker",
-              fields: [{ name: "status", type: "string" }],
+              fields: [{ name: "status", label: "Status", type: "string" }],
               asserts: { "worker.status": "$arg.missing" },
             },
           ],

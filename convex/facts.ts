@@ -9,7 +9,12 @@ import {
   readPrincipal,
   redactAttributeMap,
 } from "./lib/readAuth";
-import { requireWritePrincipal } from "./lib/writeAuth";
+import {
+  TENANT_ACCESS_DENIED,
+  requireLegacyGlobalRead,
+  requireTenant,
+  type TenantContext,
+} from "./lib/tenantAuth";
 import {
   assertEvent,
   CARDINALITY_ONE_SUPERSESSION_REASON,
@@ -36,23 +41,48 @@ import {
 
 // --- internal helpers (exported for the schema-as-facts module) -------------
 
+function tenantIdForWrite(tenantId: Id<"tenants"> | undefined): Id<"tenants"> {
+  if (tenantId === undefined) throw new Error("Tenant context required");
+  return tenantId;
+}
+
 export async function createTransaction(
   ctx: MutationCtx,
   args: {
     actorId?: string;
     actorType?: "user" | "system" | "agent" | "migration";
+    tenantId?: Id<"tenants">;
     reason?: string;
     source?: string;
     now: number;
   },
 ): Promise<Id<"transactions">> {
   return await ctx.db.insert("transactions", {
+    tenantId: tenantIdForWrite(args.tenantId),
     actorId: args.actorId ?? "system",
     actorType: args.actorType ?? "system",
     reason: args.reason,
     source: args.source,
     txTime: args.now,
   });
+}
+
+async function readTenantOrLegacy(ctx: QueryCtx, tenantSlug?: string) {
+  if (tenantSlug === undefined) {
+    await requireLegacyGlobalRead(ctx);
+    return null;
+  }
+  return await requireTenant(ctx, tenantSlug);
+}
+
+async function requireTenantFactWrite(
+  ctx: MutationCtx,
+  tenantSlug: string,
+  fact: Doc<"facts">,
+): Promise<TenantContext> {
+  const tenant = await requireTenant(ctx, tenantSlug, "editor");
+  if (fact.tenantId !== tenant.tenantId) throw new Error(TENANT_ACCESS_DENIED);
+  return tenant;
 }
 
 async function getTx(
@@ -102,6 +132,7 @@ function targetEventId(fact: Doc<"facts">): string {
 async function insertFactEvent(
   ctx: MutationCtx,
   row: {
+    tenantId?: Id<"tenants">;
     txId: Id<"transactions">;
     txTime: number;
     kind: "assert" | "retract" | "tombstone" | "untombstone" | "correction";
@@ -119,6 +150,7 @@ async function insertFactEvent(
   return await ctx.db.insert("factEvents", {
     ...row,
     ...(protocol ?? {}),
+    tenantId: tenantIdForWrite(row.tenantId),
   });
 }
 
@@ -188,6 +220,7 @@ async function reconcileCardinalityOneCurrent(
     await insertFactEvent(
       ctx,
       {
+        tenantId: tx.tenantId,
         txId: tx._id,
         txTime: now,
         kind: "retract",
@@ -203,7 +236,13 @@ async function reconcileCardinalityOneCurrent(
 
   const existing = await ctx.db
     .query("currentFacts")
-    .withIndex("by_e_a", (q) => q.eq("e", e).eq("a", a))
+    .withIndex(
+      tx.tenantId === undefined ? "by_e_a" : "by_tenant_and_e_a",
+      (q) =>
+        tx.tenantId === undefined
+          ? q.eq("e", e).eq("a", a)
+          : q.eq("tenantId", tx.tenantId).eq("e", e).eq("a", a),
+    )
     .collect();
   for (const row of existing) await ctx.db.delete("currentFacts", row._id);
 
@@ -211,6 +250,7 @@ async function reconcileCardinalityOneCurrent(
   // valid interval has already lapsed is not current.
   if (isVisible(winner.item, { txTime: now, validTime: now })) {
     await ctx.db.insert("currentFacts", {
+      tenantId: winner.item.tenantId,
       e: winner.item.e,
       a: winner.item.a,
       v: winner.item.v,
@@ -233,11 +273,20 @@ async function reconcileCardinalityOneCurrent(
 async function cardinalityOf(
   ctx: MutationCtx,
   a: string,
+  tenantId?: Id<"tenants">,
 ): Promise<"one" | "many"> {
-  const row = await ctx.db
-    .query("currentFacts")
-    .withIndex("by_e_a", (q) => q.eq("e", attrId(a)).eq("a", "cardinality"))
-    .first();
+  const row =
+    tenantId === undefined
+      ? await ctx.db
+          .query("currentFacts")
+          .withIndex("by_e_a", (q) => q.eq("e", attrId(a)).eq("a", "cardinality"))
+          .first()
+      : await ctx.db
+          .query("currentFacts")
+          .withIndex("by_tenant_and_e_a", (q) =>
+            q.eq("tenantId", tenantId).eq("e", attrId(a)).eq("a", "cardinality"),
+          )
+          .first();
   if (row) return row.v === "one" ? "one" : "many";
   return BUILTIN_CARDINALITY[a] ?? "many";
 }
@@ -253,7 +302,13 @@ async function upsertCurrentFact(
     // Replace any existing current row for this (e, a).
     const existing = await ctx.db
       .query("currentFacts")
-      .withIndex("by_e_a", (q) => q.eq("e", fact.e).eq("a", fact.a))
+      .withIndex(
+        fact.tenantId === undefined ? "by_e_a" : "by_tenant_and_e_a",
+        (q) =>
+          fact.tenantId === undefined
+            ? q.eq("e", fact.e).eq("a", fact.a)
+            : q.eq("tenantId", fact.tenantId).eq("e", fact.e).eq("a", fact.a),
+      )
       .collect();
     for (const row of existing) {
       await ctx.db.delete("currentFacts", row._id);
@@ -262,8 +317,16 @@ async function upsertCurrentFact(
     // For cardinality-many, dedupe on the exact value.
     const existing = await ctx.db
       .query("currentFacts")
-      .withIndex("by_e_a_v", (q) =>
-        q.eq("e", fact.e).eq("a", fact.a).eq("v", fact.v),
+      .withIndex(
+        fact.tenantId === undefined ? "by_e_a_v" : "by_tenant_and_e_a_v",
+        (q) =>
+          fact.tenantId === undefined
+            ? q.eq("e", fact.e).eq("a", fact.a).eq("v", fact.v)
+            : q
+                .eq("tenantId", fact.tenantId)
+                .eq("e", fact.e)
+                .eq("a", fact.a)
+                .eq("v", fact.v),
       )
       .collect();
     for (const row of existing) {
@@ -278,6 +341,7 @@ async function upsertCurrentFact(
   if (!isVisible(fact, { txTime: now, validTime: now })) return;
 
   await ctx.db.insert("currentFacts", {
+    tenantId: fact.tenantId,
     e: fact.e,
     a: fact.a,
     v: fact.v,
@@ -294,10 +358,17 @@ async function removeCurrentFact(
   factId: Id<"facts">,
   e: string,
   a: string,
+  tenantId?: Id<"tenants">,
 ): Promise<void> {
   const rows = await ctx.db
     .query("currentFacts")
-    .withIndex("by_e_a", (q) => q.eq("e", e).eq("a", a))
+    .withIndex(
+      tenantId === undefined ? "by_e_a" : "by_tenant_and_e_a",
+      (q) =>
+        tenantId === undefined
+          ? q.eq("e", e).eq("a", a)
+          : q.eq("tenantId", tenantId).eq("e", e).eq("a", a),
+    )
     .collect();
   for (const row of rows) {
     if (row.factId === factId) {
@@ -327,14 +398,23 @@ export async function assertInTx(
     source?: string;
   },
 ): Promise<Id<"facts">> {
-  const validFrom = args.validFrom ?? now;
-  const cardinality = await cardinalityOf(ctx, args.a);
   const tx = await getTx(ctx, txId);
+  const validFrom = args.validFrom ?? now;
+  const cardinality = await cardinalityOf(ctx, args.a, tx.tenantId);
   const priorCurrent =
     cardinality === "one"
       ? await ctx.db
           .query("currentFacts")
-          .withIndex("by_e_a", (q) => q.eq("e", args.e).eq("a", args.a))
+          .withIndex(
+            tx.tenantId === undefined ? "by_e_a" : "by_tenant_and_e_a",
+            (q) =>
+              tx.tenantId === undefined
+                ? q.eq("e", args.e).eq("a", args.a)
+                : q
+                    .eq("tenantId", tx.tenantId)
+                    .eq("e", args.e)
+                    .eq("a", args.a),
+          )
           .collect()
       : [];
 
@@ -347,6 +427,7 @@ export async function assertInTx(
     reason: args.reason,
   });
   const factId = await ctx.db.insert("facts", {
+    tenantId: tx.tenantId,
     e: args.e,
     a: args.a,
     v: args.value,
@@ -361,6 +442,7 @@ export async function assertInTx(
   await insertFactEvent(
     ctx,
     {
+      tenantId: tx.tenantId,
       txId,
       txTime: now,
       kind: "assert",
@@ -414,6 +496,7 @@ export async function retractInTx(
   await insertFactEvent(
     ctx,
     {
+      tenantId: tx.tenantId,
       txId,
       txTime: now,
       kind: "retract",
@@ -425,7 +508,7 @@ export async function retractInTx(
     },
     eventPatch(ev),
   );
-  await removeCurrentFact(ctx, fact._id, fact.e, fact.a);
+  await removeCurrentFact(ctx, fact._id, fact.e, fact.a, fact.tenantId);
   await ctx.scheduler.runAfter(0, internal.materialize.processFactChange, {
     e: fact.e,
     a: fact.a,
@@ -442,6 +525,7 @@ export const assertFact = mutation({
     e: v.string(),
     a: v.string(),
     value: v.any(),
+    tenantSlug: v.string(),
     validFrom: v.optional(v.number()),
     validTo: v.optional(v.number()),
     reason: v.optional(v.string()),
@@ -449,10 +533,12 @@ export const assertFact = mutation({
     source: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const actorId = await requireWritePrincipal(ctx);
+    const tenant = await requireTenant(ctx, args.tenantSlug, "editor");
+    const actorId = tenant.principal;
     const now = Date.now();
     const txId = await createTransaction(ctx, {
       actorId,
+      tenantId: tenant.tenantId,
       reason: args.reason,
       source: args.source,
       now,
@@ -472,21 +558,24 @@ export const assertFact = mutation({
 
 export const retractFact = mutation({
   args: {
+    tenantSlug: v.string(),
     factId: v.id("facts"),
     validTo: v.optional(v.number()),
     reason: v.optional(v.string()),
     actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const actorId = await requireWritePrincipal(ctx);
     const now = Date.now();
     const fact = await ctx.db.get("facts", args.factId);
     if (!fact) throw new Error(`fact ${args.factId} not found`);
+    const tenant = await requireTenantFactWrite(ctx, args.tenantSlug, fact);
+    const actorId = tenant.principal;
     if (fact.retractedAt !== undefined) {
       return { txId: null, factId: args.factId, alreadyRetracted: true };
     }
 
     const txId = await createTransaction(ctx, {
+      tenantId: tenant.tenantId,
       actorId,
       reason: args.reason,
       now,
@@ -503,6 +592,7 @@ export const retractFact = mutation({
     await insertFactEvent(
       ctx,
       {
+        tenantId: tx.tenantId,
         txId,
         txTime: now,
         kind: "retract",
@@ -516,7 +606,7 @@ export const retractFact = mutation({
       eventPatch(ev),
     );
 
-    await removeCurrentFact(ctx, fact._id, fact.e, fact.a);
+    await removeCurrentFact(ctx, fact._id, fact.e, fact.a, fact.tenantId);
 
     await ctx.scheduler.runAfter(0, internal.materialize.processFactChange, {
       e: fact.e,
@@ -532,17 +622,20 @@ export const retractFact = mutation({
 
 export const tombstoneFact = mutation({
   args: {
+    tenantSlug: v.string(),
     factId: v.id("facts"),
     reason: v.string(),
     actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const actorId = await requireWritePrincipal(ctx);
     const now = Date.now();
     const fact = await ctx.db.get("facts", args.factId);
     if (!fact) throw new Error(`fact ${args.factId} not found`);
+    const tenant = await requireTenantFactWrite(ctx, args.tenantSlug, fact);
+    const actorId = tenant.principal;
 
     const txId = await createTransaction(ctx, {
+      tenantId: tenant.tenantId,
       actorId,
       reason: args.reason,
       now,
@@ -560,6 +653,7 @@ export const tombstoneFact = mutation({
     await insertFactEvent(
       ctx,
       {
+        tenantId: tx.tenantId,
         txId,
         txTime: now,
         kind: "tombstone",
@@ -572,7 +666,7 @@ export const tombstoneFact = mutation({
       eventPatch(ev),
     );
 
-    await removeCurrentFact(ctx, fact._id, fact.e, fact.a);
+    await removeCurrentFact(ctx, fact._id, fact.e, fact.a, fact.tenantId);
 
     await ctx.scheduler.runAfter(0, internal.materialize.processFactChange, {
       e: fact.e,
@@ -588,6 +682,7 @@ export const tombstoneFact = mutation({
 
 export const correctFact = mutation({
   args: {
+    tenantSlug: v.string(),
     factId: v.id("facts"),
     newValue: v.optional(v.any()),
     newValidFrom: v.optional(v.number()),
@@ -596,12 +691,14 @@ export const correctFact = mutation({
     actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const actorId = await requireWritePrincipal(ctx);
     const now = Date.now();
     const old = await ctx.db.get("facts", args.factId);
     if (!old) throw new Error(`fact ${args.factId} not found`);
+    const tenant = await requireTenantFactWrite(ctx, args.tenantSlug, old);
+    const actorId = tenant.principal;
 
     const txId = await createTransaction(ctx, {
+      tenantId: tenant.tenantId,
       actorId,
       reason: args.reason,
       now,
@@ -620,6 +717,7 @@ export const correctFact = mutation({
     await insertFactEvent(
       ctx,
       {
+        tenantId: tx.tenantId,
         txId,
         txTime: now,
         kind: "tombstone",
@@ -631,7 +729,7 @@ export const correctFact = mutation({
       },
       eventPatch(tombEv),
     );
-    await removeCurrentFact(ctx, old._id, old.e, old.a);
+    await removeCurrentFact(ctx, old._id, old.e, old.a, old.tenantId);
 
     // Assert the corrected fact, linked to the old one.
     const value = args.newValue ?? old.v;
@@ -646,6 +744,7 @@ export const correctFact = mutation({
       causalRefs: [tombEv.id, oldTarget],
     });
     const newFactId = await ctx.db.insert("facts", {
+      tenantId: tx.tenantId,
       e: old.e,
       a: old.a,
       v: value,
@@ -662,6 +761,7 @@ export const correctFact = mutation({
     await insertFactEvent(
       ctx,
       {
+        tenantId: tx.tenantId,
         txId,
         txTime: now,
         kind: "assert",
@@ -677,7 +777,7 @@ export const correctFact = mutation({
     );
 
     const newFact = (await ctx.db.get("facts", newFactId))!;
-    const cardinality = await cardinalityOf(ctx, old.a);
+    const cardinality = await cardinalityOf(ctx, old.a, tx.tenantId);
     await upsertCurrentFact(ctx, newFact, cardinality, now);
 
     // A correction is protocol-level tombstone-old + assert-new. Notify the
@@ -706,9 +806,13 @@ export const correctFact = mutation({
 // --- queries ----------------------------------------------------------------
 
 export const getEntity = query({
-  args: { e: v.string() },
+  args: { e: v.string(), tenantSlug: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const result = await entityAttributesFromEventLog(ctx, { e: args.e });
+    const tenant = await readTenantOrLegacy(ctx, args.tenantSlug);
+    const result = await entityAttributesFromEventLog(ctx, {
+      e: args.e,
+      tenantId: tenant?.tenantId,
+    });
     return { id: args.e, attributes: result.attributes, denied: result.denied };
   },
 });
@@ -739,19 +843,41 @@ async function eventsForEntity(
   ctx: QueryCtx,
   e: string,
   limit: number,
+  tenantId?: Id<"tenants">,
 ): Promise<Doc<"factEvents">[]> {
-  return await ctx.db
-    .query("factEvents")
-    .withIndex("by_e", (q) => q.eq("e", e))
-    .take(limit);
+  if (tenantId !== undefined) {
+    return await ctx.db
+      .query("factEvents")
+      .withIndex("by_tenant_and_e", (q) => q.eq("tenantId", tenantId).eq("e", e))
+      .take(limit);
+  }
+  return await ctx.db.query("factEvents").withIndex("by_e", (q) => q.eq("e", e)).take(limit);
 }
 
 async function fetchCandidateFactEvents(
   ctx: QueryCtx,
-  args: { e?: string; a?: string },
+  args: { e?: string; a?: string; tenantId?: Id<"tenants"> },
   scanLimit: number,
 ): Promise<Doc<"factEvents">[]> {
-  const { e, a } = args;
+  const { e, a, tenantId } = args;
+  if (tenantId !== undefined) {
+    if (e !== undefined && a !== undefined) {
+      return await ctx.db
+        .query("factEvents")
+        .withIndex("by_tenant_and_e_a_tx", (q) =>
+          q.eq("tenantId", tenantId).eq("e", e).eq("a", a),
+        )
+        .take(scanLimit);
+    }
+    if (e !== undefined) return await eventsForEntity(ctx, e, scanLimit, tenantId);
+    if (a !== undefined) {
+      const rows = await ctx.db
+        .query("factEvents")
+        .withIndex("by_a_tx", (q) => q.eq("a", a))
+        .take(scanLimit);
+      return rows.filter((row) => row.tenantId === tenantId);
+    }
+  }
   if (e !== undefined && a !== undefined) {
     return await ctx.db
       .query("factEvents")
@@ -862,6 +988,7 @@ async function queryFactRowsFromEventLog(
     includeTombstoned?: boolean;
     includeRetracted?: boolean;
     limit?: number;
+    tenantId?: Id<"tenants">;
   },
 ): Promise<{
   coord: { txTime: number; validTime: number };
@@ -949,15 +1076,27 @@ async function cardinalityEventsForAttributes(
   ctx: QueryCtx,
   attrs: Iterable<string>,
   perAttributeLimit: number,
+  tenantId?: Id<"tenants">,
 ): Promise<Doc<"factEvents">[]> {
   const out: Doc<"factEvents">[] = [];
   for (const a of attrs) {
-    const rows = await ctx.db
-      .query("factEvents")
-      .withIndex("by_e_a_tx", (q) =>
-        q.eq("e", attrId(a)).eq("a", "cardinality"),
-      )
-      .take(perAttributeLimit);
+    const rows =
+      tenantId === undefined
+        ? await ctx.db
+            .query("factEvents")
+            .withIndex("by_e_a_tx", (q) =>
+              q.eq("e", attrId(a)).eq("a", "cardinality"),
+            )
+            .take(perAttributeLimit)
+        : await ctx.db
+            .query("factEvents")
+            .withIndex("by_tenant_and_e_a_tx", (q) =>
+              q
+                .eq("tenantId", tenantId)
+                .eq("e", attrId(a))
+                .eq("a", "cardinality"),
+            )
+            .take(perAttributeLimit);
     out.push(...rows);
   }
   return out;
@@ -980,6 +1119,7 @@ async function entityAttributesFromEventLog(
     includeTombstoned?: boolean;
     includeRetracted?: boolean;
     limit?: number;
+    tenantId?: Id<"tenants">;
   },
 ): Promise<{
   coord: { txTime: number; validTime: number };
@@ -992,13 +1132,18 @@ async function entityAttributesFromEventLog(
     validTime: args.validTime ?? Date.now(),
   };
   const limit = Math.min(args.limit ?? 2000, 5000);
-  const entityRows = await eventsForEntity(ctx, args.e, limit);
+  const entityRows = await eventsForEntity(ctx, args.e, limit, args.tenantId);
   const entityProtocol = await protocolEventsForRows(ctx, entityRows);
   const attrs = new Set<string>();
   for (const ev of entityProtocol.events) {
     if (ev.kind === "assert" && ev.a !== undefined) attrs.add(ev.a);
   }
-  const schemaRows = await cardinalityEventsForAttributes(ctx, attrs, 100);
+  const schemaRows = await cardinalityEventsForAttributes(
+    ctx,
+    attrs,
+    100,
+    args.tenantId,
+  );
   const schemaProtocol = await protocolEventsForRows(ctx, schemaRows);
   const log = fromEvents([...entityProtocol.events, ...schemaProtocol.events]);
   const folded = coreEntity(args.e, coord, log, cardinalityFromLog(log, coord), {
@@ -1034,9 +1179,14 @@ export const entityFromEventLog = query({
     includeTombstoned: v.optional(v.boolean()),
     includeRetracted: v.optional(v.boolean()),
     limit: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const result = await entityAttributesFromEventLog(ctx, args);
+    const tenant = await readTenantOrLegacy(ctx, args.tenantSlug);
+    const result = await entityAttributesFromEventLog(ctx, {
+      ...args,
+      tenantId: tenant?.tenantId,
+    });
     return { id: args.e, ...result };
   },
 });
@@ -1055,9 +1205,16 @@ export const queryFacts = query({
     includeTombstoned: v.optional(v.boolean()),
     includeRetracted: v.optional(v.boolean()),
     limit: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    return (await queryFactRowsFromEventLog(ctx, args)).rows;
+    const tenant = await readTenantOrLegacy(ctx, args.tenantSlug);
+    return (
+      await queryFactRowsFromEventLog(ctx, {
+        ...args,
+        tenantId: tenant?.tenantId,
+      })
+    ).rows;
   },
 });
 
@@ -1077,9 +1234,14 @@ export const queryFactsFromEventLog = query({
     includeTombstoned: v.optional(v.boolean()),
     includeRetracted: v.optional(v.boolean()),
     limit: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const result = await queryFactRowsFromEventLog(ctx, args);
+    const tenant = await readTenantOrLegacy(ctx, args.tenantSlug);
+    const result = await queryFactRowsFromEventLog(ctx, {
+      ...args,
+      tenantId: tenant?.tenantId,
+    });
     return {
       coord: result.coord,
       skippedLegacyEvents: result.skipped,
@@ -1141,25 +1303,44 @@ export const history = query({
     e: v.string(),
     a: v.optional(v.string()),
     limit: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const tenant = await readTenantOrLegacy(ctx, args.tenantSlug);
     const limit = Math.min(args.limit ?? 200, 1000);
     const principal = await readPrincipal(ctx);
     if (args.a !== undefined) {
       if (!(await canReadAttribute(ctx, principal, args.e, args.a))) return [];
-      return await ctx.db
-        .query("factEvents")
-        .withIndex("by_e_a_tx", (q) => q.eq("e", args.e).eq("a", args.a!))
-        .order("desc")
-        .take(limit);
+      return tenant === null
+        ? await ctx.db
+            .query("factEvents")
+            .withIndex("by_e_a_tx", (q) => q.eq("e", args.e).eq("a", args.a!))
+            .order("desc")
+            .take(limit)
+        : await ctx.db
+            .query("factEvents")
+            .withIndex("by_tenant_and_e_a_tx", (q) =>
+              q.eq("tenantId", tenant.tenantId).eq("e", args.e).eq("a", args.a!),
+            )
+            .order("desc")
+            .take(limit);
     }
     // Without an attribute, scan by entity across attributes is not indexed;
     // fall back to the canonical interval records ordered by assertion time.
-    const rows = await ctx.db
-      .query("facts")
-      .withIndex("by_e", (q) => q.eq("e", args.e))
-      .order("desc")
-      .take(limit);
+    const rows =
+      tenant === null
+        ? await ctx.db
+            .query("facts")
+            .withIndex("by_e", (q) => q.eq("e", args.e))
+            .order("desc")
+            .take(limit)
+        : await ctx.db
+            .query("facts")
+            .withIndex("by_tenant_and_e", (q) =>
+              q.eq("tenantId", tenant.tenantId).eq("e", args.e),
+            )
+            .order("desc")
+            .take(limit);
     const out: Doc<"facts">[] = [];
     for (const row of rows) {
       if (await canReadAttribute(ctx, principal, row.e, row.a)) out.push(row);
@@ -1189,9 +1370,14 @@ export const entityAsOf = query({
     validTime: v.optional(v.number()),
     includeTombstoned: v.optional(v.boolean()),
     includeRetracted: v.optional(v.boolean()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const result = await queryFactRowsFromEventLog(ctx, args);
+    const tenant = await readTenantOrLegacy(ctx, args.tenantSlug);
+    const result = await queryFactRowsFromEventLog(ctx, {
+      ...args,
+      tenantId: tenant?.tenantId,
+    });
     const attributes: Record<string, unknown[]> = {};
     for (const row of result.rows) {
       (attributes[row.a] ??= []).push(row.v);
@@ -1217,12 +1403,15 @@ export const compareFacts = query({
     before: coordValidator,
     after: coordValidator,
     includeTombstoned: v.optional(v.boolean()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const tenant = await readTenantOrLegacy(ctx, args.tenantSlug);
     const queryArgs = {
       e: args.e,
       a: args.a,
       includeTombstoned: args.includeTombstoned,
+      tenantId: tenant?.tenantId,
     };
     const [beforeResult, afterResult] = await Promise.all([
       queryFactRowsFromEventLog(ctx, {
@@ -1270,9 +1459,14 @@ export const entityFactsAsOf = query({
     validTime: v.optional(v.number()),
     includeTombstoned: v.optional(v.boolean()),
     includeRetracted: v.optional(v.boolean()),
+    tenantSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const result = await queryFactRowsFromEventLog(ctx, args);
+    const tenant = await readTenantOrLegacy(ctx, args.tenantSlug);
+    const result = await queryFactRowsFromEventLog(ctx, {
+      ...args,
+      tenantId: tenant?.tenantId,
+    });
     const out = result.rows.map((f) => ({
       a: f.a,
       v: f.v,
@@ -1295,13 +1489,27 @@ export const entityFactsAsOf = query({
  * correction across all its attributes), newest first, annotated with actor.
  */
 export const entityTimeline = query({
-  args: { e: v.string(), limit: v.optional(v.number()) },
+  args: {
+    e: v.string(),
+    limit: v.optional(v.number()),
+    tenantSlug: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
-    const events = await ctx.db
-      .query("factEvents")
-      .withIndex("by_e", (q) => q.eq("e", args.e))
-      .order("desc")
-      .take(Math.min(args.limit ?? 200, 1000));
+    const tenant = await readTenantOrLegacy(ctx, args.tenantSlug);
+    const events =
+      tenant === null
+        ? await ctx.db
+            .query("factEvents")
+            .withIndex("by_e", (q) => q.eq("e", args.e))
+            .order("desc")
+            .take(Math.min(args.limit ?? 200, 1000))
+        : await ctx.db
+            .query("factEvents")
+            .withIndex("by_tenant_and_e", (q) =>
+              q.eq("tenantId", tenant.tenantId).eq("e", args.e),
+            )
+            .order("desc")
+            .take(Math.min(args.limit ?? 200, 1000));
 
     const principal = await readPrincipal(ctx);
     const out = [];
