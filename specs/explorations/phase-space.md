@@ -234,6 +234,19 @@ prevented by a drift test. Written up in [`workato.md`](./workato.md), with
 the transport tier itself becomes an alchemy resource); the durable artifact
 is the Integration IR + emitter seam, not the vendor choice.
 
+### 2.8 Elaborate into a durable-execution host (`forma → Effect Cluster`)
+
+The same seam, one boundary in from iPaaS: a `define-workflow`'s IR carries a
+*durability descriptor* (durable steps, signals/waits, retry, timeout) and
+lowers to an `Effect<WorkflowResult>` that runs on interchangeable
+durable-execution adapters — Inngest, Restate, Temporal, CF Workflows, Rivet,
+or the DO+alarms path the Cloudflare target already hand-rolls. Effect is the
+algebra; the platform is an adapter on `targets.md`'s execution-host axis.
+Written up in [`effect-cluster.md`](./effect-cluster.md), which also folds in
+`shelly` (the *machine* as a reconciled desired-vs-observed-facts target,
+lockfile-as-proof) and the **actor = SQLite + triples** primitive (a portable
+Durable Object). Deflationary: these are existing points, not new axes.
+
 ---
 
 ## Axis 3 — new physics (laws the IR could carry that nothing else has)

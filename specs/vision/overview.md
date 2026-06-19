@@ -1,10 +1,14 @@
 # Overview — one substrate, many products
 
-> **Naming & layers.** **MetaCRDT** is the umbrella — the primitive and the org.
-> The substrate is `@metacrdt/*`; the open spec is *Open Ontology* ([SPEC.md](../reference/protocol.md));
-> the default blueprint library is *Alpha Ontology*; the authoring/IDE layer is
-> *Schematics* (frontend *Onlang/Forma*); and *Onboarded* is the first application
-> (the datarooms/compliance vertical) built on it. The full map is
+> **Naming & layers** (canonical: [`branding.md`](./branding.md)). **Open
+> Ontology** is the umbrella — the org, front door, and wedge ("the open
+> alternative to Palantir's Ontology"). **ontology.run** is the hosted service
+> (a registry of named ontologies); **metacrdt.com** carries first-party
+> kernel-native products (*shelly*, *dataroom*). Below the brand: **Forma** is
+> the language, **MetaCRDT** the substrate (`@metacrdt/*`), **Schematics** the
+> authoring/IDE workbench, **Operational Algebra** the theory/paper, and
+> **Onboarded** the first application (`onboarded.ontology.run`, the
+> datarooms/compliance vertical). The full map is
 > [docs/architecture.md](../reference/architecture.md); the founding statement is
 > [docs/manifesto.md](../reference/positioning.md).
 
