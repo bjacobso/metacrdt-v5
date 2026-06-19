@@ -9,56 +9,67 @@
 > honest. When a doc, package, or pitch uses a name outside its layer, that is
 > a bug.
 >
-> **Decided:** the brand stack is consolidated under **Operational Algebra** —
-> the theory, the system, and the customer front door are one name. The hosted
-> product is **Operational Algebra Cloud**. Open Ontology and Schematics are
-> retired (see *Retired names*).
+> **Decided (2026-06-18):** the umbrella is **Open Ontology** — the org, the
+> front door, the brand, the wedge ("the open alternative to Palantir's
+> Ontology"). The hosted service is **ontology.run**. **Operational Algebra** is
+> demoted to its honest job: the theory/paper, not the front door. This
+> reverses the June-10 consolidation — see *Reversal history*, which this
+> document intends to end.
 
 ---
 
 ## The stack
 
 ```
-Operational Algebra            the front door: theory, system, product
-├── Operational Algebra Cloud      the hosted operational runtime
+Open Ontology                  the umbrella: org · front door · brand · wedge
+├── ontology.run                   the hosted service — a registry of named, running ontologies
+│   ├── adapter ontologies             a vendor surface reflected   (salesforce.ontology.run, checkr.ontology.run)
+│   └── domain ontologies / apps       an authored product          (onboarded.ontology.run)
+├── metacrdt.com                   first-party products that surface the kernel directly
+│   ├── shelly.metacrdt.com            the reconciliation loop → the machine
+│   └── dataroom.metacrdt.com          room physics → secure shared projections
 ├── Forma                          the language (authoring surface)
 ├── MetaCRDT                       the substrate (protocol + runtime packages)
-├── Alchemy                        the deploy layer (plan/apply, previews)
-└── Onboarded                      the proof (first application)
+├── Schematics                     the workbench (authoring / IDE)
+├── Operational Algebra            the theory and the paper — not the brand
+└── Onboarded                      the proof (first application; onboarded.ontology.run)
 ```
 
 One sentence each:
 
-> **Operational Algebra** is the theory and the company's front door — we
-> invent the primitive *and* operate the deploy surface. **Operational Algebra
-> Cloud** is the hosted runtime. **Forma** is the language. **MetaCRDT** is
-> the substrate. **Alchemy** manages deploys. **Onboarded** is the first
-> application built on top.
+> **Open Ontology** is the umbrella and the front door — the org, the brand,
+> and the wedge against Palantir's Foundry Ontology. **ontology.run** is the
+> hosted service: a registry of named ontologies, each running. **metacrdt.com**
+> is where the first-party, kernel-native products live (**shelly**,
+> **dataroom**). **Forma** is the language. **MetaCRDT** is the substrate.
+> **Schematics** is the workbench. **Operational Algebra** is the theory.
+> **Onboarded** is the first application.
 
-The posture this buys: Operational Algebra is to this company what the
-relational model was to Oracle — except the theory and the vendor share a
-name on purpose. The strategy is reference-implementation-led, not
-standards-led: the commons cost (a second implementation can't call itself an
-operational-algebra engine without brand confusion) is accepted.
+The posture this buys: "ontology" is the only word legible to *both* wedge
+audiences — Palantir-aware buyers who already think in ontologies, and OSS devs
+who'll `npm install` the substrate. It names the artifact customers actually
+buy, and the "Open" prefix is the entire positioning against a closed
+incumbent. The June-10 attempt to make one *theory* name (Operational Algebra)
+also carry the front door failed not because the name was wrong but because it
+was overloaded — a missing-names problem. The fix is crisp sub-names under one
+umbrella, each with exactly one job.
 
 ---
 
-## Operational Algebra — the front door
+## Open Ontology — the umbrella and front door
 
-The theory, the system, and the brand customers meet. The website, the org,
-the docs, the paper, and the pitch all lead with it.
+The brand customers and contributors meet first. The org, the website, the
+pitch, and the GitHub/npm org strings all lead with it.
 
-**Positioning (from the homepage):**
+**Positioning (the wedge):**
 
-> *Hosted operational runtime. Facts. Constraints. Processes. One living
-> system.* — Model a slice of your operations in code, deploy it like
-> infrastructure, and keep the model active in the background.
+> *The open alternative to Palantir's Ontology.* Model a slice of your
+> operations as facts, constraints, and processes; deploy it like
+> infrastructure; keep the model running in the background — on open packages
+> you own, not a closed platform you rent.
 
-> Operational Algebra is the product surface around MetaCRDT and Forma:
-> entities, relationships, constraints, mutations, views, and processes
-> become versioned definitions that compile into a running ontology.
-
-The customer-facing story has three load-bearing phrases:
+The customer-facing story keeps three load-bearing phrases (they describe the
+product regardless of which name sits on top, so they survived the reversal):
 
 - **Business as Code** — the ontology lives in markdown files checked into
   git, reviewed in PRs, deployed through an infrastructure-style pipeline.
@@ -73,19 +84,36 @@ The customer-facing story has three load-bearing phrases:
 
 | Is | Is not |
 | --- | --- |
-| The theory, the paper, the laws | A neutral academic commons (accepted cost) |
-| The customer front door and brand | One product among several |
+| The org, the front door, the wedge | A neutral academic commons |
+| The brand on the homepage and the GitHub org | A technical layer (those are below it) |
 
-**Analogy:** relational algebra and Oracle, deliberately sharing a name;
-Terraform the idea and Terraform the product.
+**Analogy:** Open Ontology is to this company what *Kubernetes* (the open
+project + the term) is to the cloud-native world, or what *the relational
+model, but open and operated* would have been to Oracle. The wedge framing is
+literal: Palantir Foundry has an "Ontology"; this is the open one.
 
-## Operational Algebra Cloud — the hosted runtime
+## ontology.run — the hosted service
 
-The deploy surface. A hosted runtime for **ambient ontologies**: define the
-operational model in code, version it, deploy it like infrastructure, and let
-facts, constraints, and processes keep running in the background.
+"Your ontology, running." The deploy and monetization surface — but with a
+specific shape: **a registry of named ontologies, addressable by subdomain.**
+There are two species, and keeping them crisp is the same *guard-the-IR*
+discipline the integration explorations enforce
+([`integrations.md`](./integrations.md),
+[`../explorations/workato.md`](../explorations/workato.md)):
 
-The lifecycle (the pipeline on the homepage):
+- **Adapter ontologies** — a vendor's surface reflected into the ontology, the
+  integration boundary's output: `salesforce.ontology.run`,
+  `checkr.ontology.run`. These are `define-integration` artifacts, not authored
+  products.
+- **Domain ontologies / apps** — authored in Forma (`define-form`,
+  `define-workflow`): `onboarded.ontology.run`, the first app.
+
+The namespace is a **dependency graph, not a flat list**: a domain ontology
+composes adapter ontologies. `onboarded.ontology.run` consumes
+`checkr.ontology.run` (background check) and `salesforce.ontology.run` (CRM) —
+the `onboard-employee` workflow imports both.
+
+The deploy lifecycle (the homepage pipeline):
 
 ```
 Author      markdown + embedded Forma definitions
@@ -97,20 +125,52 @@ Run         constraints evaluate, processes trigger, every result audited
 
 | Is | Is not |
 | --- | --- |
-| Where customers deploy and operate | Required to use the open packages |
-| The monetization surface | A separate brand to explain |
+| Where customers deploy and operate; the monetization surface | Required to use the open packages |
+| A registry of named, composable ontologies | A single-app multi-tenant host (it hosts both species) |
 
-**Analogy:** Terraform Cloud is to Terraform as Operational Algebra Cloud is
-to Operational Algebra. Also: GitHub to Git.
+**Analogy:** Terraform Cloud is to Terraform as ontology.run is to Open
+Ontology. The registry shape is closer to npm or a package registry than to one
+SaaS app — each subdomain is a named, versioned, importable ontology.
+
+## metacrdt.com — first-party kernel products
+
+A second live domain with a distinct job from ontology.run. Where ontology.run
+hosts *applied* ontologies (yours, the customer's, a vendor's), **metacrdt.com
+is where the engine company ships its own horizontal products** — the ones that
+surface the kernel's physics directly and are sold to developers:
+
+- **shelly.metacrdt.com** — the reconciliation loop (desired vs observed facts)
+  pointed at *the machine*: a README that provisions its own dev environment,
+  with the lockfile as a proof of convergence rather than a script. See
+  [`../explorations/effect-cluster.md`](../explorations/effect-cluster.md) §3.
+- **dataroom.metacrdt.com** — the shadow-rooms physics (consent + projection +
+  bitemporality + redaction) pointed at secure document sharing: a virtual data
+  room where a member sees a *projection*, never raw events. See
+  [`../explorations/shadow-rooms.md`](../explorations/shadow-rooms.md) and
+  [`documents.md`](./documents.md).
+
+This gives **MetaCRDT a deliberate dual role**, which must not blur: as a *name*
+it stays substrate/architecture vocabulary (below); as a *domain* it is the home
+of kernel-native products. The rule of thumb: a thing lives on metacrdt.com when
+it sells a **capability of the engine** to developers; it lives on ontology.run
+when it is **an ontology someone authored or reflected**.
+
+| Is | Is not |
+| --- | --- |
+| First-party products of the kernel, dev-facing | Customer-authored ontologies (those are ontology.run) |
+| Horizontal tools (a machine, a data room) | A vertical domain app |
 
 ## Forma — the language
 
-How humans (and agents) author Operational Algebra. A homoiconic syntax that
+How humans (and agents) author Open Ontology. A homoiconic syntax that
 elaborates into executable runtime structures. Forma source is the authoring
 surface; what it elaborates *to* is MetaCRDT.
 
-Lives at `packages/@forma/*`. On customer-facing surfaces it may be written
-"Forma Lisp" for first-contact clarity; in the stack docs it is **Forma**.
+Lives under the Forma package scope. On customer-facing surfaces it may be
+written "Forma Lisp" for first-contact clarity; in the stack docs it is
+**Forma**. (Autodesk ships a product called "Forma" — collision caveat tracked
+in the extraction plan; the names don't compete in market but copy should not
+imply endorsement.)
 
 | Is | Is not |
 | --- | --- |
@@ -125,49 +185,95 @@ Also: Lisp, Terraform HCL.
 The machine. The convergent log of declarations: storage, branching, merging,
 conflict resolution, time travel, distributed execution. The computational
 primitive everything else compiles to and folds over.
-[`metacrdt-alignment.md`](./metacrdt-alignment.md) already names this lens:
-everything is a fact, a fold, or a reaction.
+[`metacrdt-alignment.md`](./metacrdt-alignment.md) names this lens: everything
+is a fact, a fold, or a reaction.
 
-Not the company. Not the product. The protocol — the thing worth owning the
-npm scope and spec around. Infrastructure vocabulary, not customer
-vocabulary: it appears in the architecture section, not the hero.
+As a *name* it is infrastructure vocabulary, not the hero: it appears in the
+architecture section and in the package scope `@metacrdt/*`, not the umbrella.
+(As a *domain*, metacrdt.com carries first-party products — see above; that is a
+deliberate exception, and those products carry their own sub-names like shelly
+and dataroom, never "MetaCRDT" as a consumer brand.)
 
 | Is | Is not |
 | --- | --- |
-| The object model and merge semantics | A user-facing brand |
+| The object model and merge semantics | A user-facing umbrella brand |
 | The IR Forma elaborates into | The authoring syntax |
 
 **Analogy:** the Git object model, the relational model, the BEAM.
 
-## Alchemy — the deploy layer
+## Schematics — the workbench
 
-Plan/apply, stages, routes, bindings, and PR preview environments for
-ontology deploys (see [`../explorations/alchemy.md`](../explorations/alchemy.md)).
-Component vocabulary like MetaCRDT: it appears in "Alchemy-deployed" badges
-and pipeline docs, not as a standalone brand.
+The authoring/IDE layer: where ontologies are written, browsed, diffed, and
+deployed — the human surface over Forma + the plan/apply pipeline. Component
+vocabulary, not the umbrella; it appears in product docs, not the wedge.
+
+| Is | Is not |
+| --- | --- |
+| The IDE / workbench for authoring | The language (that is Forma) |
+| Where you edit and deploy | The hosted runtime (that is ontology.run) |
+
+## Operational Algebra — the theory
+
+The paper. The primitives, operators, and laws — `assert` / `fold` / `react`
+plus the closure rule and the two laws. It is the intellectual foundation and
+the conformance target, and it earns credibility, but it is **not the front
+door**: customers do not buy "an operational algebra," they buy an open
+ontology that runs. OA appears in the paper, the `operational-algebra.md` /
+`forma-zero.md` reductions, and "under the hood" footnotes — never the hero.
+
+| Is | Is not |
+| --- | --- |
+| The theory, the paper, the laws, the conformance target | The brand or the front door (that is Open Ontology) |
+
+**Analogy:** relational algebra is the theory; the relational *database* is what
+shipped. Operational Algebra is the relational-algebra layer of this stack.
 
 ## Onboarded — the proof
 
 The first serious application, built entirely from the kernel: I-9 workflows,
 violations, approvals, forms, dashboards — with no new primitives. Proof by
-construction that the algebra is sufficient for at least one real domain.
+construction that the algebra is sufficient for at least one real domain. It is
+a *domain ontology* on the registry: `onboarded.ontology.run`, composing the
+`checkr` and `salesforce` adapter ontologies.
 
 | Is | Is not |
 | --- | --- |
-| A customer-facing product | Part of the kernel |
+| A customer-facing product; a domain ontology | Part of the kernel |
 | The first existence proof | The only intended domain |
 
 **Analogy:** Salesforce runs on Oracle; GitHub runs on Git; Onboarded runs on
-Operational Algebra.
+Open Ontology.
 
-## Retired names
+---
 
-- **Open Ontology** — was the umbrella; replaced by Operational Algebra as
-  the front door. Survives only in historical docs and the
-  `specs/plans/open-ontology-unification.md` lineage. New surfaces should not
-  introduce it.
-- **Schematics** — was the workbench brand; absorbed into Operational Algebra
-  Cloud. At most an internal codename.
+## Reversal history — and why this is the last one
+
+The umbrella name oscillated three times; recording it here is the point, so it
+stops:
+
+1. **2026-06-09** — Open Ontology chosen as the umbrella.
+2. **2026-06-10** — superseded by **Operational Algebra** as a single
+   consolidated name (theory + system + front door), with Open Ontology and
+   Schematics retired. This is the state the prior version of this doc encoded.
+3. **2026-06-18** — reversed back to **Open Ontology** as the umbrella, with
+   **Operational Algebra demoted to the theory** and **Schematics un-retired**
+   as the workbench. The June-10 consolidation was an overload, not a clarity
+   win: forcing one name to mean the theory *and* the product *and* the org
+   made every sentence ambiguous. The diagnosis — *the June-10 overload was a
+   missing-names problem, not a wrong-name problem* — is what makes this stable:
+   the fix is more crisp names, not fewer.
+
+**Why Open Ontology is robust to the question that kept this oscillating** —
+"who are the first 1,000 users, devs npm-installing the substrate or buyers of
+the hosted product?" — it works for either answer. Devs get open packages under
+an org whose name describes the artifact; buyers get a legible wedge against a
+named incumbent. No other candidate satisfied both audiences.
+
+Status of assets backing this (per Ben, 2026-06): `open-ontology.com`,
+`ontology.run`, and `metacrdt.com` are owned; GitHub orgs `Open-Ontology` and
+`metacrdt` and npm scopes `@open-ontology` / `@metacrdt` are reserved. Proof
+obligation before metacrdt.com goes live: the convergence/merge demo (the
+substrate's central claim must be visibly true).
 
 ---
 
@@ -186,7 +292,7 @@ the seven and footnote the kernel ("under the hood, all seven reduce to three
 forms and two laws — that reduction is tested on every build"). The
 conformance suite is a marketable fact.
 
-Copy nit to fix: the homepage says "**Nine** primitives, one machine" over a
+Copy nit still open: the homepage says "**Nine** primitives, one machine" over a
 table listing **seven**. Either count the table or grow the table — forms and
 actions are the likely missing two rows.
 
@@ -212,7 +318,10 @@ Effect runtime
 The conformance suite ([`forma-zero.md`](./forma-zero.md) §7,
 `packages/@forma/conformance/`) made the agreement executable — the
 substrate's primitives and the theory's primitives are demonstrably the same
-thing, which is what made one front-door name honest rather than aspirational.
+thing. The lesson the June-10/June-18 swing teaches: **unify the kernel, keep
+the brands distinct.** The kernel is one thing wearing three notations (paper,
+language, runtime); the *brand stack* is many things that each deserve their own
+name. Collapsing the brands to match the kernel's unity was the mistake.
 
 ### The proof obligations
 
@@ -238,18 +347,28 @@ In strength order (the Roots-of-Lisp ladder):
 
 ## Usage rules
 
-- Say **Operational Algebra** for the theory, the system, the company front
-  door, and the brand. It is now also the product family name.
-- Say **Operational Algebra Cloud** for the hosted runtime — the thing
-  customers sign up for, deploy to, and pay for.
+- Say **Open Ontology** for the umbrella, the org, the front door, the brand,
+  and the wedge. GitHub org / npm scope strings follow it (`@open-ontology`).
+- Say **ontology.run** for the hosted service. When precision matters, say
+  whether a subdomain is an **adapter ontology** (a reflected vendor surface) or
+  a **domain ontology / app** (authored) — don't let the two species blur.
+- Say **metacrdt.com** (and the product's own sub-name, e.g. **shelly**,
+  **dataroom**) for first-party kernel products — never "MetaCRDT" as the
+  consumer brand of one of them.
 - Say **Forma** when talking about syntax, files, elaboration, authoring
   ("Forma Lisp" is acceptable on first contact in customer copy).
 - Say **MetaCRDT** when talking about storage, merge, branches, history,
   convergence, or the IR. Package scope: `@metacrdt/*`. Architecture
-  vocabulary, never the hero.
-- Say **Alchemy** only for the deploy pipeline machinery.
-- Say **Onboarded** only when talking about the HR application.
-- Do not introduce **Open Ontology** or **Schematics** on new surfaces.
+  vocabulary, never the umbrella.
+- Say **Schematics** for the authoring/IDE workbench.
+- Say **Operational Algebra** for the theory and the paper — never the front
+  door, never the product family.
+- Say **Onboarded** only when talking about the HR application
+  (`onboarded.ontology.run`).
+- Do not put **Operational Algebra** on the homepage hero or the org name; do
+  not reintroduce it as the umbrella. That was the June-10 reversal this
+  document undoes.
 
 A sentence that mixes layers ("Forma stores declarations", "MetaCRDT is our
-workflow product") is misusing a name — rewrite it.
+workflow product", "Operational Algebra is the company") is misusing a name —
+rewrite it.
