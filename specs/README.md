@@ -71,3 +71,4 @@ Used consistently across every doc, so you always know reality vs. aspiration:
 
 ### Explorations — *speculative* (`💭`)
 - [`explorations/README.md`](./explorations/README.md) — Confect, Foldkit, Alchemy
+  and Schematics-as-authoring/deploy workbench

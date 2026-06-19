@@ -4,3 +4,6 @@
 [submodule ".context/effect-v4"]
 	path = .context/effect-v4
 	url = https://github.com/effect-TS/effect-smol
+[submodule ".context/schematics"]
+	path = .context/schematics
+	url = https://github.com/bjacobso/schematics
