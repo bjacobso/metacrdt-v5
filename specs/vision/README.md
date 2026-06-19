@@ -150,6 +150,8 @@ requires _no storage change at all_, because the convergence is already latent i
 | [`branding.md`](./branding.md)           | The name stack, consolidated: Operational Algebra is the front door (theory + system + product), Operational Algebra Cloud the hosted runtime, Forma/MetaCRDT/Alchemy components, Onboarded the proof | naming        |
 | [`homepage.md`](./homepage.md)           | The open-ontology.com homepage outline: lab-notebook page that demonstrates instead of asserts — live merge demo as hero, dual-audience copy pairs, four instruments, proof ticker (presumes the Open Ontology umbrella direction; see its branding caveat) | naming        |
 | [`onepager.md`](./onepager.md)           | The shareable five-pager: abstract → five-primitives argument → operational algebra (the McCarthy move) → one section per instrument (Forma/MetaCRDT/Schematics/ontology.run) → why now → proof ladder → conclusion. Fully standalone, for Onboarded internal + external sharing | pitch         |
+| [`composition.md`](./composition.md)     | The dance: how the instruments compose while staying mutually ignorant — seven contract artifacts (PreludeSet → session → IR bundle → desired facts → plan → capabilities → transaction), the dependency matrix, current state per seam | architecture  |
+| [`modules.md`](./modules.md)             | The full hypothetical project, package by package: four repos, two npm scopes, ~38 packages with deps / spec / exposed surface; the concrete instantiation of `composition.md` | architecture  |
 | [`operational-algebra.md`](./operational-algebra.md) | Arguing the algebra down: the paper's five primitives and six operators derived from fact/fold/reaction — two verbs, one rule, two laws | kernel        |
 | [`forma-zero.md`](./forma-zero.md)       | The kernel as syntax: McCarthy's seven + `assert`/`fold`/`react`, the surface language derived as macros, and `opeval` written in itself | kernel        |
 | [`convex.md`](./convex.md)               | How does the whole vision rebase onto Convex? (decided: reframes, cuts, what's already shipped — now: one target among many)              | decisions     |
@@ -166,6 +168,7 @@ requires _no storage change at all_, because the convergence is already latent i
 | [`notifications.md`](./notifications.md) | Messaging, reminders & escalations as Flows + timing over the tx feed                                                                     | design depth  |
 | [`api.md`](./api.md)                     | Type-safety over a dynamic schema — incl. JIT-compiling a per-account `HttpApi` from the registry                                         | stretch       |
 | [`ai.md`](./ai.md)                       | Why is this an unusually good — and safe — AI substrate?                                                                                  | stretch       |
+| [`learning-loop.md`](./learning-loop.md) | The firm's model-portable token capital: the configured tier + provenance-rich traces as the eval/RL loop Nadella's "frontier ecosystem" thesis specifies; the substrate as loop-host, the sovereignty test passed by construction | stretch       |
 | [`config.md`](./config.md)               | Config-as-code for a whole account (Terraform-style `plan`/`apply`); account/form/workflow building as an agentic coding loop             | capstone      |
 | [`dsl.md`](./dsl.md)                     | End-to-end demo: a staffing company (I-9/handbook/forklift-quiz/venue-disclosure) defined with the Effect DSLs — the spec for an e2e test | demo / e2e    |
 | [`forma.md`](./forma.md)                 | A Lisp authoring surface that elaborates to one shared MetaCRDT DSL/IR, compiles to a Confect-shaped typed runtime, and lowers to Convex/Cloudflare/Node targets | authoring     |
@@ -176,8 +179,8 @@ requires _no storage change at all_, because the convergence is already latent i
 [`compliance.md`](./compliance.md) → [`library.md`](./library.md) → [`integrations.md`](./integrations.md) →
 [`authorization.md`](./authorization.md) → [`performance.md`](./performance.md) →
 [`privacy.md`](./privacy.md) → ([`experience.md`](./experience.md), [`documents.md`](./documents.md),
-[`notifications.md`](./notifications.md)) → ([`api.md`](./api.md), [`ai.md`](./ai.md)) →
-([`config.md`](./config.md), [`dsl.md`](./dsl.md)).
+[`notifications.md`](./notifications.md)) → ([`api.md`](./api.md), [`ai.md`](./ai.md),
+[`learning-loop.md`](./learning-loop.md)) → ([`config.md`](./config.md), [`dsl.md`](./dsl.md)).
 
 Roughly: the **substrate** ([`triples`](./triples.md)), then what it **unifies**
 ([`workflows`](./workflows.md), [`library`](./library.md), [`integrations`](./integrations.md)) — with
@@ -185,7 +188,7 @@ Roughly: the **substrate** ([`triples`](./triples.md)), then what it **unifies**
 end-to-end — then the **cross-cutting concerns** that make it real ([`authorization`](./authorization.md),
 [`performance`](./performance.md), [`privacy`](./privacy.md)), then the **experience layer** that humans
 touch ([`experience`](./experience.md), [`documents`](./documents.md), [`notifications`](./notifications.md)),
-then **stretch** directions ([`api`](./api.md), [`ai`](./ai.md)), then the **authoring layer** —
+then **stretch** directions ([`api`](./api.md), [`ai`](./ai.md), [`learning-loop`](./learning-loop.md)), then the **authoring layer** —
 config-as-code ([`config`](./config.md)) — and finally a concrete **end-to-end demo** ([`dsl`](./dsl.md)):
 a staffing company defined with the Effect DSLs that exercises the whole set and is the spec for an e2e
 test. Read [`assessment`](./assessment.md) when you want the cross-cutting critique: what the vision

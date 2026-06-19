@@ -176,6 +176,13 @@ Numbered field observations, not a feature grid:
   one.** Spec published, kernel conformance-tested, runs on your
   infrastructure or ours.
 
+**Margin note — the air cover:** *Even Microsoft's CEO argues the durable
+asset is the firm's own learning loop, swappable underneath any model — "a
+frontier ecosystem, not just a frontier model." We agree, and go one step
+further: if you own the loop, you should own the substrate it runs on. Their
+answer is a closed, vertically integrated loop; ours is a published protocol
+you can leave.* (See [`learning-loop.md`](./learning-loop.md).)
+
 ## 6 · The lab notebook — publish the uncertainty
 
 Link the actual spec tree (reference / vision / plans / explorations) with

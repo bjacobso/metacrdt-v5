@@ -13,6 +13,7 @@ intact. This is the **actionable** altitude — for the durable model see
 | Spec | Purpose | Current next slice |
 | --- | --- | --- |
 | [Open Ontology Unification](./open-ontology-unification.md) | Umbrella org/repo layout and the phased merge of this repo with Open Ontology | Phase 0: decisions on record + `@forma` npm org ownership check |
+| [Names](./names.md) | The naming registry: owned assets, verified-taken names, open registrations, rejected-name record, pending naming decisions | Register `forma-lang` / `create-ontology` / `ontology-run` bare npm packages + defensive GitHub org |
 | [Datalog Monotonicity Classification](./datalog-monotonicity-classification.md) | Rule-engine metadata that separates CALM-backed monotone rules from `prec`-order-dependent rules | Implement classifier helper and persist reports on `rules` |
 | [Anti-Entropy TLA+ Spec](./anti-entropy-tla.md) | Small formal model for version-vector delta sync safety/liveness | Add TLC config and check the small finite models |
 | [Cloudflare Phase D](./cloudflare-phase-d.md) | Durable Object SQLite operational parity after Goal 145 | Persisted flow definition registry lookup |

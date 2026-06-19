@@ -305,6 +305,17 @@ guardrails. We believe substrates like this are how agent-built software
 stays governable. Model vendors compete above this layer; business
 operations become stable underneath it.
 
+This is the same line the largest enterprise-AI vendor now draws from the
+other side. Satya Nadella argues[^nadella] that a firm's durable asset is not
+the model it rents but the *learning loop* that encodes its accumulated
+judgment — and that the test of owning it is whether you can swap the model
+without losing the "company veteran" expertise built into your system. In
+this stack that expertise lives in the declared, versioned ontology and the
+provenance-marked trace of every decision — owned by the firm, portable
+across models — not in any vendor's weights. The model is a swappable
+front-end to an asset the business keeps. We build the substrate that makes
+that sovereignty structural rather than a promise.
+
 **The category is validated — behind a closed door.** Palantir's Foundry[^foundry]
 made "the ontology" the center of some of the world's most demanding
 operations, and proved that modeling operations as a living, executable
@@ -501,3 +512,11 @@ logic, workflows, permissions, agents, and interfaces, one living system.*
     Distributed Consistency Is Easy," *Communications of the ACM*, 2020 —
     consistency-as-logical-monotonicity, the result that makes "acting on
     absence" a precise question rather than a vague worry.
+
+[^nadella]: Satya Nadella (CEO, Microsoft), "A frontier without an ecosystem
+    is not stable" (2026) — the argument for a "frontier ecosystem, not just a
+    frontier model," where every firm owns the learning loop that encodes its
+    institutional knowledge and can swap the underlying model without losing
+    it. The strongest external statement of the bet this document makes; the
+    `vision/learning-loop.md` note develops the substrate-as-loop-host
+    mapping, and the wedge against a closed, vertically integrated answer.
