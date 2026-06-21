@@ -68,13 +68,96 @@ the IR must describe *what durability it needs* without naming who provides it.
 
 | `targets.md` axis | Contract | What this doc adds |
 | --- | --- | --- |
-| Execution host | `SchedulerService` + lifecycle | durable-execution tier: Inngest, Restate, Temporal, CF Workflows, Rivet, DO+alarms |
+| Execution host | `SchedulerService` + lifecycle | durable-**execution** tier: Inngest, Restate, Temporal, CF Workflows, DO+alarms |
+| Sharding / placement *(new seam — see §1.5)* | `Sharding` · `Runners` · `MessageStorage` · `ShardManager` | virtual-actor tier: Rivet, Durable Objects, an Effect-Cluster pod fleet |
 | Storage adapter | `EventStoreService` | unchanged — adapter still chosen per host |
 | Transport | `TransportService` | unchanged |
+
+This row corrects §0: the one-line diagram lists Rivet and DO+alarms in the
+*same* column as Inngest/Temporal/CF Workflows. §1.5 shows that was a conflation
+— Rivet and DO live on a **different seam** than the durable-execution backends,
+and `@effect/cluster` is the name of that seam.
 
 The invariant from `targets.md` holds verbatim: **feature packages depend on
 `core` + `runtime` contracts, never on a target.** A workflow author never
 imports `inngest`.
+
+---
+
+## 1.5. Two seams, not one: sharding vs. durable execution
+
+§0 lined up Inngest, Restate, Temporal, CF Workflows, Rivet, and Durable Objects
+as one row of "durable-execution adapters." A question forces a correction:
+*why can't Rivet speak `@effect/cluster`? why can't Durable Objects? what about
+Workflows?* The answer is that those three are not on one axis — they straddle
+**two different seams**, and only one of them is what Effect Cluster names.
+
+```text
+                       ┌─────────────────────────────────────────────┐
+  sharding plane       │  WHERE an addressable stateful singleton lives │
+  (@effect/cluster)    │  + how messages route to it                   │
+                       │  entities · placement · mailboxes · rebalance │
+                       └─────────────────────────────────────────────┘
+                       ┌─────────────────────────────────────────────┐
+  durable-exec plane   │  HOW one logical execution survives a crash   │
+  (§2 descriptor)      │  step memoization · replay · retry · timers   │
+                       └─────────────────────────────────────────────┘
+```
+
+Effect Cluster's runner model needs four things: long-lived **runner** processes
+that each hold *many* entities in memory; a **ShardManager** that assigns shard
+ranges and rebalances on membership change; **runner-to-runner RPC** (a message
+for an entity you don't own is forwarded to the runner that does); and a
+**MessageStorage** layer for at-least-once delivery and replay. With that lens:
+
+- **Rivet can't *host* Cluster because Rivet *is* the sharding plane.** A Rivet
+  actor is addressable, single-writer, owns its storage, and is placed for you —
+  that is Cluster's *entity*, not a host for Cluster's runtime. Running Cluster
+  on Rivet is double-clustering: Cluster wants to own placement + peer-RPC, but
+  Rivet already owns placement and exposes no long-lived runner-holds-many-
+  entities tier with a mesh you control. Granularity is wrong (Cluster runner :
+  many entities :: Rivet actor : one entity). The integration that works is the
+  inverse — implement Cluster's `Sharding`/`Runners`/`MessageStorage` *on* Rivet
+  (Rivet actor = entity, Rivet placement = ShardManager).
+- **Durable Objects *replace* Cluster — same reason, sharper.** A DO is the
+  cleanest virtual-actor going: globally addressable by ID, single-threaded,
+  transactional storage, **and Cloudflare runs placement.** So DO already
+  supplies entity *and* ShardManager. What the Workers/DO model withholds is
+  Cluster's substrate: no long-lived runner holding many entities, no
+  peer-to-peer mesh you manage (DOs talk via stubs by ID), CPU/lifetime limits,
+  no arbitrary sockets. So DO doesn't host Cluster; DO is a Cluster *backend* —
+  DO ID = entity address, CF edge = router, CF placement = ShardManager.
+- **CF Workflows is a category error here — it isn't on the sharding plane at
+  all.** No addressable singletons, no mailboxes, no routed messages: it is
+  durable *execution* of one function across replayable steps. It can't host
+  entities. What it *can* be is the thing **behind** an entity — a Cluster
+  entity whose handler needs a crash-proof saga delegates to a Workflow. That is
+  exactly the §2 durability descriptor, one plane down.
+
+| Substrate | Plane | Relationship to `@effect/cluster` |
+| --- | --- | --- |
+| **Rivet** | sharding / virtual-actor | *is* it → implement Cluster's seams on it, don't run Cluster on it |
+| **Durable Objects** | sharding (+ managed placement) | *replaces* it → DO ID = entity, CF = ShardManager |
+| **CF Workflows** | durable execution | *orthogonal* → a backend behind an entity, never a host for one |
+| **Inngest / Temporal / Restate** | durable execution | §2 backends — realize the durability descriptor under an entity's handler |
+
+So none of them "speaks" Cluster for one structural reason: **Cluster bundles its
+own placement + routing + storage**, while Rivet and DO bring their own placement
++ routing and Workflows brings none. Speaking Cluster requires decomposing it
+into independently swappable Layers — `Sharding`, `Runners`, `MessageStorage`,
+`ShardManager` — at which point Rivet and DO become `Sharding`/`Runners`
+implementations and the durable-execution backends stay one plane below, under an
+entity's handler. This is the n8n.md *guard-the-IR* discipline applied to
+clustering: the durable artifact is the seam, not the vendor — but only once the
+seam is cut in the right place, and §0 cut it one seam too coarse.
+
+> `⚠` **Open question — is Cluster actually decomposable today?** This whole
+> section assumes `@effect/cluster` exposes `Sharding`/`Runners`/`MessageStorage`/
+> `ShardManager` as swappable Layers. Historically Cluster ships an opinionated
+> ShardManager + SQL `MessageStorage` that assume a *generic pod fleet*, not a
+> platform (Rivet, CF) that already does placement. If those internals are not
+> yet pluggable, "Rivet/DO as a Cluster backend" is an upstream ask, not a
+> wiring job. Verify against the current release before promoting this past 💭.
 
 ---
 
@@ -169,8 +252,12 @@ is built on. The lockfile-as-corpus observation (a growing dataset of "how Node
 drift-tested vendored recipes in [`n8n.md`](./n8n.md) §2.
 
 This is genuinely a *fourth* Axis-2 target: Forma → IR → **machine spec**, with
-`shelly verify` as the conformance harness. It is also the most product-distinct
-of the threads (see §5).
+`machine verify` as the conformance harness. It is also the most product-distinct
+of the threads (see §5). **This section has since been promoted to its own
+exploration — [`machine.md`](./machine.md)** — which specifies the literate
+document format, the reconciliation verbs, the provisioner seam (exe.dev/Shelley
+vs Nix/cloud-init emitters), the `machine.metacrdt.com` registry, and the agent
+permission model.
 
 ---
 
