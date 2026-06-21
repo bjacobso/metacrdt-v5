@@ -64,7 +64,9 @@ Used consistently across every doc, so you always know reality vs. aspiration:
 
 ### Vision — *why & where it's going* (`💭`)
 - [`overview.md`](./vision/overview.md) — the thesis, the layers, and the pillars
-- [`README.md`](./vision/README.md) — the curated reading order over 18 explorations (start: `triples → workflows → compliance → …`)
+- [`ontologyvm.md`](./vision/ontologyvm.md) — OntologyVM as a candidate product/category name and homepage thesis
+- [`worldvm.md`](./vision/worldvm.md) — WorldVM as a clean company pitch and brandable primitive
+- [`README.md`](./vision/README.md) — the curated vision reading order (start: `triples → workflows → compliance → …`)
 
 ### Plans — *what's next* (`🚧` / `📐`)
 - [`plans/README.md`](./plans/README.md) — active specs and working rules
