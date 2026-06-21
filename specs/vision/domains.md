@@ -30,6 +30,8 @@ this down.
 | --- | --- | --- |
 | **metacrdt.com** | Registered 2024-04, on Cloudflare | Infrastructure. Protocol. Dev-legible and a little severe — reads like a spec you'd `npm install`, not a product you'd buy. Speaks to engineers first. Carries the substrate's physics directly. |
 | **ontology.run** | Owned | "Your ontology, running." Hosted, alive, present-tense. The most product-shaped of the set and the only name legible to *both* audiences — Palantir-aware buyers and OSS devs. The `.run` TLD makes it feel operational rather than academic. |
+| **worldvm.com** | Owned | Brandable company / primitive. "A virtual machine for organizational reality." Bigger and friendlier than OntologyVM; does not require the reader to know what an ontology is. |
+| **ontologyvm.com** | Owned | Precise technical category / spec surface. "An ontology that executes." Strong CTO read; carries the ontology tax but explains the architecture cleanly. |
 | **open-ontology.com** | Owned | The open umbrella / org front door. Movement energy — "the open alternative to Palantir's Ontology." Invites a community and a GitHub org; risks reading as a foundation/standards body rather than a vendor. |
 | **meta-ontology.com** | Owned, **defensive only** | Held to deny it, not to use it. The "Meta-" prefix carries trademark and association risk (Meta Platforms). Should not anchor a public surface. |
 
