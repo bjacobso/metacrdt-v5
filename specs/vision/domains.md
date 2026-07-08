@@ -30,7 +30,8 @@ this down.
 | --- | --- | --- |
 | **metacrdt.com** | Registered 2024-04, on Cloudflare | Infrastructure. Protocol. Dev-legible and a little severe — reads like a spec you'd `npm install`, not a product you'd buy. Speaks to engineers first. Carries the substrate's physics directly. |
 | **ontology.run** | Owned | "Your ontology, running." Hosted, alive, present-tense. The most product-shaped of the set and the only name legible to *both* audiences — Palantir-aware buyers and OSS devs. The `.run` TLD makes it feel operational rather than academic. |
-| **worldvm.com** | Owned | Brandable company / primitive. "A virtual machine for organizational reality." Bigger and friendlier than OntologyVM; does not require the reader to know what an ontology is. |
+| **worldvm.com** | Owned | Brandable company / primitive. "A virtual machine for organizational reality." Bigger and friendlier than OntologyVM; does not require the reader to know what an ontology is. Full end-to-end pitch: [`worldvm.md`](./worldvm.md). |
+| **contextvm.com** | Owned (2026-07) | AI-era keyword captured. "Context" is one of the defining words of the moment and "VM" is a natural fit — surprising it was available. Risk: the word is overloaded (prompt context, retrieval, memory); copy must mean *durable, executable context*, not bigger context windows. In the WorldVM hierarchy, Context is the bounded-working-set runtime object. |
 | **ontologyvm.com** | Owned | Precise technical category / spec surface. "An ontology that executes." Strong CTO read; carries the ontology tax but explains the architecture cleanly. |
 | **open-ontology.com** | Owned | The open umbrella / org front door. Movement energy — "the open alternative to Palantir's Ontology." Invites a community and a GitHub org; risks reading as a foundation/standards body rather than a vendor. |
 | **meta-ontology.com** | Owned, **defensive only** | Held to deny it, not to use it. The "Meta-" prefix carries trademark and association risk (Meta Platforms). Should not anchor a public surface. |
@@ -80,6 +81,7 @@ endorsement — retired and candidate names sit side by side on purpose.
 | **metacrdt** | GitHub org | Created 2026-06-06, empty. Matches `@metacrdt` npm scope and the repo's package namespace. |
 | **@open-ontology** | npm scope | Unpublished; reserved, matches the GitHub org. |
 | **@metacrdt** | npm scope | Unpublished as a public brand, but it is the live package namespace in this monorepo (`@metacrdt/core`, etc.). The one name already load-bearing in code. |
+| **@worldvm** | npm scope | Acquired 2026-07. Backs the WorldVM package story (`@worldvm/runtime`, `@worldvm/metacrdt`, `@worldvm/forma`, target adapters) — see [`worldvm.md`](./worldvm.md). |
 | **Open Ontology** | Discord | Community channel exists under the umbrella name. |
 
 ## 5. Deliberately *not* owned
