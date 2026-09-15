@@ -1,0 +1,31 @@
+{
+  "name": "@metacrdt/triplex",
+  "version": "0.1.0",
+  "description": "Explainable coordination and collection on Triplex.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22" },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsdown --config ../../tsdown.config.ts",
+    "test": "vitest run",
+    "demo": "tsx examples/compliance.ts",
+    "typecheck": "tsc --noEmit",
+    "pack:check": "node ../../scripts/pnpm-pack-check.mjs"
+  },
+  "dependencies": {
+    "@bjacobso/triplex": "0.0.0-next-20260904185815",
+    "@metacrdt/collect": "workspace:*",
+    "effect": "4.0.0-rc.112"
+  },
+  "devDependencies": {
+    "@bjacobso/triplex-sqlite": "0.0.0-next-20260904185815",
+    "@types/node": "^24.10.1",
+    "tsx": "4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}

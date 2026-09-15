@@ -6,15 +6,16 @@ and dev guide; everything deeper lives here.
 
 ## What MetaCRDT is, in one screen
 
-> Databases store facts. CRDTs synchronize facts. **MetaCRDT synchronizes facts,
-> logic, workflows, permissions, agents, and interfaces.**
+> **Explainable coordination from versioned policies and facts, powered by Triplex.**
 
-An append-only, bitemporal fact log whose projections — current state, derived
-rules, obligations, workflows, generated UI — are all deterministic *folds* of
-the same events. Because derivation is also a fold, the things that are normally
-bespoke (audit, time-travel, reuse, obligations) become emergent properties of
-the substrate. The reference runtime is [Convex](https://convex.dev); the demo
-elaboration is compliance datarooms.
+Start with [Triplex coordination](./reference/triplex-coordination.md) for the new
+architecture and its first implemented consumer. Triplex supplies the database,
+configuration, and derivation primitives; MetaCRDT turns candidates into durable
+requirements and collects evidence that resolves them.
+
+The existing Convex application and convergence protocol remain available. The
+older reference and vision documents describe that implementation and research
+direction unless explicitly updated for the Triplex consumer.
 
 ## Organized by altitude
 
@@ -42,8 +43,8 @@ Used consistently across every doc, so you always know reality vs. aspiration:
 
 ## Where to start
 
-- **New to the project?** → [`reference/positioning.md`](./reference/positioning.md)
-  (what & why), then [`reference/engine.md`](./reference/engine.md) (how it works).
+- **New to the project?** → [`reference/triplex-coordination.md`](./reference/triplex-coordination.md)
+  (current direction), then [`reference/engine.md`](./reference/engine.md) (existing Convex implementation).
 - **Implementing the protocol?** → [`reference/protocol.md`](./reference/protocol.md).
 - **Want the product thesis & the full vision?** →
   [`vision/overview.md`](./vision/overview.md), then the
@@ -55,6 +56,8 @@ Used consistently across every doc, so you always know reality vs. aspiration:
 ## Full index
 
 ### Reference — *what is true now*
+
+- [`triplex-coordination.md`](./reference/triplex-coordination.md) — consumer architecture, shipped lifecycle slice, and migration boundary `✅`
 - [`engine.md`](./reference/engine.md) — how the engine works (model, packages, Convex runtime, query/write surface) `✅`
 - [`protocol.md`](./reference/protocol.md) — the normative MetaCRDT protocol spec (RFC 2119)
 - [`architecture.md`](./reference/architecture.md) — the MetaCRDT umbrella, naming, and layer map

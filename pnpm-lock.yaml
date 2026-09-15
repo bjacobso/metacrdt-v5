@@ -629,6 +629,34 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@edge-runtime/vm@5.0.0)(@types/node@24.13.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
+  packages/triplex:
+    dependencies:
+      '@bjacobso/triplex':
+        specifier: 0.0.0-next-20260904185815
+        version: 0.0.0-next-20260904185815(effect@4.0.0-rc.112)
+      '@metacrdt/collect':
+        specifier: workspace:*
+        version: link:../collect
+      effect:
+        specifier: 4.0.0-rc.112
+        version: 4.0.0-rc.112
+    devDependencies:
+      '@bjacobso/triplex-sqlite':
+        specifier: 0.0.0-next-20260904185815
+        version: 0.0.0-next-20260904185815(effect@4.0.0-rc.112)
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.13.1
+      tsx:
+        specifier: 4.22.4
+        version: 4.22.4
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.8(@edge-runtime/vm@5.0.0)(@types/node@24.13.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
   packages/views:
     dependencies:
       effect:
@@ -797,6 +825,24 @@ packages:
   '@better-fetch/fetch@1.2.2':
     resolution: {integrity: sha512-xlgQcYROGFgKg5FY7ZLppFmG7rR5Hkmz7tgDuQeR79i5KhKRjr2QC9xsBG2qEGPJJjf9bxzg/NMW2hEUWs5OnA==}
 
+  '@bjacobso/triplex-sql@0.0.0-next-20260904185815':
+    resolution: {integrity: sha512-ZtLMWZGypn5Sfh+E+KCjqNp8IuL7DeRLdr9GgQ0An/xje5mUeZFAP7zs/yFaxO+y2R2LLy+vqff7FCCbh7+yyg==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      effect: 4.0.0-rc.112
+
+  '@bjacobso/triplex-sqlite@0.0.0-next-20260904185815':
+    resolution: {integrity: sha512-UGJAbqvnN6dI5m3s7/BWIvg/LtUF7eTUtwIiPc9AcWfqWL50SeeLbMAwXZ56NIRSuRtezwqAgVWn2En5x9pC8A==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      effect: 4.0.0-rc.112
+
+  '@bjacobso/triplex@0.0.0-next-20260904185815':
+    resolution: {integrity: sha512-botkp4sZPpgB9xCj9Qrg4auAjrcuDpYOkR00pad/I96Q6N4Li0laX2jeKDMkad3cRtw9Rh0L9v8v+jIVTAvCzA==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      effect: 4.0.0-rc.112
+
   '@codemirror/autocomplete@6.20.3':
     resolution: {integrity: sha512-tlosUqb+3BbxCxZdu4tKeRghPFC+QM7q4X5YhKV2eCmPG+1r2F3f4AaSz5sCrFqUtX4Jh20VFTKecl16MgiV9g==}
 
@@ -944,6 +990,11 @@ packages:
     peerDependencies:
       '@effect/platform': ^0.96.1
       effect: ^3.21.2
+
+  '@effect/sql-sqlite-node@4.0.0-rc.112':
+    resolution: {integrity: sha512-jGRtbJsn5z7DqsMEPSbXq2Q9mYEvMy1v9DTeziTtDEnDzlxhxfrXkSeupZbYqAP5pukIM1JBa10zfAn6KnHG2Q==}
+    peerDependencies:
+      effect: ^4.0.0-rc.112
 
   '@effect/sql@0.51.1':
     resolution: {integrity: sha512-iPDAefrJcI0HcTk9keP9Gq8Pg08K1HmpnmZZt85AqyTcvorhoNsXDFiKBbPldfV2CortwVkacX8KjO9GPpSYCA==}
@@ -2175,6 +2226,9 @@ packages:
   effect@3.21.3:
     resolution: {integrity: sha512-RqwU7WnJ6CqYhyjpOVJA5vh1Sgkn6eVECO6mnD0EjlbWcC2M3LJaPglXXr13Rdo/Y+B+wTEPzGRYFNL2xKxNeQ==}
 
+  effect@4.0.0-rc.112:
+    resolution: {integrity: sha512-wXxwuh1Ywnv4cPRM3Wfa0vDwuOHnZ1TsTgHJkG9XgzND6inhBH9n1vBxhg3iIXOia/OrpmvVmd3lrD4vq6bF3A==}
+
   empathic@2.0.1:
     resolution: {integrity: sha512-YGRs8knHhKHVShLkFET/rWAU8kmHbOV5LwN938RHI0pljAJ1Gf6SzXsSmRaEzcXTtOOmVqJ5+WtQPL5uigY50Q==}
     engines: {node: '>=14'}
@@ -2211,6 +2265,10 @@ packages:
   fast-check@3.23.2:
     resolution: {integrity: sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==}
     engines: {node: '>=8.0.0'}
+
+  fast-check@4.10.0:
+    resolution: {integrity: sha512-hhqQL+IJllZi3aM4TKvmCj3bywLEcycNTTLZeLhA9ttMxBrCqM07q7Di4kl+j9EWSTXvJH1+EpIgsDbF/+8H5Q==}
+    engines: {node: '>=12.17.0'}
 
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
@@ -2273,6 +2331,9 @@ packages:
   kysely@0.29.2:
     resolution: {integrity: sha512-s6WVJyEZrbm6jhBpiKHsGHyePMrVQKJ85wZCFCr9W4QHv6WTjWIrdvTmO9hDEA3bNK0xkrE2DqrHsXMLWuZpQg==}
     engines: {node: '>=22.0.0'}
+
+  layerr@3.0.0:
+    resolution: {integrity: sha512-tv754Ki2dXpPVApOrjTyRo4/QegVb9eVFq4mjqp4+NM5NaX7syQvN5BBNfV/ZpAHCEHV24XdUVrBAoka4jt3pA==}
 
   lightningcss-android-arm64@1.32.0:
     resolution: {integrity: sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==}
@@ -2364,6 +2425,9 @@ packages:
   msgpackr@1.12.1:
     resolution: {integrity: sha512-4EUH9tQHnMmEgzW/MdAP0KIfa1T9AF+htl0ffe2n5vb2EKn9y2co8ccpgWko6S52Jy1PQZKwRnx5/KkYjtd9MQ==}
 
+  msgpackr@2.1.0:
+    resolution: {integrity: sha512-p/pBCVO63CsvvpkomUnNNag6+n38rULuDA6HHe70o2gtC8ODI52foF/4ko2qQcp6OiErJXTmrZeXmsGGHsIQNQ==}
+
   multipasta@0.2.7:
     resolution: {integrity: sha512-KPA58d68KgGil15oDqXjkUBEBYc00XvbPj5/X+dyzeo/lWm9Nc25pQRlf1D+gv4OpK7NM0J1odrbu9JNNGvynA==}
 
@@ -2408,6 +2472,9 @@ packages:
 
   pure-rand@6.1.0:
     resolution: {integrity: sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA==}
+
+  pure-rand@8.4.2:
+    resolution: {integrity: sha512-vvuOGgcuPJAirlHvuQw1TrOiw7ptaIXXmIbNuiNOY6lNGJJH49PQ1Kj4nd783nPdQhQdicgOjVI2yI/9BD6/Ng==}
 
   quansync@1.0.0:
     resolution: {integrity: sha512-5xZacEEufv3HSTPQuchrvV6soaiACMFnq1H8wkVioctoH3TRha9Sz66lOxRwPK/qZj7HPiSveih9yAyh98gvqA==}
@@ -2594,6 +2661,10 @@ packages:
     resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
     engines: {node: '>=14.17'}
     hasBin: true
+
+  ulidx@2.4.1:
+    resolution: {integrity: sha512-xY7c8LPyzvhvew0Fn+Ek3wBC9STZAuDI/Y5andCKi9AX6/jvfaX45PhsDX8oxgPL0YFp0Jhr8qWMbS/p9375Xg==}
+    engines: {node: '>=16'}
 
   unconfig-core@7.5.0:
     resolution: {integrity: sha512-Su3FauozOGP44ZmKdHy2oE6LPjk51M/TRRjHv2HNCWiDvfvCoxC2lno6jevMA91MYAdCdwP05QnWdWpSbncX/w==}
@@ -2827,6 +2898,23 @@ snapshots:
 
   '@better-fetch/fetch@1.2.2': {}
 
+  '@bjacobso/triplex-sql@0.0.0-next-20260904185815(effect@4.0.0-rc.112)':
+    dependencies:
+      '@bjacobso/triplex': 0.0.0-next-20260904185815(effect@4.0.0-rc.112)
+      effect: 4.0.0-rc.112
+
+  '@bjacobso/triplex-sqlite@0.0.0-next-20260904185815(effect@4.0.0-rc.112)':
+    dependencies:
+      '@bjacobso/triplex': 0.0.0-next-20260904185815(effect@4.0.0-rc.112)
+      '@bjacobso/triplex-sql': 0.0.0-next-20260904185815(effect@4.0.0-rc.112)
+      '@effect/sql-sqlite-node': 4.0.0-rc.112(effect@4.0.0-rc.112)
+      effect: 4.0.0-rc.112
+
+  '@bjacobso/triplex@0.0.0-next-20260904185815(effect@4.0.0-rc.112)':
+    dependencies:
+      effect: 4.0.0-rc.112
+      ulidx: 2.4.1
+
   '@codemirror/autocomplete@6.20.3':
     dependencies:
       '@codemirror/language': 6.12.3
@@ -3046,6 +3134,10 @@ snapshots:
       '@effect/platform': 0.96.1(effect@3.21.3)
       effect: 3.21.3
       msgpackr: 1.12.1
+
+  '@effect/sql-sqlite-node@4.0.0-rc.112(effect@4.0.0-rc.112)':
+    dependencies:
+      effect: 4.0.0-rc.112
 
   '@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.3))(effect@3.21.3))(@effect/platform@0.96.1(effect@3.21.3))(effect@3.21.3)':
     dependencies:
@@ -3834,6 +3926,11 @@ snapshots:
       '@standard-schema/spec': 1.1.0
       fast-check: 3.23.2
 
+  effect@4.0.0-rc.112:
+    dependencies:
+      fast-check: 4.10.0
+      msgpackr: 2.1.0
+
   empathic@2.0.1: {}
 
   enhanced-resolve@5.23.0:
@@ -3940,6 +4037,10 @@ snapshots:
     dependencies:
       pure-rand: 6.1.0
 
+  fast-check@4.10.0:
+    dependencies:
+      pure-rand: 8.4.2
+
   fdir@6.5.0(picomatch@4.0.4):
     optionalDependencies:
       picomatch: 4.0.4
@@ -3976,6 +4077,8 @@ snapshots:
   kubernetes-types@1.30.0: {}
 
   kysely@0.29.2: {}
+
+  layerr@3.0.0: {}
 
   lightningcss-android-arm64@1.32.0:
     optional: true
@@ -4052,6 +4155,10 @@ snapshots:
     optionalDependencies:
       msgpackr-extract: 3.0.4
 
+  msgpackr@2.1.0:
+    optionalDependencies:
+      msgpackr-extract: 3.0.4
+
   multipasta@0.2.7: {}
 
   nanoid@3.3.12: {}
@@ -4082,6 +4189,8 @@ snapshots:
   prettier@3.8.4: {}
 
   pure-rand@6.1.0: {}
+
+  pure-rand@8.4.2: {}
 
   quansync@1.0.0: {}
 
@@ -4258,6 +4367,10 @@ snapshots:
       tagged-tag: 1.0.0
 
   typescript@6.0.3: {}
+
+  ulidx@2.4.1:
+    dependencies:
+      layerr: 3.0.0
 
   unconfig-core@7.5.0:
     dependencies:
