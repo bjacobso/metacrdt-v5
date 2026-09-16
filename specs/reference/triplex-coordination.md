@@ -104,6 +104,12 @@ No existing Convex data or application paths are migrated by this change.
 
 ## Next slices
 
+The [full MetaCRDT protocol binding plan](../plans/triplex-protocol-binding.md)
+tracks the follow-on L1–L5 work: preserving canonical events, resolving sync and
+authorization decisions, identifying Triplex extensions, and proving convergence
+across independent databases. It keeps replication as a first-class capability;
+the list below describes application work around the currently implemented consumer.
+
 1. Bind ViewSpec/dashboard queries to the authorized Triplex consumer and expose
    requirement provenance and stale-state indicators in the existing UI.
 2. Add workflow lifecycle and durable effect intents, then host outbox delivery,

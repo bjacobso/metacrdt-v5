@@ -50,6 +50,8 @@ Used consistently across every doc, so you always know reality vs. aspiration:
   [`vision/overview.md`](./vision/overview.md), then the
   [vision reading order](./vision/README.md).
 - **Picking up build work?** → [`plans/README.md`](./plans/README.md).
+  For full protocol replication on Triplex, start with
+  [`plans/triplex-protocol-binding.md`](./plans/triplex-protocol-binding.md).
 - **Understanding the naming / package map?** →
   [`reference/architecture.md`](./reference/architecture.md).
 
