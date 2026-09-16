@@ -26,6 +26,8 @@
     "test:local": "pnpm --filter @metacrdt/local test",
     "test:query": "pnpm --filter @metacrdt/query test",
     "test:runtime": "pnpm --filter @metacrdt/runtime test",
+    "test:triplex": "turbo run test --filter=@metacrdt/triplex",
+    "demo:triplex": "turbo run build --filter=@metacrdt/triplex && pnpm --filter @metacrdt/triplex demo",
     "test:schema": "pnpm --filter @metacrdt/schema test",
     "test:workflow": "pnpm --filter @metacrdt/workflow test",
     "test:confect": "pnpm --filter @metacrdt/convex-demo test:confect",

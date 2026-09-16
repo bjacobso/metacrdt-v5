@@ -1,19 +1,29 @@
 # MetaCRDT
 
-**A convergence substrate for structured coordination across distributed runtimes.**
+**Explainable coordination from versioned policies and facts, powered by Triplex.**
 
-> Databases store facts. CRDTs synchronize facts. **MetaCRDT synchronizes facts,
-> logic, workflows, permissions, agents, and interfaces.**
+MetaCRDT turns derived requirements into durable work and collects the evidence
+that resolves it. Triplex owns facts, temporal queries, configuration releases,
+derivation provenance, and the transaction journal. MetaCRDT owns the meaning and
+lifecycle of the resulting work.
 
-MetaCRDT starts from one primitive — *a convergent graph of facts, constraints,
-intentions, and effects* — and models every change as an immutable event in an
-append-only, bitemporal fact log. State is not mutated in place; it is a
-deterministic fold of events. Because **derivation** is also a fold, obligations,
-rules, workflows, permissions, and generated views converge without being
-separately synchronized. That is the "meta."
+The first implemented consumer is [`@metacrdt/triplex`](./packages/triplex/README.md):
+release-pinned forms, submission previews, requirement reconciliation, resumable
+journal consumption, and durable expiry wakeups. Run the SQLite example with
+Node 24 after `pnpm install`:
 
-This repository is the canonical MetaCRDT reference implementation and
-`@metacrdt/*` package monorepo. The full reference application lives in
+```bash
+pnpm demo:triplex
+pnpm test:triplex
+```
+
+The example opens a training requirement, previews and commits evidence, closes
+the database, and reopens work at evidence expiry after restarting. See the
+[Triplex architecture](./specs/reference/triplex-coordination.md) for the current
+boundary and remaining migration work.
+
+This repository also retains the original convergence protocol implementation and
+`@metacrdt/*` package monorepo. The full existing reference application lives in
 [`apps/convex-demo`](./apps/convex-demo) and runs on
 [Convex](https://convex.dev) as a centralized, reactive reference runtime. Thin
 Cloudflare and Node demos live in `apps/cloudflare-demo` and `apps/node-demo` to
@@ -21,9 +31,10 @@ prove the shared dashboard/client boundary. The demo elaboration is
 **datarooms** (compliance/onboarding) — one physics over the substrate, not the
 substrate itself.
 
-> **Research Preview.** What is *built* vs. *research frontier* is marked
-> explicitly in the docs. The log is a CRDT today; the multi-replica convergence
-> runtime is research. See [Status](#status).
+> **Research Preview.** The Triplex consumer is the first slice of the new
+> architecture; the existing dashboard and runtime packages have not migrated.
+> The original event log is a CRDT. The Triplex consumer makes no replica-merge
+> guarantee. See [Status](#status).
 
 ---
 
@@ -147,6 +158,8 @@ Research Preview.
 
 Built:
 
+- Triplex coordination consumer with versioned collection, recoverable requirement
+  reconciliation, durable temporal wakeups, and a SQLite restart example
 - Convex reference runtime
 - datarooms/compliance elaboration
 - `@metacrdt/core`
@@ -161,6 +174,8 @@ Built:
 
 Frontier:
 
+- Triplex-backed dashboard/ViewSpec queries, workflow execution and effect delivery,
+  authorization integration, existing-work release migration, and historical data copy
 - commutative supersession in the write path
 - HLC + version-vector sync across replicas
 - Durable Object + SQLite triple-store parity

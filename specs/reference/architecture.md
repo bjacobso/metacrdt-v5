@@ -1,5 +1,10 @@
 # Architecture & naming — the MetaCRDT umbrella
 
+> **Architecture transition:** [Triplex coordination](./triplex-coordination.md)
+> defines the new consumer architecture and its implemented first slice. The map
+> below describes the existing convergence-protocol packages; it does not make
+> Triplex an adapter for that protocol.
+
 **MetaCRDT** is the umbrella: the primitive, the thesis, and the org
 (`metacrdt.com`, `@metacrdt`, the GitHub/X handles). Everything in this project —
 triples, Datalog, workflows, forms, constraints, tasks, permissions, views,
